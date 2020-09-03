@@ -60,7 +60,7 @@ class Event:
 
 class InputEvent(Event):
   def __str__(self):
-    return super(self, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
 
   def __init__(self, type, code, value, timestamp, source, modifiers = None):
     self.type, self.code, self.value, self.timestamp, self.source = type, code, value, timestamp, source 
@@ -99,16 +99,11 @@ class MoveAxis:
   def __call__(self, event):
     assert(self.curve_ is not None)
 
-    if event.type == EV_BCAST and event.code == BC_INIT:
-      if event.value == 1:
-        logging.debug("resetting")
-        self.curve_.reset()
-        return True
-    elif event.type in (codes.EV_REL, codes.EV_ABS):  
+    if event.type in (codes.EV_REL, codes.EV_ABS):  
       self.j_.move_axis(self.axis_, self.curve_.calc(event.value, event.timestamp), self.relative_)
       return True
-
-    return False
+    else:
+      return False
 
   def __init__(self, j, axis, curve, relative):
     if curve is None:
@@ -133,10 +128,7 @@ def SetAxes(joystick, axesAndValues):
 
 def Reset(curve):
   def op(event):
-    if event.type == codes.EV_KEY:
-      return curve.reset()
-    else:
-      return False
+    return curve.reset()
   return op
 
 
@@ -221,25 +213,23 @@ class Binding:
     assert(self.cmp_)
     level, processed = self.children_[0][1], False
     for c in self.children_:
-      if event.type == EV_BCAST:
-        if c[2] is not None: 
-          for cc in c[2]:
-            cc(event)
-      else:
-        if c[1] > level:
-          if processed == True:
-            return
-          else:
-            level = c[1]
-        logging.debug(c[0])
-        for attrName, attrValue in c[0]:
-           if hasattr(event, attrName):
-              if not self.cmp_(attrName, getattr(event, attrName), attrValue):
-                break
+      if c[1] > level:
+        if processed == True:
+          return
         else:
-          if c[2] is not None: 
-            for cc in c[2]:
-              processed = cc(event) or processed
+          level = c[1]
+      for attrName, attrValue in c[0]:
+         if hasattr(event, attrName):
+            if not self.cmp_(attrName, getattr(event, attrName), attrValue):
+              break
+         else:
+          break
+      else:
+        if c[2] is not None: 
+          #print("Processing event {}".format(str(event)))
+          for cc in c[2]:
+            #print("Sending event {} to {}".format(str(event), cc))
+            processed = cc(event) or processed
 
   def add(self, attrs, child, level = 0):
     c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
@@ -335,6 +325,10 @@ class ED:
   @staticmethod
   def bcast():
     return (("type", EV_BCAST),)
+
+  @staticmethod
+  def init(i):
+    return (("type", EV_BCAST), ("code", BC_INIT), ("value", i))
 
   @staticmethod
   def any():
@@ -1341,6 +1335,7 @@ def init_sinks_descent(settings):
   mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
   mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
   mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
+  mode0Sink.add_several((ED.init(1),), (Reset(x) for x in mode0Curves.values()), 0)
 
   print("Init mode 1")
   mode1Sink = Binding(cmpOp)
@@ -1354,6 +1349,7 @@ def init_sinks_descent(settings):
   mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
   mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
   mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
+  mode1Sink.add_several((ED.init(1),), (Reset(x) for x in mode1Curves.values()), 0)
 
   print("Init mode 2")
   mode2Sink = Binding(cmpOp)
@@ -1373,6 +1369,8 @@ def init_sinks_descent(settings):
   mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mode2Curves[codes.ABS_RUDDER], True), 0)
   mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
   mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
+
+  mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
 
   modeSink.set_mode(0)
 
