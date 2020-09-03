@@ -13,6 +13,7 @@
 import sys
 sys.path.append(".")
 import getopt
+import traceback
 import m2j
 from m2j import *
 import evdev
@@ -193,7 +194,8 @@ if __name__ == "__main__":
   try:
     exit(run())
   except Exception as e:
-    print(e)
+    print("Exception: {} ({})".format(type(e), e))
+    print(traceback.print_tb(sys.exc_info()[2]))
     exit(2)
   except KeyboardInterrupt:
     exit(0)

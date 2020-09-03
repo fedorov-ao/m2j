@@ -131,6 +131,15 @@ def SetAxes(joystick, axesAndValues):
   return op
 
 
+def Reset(curve):
+  def op(event):
+    if event.type == codes.EV_KEY:
+      return curve.reset()
+    else:
+      return False
+  return op
+
+
 def SetButtonState(joystick, button, state):
   def op(event):
     if event.type == codes.EV_KEY:
@@ -618,6 +627,9 @@ class DirectionBasedCurve35:
     return delta
 
   def reset(self, i):
+    print("{}: reset i={}".format(self, i))
+    if i not in self.data_:
+      self.data_[i] = [0.0, 0]
     self.data_[i][1] = 0
 
   def get_caller(self, i):
@@ -738,6 +750,20 @@ class SpeedBasedCurve:
     self.symmetric_ = symmetric
     self.timestamp_ = 0.0
     self.s_ = 0
+
+
+class ArgCurve:
+  def calc(self, x, timestamp):
+    assert(self.approx_)
+    return self.next_.calc(self.approx_(x), timestamp) if self.next_ is not None else False
+  
+  def reset(self):
+    if self.next_ is not None:
+      self.next_.reset()
+
+  def __init__(self, next, approx):
+    self.next_, self.approx_ = next, approx
+    assert(self.approx_)
 
 
 class EmaFilter:
@@ -921,6 +947,7 @@ class AdjustingJoystick:
 
 
 nameToAxis = {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}
+axisToName = {p[1]:p[0] for p in nameToAxis.items()}
 
 def make_curve_makers():
   curves = {}
@@ -1224,13 +1251,23 @@ def init_sinks_descent(settings):
   cmpOp = CmpWithModifiers()
 
   sens = settings["sens"]
-  mcX, mcY, mcW = ProportionalCurve(sens.get(codes.REL_X, 0.0)), ProportionalCurve(sens.get(codes.REL_Y, 0.0)), ProportionalCurve(sens.get(codes.REL_WHEEL, 0.0))
 
-  joystick = AdjustingJoystick()
-  joystick.set_next(settings["joystick"])
+  curveSet = settings.get("curves", None)
+  if curveSet is None:
+    raise Exception("No curve set specified in settings")
+  curveMaker = curveMakers.get(curveSet, None)
+  if curveMaker is None:
+    raise Exception("No curves for {}".format(curveSet))
+  
+  curves = curveMaker()
 
-  set_curves(joystick, settings["curves"])
+  def make_curve(curves, sens, joyAxis, mouseAxis):
+    return ArgCurve(curves.get(axisToName[joyAxis], None), PowerApproximator(sens.get(mouseAxis, 0.0), 1.0))
 
+  def make_curves(curves, sens, jmPairs):
+    return {p[0]:make_curve(curves, sens, p[0], p[1]) for p in jmPairs}
+
+  joystick = settings["joystick"]
   mouse = settings["mouse"]
 
   joySnaps = SnapManager(joystick, False)
@@ -1281,31 +1318,46 @@ def init_sinks_descent(settings):
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), SetMode(modeSink, 0), 0)
 
+  print("Init mode 0")
   mode0Sink = Binding(cmpOp)
   modeSink.add(0, mode0Sink)
-  mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mcX, True), 0)
-  mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mcY, True), 0)
-  mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mcW, True), 0)
+  mode0Curves = make_curves(curves, sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
+  mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mode0Curves[codes.ABS_X], True), 0)
+  mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode0Curves[codes.ABS_Y], True), 0)
+  mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mode0Curves[codes.ABS_Z], True), 0)
   mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
+  mode0Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Z]), 0)
   mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
+  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
+  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
 
+  print("Init mode 1")
   mode1Sink = Binding(cmpOp)
   modeSink.add(1, mode1Sink)
-  mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mcX, True), 0)
-  mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mcY, True), 0)
-  mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mcW, True), 0)
+  mode1Curves = make_curves(curves, sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
+  mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mode1Curves[codes.ABS_Z], True), 0)
+  mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode1Curves[codes.ABS_Y], True), 0)
+  mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mode1Curves[codes.ABS_X], True), 0)
   mode1Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 5), 0)
+  mode1Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_X]), 0)
   mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
+  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
+  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
 
+  print("Init mode 2")
   mode2Sink = Binding(cmpOp)
   modeSink.add(2, mode2Sink)
-  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mcX, True), 0)
-  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mcY, True), 0)
-  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 3), 0)
-  mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mcW, True), 0)
-  mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
-  mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis(joystick, codes.ABS_THROTTLE, mcW, True), 0)
+  mode2Curves = make_curves(curves, sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL)))
+  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mode2Curves[codes.ABS_RX], True), 0)
+  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mode2Curves[codes.ABS_RY], True), 0)
+  #mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mcW, True), 0)
+  #mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
+  mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis(joystick, codes.ABS_THROTTLE, mode2Curves[codes.ABS_THROTTLE], True), 0)
   mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), SetAxis(joystick, codes.ABS_THROTTLE, 0.0), 0)
+  mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_THROTTLE]), 0)
+  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 3), 0)
+  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode2Curves[codes.ABS_RX]), 0)
+  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode2Curves[codes.ABS_RY]), 0)
 
   modeSink.set_mode(0)
 
