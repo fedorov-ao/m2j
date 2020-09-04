@@ -14,10 +14,13 @@ import sys
 sys.path.append(".")
 import getopt
 import traceback
+import logging
 import m2j
 from m2j import *
 import evdev
 from evdev import UInput, AbsInfo, ecodes
+
+logger = logging.getLogger(__name__)
 
 def code2ecode(code):
   return code
@@ -113,6 +116,7 @@ def run():
   root.setLevel(logLevel)
   handler = logging.StreamHandler(sys.stdout)
   handler.setLevel(logLevel)
+  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
   root.addHandler(handler)
 
   names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
