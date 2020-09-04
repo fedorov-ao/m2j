@@ -136,7 +136,7 @@ def SetButtonState(joystick, button, state):
   def op(event):
     if event.type == codes.EV_KEY:
       joystick.set_button_state(button, state) 
-      print(button, state)
+      logging.debug(button, state)
   return op
 
 
@@ -158,7 +158,7 @@ class ClickSink:
   #returns number of clicks
   def update_keys(self, event):
     if event.type == codes.EV_KEY:
-      logging.debug(event.code, event.value)
+      logging.debug("{} {}".format(event.code, event.value))
       if event.code in self.keys_:
         prevValue, prevTimestamp, prevNumClicks = self.keys_[event.code]
         dt = event.timestamp - prevTimestamp
@@ -226,9 +226,9 @@ class Binding:
           break
       else:
         if c[2] is not None: 
-          #print("Processing event {}".format(str(event)))
+          #logging.debug("Processing event {}".format(str(event)))
           for cc in c[2]:
-            #print("Sending event {} to {}".format(str(event), cc))
+            #logging.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
 
   def add(self, attrs, child, level = 0):
@@ -503,7 +503,7 @@ class DirectionBasedCurve:
     k = self.levels_[self.level_][1]
     value = x*k
 
-    print("level={} distance={: .3f} x={: .3f} k={: .3f} value={: .3f}".format(self.level_, self.distance_, x, k, value))
+    logging.debug("level={} distance={: .3f} x={: .3f} k={: .3f} value={: .3f}".format(self.level_, self.distance_, x, k, value))
 
     return value
 
@@ -545,7 +545,7 @@ class DirectionBasedCurve2:
     dk = nextLevelData[i] - currentLevelData[j]
     k = currentLevelData[j] + dd**self.factor_*dk
     r = x*k
-    print("level={} distance={: .3f} k={: .3f} x={: .3f} r={: .3f}".format(self.level_, self.distance_, k, x, r))
+    logging.debug("level={} distance={: .3f} k={: .3f} x={: .3f} r={: .3f}".format(self.level_, self.distance_, k, x, r))
 
     return r
 
@@ -579,7 +579,7 @@ class DirectionBasedCurve3:
 
     k = self.approx_(abs(self.distance_))
     delta = k*x
-    print("{}: distance={: .3f} x={: .3f} k={: .3f} delta={: .3f}".format(self, self.distance_, x, k, delta))
+    logging.debug("{}: distance={: .3f} x={: .3f} k={: .3f} delta={: .3f}".format(self, self.distance_, x, k, delta))
 
     return delta
 
@@ -606,7 +606,7 @@ class DirectionBasedCurve35:
       self.data_[i][0] = -sign(x)*self.startingDistance_
       self.data_[i][1] = sign(x)
     elif self.data_[i][1] != sign(x):
-      print("{}: sign changed for {}".format(self, i))
+      logging.debug("{}: sign changed for {}".format(self, i))
       self.data_[i][0] = sign(self.data_[i][0])*abs(self.distanceOp_(self.data_[i][0]))
       self.data_[i][1] = sign(x)
 
@@ -616,15 +616,14 @@ class DirectionBasedCurve35:
     k = self.approx_(distance)
     delta = k*x
 
-    print("{}: i={} x={: .3f} coord_distance={: .3f} total_distance={: .3f} k={: .3f}".format(self, i, x, self.data_[i][0], distance, k))
+    logging.debug("{}: i={} x={: .3f} coord_distance={: .3f} total_distance={: .3f} k={: .3f}".format(self, i, x, self.data_[i][0], distance, k))
 
     return delta
 
   def reset(self, i):
-    print("{}: reset i={}".format(self, i))
+    logging.debug("{}: reset i={}".format(self, i))
     if i not in self.data_:
       self.data_[i] = [0.0, 0]
-    self.data_[i][0] = 0.0
     self.data_[i][1] = 0
 
   def get_caller(self, i):
@@ -663,7 +662,7 @@ class DirectionBasedCurve4:
       delta = value - self.value_
       self.value_ = value
 
-    print("x={: .3f} distance={: .3f} value={: .3f} delta={: .3f} offset={: .3f}".format(x, self.distance_, self.value_, delta, self.offset_))
+    logging.debug("x={: .3f} distance={: .3f} value={: .3f} delta={: .3f} offset={: .3f}".format(x, self.distance_, self.value_, delta, self.offset_))
 
     return delta
 
@@ -688,7 +687,7 @@ class DistanceBasedCurve:
       delta = value - self.value_
       self.value_ = value
 
-    print(self.distance_, self.value_)
+    logging.debug(self.distance_, self.value_)
     return delta
 
   def reset(self):
@@ -857,13 +856,13 @@ class SnapManager:
     self.snaps_[i] = [[p[0], p[1]] for p in l]
 
   def update_snap(self, i):
-    print("update_snap({})".format(i))
+    logging.debug("update_snap({})".format(i))
     snap = self.snaps_[i]
     for j in xrange(len(snap)):
       snap[j][1] = self.joystick_.get_axis(snap[j][0])
        
   def snap_to(self, i):
-    print("snap_to({})".format(i))
+    logging.debug("snap_to({})".format(i))
     snap = self.snaps_[i]
     for p in snap:
       self.joystick_.move_axis(p[0], p[1], self.relative_)
@@ -1114,7 +1113,7 @@ curveMakers = make_curve_makers()
 
 
 def set_curves(joystick, curves):
-  print("Setting {} curves".format(curves))
+  logging.debug("Setting {} curves".format(curves))
   c = curveMakers[curves]()
   for p in c.items(): 
     axis = nameToAxis[p[0]]
@@ -1266,11 +1265,11 @@ def init_sinks_descent(settings):
   
   curves = curveMaker()
 
-  def make_curve(curves, sens, joyAxis, mouseAxis):
+  def scale_curve(curves, sens, joyAxis, mouseAxis):
     return ArgCurve(curves.get(axisToName[joyAxis], None), PowerApproximator(sens.get(mouseAxis, 0.0), 1.0))
 
-  def make_curves(curves, sens, jmPairs):
-    return {p[0]:make_curve(curves, sens, p[0], p[1]) for p in jmPairs}
+  def scale_curves(curves, sens, jmPairs):
+    return {p[0]:scale_curve(curves, sens, p[0], p[1]) for p in jmPairs}
 
   joystick = settings["joystick"]
   mouse = settings["mouse"]
@@ -1323,10 +1322,10 @@ def init_sinks_descent(settings):
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), SetMode(modeSink, 0), 0)
 
-  print("Init mode 0")
+  logging.debug("Init mode 0")
   mode0Sink = Binding(cmpOp)
   modeSink.add(0, mode0Sink)
-  mode0Curves = make_curves(curves[0], sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
+  mode0Curves = scale_curves(curves[0], sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
   mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mode0Curves[codes.ABS_X], True), 0)
   mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode0Curves[codes.ABS_Y], True), 0)
   mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mode0Curves[codes.ABS_Z], True), 0)
@@ -1337,10 +1336,10 @@ def init_sinks_descent(settings):
   mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
   mode0Sink.add_several((ED.init(1),), (Reset(x) for x in mode0Curves.values()), 0)
 
-  print("Init mode 1")
+  logging.debug("Init mode 1")
   mode1Sink = Binding(cmpOp)
   modeSink.add(1, mode1Sink)
-  mode1Curves = make_curves(curves[1], sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
+  mode1Curves = scale_curves(curves[1], sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
   mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mode1Curves[codes.ABS_Z], True), 0)
   mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode1Curves[codes.ABS_Y], True), 0)
   mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mode1Curves[codes.ABS_X], True), 0)
@@ -1351,10 +1350,10 @@ def init_sinks_descent(settings):
   mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
   mode1Sink.add_several((ED.init(1),), (Reset(x) for x in mode1Curves.values()), 0)
 
-  print("Init mode 2")
+  logging.debug("Init mode 2")
   mode2Sink = Binding(cmpOp)
   modeSink.add(2, mode2Sink)
-  mode2Curves = make_curves(curves[2], sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL), (codes.ABS_RUDDER, codes.REL_WHEEL)))
+  mode2Curves = scale_curves(curves[2], sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL), (codes.ABS_RUDDER, codes.REL_WHEEL)))
 
   mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mode2Curves[codes.ABS_RX], True), 0)
   mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mode2Curves[codes.ABS_RY], True), 0)

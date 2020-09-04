@@ -94,14 +94,26 @@ def find_devices(names):
   
   
 def run():
-  settings = {"layout" : "base", "curves" : "distance"}
+  settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL"}
 
-  opts, args = getopt.getopt(sys.argv[1:], "l:c:", ["layout=", "curves="])
+  opts, args = getopt.getopt(sys.argv[1:], "l:c:o:", ["layout=", "curves=", "log_level="])
   for o, a in opts:
     if o in ("-l", "--layout"):
       settings["layout"] = a
     elif o in ("-c", "--curves"):
       settings["curves"] = a
+    elif o in ("-o", "--log_level"):
+      settings["log_level"] = a
+
+  logLevelName = settings["log_level"].upper()
+  nameToLevel = {logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)}
+  print("Setting log level to {}".format(logLevelName))
+  logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
+  root = logging.getLogger()
+  root.setLevel(logLevel)
+  handler = logging.StreamHandler(sys.stdout)
+  handler.setLevel(logLevel)
+  root.addHandler(handler)
 
   names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
   devices = find_devices(names)
@@ -129,18 +141,13 @@ def run():
   if not initializer:
     raise Exception("Initialiser for {} not found".format(settings["layout"]))
   else:
-    print("Initializing for {}".format(settings["layout"]))
+    print("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
 
   sink = initializer(settings)
 
   step = 0.01
   source = EventSource(devices, sink, step)
 
-  #root = logging.getLogger()
-  #root.setLevel(logging.DEBUG)
-  #handler = logging.StreamHandler(sys.stdout)
-  #handler.setLevel(logging.DEBUG)
-  #root.addHandler(handler)
 
   source.run_loop()
   return 0
