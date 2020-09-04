@@ -701,6 +701,57 @@ class DistanceBasedCurve:
     self.distance_, self.value_, self.approx_, self.limit_ = 0.0, 0.0, approx, limit
 
 
+class DistanceBasedCurve1:
+  def calc(self, i, x, timestamp):
+
+    if i not in self.data_:
+      self.data_[i] = [0.0, 0.0]
+    d = self.data_[i]
+    d[0] += x
+
+    distance = self.calc_distance_()
+    value = 0.0 if distance == 0.0 else d[0]/distance*self.approx_(distance)
+
+    delta = 0.0
+    if abs(value) < self.limit_:
+      delta = value - d[1]
+      d[1] = value
+
+    logger.debug("{}: i={} x={: .3f} coord_distance={: .3f} total_distance={: .3f} delta={: .3f}".format(self, i, x, self.data_[i][0], distance, delta))
+
+    return delta
+
+  def reset(self, i):
+    logger.debug("{}: reset i={}".format(self, i))
+    if i not in self.data_:
+      self.data_[i] = [0.0, 0.0]
+    d = self.data_[i]
+    d[0] = 0.0
+    d[1] = 0.0
+
+  def get_caller(self, i):
+    class Caller:
+      def calc(self, x, timestamp):
+        return self.parent_.calc(self.i_, x, timestamp)
+      def reset(self):
+        self.parent_.reset(self.i_)
+      def __init__(self, parent, i):
+        self.parent_, self.i_ = parent, i
+    return Caller(self, i)
+
+  def __init__(self, approx, limit):
+    assert(approx)
+    self.approx_ = approx
+    self.data_, self.distance_, self.limit_ = {}, 0.0, limit
+
+  def calc_distance_(self):
+    distance = 0.0
+    for v in self.data_.values():
+      distance += v[0]**2.0
+    distance = distance**0.5
+    return distance
+
+
 class SpeedBasedCurve:
   def calc(self, x, timestamp):
     assert(self.approx_ is not None)
@@ -761,6 +812,26 @@ class ArgCurve:
     self.next_, self.approx_ = next, approx
     assert(self.approx_)
 
+
+class OpCurve:
+  def calc(self, x, timestamp):
+    v = self.start_
+    for c in self.curves_:
+      if c is None: continue
+      v = self.op_(v, c.calc(x, timestamp))
+    return v
+
+  def reset(self):
+    for c in self.curves_:
+      if c is None: continue
+      c.reset()
+
+  def add_curve(self, curve):
+    self.curves_.append(curve)
+
+  def __init__(self, op, start):
+    self.curves_, self.op_, self.start_ = [], op, start
+    
 
 class EmaFilter:
   def process(self, v):
@@ -942,6 +1013,43 @@ class AdjustingJoystick:
     self.curves_, self.next_ = dict(), None
 
 
+class MetricsJoystick:
+  def move_axis(self, axis, value, relative):
+    if axis not in self.data_:
+      self.data_[axis] = [0.0, None, 0.0]
+    if relative:
+      self.data_[axis][0] += value
+    else:
+      self.data_[axis][0] = value
+
+  def get_axis(self, axis):
+    return self.data_.get(axis, 0.0)[0]
+
+  def check(self):
+    for a in self.data_:
+      d = self.data_[a]
+      if d[1] is None:
+        continue
+      error = abs(d[0] - d[1])
+      d[2] = 0.5*error + 0.5*d[2]
+      print("{}: {: .3f} {: .3f}".format(axisToName[a], error, d[2]))
+        
+  def reset(self):
+    for a in self.data_:
+      d = self.data_[a]
+      if d[1] is None:
+        continue
+      d[0],d[2] = d[1],0.0
+    
+  def set_target(self, axis, target):
+    if axis not in self.data_:
+      self.data_[axis] = [0.0, None, 0.0]
+    self.data_[axis][1] = target
+
+  def __init__(self):
+    self.data_ = dict()
+
+
 nameToAxis = {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}
 axisToName = {p[1]:p[0] for p in nameToAxis.items()}
 
@@ -1095,6 +1203,58 @@ def make_curve_makers():
 
   curves["direction7"] = make_dir_curves7
 
+  def make_dir_curves8():
+    """Does not work"""
+    dataX = [(0.0,0.0), (2.0,1.0)]
+    factor = 1.0
+    approxX = SegmentApproximator(dataX, factor, True, True)
+    dataZ = [(0.0,0.0), (0.3,2.0)]
+    approxZ = SegmentApproximator(dataZ, factor, True, True)
+    #distanceOp = lambda x : min(0.1*x,0.1)
+    distanceOp = lambda x : 0
+    startingDistance = 0.0
+
+    op = lambda x,y : x if abs(x) < abs(y) else y
+    #op = lambda x,y : 0.25*x + 0.75*y
+    #op = lambda x,y : sign(y)*(x**2*abs(y))**0.5
+    #op = lambda x,y : sign(y)*abs(x)*abs(y)
+    curveX = OpCurve(op, 100.0)
+    #op2 = lambda x : min(abs(x), 1.0)
+    #op2 = lambda x : x
+    op2 = PowerApproximator(0.5, 2.0)
+    distCurveX = DistanceBasedCurve(op2, 100.0) 
+    curveX.add_curve(distCurveX)
+    dirCurveX = DirectionBasedCurve3(approxX, distanceOp, startingDistance)
+    curveX.add_curve(dirCurveX)
+
+    curveY = OpCurve(op, 100.0)
+    distCurveY = DistanceBasedCurve(op2, 100.0) 
+    curveY.add_curve(distCurveY)
+    dirCurveY = DirectionBasedCurve3(approxX, distanceOp, startingDistance)
+    curveY.add_curve(dirCurveY)
+
+    curves = {
+      0 : {
+        "x" : curveX, 
+        "y" : curveY, 
+        "z" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+      },
+      1 : {
+        "z" : curveX, 
+        "y" : curveY, 
+        "x" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+      },
+      2 : {
+        "rx" : ProportionalCurve(1.0), 
+        "ry" : ProportionalCurve(1.0),
+        "rudder" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        "throttle" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+      },
+    }
+    return curves
+
+  curves["direction8"] = make_dir_curves8
+
   def make_dist_curves():
     approxX = PowerApproximator(0.25, 2.0)
     approxZ = PowerApproximator(0.25, 2.0)
@@ -1120,6 +1280,34 @@ def make_curve_makers():
     return curves
 
   curves["distance"] = make_dist_curves
+
+  def make_dist_curves1():
+    """Does not work"""
+    approxX = PowerApproximator(0.25, 2.0)
+    approxZ = PowerApproximator(0.25, 2.0)
+    limit = 1.0
+    curveXY = DistanceBasedCurve1(approxX, limit)
+    curves = {
+      0 : {
+        "x" : curveXY.get_caller(0),
+        "y" : curveXY.get_caller(1),
+        "z" : DistanceBasedCurve(approxZ, limit),
+      },
+      1 : {
+        "z" : curveXY.get_caller(0),
+        "y" : curveXY.get_caller(1),
+        "x" : DistanceBasedCurve(approxZ, limit),
+      },
+      2 : {
+        "rx" : DistanceBasedCurve(approxX, limit), 
+        "ry" : DistanceBasedCurve(approxX, limit), 
+        "rudder" : DistanceBasedCurve(approxZ, limit),
+        "throttle" : DistanceBasedCurve(approxZ, limit),
+      },
+    }
+    return curves
+
+  curves["distance1"] = make_dist_curves1
 
   return curves
 
@@ -1384,6 +1572,14 @@ def init_sinks_descent(settings):
   mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
 
   mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
+
+  metricsJoystick = MetricsJoystick()
+  metricsJoystick.set_target(codes.ABS_X, 0.0)
+  metricsJoystick.set_target(codes.ABS_Y, 0.0)
+  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(metricsJoystick, codes.ABS_X, mode2Curves[codes.ABS_RX], True), 0)
+  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(metricsJoystick, codes.ABS_Y, mode2Curves[codes.ABS_RY], True), 0)
+  mode2Sink.add(ED.release(codes.BTN_LEFT), lambda e : metricsJoystick.check())
+  mode2Sink.add(ED.release(codes.BTN_RIGHT), lambda e : metricsJoystick.reset())
 
   modeSink.set_mode(0)
 
