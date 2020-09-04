@@ -1063,7 +1063,7 @@ def make_curve_makers():
   curves["direction6"] = make_dir_curves6
  
   def make_dir_curves7():
-    dataX = [(0.0,0.0), (0.7,1.0)]
+    dataX = [(0.0,0.0), (2.0,1.0)]
     factor = 1.0
     approxX = SegmentApproximator(dataX, factor, True, True)
     dataZ = [(0.0,0.0), (0.3,2.0)]
@@ -1096,14 +1096,26 @@ def make_curve_makers():
   curves["direction7"] = make_dir_curves7
 
   def make_dist_curves():
-    #levelsX = ((0.0, 0.0), (5.0, 1.0),)
-    #approxX = SegmentApproximator(levelsX)
-    approxX = PowerApproximator(0.5, 2.0)
+    approxX = PowerApproximator(0.25, 2.0)
+    approxZ = PowerApproximator(0.25, 2.0)
     limit = 1.0
     curves = {
-      "x" : DistanceBasedCurve(approxX, limit), 
-      "y" : DistanceBasedCurve(approxX, limit), 
-      "z" : DistanceBasedCurve(approxX, limit),
+      0 : {
+        "x" : DistanceBasedCurve(approxX, limit), 
+        "y" : DistanceBasedCurve(approxX, limit), 
+        "z" : DistanceBasedCurve(approxZ, limit),
+      },
+      1 : {
+        "z" : DistanceBasedCurve(approxX, limit), 
+        "y" : DistanceBasedCurve(approxX, limit), 
+        "x" : DistanceBasedCurve(approxZ, limit),
+      },
+      2 : {
+        "rx" : DistanceBasedCurve(approxX, limit), 
+        "ry" : DistanceBasedCurve(approxX, limit), 
+        "rudder" : DistanceBasedCurve(approxZ, limit),
+        "throttle" : DistanceBasedCurve(approxZ, limit),
+      },
     }
     return curves
 
