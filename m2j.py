@@ -774,9 +774,29 @@ class ValueBasedCurve:
 class FixedValuePoint:
   def __call__(self, value):
     return None if value is None else (self.op_(value - self.fixedValue_), self.fixedValue_)
+
   def __init__(self, op, fixedValue):
     self.op_ = op
     self.fixedValue_ = fixedValue
+
+
+class MovingValuePoint:
+  def __call__(self, value):
+    if value is None:
+      self.s_, self.tempValue_, self.value_ = 0, 0.0, None
+      return None
+    else:
+      s = sign(value - self.tempValue_)
+      self.tempValue_ = value
+      if self.s_ != 0 and s != self.s_:
+        #TODO Make customizable
+        self.value_ = value if self.value_ is None else 0.5*self.value_ + 0.5*value
+      self.s_ = s
+      return None if self.value_ is None else (self.op_(value - self.value_), self.value_)
+
+  def __init__(self, op):
+    self.op_ = op
+    self.s_, self.tempValue_, self.value_ = 0, 0.0, None
 
 
 class ValuePointOp:
@@ -1372,14 +1392,15 @@ def make_curve_makers():
   curves["distance1"] = make_dist_curves1
 
   def make_value_curves():
+    """Works!"""
     deltaOp = lambda x,value : value*x
     valuePointOp = lambda value : clamp(2.0*abs(value), 0.1, 1.0)
-    vps = (FixedValuePoint(valuePointOp, 0.0), FixedValuePoint(valuePointOp, 0.5), FixedValuePoint(valuePointOp, -0.7),)
-    valueOp = ValuePointOp(vps)
+    #vps = (FixedValuePoint(valuePointOp, 0.0), FixedValuePoint(valuePointOp, 0.5), FixedValuePoint(valuePointOp, -0.7),)
     valueLimit = 1.0
     curves = {
       0 : {
-        "x" : ValueBasedCurve(deltaOp, valueOp, valueLimit),
+        "x" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(valuePointOp, 0.0), MovingValuePoint(valuePointOp),)), valueLimit),
+        "y" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(valuePointOp, 0.0), MovingValuePoint(valuePointOp),)), valueLimit),
       },
     }
     return curves
