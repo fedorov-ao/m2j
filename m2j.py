@@ -752,6 +752,65 @@ class DistanceBasedCurve1:
     return distance
 
 
+class ValueBasedCurve:
+  def calc(self, x, timestamp):
+    delta = self.deltaOp_(x, self.valueOp_(self.value_))
+    value = self.value_ + delta
+    if abs(value) < self.valueLimit_:
+      self.value_ = value
+    return delta
+
+  def reset(self):
+    self.value_ = 0.0
+    self.valueOp_(None)
+    #TODO Should also call self.deltaOp_?
+
+  def __init__(self, deltaOp, valueOp, valueLimit):
+    assert(deltaOp)
+    assert(valueOp)
+    self.value_, self.deltaOp_, self.valueOp_, self.valueLimit_ = 0.0, deltaOp, valueOp, valueLimit
+
+
+class FixedValuePoint:
+  def __call__(self, value):
+    return None if value is None else (self.op_(value - self.fixedValue_), self.fixedValue_)
+  def __init__(self, op, fixedValue):
+    self.op_ = op
+    self.fixedValue_ = fixedValue
+
+
+class ValuePointOp:
+  def __call__(self, value):
+    left, right = None, None
+    for vp in self.vps_:
+      p = vp(value) #p is (result, value)
+      if p is None:
+        continue
+      delta = value - p[1]
+      s = sign(delta)
+      delta = abs(delta)
+      if s == 1:
+        if left is None or delta < left[1]: 
+          left = (p[0], delta) #left and right are (result, delta)
+      else:
+        if right is None or delta < right[1]: 
+          right = (p[0], delta)
+
+    if left is None and right is None:
+      return None
+    elif left is not None and right is not None:
+      leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
+      totalDelta = leftDelta + rightDelta
+      #interpolating (sort of)
+      #left value is multiplied by right fraction of deltas sum and vice versa
+      return rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
+    else:
+      return (left if right is None else right)[0]
+
+  def __init__(self, vps):
+    self.vps_ = vps
+
+
 class SpeedBasedCurve:
   def calc(self, x, timestamp):
     assert(self.approx_ is not None)
@@ -1102,15 +1161,18 @@ def make_curve_makers():
     dataX = [(0.0,0.0), (1.0,1.0)]
     factor = 1.0
     approxX = SegmentApproximator(dataX, factor, True, True)
-    distanceOp = lambda x : 0.1 
-    startingDistance = 0.5
+    #distanceOp = lambda x : 0.1 
+    distanceOp = lambda x : 0.8*x 
+    startingDistance = 0.0
     #approxX = SigmoidApproximator(12.0, -8.0, 1.0, 0.0)
     curves = {
-      "x" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-      "y" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-      "z" : DirectionBasedCurve3(approxX, distanceOp),
-      "rx" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-      "ry" : DirectionBasedCurve3(approxX, distanceOp), 
+      0 : {
+        "x" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        "y" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        "z" : DirectionBasedCurve3(approxX, distanceOp),
+        "rx" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        "ry" : DirectionBasedCurve3(approxX, distanceOp), 
+      }
     }
     return curves
 
@@ -1308,6 +1370,21 @@ def make_curve_makers():
     return curves
 
   curves["distance1"] = make_dist_curves1
+
+  def make_value_curves():
+    deltaOp = lambda x,value : value*x
+    valuePointOp = lambda value : clamp(2.0*abs(value), 0.1, 1.0)
+    vps = (FixedValuePoint(valuePointOp, 0.0), FixedValuePoint(valuePointOp, 0.5), FixedValuePoint(valuePointOp, -0.7),)
+    valueOp = ValuePointOp(vps)
+    valueLimit = 1.0
+    curves = {
+      0 : {
+        "x" : ValueBasedCurve(deltaOp, valueOp, valueLimit),
+      },
+    }
+    return curves
+
+  curves["value"] = make_value_curves
 
   return curves
 
@@ -1524,62 +1601,65 @@ def init_sinks_descent(settings):
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), SetMode(modeSink, 0), 0)
 
-  logger.debug("Init mode 0")
-  mode0Sink = Binding(cmpOp)
-  modeSink.add(0, mode0Sink)
-  mode0Curves = scale_curves(curves[0], sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
-  mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mode0Curves[codes.ABS_X], True), 0)
-  mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode0Curves[codes.ABS_Y], True), 0)
-  mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mode0Curves[codes.ABS_Z], True), 0)
-  mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
-  mode0Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Z]), 0)
-  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
-  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
-  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
-  mode0Sink.add_several((ED.init(1),), (Reset(x) for x in mode0Curves.values()), 0)
+  if 0 in curves:
+    logger.debug("Init mode 0")
+    mode0Sink = Binding(cmpOp)
+    modeSink.add(0, mode0Sink)
+    mode0Curves = scale_curves(curves[0], sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
+    mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mode0Curves[codes.ABS_X], True), 0)
+    mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode0Curves[codes.ABS_Y], True), 0)
+    mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mode0Curves[codes.ABS_Z], True), 0)
+    mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
+    mode0Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Z]), 0)
+    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
+    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
+    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
+    mode0Sink.add_several((ED.init(1),), (Reset(x) for x in mode0Curves.values()), 0)
 
-  logger.debug("Init mode 1")
-  mode1Sink = Binding(cmpOp)
-  modeSink.add(1, mode1Sink)
-  mode1Curves = scale_curves(curves[1], sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
-  mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mode1Curves[codes.ABS_Z], True), 0)
-  mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode1Curves[codes.ABS_Y], True), 0)
-  mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mode1Curves[codes.ABS_X], True), 0)
-  mode1Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 5), 0)
-  mode1Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_X]), 0)
-  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
-  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
-  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
-  mode1Sink.add_several((ED.init(1),), (Reset(x) for x in mode1Curves.values()), 0)
+  if 1 in curves:
+    logger.debug("Init mode 1")
+    mode1Sink = Binding(cmpOp)
+    modeSink.add(1, mode1Sink)
+    mode1Curves = scale_curves(curves[1], sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
+    mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mode1Curves[codes.ABS_Z], True), 0)
+    mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode1Curves[codes.ABS_Y], True), 0)
+    mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mode1Curves[codes.ABS_X], True), 0)
+    mode1Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 5), 0)
+    mode1Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_X]), 0)
+    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
+    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
+    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
+    mode1Sink.add_several((ED.init(1),), (Reset(x) for x in mode1Curves.values()), 0)
 
-  logger.debug("Init mode 2")
-  mode2Sink = Binding(cmpOp)
-  modeSink.add(2, mode2Sink)
-  mode2Curves = scale_curves(curves[2], sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL), (codes.ABS_RUDDER, codes.REL_WHEEL)))
+  if 2 in curves:
+    logger.debug("Init mode 2")
+    mode2Sink = Binding(cmpOp)
+    modeSink.add(2, mode2Sink)
+    mode2Curves = scale_curves(curves[2], sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL), (codes.ABS_RUDDER, codes.REL_WHEEL)))
 
-  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mode2Curves[codes.ABS_RX], True), 0)
-  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mode2Curves[codes.ABS_RY], True), 0)
-  mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis(joystick, codes.ABS_THROTTLE, mode2Curves[codes.ABS_THROTTLE], True), 0)
+    mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mode2Curves[codes.ABS_RX], True), 0)
+    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mode2Curves[codes.ABS_RY], True), 0)
+    mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis(joystick, codes.ABS_THROTTLE, mode2Curves[codes.ABS_THROTTLE], True), 0)
 
-  mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), SetAxis(joystick, codes.ABS_THROTTLE, 0.0), 0)
-  mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_THROTTLE]), 0)
-  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), SnapTo(joySnaps, 3), 0)
-  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RX]), 0)
-  mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RY]), 0)
+    mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), SetAxis(joystick, codes.ABS_THROTTLE, 0.0), 0)
+    mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_THROTTLE]), 0)
+    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), SnapTo(joySnaps, 3), 0)
+    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RX]), 0)
+    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RY]), 0)
 
-  mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mode2Curves[codes.ABS_RUDDER], True), 0)
-  mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
-  mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
+    mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mode2Curves[codes.ABS_RUDDER], True), 0)
+    mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
+    mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
 
-  mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
+    mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
 
-  metricsJoystick = MetricsJoystick()
-  metricsJoystick.set_target(codes.ABS_X, 0.0)
-  metricsJoystick.set_target(codes.ABS_Y, 0.0)
-  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(metricsJoystick, codes.ABS_X, mode2Curves[codes.ABS_RX], True), 0)
-  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(metricsJoystick, codes.ABS_Y, mode2Curves[codes.ABS_RY], True), 0)
-  mode2Sink.add(ED.release(codes.BTN_LEFT), lambda e : metricsJoystick.check())
-  mode2Sink.add(ED.release(codes.BTN_RIGHT), lambda e : metricsJoystick.reset())
+    metricsJoystick = MetricsJoystick()
+    metricsJoystick.set_target(codes.ABS_X, 0.0)
+    metricsJoystick.set_target(codes.ABS_Y, 0.0)
+    mode2Sink.add(ED.move(codes.REL_X), MoveAxis(metricsJoystick, codes.ABS_X, mode2Curves[codes.ABS_RX], True), 0)
+    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(metricsJoystick, codes.ABS_Y, mode2Curves[codes.ABS_RY], True), 0)
+    mode2Sink.add(ED.release(codes.BTN_LEFT), lambda e : metricsJoystick.check())
+    mode2Sink.add(ED.release(codes.BTN_RIGHT), lambda e : metricsJoystick.reset())
 
   modeSink.set_mode(0)
 
