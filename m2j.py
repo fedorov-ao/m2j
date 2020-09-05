@@ -364,7 +364,8 @@ class ModeSink:
 
   def set_mode(self, mode):
     if mode not in self.children_:
-      raise ValueError("Bad mode: {}".format(mode))
+      logger.debug("{}: No such mode: {}".format(self, mode))
+      return False
     self.set_active_child_state_(False)
     self.mode_ = mode
     self.set_active_child_state_(True)
@@ -1394,8 +1395,9 @@ def make_curve_makers():
   def make_value_curves():
     """Works!"""
     deltaOp = lambda x,value : value*x
-    valuePointOp = lambda value : clamp(2.0*abs(value), 0.1, 1.0)
-    #vps = (FixedValuePoint(valuePointOp, 0.0), FixedValuePoint(valuePointOp, 0.5), FixedValuePoint(valuePointOp, -0.7),)
+    valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
+    #These settings work
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
     valueLimit = 1.0
     curves = {
       0 : {
