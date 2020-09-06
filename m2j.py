@@ -753,7 +753,7 @@ class DistanceBasedCurve1:
     return distance
 
 
-class ValuePointDeltaCurve:
+class ValueOpDeltaCurve:
   def calc(self, x, timestamp):
     #self.valueOp_ typically returns sensitivity based on current self.value_
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
@@ -780,8 +780,9 @@ class ValuePointDeltaCurve:
   def __init__(self, deltaOp, valueOp, valueLimit, initialValue=0.0):
     assert(deltaOp)
     assert(valueOp)
-    self.value_, self.deltaOp_, self.valueOp_, self.valueLimit_ = 0.0, deltaOp, valueOp, valueLimit
+    self.deltaOp_, self.valueOp_, self.valueLimit_ = deltaOp, valueOp, valueLimit
     self.initialValue_ = clamp(initialValue, -self.valueLimit_, self.valueLimit_)
+    self.value_ = self.initialValue_
 
 
 class FixedValuePoint:
@@ -1426,14 +1427,14 @@ def make_curve_makers():
     valueLimit = 1.0
     curves = {
       0 : {
-        "x" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "y" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "z" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
+        "x" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "y" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "z" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
       },
       1 : {
-        "z" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "y" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "x" : ValuePointDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
+        "z" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "y" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "x" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
       },
     }
     return curves
