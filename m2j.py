@@ -790,13 +790,15 @@ class MovingValuePoint:
       s = sign(value - self.tempValue_)
       self.tempValue_ = value
       if self.s_ != 0 and s != self.s_:
-        #TODO Make customizable
-        self.value_ = value if self.value_ is None else 0.5*self.value_ + 0.5*value
+        self.value_ = value if self.value_ is None else self.valueOp_(self.value_, value)
+        logger.debug("{}: New reference value: {: .3f}".format(self, self.value_))
       self.s_ = s
-      return None if self.value_ is None else (self.op_(value - self.value_), self.value_)
+      return None if self.value_ is None else (self.deltaOp_(value - self.value_), self.value_)
 
-  def __init__(self, op):
-    self.op_ = op
+  def __init__(self, deltaOp, valueOp = lambda old,new : 0.5*old+0.5*new):
+    assert(deltaOp)
+    assert(valueOp)
+    self.deltaOp_, self.valueOp_ = deltaOp, valueOp
     self.s_, self.tempValue_, self.value_ = 0, 0.0, None
 
 
@@ -817,16 +819,19 @@ class ValuePointOp:
         if right is None or delta < right[1]: 
           right = (p[0], delta)
 
+    r = None
     if left is None and right is None:
-      return None
+      r = None
     elif left is not None and right is not None:
       leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
       totalDelta = leftDelta + rightDelta
       #interpolating (sort of)
       #left value is multiplied by right fraction of deltas sum and vice versa
-      return rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
+      r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
     else:
-      return (left if right is None else right)[0]
+      r = (left if right is None else right)[0]
+      logger.debug("{}: left: {}, right: {}, result: {}".format(self, left, right, r))
+    return r
 
   def __init__(self, vps):
     self.vps_ = vps
@@ -1394,15 +1399,29 @@ def make_curve_makers():
 
   def make_value_curves():
     """Works!"""
-    deltaOp = lambda x,value : value*x
-    valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
+    deltaOp = lambda x,value : x*value
+    def SensitivityOp(data):
+      """Symmetric"""
+      approx = SegmentApproximator(data, 1.0, True, True)
+      def op(value):
+        return approx(abs(value))
+      return op
+    sensOp = SensitivityOp( ((0.05,0.15),(0.15,1.0)) )
+    sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
     #These settings work
     #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
     valueLimit = 1.0
     curves = {
       0 : {
-        "x" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(valuePointOp, 0.0), MovingValuePoint(valuePointOp),)), valueLimit),
-        "y" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(valuePointOp, 0.0), MovingValuePoint(valuePointOp),)), valueLimit),
+        "x" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "y" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "z" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
+      },
+      1 : {
+        "z" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "y" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
+        "x" : ValueBasedCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
       },
     }
     return curves
