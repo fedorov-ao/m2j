@@ -44,7 +44,18 @@ class CompositeJoystick:
       c.move_axis(axis, v, relative)
 
   def get_axis(self, axis):
-    return self.children_[0].get_axis(axis)
+    #TODO Come up with something better
+    if len(self.children_):
+      return self.children_[0].get_axis(axis)
+    else:
+      return 0.0
+
+  def get_limits(self, axis):
+    #TODO Come up with something better
+    if len(self.children_):
+      return self.children_[0].get_limits(axis)
+    else:
+      return (0.0, 0.0)
 
   def __init__(self, children):
     self.children_ = children
@@ -100,6 +111,7 @@ def print_sink(event):
 class MoveAxis:
   def __call__(self, event):
     assert(self.curve_ is not None)
+    assert(self.j_ is not None)
 
     if event.type in (codes.EV_REL, codes.EV_ABS):  
       self.j_.move_axis(self.axis_, self.curve_.calc(event.value, event.timestamp), self.relative_)
@@ -110,7 +122,25 @@ class MoveAxis:
   def __init__(self, j, axis, curve, relative):
     if curve is None:
       raise ArgumentError("Curve is None")
+    if j is None:
+      raise ArgumentError("Joystick is None")
     self.j_, self.axis_, self.curve_, self.relative_ = j, axis, curve, relative
+
+
+class MoveAxis2:
+  def __call__(self, event):
+    assert(self.curve_ is not None)
+
+    if event.type in (codes.EV_REL,):  
+      self.curve_.move_by(event.value, event.timestamp)
+      return True
+    else:
+      return False
+
+  def __init__(self, curve):
+    if curve is None:
+      raise ArgumentError("Curve is None")
+    self.curve_ = curve
 
 
 def SetAxis(joystick, axis, value):
@@ -201,6 +231,19 @@ class ModifierSink:
 
   def __init__(self, next = None, modifiers = None):
     self.m_, self.next_, self.modifiers_ = [], next, (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT) if modifiers is None else modifiers
+
+
+class ScaleSink:
+  def __call__(self, event):
+    if event.type == codes.EV_REL:
+      event.value *= self.sens_.get(event.code, 1.0)
+    return self.next_(event) if self.next_ is not None else False
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, sens):
+    self.next_, self.sens_ = None, sens
 
 
 class Binding:
@@ -360,7 +403,9 @@ class StateSink:
 
 class ModeSink:
   def __call__(self, event):
-    self.children_[self.mode_](event)
+    child = self.children_.get(self.mode_, None)
+    if child is not None:
+      return child(event)
 
   def set_mode(self, mode):
     if mode not in self.children_:
@@ -761,9 +806,12 @@ class ValueOpDeltaCurve:
     value = self.value_ + delta
     if abs(value) < self.valueLimit_:
       self.value_ = value
-    return delta
+      return delta
+    else:
+      return 0.0
 
   def reset(self):
+    #FIXME discrepancy: self.value_ is reset to initial value, but axis can be reset to another value
     self.value_ = self.initialValue_
     self.valueOp_(None)
     #TODO Should also call self.deltaOp_?
@@ -820,7 +868,7 @@ class ValuePointOp:
     left, right = None, None
     for vp in self.vps_:
       p = vp(value) #p is (result, value)
-      if p is None:
+      if p is None or value is None:
         continue
       delta = value - p[1]
       s = sign(delta)
@@ -848,6 +896,53 @@ class ValuePointOp:
 
   def __init__(self, vps):
     self.vps_ = vps
+
+
+class Axis:
+  def move(self, v, relative):
+    assert(self.j_)
+    return self.j_.move_axis(self.a_, v, relative)
+
+  def get(self):
+    assert(self.j_)
+    return self.j_.get_axis(self.a_)
+
+  def limits(self):
+    """Returns (-limit, limit)"""
+    assert(self.j_)
+    return self.j_.get_limits(self.a_)
+
+  def __init__(self, j, a):
+    assert(j)
+    self.j_, self.a_ = j, a
+
+
+class ValueOpDeltaAxisCurve:
+  def move_by(self, x, timestamp):
+    assert(self.axis_ is not None)
+    assert(self.valueOp_ is not None)
+    assert(self.deltaOp_ is not None)
+    #self.valueOp_ typically returns sensitivity based on current self.value_
+    #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
+    value = self.axis_.get()
+    delta = self.deltaOp_(x, self.valueOp_(value))
+    value += delta
+    if value == clamp(value, *self.axis_.limits()):
+      self.axis_.move(delta, True)
+      return delta
+    else:
+      return 0.0
+
+  def reset(self):
+    assert(self.valueOp_ is not None)
+    self.valueOp_(None)
+    #TODO Should also call self.deltaOp_?
+
+  def __init__(self, deltaOp, valueOp, axis):
+    assert(deltaOp)
+    assert(valueOp)
+    assert(axis)
+    self.deltaOp_, self.valueOp_, self.axis_ = deltaOp, valueOp, axis
 
 
 class SpeedBasedCurve:
@@ -1071,6 +1166,10 @@ class MappingJoystick:
     d = self.data_[axis]
     return d[0].get_axis(d[1])
 
+  def get_limits(self, axis):
+    d = self.data_[axis]
+    return d[0].get_limits(d[1])
+    
   def add(self, axis, joystick, joyAxis):
     self.data_[axis] = (joysitick, joyAxis)
 
@@ -1098,6 +1197,9 @@ class AdjustingJoystick:
   def get_axis(self, axis):
     return self.next_.get_axis(axis) if self.next_ else 0
 
+  def get_limits(self, axis):
+    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+
   def set_button_state(self, button, state):
     self.next_.set_button_state(button, state)
 
@@ -1122,6 +1224,9 @@ class MetricsJoystick:
 
   def get_axis(self, axis):
     return self.data_.get(axis, 0.0)[0]
+
+  def get_limits(self, axis):
+    return (-1.0, 1.0)
 
   def check(self):
     for a in self.data_:
@@ -1441,6 +1546,36 @@ def make_curve_makers():
 
   curves["value"] = make_value_curves
 
+  def make_value_curves2(data):
+    data = data["axes"]
+    deltaOp = lambda x,value : x*value
+    def SensitivityOp(data):
+      """Symmetric"""
+      approx = SegmentApproximator(data, 1.0, True, True)
+      def op(value):
+        return approx(abs(value))
+      return op
+    sensOp = SensitivityOp( ((0.05,0.15),(0.15,1.0)) )
+    sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
+    #These settings work
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
+    curves = {
+      0 : {
+        "x" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["x"]),
+        "y" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["y"]),
+        "z" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data["z"]),
+      },
+      1 : {
+        "z" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["z"]),
+        "y" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["y"]),
+        "x" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data["x"]),
+      },
+    }
+    return curves
+
+  curves["value2"] = make_value_curves2
+
   return curves
 
 curveMakers = make_curve_makers()
@@ -1597,16 +1732,16 @@ def init_sinks_descent(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  curves = curveMaker()
-
-  def scale_curve(curves, sens, joyAxis, mouseAxis):
-    return ArgCurve(curves.get(axisToName[joyAxis], None), PowerApproximator(sens.get(mouseAxis, 0.0), 1.0))
-
-  def scale_curves(curves, sens, jmPairs):
-    return {p[0]:scale_curve(curves, sens, p[0], p[1]) for p in jmPairs}
-
   joystick = settings["joystick"]
   mouse = settings["mouse"]
+
+  data = {}
+  data["axes"] = {axisName:Axis(joystick, nameToAxis[axisName]) for axisName in nameToAxis.keys()}
+
+  curves2 = curveMaker(data)
+  curves = {}
+  for mode in curves2:
+    curves[mode] = {nameToAxis[k]:curves2[mode][k] for k in curves2[mode].keys()}
 
   joySnaps = SnapManager(joystick, False)
   joySnaps.set_snap(0, ((codes.ABS_Z, 0.0),))
@@ -1622,8 +1757,11 @@ def init_sinks_descent(settings):
   modifierSink = ModifierSink()
   clickSink.set_next(modifierSink)
 
+  scaleSink = ScaleSink(sens)
+  modifierSink.set_next(scaleSink)
+
   mainSink = Binding(cmpOp)
-  modifierSink.set_next(mainSink)
+  scaleSink.set_next(mainSink)
 
   stateSink = StateSink()
   mainSink.add((), stateSink, 1)
@@ -1660,10 +1798,10 @@ def init_sinks_descent(settings):
     logger.debug("Init mode 0")
     mode0Sink = Binding(cmpOp)
     modeSink.add(0, mode0Sink)
-    mode0Curves = scale_curves(curves[0], sens, ((codes.ABS_X, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_Z, codes.REL_WHEEL)))
-    mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mode0Curves[codes.ABS_X], True), 0)
-    mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode0Curves[codes.ABS_Y], True), 0)
-    mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mode0Curves[codes.ABS_Z], True), 0)
+    mode0Curves = curves[0]
+    mode0Sink.add(ED.move(codes.REL_X), MoveAxis2(mode0Curves[codes.ABS_X]), 0)
+    mode0Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode0Curves[codes.ABS_Y]), 0)
+    mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(mode0Curves[codes.ABS_Z]), 0)
     mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
     mode0Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Z]), 0)
     mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
@@ -1675,10 +1813,10 @@ def init_sinks_descent(settings):
     logger.debug("Init mode 1")
     mode1Sink = Binding(cmpOp)
     modeSink.add(1, mode1Sink)
-    mode1Curves = scale_curves(curves[1], sens, ((codes.ABS_Z, codes.REL_X), (codes.ABS_Y, codes.REL_Y), (codes.ABS_X, codes.REL_WHEEL)))
-    mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_Z, mode1Curves[codes.ABS_Z], True), 0)
-    mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mode1Curves[codes.ABS_Y], True), 0)
-    mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_X, mode1Curves[codes.ABS_X], True), 0)
+    mode1Curves = curves[1]
+    mode1Sink.add(ED.move(codes.REL_X), MoveAxis2(mode1Curves[codes.ABS_Z]), 0)
+    mode1Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode1Curves[codes.ABS_Y]), 0)
+    mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(mode1Curves[codes.ABS_X]), 0)
     mode1Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 5), 0)
     mode1Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_X]), 0)
     mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
@@ -1690,11 +1828,11 @@ def init_sinks_descent(settings):
     logger.debug("Init mode 2")
     mode2Sink = Binding(cmpOp)
     modeSink.add(2, mode2Sink)
-    mode2Curves = scale_curves(curves[2], sens, ((codes.ABS_RX, codes.REL_X), (codes.ABS_RY, codes.REL_Y), (codes.ABS_THROTTLE, codes.REL_WHEEL), (codes.ABS_RUDDER, codes.REL_WHEEL)))
+    mode2Curves = curves[2]
 
-    mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mode2Curves[codes.ABS_RX], True), 0)
-    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mode2Curves[codes.ABS_RY], True), 0)
-    mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis(joystick, codes.ABS_THROTTLE, mode2Curves[codes.ABS_THROTTLE], True), 0)
+    mode2Sink.add(ED.move(codes.REL_X), MoveAxis2(mode2Curves[codes.ABS_RX]), 0)
+    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode2Curves[codes.ABS_RY]), 0)
+    mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(mode2Curves[codes.ABS_THROTTLE]), 0)
 
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), SetAxis(joystick, codes.ABS_THROTTLE, 0.0), 0)
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_THROTTLE]), 0)
@@ -1702,19 +1840,11 @@ def init_sinks_descent(settings):
     mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RX]), 0)
     mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RY]), 0)
 
-    mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis(joystick, codes.ABS_RUDDER, mode2Curves[codes.ABS_RUDDER], True), 0)
+    mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(mode2Curves[codes.ABS_RUDDER]), 0)
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
 
     mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
-
-    metricsJoystick = MetricsJoystick()
-    metricsJoystick.set_target(codes.ABS_X, 0.0)
-    metricsJoystick.set_target(codes.ABS_Y, 0.0)
-    mode2Sink.add(ED.move(codes.REL_X), MoveAxis(metricsJoystick, codes.ABS_X, mode2Curves[codes.ABS_RX], True), 0)
-    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(metricsJoystick, codes.ABS_Y, mode2Curves[codes.ABS_RY], True), 0)
-    mode2Sink.add(ED.release(codes.BTN_LEFT), lambda e : metricsJoystick.check())
-    mode2Sink.add(ED.release(codes.BTN_RIGHT), lambda e : metricsJoystick.reset())
 
   modeSink.set_mode(0)
 

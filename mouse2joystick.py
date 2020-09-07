@@ -62,6 +62,9 @@ class EvdevJoystick:
   def get_axis(self, axis):
     return self.coords[axis]
 
+  def get_limits(self, axis):
+    return (-1.0, 1.0)
+
   def set_button_state(self, button, state):
     self.js.write(ecodes.EV_KEY, code2ecode(button), state)
     self.js.syn()
