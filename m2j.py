@@ -1562,14 +1562,14 @@ def make_curve_makers():
     #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
     curves = {
       0 : {
-        "x" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["x"]),
-        "y" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["y"]),
-        "z" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data["z"]),
+        codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_X]),
+        codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Y]),
+        codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_Z]),
       },
       1 : {
-        "z" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["z"]),
-        "y" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data["y"]),
-        "x" : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data["x"]),
+        codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Z]),
+        codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Y]),
+        codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_X]),
       },
     }
     return curves
@@ -1736,12 +1736,9 @@ def init_sinks_descent(settings):
   mouse = settings["mouse"]
 
   data = {}
-  data["axes"] = {axisName:Axis(joystick, nameToAxis[axisName]) for axisName in nameToAxis.keys()}
+  data["axes"] = {axis:Axis(joystick, axis) for axis in axisToName.keys()}
 
-  curves2 = curveMaker(data)
-  curves = {}
-  for mode in curves2:
-    curves[mode] = {nameToAxis[k]:curves2[mode][k] for k in curves2[mode].keys()}
+  curves = curveMaker(data)
 
   joySnaps = SnapManager(joystick, False)
   joySnaps.set_snap(0, ((codes.ABS_Z, 0.0),))
