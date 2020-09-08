@@ -145,30 +145,50 @@ class MoveAxis2:
 
 def SetAxis(joystick, axis, value):
   def op(event):
-    if event.type == codes.EV_KEY:
-      joystick.move_axis(axis, value, False) 
+    joystick.move_axis(axis, value, False) 
   return op
 
 
 def SetAxes(joystick, axesAndValues):
   def op(event):
-    if event.type == codes.EV_KEY:
-      for axis, value in axesAndValues:
-        joystick.move_axis(axis, value, False) 
+    for axis, value in axesAndValues:
+      joystick.move_axis(axis, value, False) 
   return op
 
 
-def Reset(curve):
+def ResetCurve(curve):
   def op(event):
-    return curve.reset()
+    curve.reset()
+  return op
+
+
+def ResetCurves(curves):
+  def op(event):
+    for curve in curves:
+      curve.reset()
+  return op
+
+
+def SetAxisToAndResetCurve(curve, value):
+  def op(event):
+    curve.get_axis().move(value, False)
+    curve.reset()
+  return op
+
+
+def SetAxesToAndResetCurves(*curvesAndValues):
+  def op(event):
+    for p in curvesAndValues:
+      curve, value = p[0], p[1]
+      curve.get_axis().move(value, False)
+      curve.reset()
   return op
 
 
 def SetButtonState(joystick, button, state):
   def op(event):
-    if event.type == codes.EV_KEY:
-      joystick.set_button_state(button, state) 
-      logger.debug(button, state)
+    joystick.set_button_state(button, state) 
+    logger.debug(button, state)
   return op
 
 
@@ -938,11 +958,25 @@ class ValueOpDeltaAxisCurve:
     self.valueOp_(None)
     #TODO Should also call self.deltaOp_?
 
-  def __init__(self, deltaOp, valueOp, axis):
+  def get_axis(self):
+    return self.axis_
+
+  #TODO Not needed since can return axis?
+  def set_value(self, value):
+    """Sets value directly to axis and optionally resets itself."""
+    assert(self.axis_ is not None)
+    if value == clamp(value, *self.axis_.limits()):
+      self.axis_.move(value, False)
+    else:
+      raise ArgumentError("Value {} out of limits {}".format(value, self.axis_.limits()))
+    if self.shouldReset_:
+      self.reset()
+
+  def __init__(self, deltaOp, valueOp, axis, shouldReset=False):
     assert(deltaOp)
     assert(valueOp)
     assert(axis)
-    self.deltaOp_, self.valueOp_, self.axis_ = deltaOp, valueOp, axis
+    self.deltaOp_, self.valueOp_, self.axis_, self.shouldReset_ = deltaOp, valueOp, axis, shouldReset
 
 
 class SpeedBasedCurve:
@@ -1137,6 +1171,33 @@ class SnapManager:
     self.snaps_, self.joystick_, self.relative_ = dict(), joystick, relative
 
 
+class AxisSnapManager:
+  """Axis-based snap manager"""
+  def set_snap(self, i, l):
+    self.snaps_[i] = [[p[0], p[1]] for p in l]
+
+  def update_snap(self, i):
+    logger.debug("{}: updating snap {}".format(self, i))
+    snap = self.snaps_.get(i, None)
+    if snap is None:
+      logger.debug("{}: no snap {}".format(self, i))
+    else:
+      for p in snap:
+        p[1] = p[0].get()
+       
+  def snap_to(self, i):
+    logger.debug("{}: snapping to {}".format(self, i))
+    snap = self.snaps_.get(i, None)
+    if snap is None:
+      logger.debug("{}: no snap {}".format(self, i))
+    else:
+      for p in snap:
+        p[0].move(p[1], self.relative_)
+
+  def __init__(self, relative):
+    self.snaps_, self.relative_ = dict(), relative
+
+
 def SnapTo(snapManager, snap):
   def op(e):
     return snapManager.snap_to(snap)
@@ -1257,6 +1318,9 @@ def make_curve_makers():
         self.a_.move(self.c_.calc(x, timestamp), True)
       def reset(self):
         self.c_.reset()
+      def set_value(self, value):
+        self.a_.move(value, False)
+        self.c_reset()
       def __init__(self, calcCurve, axis):
         self.c_, self.a_ = calcCurve, axis
       
@@ -1753,7 +1817,6 @@ def init_sinks_descent(settings):
 
   modeSink = ModeSink()
   joystickSink.add(ED.any(), modeSink, 1)
-  cycleMode = CycleMode(modeSink, (0,1))
   modeStack = []
   def save_mode(event):
     modeStack.append(modeSink.get_mode())
@@ -1767,77 +1830,55 @@ def init_sinks_descent(settings):
   binding = Binding(cmpOp)
   binding.add(ED.init(1), SetMode(modeSink, 0), 0)
   binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
-  #binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
   modeSink2.add(0, binding)
   binding = Binding(cmpOp)
   binding.add(ED.init(1), SetMode(modeSink, 1), 0)
   binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
-  #binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
   modeSink2.add(1, binding)
   modeSink2.set_mode(0)
 
   joystickSink.add_several((ED.press(codes.BTN_EXTRA, ()),), (save_mode, modeSink2), 0)
   joystickSink.add(ED.release(codes.BTN_EXTRA, ()), restore_mode, 0)
-  #joystickSink.add(ED.any(), modeSink2, 0)
-  #joystickSink.add(ED.press(codes.BTN_EXTRA, ()), modeSink2, 0)
-  #joystickSink.add(ED.release(codes.BTN_EXTRA, ()), modeSink2, 0)
-  joystickSink.add(ED.click(codes.BTN_EXTRA, (codes.KEY_RIGHTSHIFT,)), CycleMode(modeSink2, (0,1)), 0)
+  joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), CycleMode(modeSink2, (0,1)), 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
-    mode0Sink = Binding(cmpOp)
-    modeSink.add(0, mode0Sink)
-    mode0Curves = curves[0]
-    mode0Sink.add(ED.move(codes.REL_X), MoveAxis2(mode0Curves[codes.ABS_X]), 0)
-    mode0Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode0Curves[codes.ABS_Y]), 0)
-    mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(mode0Curves[codes.ABS_Z]), 0)
-    mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
-    mode0Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Z]), 0)
-    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
-    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
-    mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
+    sink = Binding(cmpOp)
+    modeSink.add(0, sink)
+    cs = curves[0]
+    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
+    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
+    sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_Z], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
     #Resetting axes controlled in this mode and corresponding curves when leaving mode. May not be needed in other cases.
-    mode0Sink.add_several((ED.init(0),), (Reset(x) for x in mode0Curves.values()), 0)
-    mode0Sink.add(ED.init(0), SnapTo(joySnaps, 8), 0)
+    sink.add(ED.init(0), SetAxesToAndResetCurves(*((c,0.0) for c in cs.values())), 0)
 
   if 1 in curves:
     logger.debug("Init mode 1")
-    mode1Sink = Binding(cmpOp)
-    modeSink.add(1, mode1Sink)
-    mode1Curves = curves[1]
-    mode1Sink.add(ED.move(codes.REL_X), MoveAxis2(mode1Curves[codes.ABS_Z]), 0)
-    mode1Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode1Curves[codes.ABS_Y]), 0)
-    mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(mode1Curves[codes.ABS_X]), 0)
-    mode1Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 5), 0)
-    mode1Sink.add(ED.click(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_X]), 0)
-    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
-    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
-    mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
-    mode1Sink.add_several((ED.init(0),), (Reset(x) for x in mode1Curves.values()), 0)
-    mode1Sink.add(ED.init(0), SnapTo(joySnaps, 8), 0)
+    sink = Binding(cmpOp)
+    modeSink.add(1, sink)
+    cs = curves[1]
+    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
+    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
+    sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_X], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
+    sink.add(ED.init(0), SetAxesToAndResetCurves(*((c,0.0) for c in cs.values())), 0)
 
   if 2 in curves:
     logger.debug("Init mode 2")
-    mode2Sink = Binding(cmpOp)
-    modeSink.add(2, mode2Sink)
-    mode2Curves = curves[2]
-
-    mode2Sink.add(ED.move(codes.REL_X), MoveAxis2(mode2Curves[codes.ABS_RX]), 0)
-    mode2Sink.add(ED.move(codes.REL_Y), MoveAxis2(mode2Curves[codes.ABS_RY]), 0)
-    mode2Sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(mode2Curves[codes.ABS_THROTTLE]), 0)
-
-    mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), SetAxis(joystick, codes.ABS_THROTTLE, 0.0), 0)
-    mode2Sink.add(ED.click(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_THROTTLE]), 0)
-    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), SnapTo(joySnaps, 3), 0)
-    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RX]), 0)
-    mode2Sink.add(ED.doubleclick(codes.BTN_MIDDLE, ()), Reset(mode2Curves[codes.ABS_RY]), 0)
-
-    mode2Sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(mode2Curves[codes.ABS_RUDDER]), 0)
-    mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
-    mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
-
-    mode2Sink.add_several((ED.init(0),), (Reset(x) for x in mode2Curves.values()), 0)
-    mode2Sink.add(ED.init(0), SnapTo(joySnaps, 3), 0)
+    sink = Binding(cmpOp)
+    modeSink.add(2, sink)
+    cs = curves[2]
+    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
+    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
+    sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_THROTTLE], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxisToAndResetCurve(codes.ABS_RUDDER, 0.0), 0)
+    sink.add(ED.init(0), SetAxesToAndResetCurves((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
 
   modeSink.set_mode(0)
 
