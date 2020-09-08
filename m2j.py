@@ -1257,9 +1257,28 @@ nameToAxis = {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_
 axisToName = {p[1]:p[0] for p in nameToAxis.items()}
 
 def make_curve_makers():
+  def CurveAdapter(curveMaker):
+    class AdaptingCurve:
+      def move_by(self, x, timestamp):
+        self.a_.move(self.c_.calc(x, timestamp), True)
+      def reset(self):
+        self.c_.reset()
+      def __init__(self, calcCurve, axis):
+        self.c_, self.a_ = calcCurve, axis
+      
+    def op(data):
+      curves = curveMaker(data)
+      for mode in curves:
+        md = curves[mode]
+        for axis in md:
+          md[axis] = AdaptingCurve(md[axis], data["axes"][axis])
+      return curves
+
+    return op
+
   curves = {}
 
-  def make_speed_curves():
+  def make_speed_curves(data):
     resetTime = 0.5
     alpha = 0.5
     beta = 0.5
@@ -1268,30 +1287,30 @@ def make_curve_makers():
     stepY = SpeedBasedCurve(SegmentApproximator(stepData), EmaFilter(alpha), resetTime)
     stepDataZ = [(0, 0.0), (10, 0.001), (20, 0.005), (50, 0.01), (100, 0.1), (200, 0.1)]
     stepZ = ProportionalCurve(0.001)
-    curves = {"x":stepX, "y":stepY, "z":stepZ}
+    curves = {codes.ABS_X:stepX, codes.ABS_Y:stepY, codes.ABS_Z:stepZ}
     return curves
 
-  curves["speed"] = make_speed_curves
+  curves["speed"] = CurveAdapter(make_speed_curves)
 
-  def make_dir_curves():
+  def make_dir_curves(data):
     #levels = [(0.2,x) for x in [0.2*x for x in range(1,6,1)]]
     #levels.reverse()
     levels = ((1.0,1.0), (0.333,0.5), (0.333,0.1))
     curves = {
-      "x" : DirectionBasedCurve(levels), 
-      "y" : DirectionBasedCurve(levels), 
-      "z" : DirectionBasedCurve(levels),
-      "rx" : DirectionBasedCurve2(levels),
-      "ry" : DirectionBasedCurve2(levels),
-      "rz" : DirectionBasedCurve2(levels),
-      "throttle" : DirectionBasedCurve2(levels),
-      "rudder" : DirectionBasedCurve2(levels),
+      codes.ABS_X : DirectionBasedCurve(levels), 
+      codes.ABS_Y : DirectionBasedCurve(levels), 
+      codes.ABS_Z : DirectionBasedCurve(levels),
+      codes.ABS_RX : DirectionBasedCurve2(levels),
+      codes.ABS_RY : DirectionBasedCurve2(levels),
+      codes.ABS_RZ : DirectionBasedCurve2(levels),
+      codes.ABS_THROTTLE : DirectionBasedCurve2(levels),
+      codes.ABS_RUDDER : DirectionBasedCurve2(levels),
     }
     return curves
 
   curves["direction"] = make_dir_curves
 
-  def make_dir_curves2():
+  def make_dir_curves2(data):
     #dataX = [(0.0,0.2), (0.1,0.1), (0.3,0.1), (0.95,1.0), (1.0, 1.0)]
     #dataX = [(0.0,0.1), (0.2,0.1), (0.95,1.0), (1.0, 1.0)]
     #dataX = [(0.0,0.2), (0.5,0.0), (0.99,1.0), (1.0, 1.0)]
@@ -1311,72 +1330,72 @@ def make_curve_makers():
     #approxX = SigmoidApproximator(12.0, -8.0, 1.0, 0.0)
     curves = {
       0 : {
-        "x" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        "y" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        "z" : DirectionBasedCurve3(approxX, distanceOp),
-        "rx" : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        "ry" : DirectionBasedCurve3(approxX, distanceOp), 
+        codes.ABS_X : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        codes.ABS_Y : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        codes.ABS_Z : DirectionBasedCurve3(approxX, distanceOp),
+        codes.ABS_RX : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
+        codes.ABS_RY : DirectionBasedCurve3(approxX, distanceOp), 
       }
     }
     return curves
 
   curves["direction2"] = make_dir_curves2
 
-  def make_dir_curves3():
+  def make_dir_curves3(data):
     a = 0.5
     approxX = PolynomialApproximator((0.0, 0.0, a))
     limit = 1.0
     curves = {
-      "x" : DirectionBasedCurve4(approxX, limit), 
-      "y" : DirectionBasedCurve4(approxX, limit), 
-      "z" : DirectionBasedCurve4(approxX, limit),
+      codes.ABS_X : DirectionBasedCurve4(approxX, limit), 
+      codes.ABS_Y : DirectionBasedCurve4(approxX, limit), 
+      codes.ABS_Z : DirectionBasedCurve4(approxX, limit),
     }
     return curves
 
   curves["direction3"] = make_dir_curves3
 
-  def make_dir_curves4():
+  def make_dir_curves4(data):
     approxX = SegmentApproximator(((0.0,0.0), (0.25,0.1), (0.5,0.1), (1.0,1.0)))
     approxZ = SegmentApproximator(((0.1*x,(0.1*x)**2) for x in range(0,8,1)))
     limit = 1.0
     curves = {
-      "x" : DirectionBasedCurve4(approxX, limit), 
-      "y" : DirectionBasedCurve4(approxX, limit), 
-      "z" : DirectionBasedCurve4(approxZ, limit),
+      codes.ABS_X : DirectionBasedCurve4(approxX, limit), 
+      codes.ABS_Y : DirectionBasedCurve4(approxX, limit), 
+      codes.ABS_Z : DirectionBasedCurve4(approxZ, limit),
     }
     return curves
 
   curves["direction4"] = make_dir_curves4
 
-  def make_dir_curves5():
+  def make_dir_curves5(data):
     levels = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
     curves = {
-      "x" : DirectionBasedCurve(levels, False), 
-      "y" : DirectionBasedCurve(levels, False), 
-      "z" : DirectionBasedCurve(levels, False),
+      codes.ABS_X : DirectionBasedCurve(levels, False), 
+      codes.ABS_Y : DirectionBasedCurve(levels, False), 
+      codes.ABS_Z : DirectionBasedCurve(levels, False),
     }
     return curves
 
   curves["direction5"] = make_dir_curves5
 
-  def make_dir_curves6():
+  def make_dir_curves6(data):
     #levelsX = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
     levelsX = ((1.0, 1.0), (0.5, 0.0),)
     levelsZ = ((1.0, 1.0), (0.5, 0.0),)
     factor = 1.0
     curves = {
-      "x" : DirectionBasedCurve2(levelsX, factor=factor), 
-      "y" : DirectionBasedCurve2(levelsX, factor=factor), 
-      "z" : DirectionBasedCurve2(levelsZ, factor=factor),
-      "rx" : DirectionBasedCurve2(levelsX, factor=factor), 
-      "ry" : DirectionBasedCurve2(levelsX, factor=factor), 
-      "rudder" : DirectionBasedCurve2(levelsZ, factor=factor),
+      codes.ABS_X : DirectionBasedCurve2(levelsX, factor=factor), 
+      codes.ABS_Y : DirectionBasedCurve2(levelsX, factor=factor), 
+      codes.ABS_Z : DirectionBasedCurve2(levelsZ, factor=factor),
+      codes.ABS_RX : DirectionBasedCurve2(levelsX, factor=factor), 
+      codes.ABS_RY : DirectionBasedCurve2(levelsX, factor=factor), 
+      codes.ABS_RUDDER : DirectionBasedCurve2(levelsZ, factor=factor),
     }
     return curves
 
   curves["direction6"] = make_dir_curves6
  
-  def make_dir_curves7():
+  def make_dir_curves7(data):
     dataX = [(0.0,0.0), (2.0,1.0)]
     factor = 1.0
     approxX = SegmentApproximator(dataX, factor, True, True)
@@ -1389,27 +1408,27 @@ def make_curve_makers():
     curve2 = DirectionBasedCurve35(approxX, distanceOp, startingDistance)
     curves = {
       0 : {
-        "x" : curve.get_caller(0), 
-        "y" : curve.get_caller(1), 
-        "z" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_X : curve.get_caller(0), 
+        codes.ABS_Y : curve.get_caller(1), 
+        codes.ABS_Z : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
       1 : {
-        "z" : curve2.get_caller(0), 
-        "y" : curve2.get_caller(1), 
-        "x" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_Z : curve2.get_caller(0), 
+        codes.ABS_Y : curve2.get_caller(1), 
+        codes.ABS_X : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
       2 : {
-        "rx" : ProportionalCurve(1.0), 
-        "ry" : ProportionalCurve(1.0),
-        "rudder" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-        "throttle" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_RX : ProportionalCurve(1.0), 
+        codes.ABS_RY : ProportionalCurve(1.0),
+        codes.ABS_RUDDER : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_THROTTLE : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
     }
     return curves
 
   curves["direction7"] = make_dir_curves7
 
-  def make_dir_curves8():
+  def make_dir_curves8(data):
     """Does not work"""
     dataX = [(0.0,0.0), (2.0,1.0)]
     factor = 1.0
@@ -1441,112 +1460,56 @@ def make_curve_makers():
 
     curves = {
       0 : {
-        "x" : curveX, 
-        "y" : curveY, 
-        "z" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_X : curveX, 
+        codes.ABS_Y : curveY, 
+        codes.ABS_Z : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
       1 : {
-        "z" : curveX, 
-        "y" : curveY, 
-        "x" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_Z : curveX, 
+        codes.ABS_Y : curveY, 
+        codes.ABS_X : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
       2 : {
-        "rx" : ProportionalCurve(1.0), 
-        "ry" : ProportionalCurve(1.0),
-        "rudder" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-        "throttle" : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_RX : ProportionalCurve(1.0), 
+        codes.ABS_RY : ProportionalCurve(1.0),
+        codes.ABS_RUDDER : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
+        codes.ABS_THROTTLE : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
       },
     }
     return curves
 
   curves["direction8"] = make_dir_curves8
 
-  def make_dist_curves():
+  def make_dist_curves(data):
+    """Work ok"""
     approxX = PowerApproximator(0.25, 2.0)
     approxZ = PowerApproximator(0.25, 2.0)
     limit = 1.0
     curves = {
       0 : {
-        "x" : DistanceBasedCurve(approxX, limit), 
-        "y" : DistanceBasedCurve(approxX, limit), 
-        "z" : DistanceBasedCurve(approxZ, limit),
+        codes.ABS_X : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_Y : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_Z : DistanceBasedCurve(approxZ, limit),
       },
       1 : {
-        "z" : DistanceBasedCurve(approxX, limit), 
-        "y" : DistanceBasedCurve(approxX, limit), 
-        "x" : DistanceBasedCurve(approxZ, limit),
+        codes.ABS_Z : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_Y : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_X : DistanceBasedCurve(approxZ, limit),
       },
       2 : {
-        "rx" : DistanceBasedCurve(approxX, limit), 
-        "ry" : DistanceBasedCurve(approxX, limit), 
-        "rudder" : DistanceBasedCurve(approxZ, limit),
-        "throttle" : DistanceBasedCurve(approxZ, limit),
+        codes.ABS_RX : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_RY : DistanceBasedCurve(approxX, limit), 
+        codes.ABS_RUDDER : DistanceBasedCurve(approxZ, limit),
+        codes.ABS_THROTTLE : DistanceBasedCurve(approxZ, limit),
       },
     }
     return curves
 
-  curves["distance"] = make_dist_curves
+  curves["distance"] = CurveAdapter(make_dist_curves)
 
-  def make_dist_curves1():
-    """Does not work"""
-    approxX = PowerApproximator(0.25, 2.0)
-    approxZ = PowerApproximator(0.25, 2.0)
-    limit = 1.0
-    curveXY = DistanceBasedCurve1(approxX, limit)
-    curves = {
-      0 : {
-        "x" : curveXY.get_caller(0),
-        "y" : curveXY.get_caller(1),
-        "z" : DistanceBasedCurve(approxZ, limit),
-      },
-      1 : {
-        "z" : curveXY.get_caller(0),
-        "y" : curveXY.get_caller(1),
-        "x" : DistanceBasedCurve(approxZ, limit),
-      },
-      2 : {
-        "rx" : DistanceBasedCurve(approxX, limit), 
-        "ry" : DistanceBasedCurve(approxX, limit), 
-        "rudder" : DistanceBasedCurve(approxZ, limit),
-        "throttle" : DistanceBasedCurve(approxZ, limit),
-      },
-    }
-    return curves
 
-  curves["distance1"] = make_dist_curves1
-
-  def make_value_curves():
-    """Works!"""
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
-    sensOp = SensitivityOp( ((0.05,0.15),(0.15,1.0)) )
-    sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
-    #These settings work
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
-    valueLimit = 1.0
-    curves = {
-      0 : {
-        "x" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "y" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "z" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
-      },
-      1 : {
-        "z" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "y" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), valueLimit),
-        "x" : ValueOpDeltaCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), valueLimit),
-      },
-    }
-    return curves
-
-  curves["value"] = make_value_curves
-
-  def make_value_curves2(data):
+  def make_value_curves(data):
+    """Work ok"""
     data = data["axes"]
     deltaOp = lambda x,value : x*value
     def SensitivityOp(data):
@@ -1574,7 +1537,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["value2"] = make_value_curves2
+  curves["value"] = make_value_curves
 
   return curves
 
@@ -1591,6 +1554,7 @@ def set_curves(joystick, curves):
 
 sink_initializers = {}
 
+#TODO Update
 def init_sinks_base(settings):
   cmpOp = CmpWithModifiers()
 
