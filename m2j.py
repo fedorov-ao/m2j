@@ -433,8 +433,6 @@ class ModeSink:
 
 class CycleMode:
   def __call__(self, event):
-    if event.type == EV_BCAST:
-      return
     self.i += 1
     if self.i >= len(self.modes):
       self.i = 0
@@ -1139,19 +1137,13 @@ class SnapManager:
 
 def SnapTo(snapManager, snap):
   def op(e):
-    if e.type == codes.EV_KEY:
-      return snapManager.snap_to(snap)
-    else:
-      return False
+    return snapManager.snap_to(snap)
   return op
 
 
 def UpdateSnap(snapManager, snap):
   def op(e):
-    if e.type == codes.EV_KEY:
-      return snapManager.update_snap(snap)
-    else:
-      return False
+    return snapManager.update_snap(snap)
   return op
 
 
@@ -1537,6 +1529,12 @@ def make_curve_makers():
         codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Y]),
         codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_X]),
       },
+      2 : {
+        codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_RX]),
+        codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_RY]),
+        codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_THROTTLE]),
+        codes.ABS_RUDDER : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_RUDDER]),
+      },
     }
     return curves
 
@@ -1714,6 +1712,8 @@ def init_sinks_descent(settings):
   joySnaps.set_snap(4, ((codes.ABS_Z, 0.0), ))
   joySnaps.set_snap(5, ((codes.ABS_X, 0.0), ))
   joySnaps.set_snap(6, ((codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),))
+  joySnaps.set_snap(7, ((codes.ABS_X, 0.0), (codes.ABS_Z, 0.0),))
+  joySnaps.set_snap(8, ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),))
 
   clickTime = 0.5
   clickSink = ClickSink(clickTime)
@@ -1751,12 +1751,18 @@ def init_sinks_descent(settings):
 
   modeSink = ModeSink()
   joystickSink.add(ED.any(), modeSink, 1)
-  joystickSink.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
-  joystickSink.add(ED.press(codes.BTN_EXTRA), SnapTo(joySnaps, 5), 0)
-  joystickSink.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
-  joystickSink.add(ED.release(codes.BTN_EXTRA), SnapTo(joySnaps, 4), 0)
+  cycleMode = CycleMode(modeSink, (0,1))
+  modeStack = []
+  def save_mode(event):
+    modeStack.append(modeSink.get_mode())
+  def restore_mode(event):
+    modeSink.set_mode(modeStack.pop())
+  joystickSink.add(ED.press(codes.BTN_EXTRA), cycleMode, 0)
+  joystickSink.add(ED.release(codes.BTN_EXTRA), cycleMode, 0)
+  joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), cycleMode, 0)
+  joystickSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
-  joystickSink.add(ED.release(codes.BTN_SIDE), SetMode(modeSink, 0), 0)
+  joystickSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
@@ -1771,7 +1777,9 @@ def init_sinks_descent(settings):
     mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
     mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_X]), 0)
     mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode0Curves[codes.ABS_Y]), 0)
-    mode0Sink.add_several((ED.init(1),), (Reset(x) for x in mode0Curves.values()), 0)
+    #Resetting axes controlled in this mode and corresponding curves when leaving mode. May not be needed in other cases.
+    mode0Sink.add_several((ED.init(0),), (Reset(x) for x in mode0Curves.values()), 0)
+    mode0Sink.add(ED.init(0), SnapTo(joySnaps, 8), 0)
 
   if 1 in curves:
     logger.debug("Init mode 1")
@@ -1786,7 +1794,8 @@ def init_sinks_descent(settings):
     mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 6), 0)
     mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Y]), 0)
     mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), Reset(mode1Curves[codes.ABS_Z]), 0)
-    mode1Sink.add_several((ED.init(1),), (Reset(x) for x in mode1Curves.values()), 0)
+    mode1Sink.add_several((ED.init(0),), (Reset(x) for x in mode1Curves.values()), 0)
+    mode1Sink.add(ED.init(0), SnapTo(joySnaps, 8), 0)
 
   if 2 in curves:
     logger.debug("Init mode 2")
@@ -1808,7 +1817,8 @@ def init_sinks_descent(settings):
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis(joystick, codes.ABS_RUDDER, 0.0), 0)
     mode2Sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), Reset(mode2Curves[codes.ABS_RUDDER]), 0)
 
-    mode2Sink.add_several((ED.init(1),), (Reset(x) for x in mode2Curves.values()), 0)
+    mode2Sink.add_several((ED.init(0),), (Reset(x) for x in mode2Curves.values()), 0)
+    mode2Sink.add(ED.init(0), SnapTo(joySnaps, 3), 0)
 
   modeSink.set_mode(0)
 
