@@ -156,6 +156,19 @@ def SetAxes(joystick, axesAndValues):
   return op
 
 
+def SetAxis2(curve, value):
+  def op(event):
+    curve.get_axis().move(value, False) 
+  return op
+
+
+def SetAxes2(*curvesAndValues):
+  def op(event):
+    for curve, value in curvesAndValues:
+      curve.get_axis().move(value, False) 
+  return op
+
+
 def ResetCurve(curve):
   def op(event):
     curve.reset()
@@ -348,6 +361,13 @@ class ED:
   @staticmethod
   def move(axis, modifiers = None):
     r = (("type", codes.EV_REL), ("code", axis))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def move_to(axis, modifiers = None):
+    r = (("type", codes.EV_ABS), ("code", axis))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
@@ -954,6 +974,7 @@ class ValueOpDeltaAxisCurve:
       return 0.0
 
   def reset(self):
+    logger.debug("{}: resetting".format(self))
     assert(self.valueOp_ is not None)
     self.valueOp_(None)
     #TODO Should also call self.deltaOp_?
@@ -1266,6 +1287,38 @@ class AdjustingJoystick:
 
   def __init__(self):
     self.curves_, self.next_ = dict(), None
+
+
+class NodeJoystick(object):
+  def move_axis(self, axis, value, relative):
+    if self.next_ is not None:
+      self.next_.move_axis(axis, value, relative)
+
+  def get_axis(self, axis):
+    return self.next_.get_axis(axis) if self.next_ else 0
+
+  def get_limits(self, axis):
+    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+
+  def set_button_state(self, button, state):
+    self.next_.set_button_state(button, state)
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next=None):
+    self.next_ = next
+
+
+class NotifyingJoystick(NodeJoystick):
+  def move_axis(self, axis, value, relative):
+    super(NotifyingJoystick, self).move_axis(axis, value, relative)
+    if not relative and self.sink_:
+      self.sink_(Event(codes.EV_ABS, axis, value, time.time()))
+
+  def __init__(self, sink=None, next=None):
+    super(NotifyingJoystick, self).__init__(next)
+    self.sink_ = sink
 
 
 class MetricsJoystick:
@@ -1763,7 +1816,7 @@ def init_sinks_descent(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  joystick = settings["joystick"]
+  joystick = NotifyingJoystick(sink=None, next=settings["joystick"])
   mouse = settings["mouse"]
 
   data = {}
@@ -1792,6 +1845,8 @@ def init_sinks_descent(settings):
 
   mainSink = Binding(cmpOp)
   scaleSink.set_next(mainSink)
+  #TODO Use method
+  joystick.sink_ = mainSink
 
   stateSink = StateSink()
   mainSink.add((), stateSink, 1)
@@ -1849,10 +1904,15 @@ def init_sinks_descent(settings):
     sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
     sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
     sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_Z], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_Z], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
     #Resetting axes controlled in this mode and corresponding curves when leaving mode. May not be needed in other cases.
-    sink.add(ED.init(0), SetAxesToAndResetCurves(*((c,0.0) for c in cs.values())), 0)
+    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
+
+    def foo(e):
+      print "Moved {} to {} at {}".format(axisToName[e.code], e.value, e.timestamp)
+    for k in cs.keys():
+      sink.add(ED.move_to(k), ResetCurve(cs[k]))
 
   if 1 in curves:
     logger.debug("Init mode 1")
@@ -1862,9 +1922,11 @@ def init_sinks_descent(settings):
     sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
     sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
     sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_X], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
-    sink.add(ED.init(0), SetAxesToAndResetCurves(*((c,0.0) for c in cs.values())), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_X], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
+    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
+    for k in cs.keys():
+      sink.add(ED.move_to(k), ResetCurve(cs[k]))
 
   if 2 in curves:
     logger.debug("Init mode 2")
@@ -1874,11 +1936,14 @@ def init_sinks_descent(settings):
     sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
     sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
     sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxisToAndResetCurve(cs[codes.ABS_THROTTLE], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxesToAndResetCurves((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_THROTTLE], 0.0), 0)
+    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
     sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxisToAndResetCurve(codes.ABS_RUDDER, 0.0), 0)
-    sink.add(ED.init(0), SetAxesToAndResetCurves((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis2(cs[codes.ABS_RUDDER], 0.0), 0)
+    #TODO Should also reset other curves (not axes)?
+    sink.add(ED.init(0), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    for k in cs.keys():
+      sink.add(ED.move_to(k), ResetCurve(cs[k]))
 
   modeSink.set_mode(0)
 
