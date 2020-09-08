@@ -408,6 +408,7 @@ class ModeSink:
       return child(event)
 
   def set_mode(self, mode):
+    logger.debug("{}: Setting mode: {}".format(self, mode))
     if mode not in self.children_:
       logger.debug("{}: No such mode: {}".format(self, mode))
       return False
@@ -423,8 +424,9 @@ class ModeSink:
 
   def set_active_child_state_(self, state):
     if self.mode_ in self.children_:
-      child = self.children_[self.mode_]
-      if child:
+      child = self.children_.get(self.mode_, None)
+      if child is not None:
+        logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(EV_BCAST, BC_INIT, 1 if state == True else 0, time.time()))
     
   def __init__(self):
@@ -443,7 +445,7 @@ class CycleMode:
 
 class SetMode:
   def __call__(self, event):
-    if event.type != EV_BCAST: self.modeSink.set_mode(self.mode)
+    self.modeSink.set_mode(self.mode)
   def __init__(self, modeSink, mode):
     self.modeSink, self.mode = modeSink, mode
 
@@ -1757,12 +1759,29 @@ def init_sinks_descent(settings):
     modeStack.append(modeSink.get_mode())
   def restore_mode(event):
     modeSink.set_mode(modeStack.pop())
-  joystickSink.add(ED.press(codes.BTN_EXTRA), cycleMode, 0)
-  joystickSink.add(ED.release(codes.BTN_EXTRA), cycleMode, 0)
-  joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), cycleMode, 0)
   joystickSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
+
+  modeSink2 = ModeSink()
+  binding = Binding(cmpOp)
+  binding.add(ED.init(1), SetMode(modeSink, 0), 0)
+  binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
+  #binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
+  modeSink2.add(0, binding)
+  binding = Binding(cmpOp)
+  binding.add(ED.init(1), SetMode(modeSink, 1), 0)
+  binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
+  #binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
+  modeSink2.add(1, binding)
+  modeSink2.set_mode(0)
+
+  joystickSink.add_several((ED.press(codes.BTN_EXTRA, ()),), (save_mode, modeSink2), 0)
+  joystickSink.add(ED.release(codes.BTN_EXTRA, ()), restore_mode, 0)
+  #joystickSink.add(ED.any(), modeSink2, 0)
+  #joystickSink.add(ED.press(codes.BTN_EXTRA, ()), modeSink2, 0)
+  #joystickSink.add(ED.release(codes.BTN_EXTRA, ()), modeSink2, 0)
+  joystickSink.add(ED.click(codes.BTN_EXTRA, (codes.KEY_RIGHTSHIFT,)), CycleMode(modeSink2, (0,1)), 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
