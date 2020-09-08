@@ -1308,7 +1308,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction"] = make_dir_curves
+  curves["direction"] = CurveAdapter(make_dir_curves)
 
   def make_dir_curves2(data):
     #dataX = [(0.0,0.2), (0.1,0.1), (0.3,0.1), (0.95,1.0), (1.0, 1.0)]
@@ -1339,7 +1339,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction2"] = make_dir_curves2
+  curves["direction2"] = CurveAdapter(make_dir_curves2)
 
   def make_dir_curves3(data):
     a = 0.5
@@ -1352,7 +1352,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction3"] = make_dir_curves3
+  curves["direction3"] = CurveAdapter(make_dir_curves3)
 
   def make_dir_curves4(data):
     approxX = SegmentApproximator(((0.0,0.0), (0.25,0.1), (0.5,0.1), (1.0,1.0)))
@@ -1365,7 +1365,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction4"] = make_dir_curves4
+  curves["direction4"] = CurveAdapter(make_dir_curves4)
 
   def make_dir_curves5(data):
     levels = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
@@ -1376,7 +1376,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction5"] = make_dir_curves5
+  curves["direction5"] = CurveAdapter(make_dir_curves5)
 
   def make_dir_curves6(data):
     #levelsX = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
@@ -1384,18 +1384,21 @@ def make_curve_makers():
     levelsZ = ((1.0, 1.0), (0.5, 0.0),)
     factor = 1.0
     curves = {
-      codes.ABS_X : DirectionBasedCurve2(levelsX, factor=factor), 
-      codes.ABS_Y : DirectionBasedCurve2(levelsX, factor=factor), 
-      codes.ABS_Z : DirectionBasedCurve2(levelsZ, factor=factor),
-      codes.ABS_RX : DirectionBasedCurve2(levelsX, factor=factor), 
-      codes.ABS_RY : DirectionBasedCurve2(levelsX, factor=factor), 
-      codes.ABS_RUDDER : DirectionBasedCurve2(levelsZ, factor=factor),
+      0 : {
+        codes.ABS_X : DirectionBasedCurve2(levelsX, factor=factor), 
+        codes.ABS_Y : DirectionBasedCurve2(levelsX, factor=factor), 
+        codes.ABS_Z : DirectionBasedCurve2(levelsZ, factor=factor),
+        codes.ABS_RX : DirectionBasedCurve2(levelsX, factor=factor), 
+        codes.ABS_RY : DirectionBasedCurve2(levelsX, factor=factor), 
+        codes.ABS_RUDDER : DirectionBasedCurve2(levelsZ, factor=factor),
+      }
     }
     return curves
 
-  curves["direction6"] = make_dir_curves6
+  curves["direction6"] = CurveAdapter(make_dir_curves6)
  
   def make_dir_curves7(data):
+    """Works"""
     dataX = [(0.0,0.0), (2.0,1.0)]
     factor = 1.0
     approxX = SegmentApproximator(dataX, factor, True, True)
@@ -1426,10 +1429,10 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction7"] = make_dir_curves7
+  curves["direction7"] = CurveAdapter(make_dir_curves7)
 
   def make_dir_curves8(data):
-    """Does not work"""
+    """Does not work, produces unpredictable axis movement"""
     dataX = [(0.0,0.0), (2.0,1.0)]
     factor = 1.0
     approxX = SegmentApproximator(dataX, factor, True, True)
@@ -1478,7 +1481,7 @@ def make_curve_makers():
     }
     return curves
 
-  curves["direction8"] = make_dir_curves8
+  curves["direction8"] = CurveAdapter(make_dir_curves8)
 
   def make_dist_curves(data):
     """Work ok"""
