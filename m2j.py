@@ -241,6 +241,7 @@ class ClickSink:
 
   def set_next(self, next):
     self.next_ = next
+    return next
 
   def __init__(self, clickTime):
     self.next_, self.keys_, self.clickTime_ = None, {}, clickTime
@@ -261,6 +262,7 @@ class ModifierSink:
 
   def set_next(self, next):
     self.next_ = next
+    return next
 
   def __init__(self, next = None, modifiers = None):
     self.m_, self.next_, self.modifiers_ = [], next, (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT) if modifiers is None else modifiers
@@ -274,6 +276,7 @@ class ScaleSink:
 
   def set_next(self, next):
     self.next_ = next
+    return next
 
   def __init__(self, sens):
     self.next_, self.sens_ = None, sens
@@ -310,12 +313,14 @@ class Binding:
             processed = cc(event) or processed
 
   def add(self, attrs, child, level = 0):
+    logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
     c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
     if c is not None:
       c[2].append(child)
     else:
       self.children_.append([attrs, level, [child]])
     self.dirty_ = True
+    return child
 
   def add_several(self, attrs, childSeq, level = 0):
     for a in attrs:
@@ -326,6 +331,7 @@ class Binding:
       else:
         self.children_.append([a, level, [cc for cc in childSeq]])
     self.dirty_ = True
+    return childSeq
 
   def clear(self):
     del self.children_[:]
@@ -422,10 +428,12 @@ class ED:
 
 class StateSink:
  def __call__(self, event):
-   if self.state_ == True and self.next_:
+   logger.debug("{}: got event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+   if (self.state_ == True) and (self.next_ is not None):
      self.next_(event)
 
  def set_state(self, state):
+   logger.debug("{}: setting state to {}".format(self, state))
    self.state_ = state
    if self.next_:
      self.next_(Event(EV_BCAST, BC_INIT, 1 if state == True else 0, time.time()))
@@ -435,9 +443,10 @@ class StateSink:
 
  def set_next(self, next):
     self.next_ = next
+    return next
 
- def __init__(self, next = None):
-   self.next_ = next
+ def __init__(self):
+   self.next_ = None
    self.state_ = False
 
 
@@ -460,7 +469,9 @@ class ModeSink:
     return self.mode_
 
   def add(self, mode, child):
+    logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
     self.children_[mode] = child
+    return child
 
   def set_active_child_state_(self, state):
     if self.mode_ in self.children_:
@@ -1284,6 +1295,7 @@ class AdjustingJoystick:
 
   def set_next(self, next):
     self.next_ = next
+    return next
 
   def __init__(self):
     self.curves_, self.next_ = dict(), None
@@ -1305,6 +1317,7 @@ class NodeJoystick(object):
 
   def set_next(self, next):
     self.next_ = next
+    return next
 
   def __init__(self, next=None):
     self.next_ = next
@@ -1845,8 +1858,6 @@ def init_sinks_descent(settings):
 
   mainSink = Binding(cmpOp)
   scaleSink.set_next(mainSink)
-  #TODO Use method
-  joystick.sink_ = mainSink
 
   stateSink = StateSink()
   mainSink.add((), stateSink, 1)
@@ -1867,16 +1878,20 @@ def init_sinks_descent(settings):
   topSink.add(ED.release(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
   joystickSink = Binding(cmpOp)
+  #TODO Use method
+  joystick.sink_ = joystickSink
   topModeSink.add(0, joystickSink)
   topModeSink.set_mode(0)
 
   modeSink = ModeSink()
   joystickSink.add(ED.any(), modeSink, 1)
-  modeStack = []
+  oldMode =  []
   def save_mode(event):
-    modeStack.append(modeSink.get_mode())
+    oldMode.append(modeSink.get_mode())
   def restore_mode(event):
-    modeSink.set_mode(modeStack.pop())
+    modeSink.set_mode(oldMode.pop())
+  def clear_mode(event):
+    oldMode = []
   joystickSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
   joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
@@ -1885,65 +1900,114 @@ def init_sinks_descent(settings):
   binding = Binding(cmpOp)
   binding.add(ED.init(1), SetMode(modeSink, 0), 0)
   binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
+  binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
   modeSink2.add(0, binding)
   binding = Binding(cmpOp)
   binding.add(ED.init(1), SetMode(modeSink, 1), 0)
   binding.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
+  binding.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
   modeSink2.add(1, binding)
   modeSink2.set_mode(0)
 
-  joystickSink.add_several((ED.press(codes.BTN_EXTRA, ()),), (save_mode, modeSink2), 0)
+  #It is crucial to get current mode from modeSink itself
+  cycleMode = lambda e : modeSink.set_mode(0 if modeSink.get_mode() == 1 else 1)
+  joystickSink.add(ED.press(codes.BTN_EXTRA, ()), save_mode, 0)
+  joystickSink.add(ED.press(codes.BTN_EXTRA, ()), cycleMode, 0)
   joystickSink.add(ED.release(codes.BTN_EXTRA, ()), restore_mode, 0)
-  joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), CycleMode(modeSink2, (0,1)), 0)
+  joystickSink.add(ED.click(codes.BTN_EXTRA, (codes.KEY_RIGHTSHIFT,)), cycleMode, 0)
+  joystickSink.add(ED.click(codes.BTN_EXTRA, (codes.KEY_LEFTSHIFT,)), cycleMode, 0)
+
+  def SetState(stateSink, state):
+    def op(event):
+      stateSink.set_state(state)
+    return op
 
   if 0 in curves:
     logger.debug("Init mode 0")
+    cs = curves[0]
+
     sink = Binding(cmpOp)
     modeSink.add(0, sink)
-    cs = curves[0]
-    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
-    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-    sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_Z], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
-    #Resetting axes controlled in this mode and corresponding curves when leaving mode. May not be needed in other cases.
-    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
 
-    def foo(e):
-      print "Moved {} to {} at {}".format(axisToName[e.code], e.value, e.timestamp)
+    #ms = sink.add(ED.any(), StateSink(state=False))
+    ms = StateSink()
+    sink.add(ED.any(), ms)
+    logger.debug("ms 0: {}".format(ms))
+    sink.add(ED.init(1), SetState(ms, True))
+    sink.add(ED.init(0), SetState(ms, False))
+
+    ss = Binding(cmpOp)
+    ms.set_next(ss)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_Z], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
     for k in cs.keys():
-      sink.add(ED.move_to(k), ResetCurve(cs[k]))
+      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+
+    #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
+    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
+    #Resetting curves when leaving mode. May not be needed in other cases.
+    for c in cs.values():
+      sink.add(ED.init(0), ResetCurve(c))
 
   if 1 in curves:
     logger.debug("Init mode 1")
+    cs = curves[1]
+
     sink = Binding(cmpOp)
     modeSink.add(1, sink)
-    cs = curves[1]
-    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
-    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-    sink.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_X], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
-    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
+
+    ms = StateSink()
+    sink.add(ED.any(), ms)
+    sink.add(ED.init(1), SetState(ms, True))
+    sink.add(ED.init(0), SetState(ms, False))
+
+    ss = Binding(cmpOp)
+    ms.set_next(ss)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_X], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
     for k in cs.keys():
-      sink.add(ED.move_to(k), ResetCurve(cs[k]))
+      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+      
+    #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
+    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 0)
+    #Resetting curves when leaving mode. May not be needed in other cases.
+    for c in cs.values():
+      sink.add(ED.init(0), ResetCurve(c))
 
   if 2 in curves:
     logger.debug("Init mode 2")
+    cs = curves[2]
+
     sink = Binding(cmpOp)
     modeSink.add(2, sink)
-    cs = curves[2]
-    sink.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
-    sink.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
-    sink.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_THROTTLE], 0.0), 0)
-    sink.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
-    sink.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
-    sink.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis2(cs[codes.ABS_RUDDER], 0.0), 0)
+
+    ms = StateSink()
+    sink.add(ED.any(), ms)
+    sink.add(ED.init(1), SetState(ms, True))
+    sink.add(ED.init(0), SetState(ms, False))
+
+    ss = Binding(cmpOp)
+    ms.set_next(ss)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
+    ss.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_THROTTLE], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis2(cs[codes.ABS_RUDDER], 0.0), 0)
+    for k in cs.keys():
+      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+
     #TODO Should also reset other curves (not axes)?
     sink.add(ED.init(0), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
-    for k in cs.keys():
-      sink.add(ED.move_to(k), ResetCurve(cs[k]))
+    for c in cs.values():
+      sink.add(ED.init(0), ResetCurve(c))
 
   modeSink.set_mode(0)
 
