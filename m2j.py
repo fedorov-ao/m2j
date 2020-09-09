@@ -156,13 +156,13 @@ def SetAxes(joystick, axesAndValues):
   return op
 
 
-def SetAxis2(curve, value):
+def SetCurveAxis(curve, value):
   def op(event):
     curve.get_axis().move(value, False) 
   return op
 
 
-def SetAxes2(*curvesAndValues):
+def SetCurvesAxes(*curvesAndValues):
   def op(event):
     for curve, value in curvesAndValues:
       curve.get_axis().move(value, False) 
@@ -271,7 +271,7 @@ class ModifierSink:
 class ScaleSink:
   def __call__(self, event):
     if event.type == codes.EV_REL:
-      event.value *= self.sens_.get(event.code, 1.0)
+      event.value *= 1.0 if self.sens_ is None else self.sens_.get(event.code, 1.0)
     return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
@@ -1686,6 +1686,27 @@ def make_curve_makers():
 
 curveMakers = make_curve_makers()
 
+
+def init_mode_sink(curves, binding, resetOnMove=None, resetOnLeave=None, setOnLeave=None):
+  sink = Binding(CmpWithModifiers())
+  ms = sink.add(ED.any(), StateSink(), 1)
+  sink.add(ED.init(1), SetState(ms, True), 0)
+  sink.add(ED.init(0), SetState(ms, False), 0)
+  ms.set_next(binding)
+  if resetOnMove is not None:
+    for k in resetOnMove:
+      binding.add(ED.move_to(k), ResetCurve(curves[k]))
+  #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
+  #Resetting curves when leaving mode. May not be needed in other cases.
+  if resetOnLeave is not None:
+    for k in resetOnLeave:
+      sink.add(ED.init(0), ResetCurve(curves[k]), 2)
+  if setOnLeave is not None:
+    for p in setOnLeave:
+      sink.add(ED.init(0), SetCurveAxis(curves[p[0]], p[1]), 2)
+  return sink
+
+
 sink_initializers = {}
 
 #TODO Update
@@ -1893,77 +1914,42 @@ def init_sinks_descent(settings):
     logger.debug("Init mode 0")
     cs = curves[0]
 
-    sink = modeSink.add(0, Binding(cmpOp))
-
-    ms = sink.add(ED.any(), StateSink(), 1)
-    sink.add(ED.init(1), SetState(ms, True), 0)
-    sink.add(ED.init(0), SetState(ms, False), 0)
-
-    ss = ms.set_next(Binding(cmpOp))
+    ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
     ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
     ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_Z], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
-    for k in cs.keys():
-      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_Z], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
 
-    #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
-    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 2)
-    #Resetting curves when leaving mode. May not be needed in other cases.
-    for c in cs.values():
-      sink.add(ED.init(0), ResetCurve(c), 2)
-
+    modeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 1 in curves:
     logger.debug("Init mode 1")
     cs = curves[1]
 
-    sink = modeSink.add(1, Binding(cmpOp))
-
-    ms = sink.add(ED.any(), StateSink(), 1)
-    sink.add(ED.init(1), SetState(ms, True), 0)
-    sink.add(ED.init(0), SetState(ms, False), 0)
-
-    ss = ms.set_next(Binding(cmpOp))
+    ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
     ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
     ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_X], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
-    for k in cs.keys():
-      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_X], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
       
-    #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
-    sink.add(ED.init(0), SetAxes2(*((c,0.0) for c in cs.values())), 2)
-    #Resetting curves when leaving mode. May not be needed in other cases.
-    for c in cs.values():
-      sink.add(ED.init(0), ResetCurve(c), 2)
+    modeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 2 in curves:
     logger.debug("Init mode 2")
     cs = curves[2]
 
-    sink = modeSink.add(2, Binding(cmpOp))
-
-    ms = sink.add(ED.any(), StateSink(), 1)
-    sink.add(ED.init(1), SetState(ms, True), 0)
-    sink.add(ED.init(0), SetState(ms, False), 0)
-
-    ss = ms.set_next(Binding(cmpOp))
+    ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
     ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
     ss.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetAxis2(cs[codes.ABS_THROTTLE], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_THROTTLE], 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
     ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetAxis2(cs[codes.ABS_RUDDER], 0.0), 0)
-    for k in cs.keys():
-      ss.add(ED.move_to(k), ResetCurve(cs[k]))
+    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis(cs[codes.ABS_RUDDER], 0.0), 0)
 
-    sink.add(ED.init(0), SetAxes2((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 2)
-    for c in cs.values():
-      sink.add(ED.init(0), ResetCurve(c), 2)
+    modeSink.add(2, init_mode_sink( cs, ss, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
 
   modeSink.set_mode(0)
 
