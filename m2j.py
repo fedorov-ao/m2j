@@ -1337,6 +1337,7 @@ class NotifyingJoystick(NodeJoystick):
 
   def set_sink(self, sink):
     self.sink_ = sink
+    return sink
 
   def __init__(self, sink=None, next=None):
     super(NotifyingJoystick, self).__init__(next)
@@ -1654,7 +1655,7 @@ def make_curve_makers():
       def op(value):
         return approx(abs(value))
       return op
-    sensOp = SensitivityOp( ((0.05,0.15),(0.15,1.0)) )
+    sensOp = SensitivityOp( ((0.05,0.10),(0.15,1.0)) )
     sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
     #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
     #These settings work
@@ -1684,15 +1685,6 @@ def make_curve_makers():
   return curves
 
 curveMakers = make_curve_makers()
-
-
-def set_curves(joystick, curves):
-  logger.debug("Setting {} curves".format(curves))
-  c = curveMakers[curves]()
-  for p in c.items(): 
-    axis = nameToAxis[p[0]]
-    if axis is not None:
-      joystick.set_curve(axis, p[1])
 
 sink_initializers = {}
 
@@ -1829,8 +1821,6 @@ sink_initializers["base"] = init_sinks_base
 def init_sinks_descent(settings):
   cmpOp = CmpWithModifiers()
 
-  sens = settings["sens"]
-
   curveSet = settings.get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
@@ -1839,7 +1829,6 @@ def init_sinks_descent(settings):
     raise Exception("No curves for {}".format(curveSet))
   
   joystick = NotifyingJoystick(sink=None, next=settings["joystick"])
-  mouse = settings["mouse"]
 
   data = {}
   data["axes"] = {axis:Axis(joystick, axis) for axis in axisToName.keys()}
@@ -1858,41 +1847,29 @@ def init_sinks_descent(settings):
 
   clickTime = 0.5
   clickSink = ClickSink(clickTime)
-
-  modifierSink = ModifierSink()
-  clickSink.set_next(modifierSink)
-
-  scaleSink = ScaleSink(sens)
-  modifierSink.set_next(scaleSink)
-
-  mainSink = Binding(cmpOp)
-  scaleSink.set_next(mainSink)
-
-  stateSink = StateSink()
-  mainSink.add((), stateSink, 1)
+  modifierSink = clickSink.set_next(ModifierSink())
+  scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
+  mainSink = scaleSink.set_next(Binding(cmpOp))
+  stateSink =  mainSink.add((), StateSink(), 1)
   for name in ("mouse", "mouse2"):
     d = settings.get(name, None)
     if d is not None:
       mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), DeviceGrabberSink(d), 0)
   mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), ToggleSink(stateSink), 0)
 
-  topSink = Binding(cmpOp)
-  stateSink.set_next(topSink)
-  topModeSink = ModeSink()
-  topSink.add(ED.any(), topModeSink, 1)
+  topSink = stateSink.set_next(Binding(cmpOp))
 
   topSink.add(ED.press(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
   topSink.add(ED.release(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
   topSink.add(ED.press(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
   topSink.add(ED.release(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
-  joystickSink = Binding(cmpOp)
-  joystick.set_sink(joystickSink)
+  topModeSink = topSink.add(ED.any(), ModeSink(), 1)
+  joystickSink = joystick.set_sink(Binding(cmpOp))
   topModeSink.add(0, joystickSink)
   topModeSink.set_mode(0)
 
-  modeSink = ModeSink()
-  joystickSink.add(ED.any(), modeSink, 1)
+  modeSink = joystickSink.add(ED.any(), ModeSink(), 1)
   oldMode =  []
   def save_mode(event):
     oldMode.append(modeSink.get_mode())
