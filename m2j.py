@@ -1878,37 +1878,31 @@ def init_sinks_descent(settings):
       mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), DeviceGrabberSink(d), 0)
   mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), ToggleSink(stateSink), 0)
 
-  topSink = stateSink.set_next(Binding(cmpOp))
+  joystickSink = stateSink.set_next(Binding(cmpOp))
+  joystick.set_sink(joystickSink)
+  joystickSink.add(ED.press(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
+  joystickSink.add(ED.release(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
+  joystickSink.add(ED.press(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
+  joystickSink.add(ED.release(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
-  topSink.add(ED.press(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
-  topSink.add(ED.release(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
-  topSink.add(ED.press(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
-  topSink.add(ED.release(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
-
-  topModeSink = topSink.add(ED.any(), ModeSink(), 1)
-  joystickSink = joystick.set_sink(Binding(cmpOp))
-  topModeSink.add(0, joystickSink)
-  topModeSink.set_mode(0)
-
-  modeSink = joystickSink.add(ED.any(), ModeSink(), 1)
+  joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
   oldMode =  []
   def save_mode(event):
-    oldMode.append(modeSink.get_mode())
+    oldMode.append(joystickModeSink.get_mode())
   def restore_mode(event):
-    modeSink.set_mode(oldMode.pop())
+    joystickModeSink.set_mode(oldMode.pop())
   def clear_mode(event):
     oldMode = []
   joystickSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
-  joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
+  joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(joystickModeSink, 2), 0)
   joystickSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
 
   #It is crucial to get current mode from modeSink itself
-  cycleMode = lambda e : modeSink.set_mode(0 if modeSink.get_mode() == 1 else 1)
+  cycleMode = lambda e : joystickModeSink.set_mode(0 if joystickModeSink.get_mode() == 1 else 1)
   joystickSink.add(ED.press(codes.BTN_EXTRA, ()), save_mode, 0)
   joystickSink.add(ED.press(codes.BTN_EXTRA, ()), cycleMode, 0)
   joystickSink.add(ED.release(codes.BTN_EXTRA, ()), restore_mode, 0)
   joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), cycleMode, 0)
-
 
   if 0 in curves:
     logger.debug("Init mode 0")
@@ -1921,7 +1915,7 @@ def init_sinks_descent(settings):
     ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_Z], 0.0), 0)
     ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
 
-    modeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
+    joystickModeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 1 in curves:
     logger.debug("Init mode 1")
@@ -1934,7 +1928,7 @@ def init_sinks_descent(settings):
     ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_X], 0.0), 0)
     ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
       
-    modeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
+    joystickModeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 2 in curves:
     logger.debug("Init mode 2")
@@ -1949,9 +1943,9 @@ def init_sinks_descent(settings):
     ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
     ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis(cs[codes.ABS_RUDDER], 0.0), 0)
 
-    modeSink.add(2, init_mode_sink( cs, ss, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
+    joystickModeSink.add(2, init_mode_sink( cs, ss, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
 
-  modeSink.set_mode(0)
+  joystickModeSink.set_mode(0)
 
   return clickSink
 
