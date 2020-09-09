@@ -135,6 +135,8 @@ def run():
   settings["mouse2"] = next((d for d in devices if d.source_ == 2), None)
   settings["joystick"] = joystick 
   settings["head"] = head
+  settings["clickTime"] = 0.5
+  settings["grabbed"] = (settings["mouse"],)
 
   settings["modes"] = {}
   settings["modes"]["head"] = {}

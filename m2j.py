@@ -1687,6 +1687,20 @@ def make_curve_makers():
 curveMakers = make_curve_makers()
 
 
+def init_main_sink(settings, next):
+  clickSink = ClickSink(settings.get("clickTime", 0.5))
+  modifierSink = clickSink.set_next(ModifierSink())
+  scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
+  mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
+  stateSink =  mainSink.add((), StateSink(), 1)
+  toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
+  for d in settings.get("grabbed", ()):
+    mainSink.add(ED.doubleclick(toggleKey), DeviceGrabberSink(d), 0)
+  mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
+  stateSink.set_next(next)
+  return clickSink
+
+
 def init_mode_sink(curves, binding, resetOnMove=None, resetOnLeave=None, setOnLeave=None):
   sink = Binding(CmpWithModifiers())
   ms = sink.add(ED.any(), StateSink(), 1)
@@ -1866,19 +1880,7 @@ def init_sinks_descent(settings):
   joySnaps.set_snap(7, ((codes.ABS_X, 0.0), (codes.ABS_Z, 0.0),))
   joySnaps.set_snap(8, ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),))
 
-  clickTime = 0.5
-  clickSink = ClickSink(clickTime)
-  modifierSink = clickSink.set_next(ModifierSink())
-  scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
-  mainSink = scaleSink.set_next(Binding(cmpOp))
-  stateSink =  mainSink.add((), StateSink(), 1)
-  for name in ("mouse", "mouse2"):
-    d = settings.get(name, None)
-    if d is not None:
-      mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), DeviceGrabberSink(d), 0)
-  mainSink.add(ED.doubleclick(codes.KEY_SCROLLLOCK), ToggleSink(stateSink), 0)
-
-  joystickSink = stateSink.set_next(Binding(cmpOp))
+  joystickSink = Binding(cmpOp)
   joystick.set_sink(joystickSink)
   joystickSink.add(ED.press(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
   joystickSink.add(ED.release(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
@@ -1947,7 +1949,7 @@ def init_sinks_descent(settings):
 
   joystickModeSink.set_mode(0)
 
-  return clickSink
+  return init_main_sink(settings, joystickSink)
 
 sink_initializers["descent"] = init_sinks_descent
 
