@@ -9,6 +9,7 @@ import socket
 import struct
 import bisect
 import logging
+import json
 
 EV_BCAST = -1
 BC_INIT = 0
@@ -1738,6 +1739,47 @@ def make_curve_makers():
 
   curves["descent_value"] = make_descent_value_curves
 
+
+  def make_descent_value_config_curves(data):
+    data = data["joystick"]["axes"]
+    deltaOp = lambda x,value : x*value
+    def SensitivityOp(data):
+      """Symmetric"""
+      approx = SegmentApproximator(data, 1.0, True, True)
+      def op(value):
+        return approx(abs(value))
+      return op
+    curveData = (
+      ( "joystick", ( 
+          (0, ( codes.ABS_X, codes.ABS_Y, codes.ABS_Z )),
+          (1, ( codes.ABS_Z, codes.ABS_Y, codes.ABS_X )),
+          (2, ( codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER )),
+        ),
+      ),
+    )
+
+    curves = {}
+    with open("curves.cfg", "r") as f:
+      cfg = json.load(f)
+      for setName,setData in curveData:
+        t = {}
+        curves[setName] = t
+        for modeId,modeData in setData:
+          s = {}
+          t[modeId] = s 
+          for axisId in modeData:
+            axis = data[axisId]
+            ops = {} 
+            for opName in ("fixed", "moving"):
+              entry = cfg[setName][str(modeId)][axisToName[axisId]][opName] 
+              d = zip(entry["x"], entry["y"])
+              ops[opName] = SensitivityOp(d)
+            s[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(ops["fixed"], 0.0), MovingValuePoint(ops["moving"]),)), axis)
+
+    return curves
+
+  curves["descent_value_config"] = make_descent_value_config_curves
+
   return curves
 
 curveMakers = make_curve_makers()
@@ -1755,6 +1797,7 @@ def init_main_sink(settings, make_next):
   mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
   stateSink.set_next(make_next(settings))
   mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : stateSink.set_next(make_next(settings)), 0)
+  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : stateSink.set_next(make_next(settings)), 0)
   return clickSink
 
 
