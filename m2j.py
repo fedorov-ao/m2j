@@ -1645,46 +1645,6 @@ def make_curve_makers():
   curves["distance"] = CurveAdapter(make_dist_curves)
 
 
-  def make_value_curves(data):
-    """Work ok"""
-    data = data["joystick"]["axes"]
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
-    sensOp = SensitivityOp( ((0.05,0.10),(0.15,1.0)) )
-    sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
-    #These settings work
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
-    curves = {
-      "joystick" : {
-        0 : {
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_X]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Y]),
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_Z]),
-        },
-        1 : {
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Z]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_Y]),
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_X]),
-        },
-        2 : {
-          codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_RX]),
-          codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), data[codes.ABS_RY]),
-          codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_THROTTLE]),
-          codes.ABS_RUDDER : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_RUDDER]),
-        },
-      },
-    }
-
-    return curves
-
-  curves["value"] = make_value_curves
-
   def make_base_value_curves(data):
     """Work ok"""
     dj, dh = data["joystick"]["axes"], data["head"]["axes"]
@@ -1736,6 +1696,48 @@ def make_curve_makers():
 
   curves["base_value"] = make_base_value_curves
 
+
+  def make_descent_value_curves(data):
+    """Work ok"""
+    data = data["joystick"]["axes"]
+    deltaOp = lambda x,value : x*value
+    def SensitivityOp(data):
+      """Symmetric"""
+      approx = SegmentApproximator(data, 1.0, True, True)
+      def op(value):
+        return approx(abs(value))
+      return op
+    sensOp = SensitivityOp( ((0.05,0.10),(0.25,1.0)) )
+    sensOp2 = SensitivityOp( ((0.05,0.25),(0.25,1.0)) )
+    sensOpZ = SensitivityOp( ((0.05,0.5),(0.25,5.0)) )
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
+    #These settings work
+    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
+    curves = {
+      "joystick" : {
+        0 : {
+          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_X]),
+          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Y]),
+          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_Z]),
+        },
+        1 : {
+          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Z]),
+          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Y]),
+          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_X]),
+        },
+        2 : {
+          codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_RX]),
+          codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_RY]),
+          codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_THROTTLE]),
+          codes.ABS_RUDDER : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_RUDDER]),
+        },
+      },
+    }
+
+    return curves
+
+  curves["descent_value"] = make_descent_value_curves
+
   return curves
 
 curveMakers = make_curve_makers()
@@ -1777,113 +1779,7 @@ def init_mode_sink(curves, binding, resetOnMove=None, resetOnLeave=None, setOnLe
 
 sink_initializers = {}
 
-#TODO Update
-def init_sinks_base(settings):
-  cmpOp = CmpWithModifiers()
-
-  joystick = AdjustingJoystick()
-  joystick.set_next(settings["joystick"])
-
-  set_curves(joystick, settings["curves"])
-
-  head = AdjustingJoystick()
-  head.set_next(settings["head"])
-  head.set_curve(codes.ABS_THROTTLE, settings["modes"]["head"]["curves"]["zoom"])
-
-  mouse = settings["mouse"]
-
-  joySnaps = SnapManager(joystick, False)
-  joySnaps.set_snap(0, ((codes.ABS_Z, 0.0),))
-  joySnaps.set_snap(1, ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0),))
-  joySnaps.set_snap(3, ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),))
-
-  headSnaps = SnapManager(head, False)
-  zero = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 0.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 0.0),)
-  headSnaps.set_snap(0, zero)
-  fullForward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 1.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 1.0),)
-  headSnaps.set_snap(1, fullForward)
-  fullBackward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, -1.0), (codes.ABS_RX, 0), (codes.ABS_RY, -0.15), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(2, fullBackward)
-  zoomOut = ((codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(3, zoomOut)
-  centerView = ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),)
-  headSnaps.set_snap(4, centerView)
-  centerViewPos = ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),)
-  headSnaps.set_snap(5, centerViewPos)
-
-  topSink = Binding(cmpOp)
-  topModeSink = ModeSink()
-  topSink.add(ED.any(), topModeSink, 1)
-  topSink.add(ED.press(codes.BTN_RIGHT), SetMode(topModeSink, 1), 0)
-  topSink.add(ED.release(codes.BTN_RIGHT), SetMode(topModeSink, 0), 0)
-  topSink.add(ED.release(codes.BTN_RIGHT), UpdateSnap(headSnaps, 0), 0)
-
-  joystickSink = Binding(cmpOp)
-  topModeSink.add(0, joystickSink)
-  topModeSink.set_mode(0)
-
-  modeSink = ModeSink()
-  joystickSink.add(ED.any(), modeSink, 1)
-  joystickSink.add(ED.press(codes.BTN_EXTRA), SetMode(modeSink, 1), 0)
-  joystickSink.add(ED.release(codes.BTN_EXTRA), SetMode(modeSink, 0), 0)
-  joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(modeSink, 2), 0)
-  joystickSink.add(ED.release(codes.BTN_SIDE), SetMode(modeSink, 0), 0)
-
-  mode0Sink = Binding(cmpOp)
-  modeSink.add(0, mode0Sink)
-  mode0Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mcX, True), 0)
-  mode0Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mcY, True), 0)
-  mode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_Z, mcW, True), 0)
-  mode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
-  mode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
-  mode0Sink.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 0), 0)
-
-  mode1Sink = Binding(cmpOp)
-  modeSink.add(1, mode1Sink)
-  mode1Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_RX, mcX, True), 0)
-  mode1Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_RY, mcY, True), 0)
-  mode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_RUDDER, mcW, True), 0)
-  mode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 3), 0)
-  mode1Sink.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 1), 0)
-
-  mode2Sink = Binding(cmpOp)
-  modeSink.add(2, mode2Sink)
-  mode2Sink.add(ED.move(codes.REL_X), MoveAxis(joystick, codes.ABS_X, mcX, True), 0)
-  mode2Sink.add(ED.move(codes.REL_Y), MoveAxis(joystick, codes.ABS_Y, mcY, True), 0)
-  mode2Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(joystick, codes.ABS_THROTTLE, mcW, True), 0)
-  mode2Sink.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 2), 0)
-
-  modeSink.set_mode(0)
-
-  headSink = Binding(cmpOp)
-  topModeSink.add(1, headSink)
-
-  headModeSink = ModeSink()
-  headSink.add(ED.any(), headModeSink, 1)
-  headSink.add(ED.press(codes.BTN_EXTRA), SetMode(headModeSink, 1), 0)
-  headSink.add(ED.release(codes.BTN_EXTRA), SetMode(headModeSink, 0), 0)
-
-  headMode0Sink = Binding(cmpOp)
-  headModeSink.add(0, headMode0Sink)
-  headMode0Sink.add(ED.move(codes.REL_X), MoveAxis(head, codes.ABS_RY, mcX, True), 0) 
-  headMode0Sink.add(ED.move(codes.REL_Y), MoveAxis(head, codes.ABS_RX, mcY, True), 0) 
-  headMode0Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(head, codes.ABS_THROTTLE, mcW, True), 0) 
-  headMode0Sink.add(ED.click(codes.BTN_MIDDLE), SnapTo(headSnaps, 3), 0) 
-  headMode0Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 4), 0) 
-
-  headMode1Sink = Binding(cmpOp)
-  headModeSink.add(1, headMode1Sink)
-  headMode1Sink.add(ED.move(codes.REL_X), MoveAxis(head, codes.ABS_X, mcX, True), 0) 
-  headMode1Sink.add(ED.move(codes.REL_Y), MoveAxis(head, codes.ABS_Y, mcY, True), 0) 
-  headMode1Sink.add(ED.move(codes.REL_WHEEL), MoveAxis(head, codes.ABS_Z, mcW, True), 0) 
-  headMode1Sink.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 5), 0)
-
-  headModeSink.set_mode(0)
-
-  return init_main_sink(settings, topSink)
-  
-
-def init_sinks_base2(settings): 
+def init_sinks_base(settings): 
   cmpOp = CmpWithModifiers()
   curveSet = settings.get("curves", None)
   if curveSet is None:
@@ -2037,7 +1933,7 @@ def init_sinks_base2(settings):
   return init_main_sink(settings, topBindingSink)
 
 
-sink_initializers["base"] = init_sinks_base2
+sink_initializers["base"] = init_sinks_base
 
 
 def init_sinks_descent(settings):
