@@ -1743,7 +1743,7 @@ def make_curve_makers():
 curveMakers = make_curve_makers()
 
 
-def init_main_sink(settings, next):
+def init_main_sink(settings, make_next):
   clickSink = ClickSink(settings.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink())
   scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
@@ -1753,7 +1753,8 @@ def init_main_sink(settings, next):
   for d in settings.get("grabbed", ()):
     mainSink.add(ED.doubleclick(toggleKey), DeviceGrabberSink(d), 0)
   mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
-  stateSink.set_next(next)
+  stateSink.set_next(make_next(settings))
+  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : stateSink.set_next(make_next(settings)), 0)
   return clickSink
 
 
@@ -1930,7 +1931,7 @@ def init_sinks_base(settings):
 
   headModeSink.set_mode(0)
 
-  return init_main_sink(settings, topBindingSink)
+  return topBindingSink
 
 
 sink_initializers["base"] = init_sinks_base
@@ -2022,7 +2023,7 @@ def init_sinks_descent(settings):
 
   joystickModeSink.set_mode(0)
 
-  return init_main_sink(settings, joystickSink)
+  return joystickSink
 
 sink_initializers["descent"] = init_sinks_descent
 

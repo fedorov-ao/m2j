@@ -152,7 +152,7 @@ def run():
   else:
     print("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
 
-  sink = initializer(settings)
+  sink = init_main_sink(settings, initializer)
 
   step = 0.01
   source = EventSource(devices, sink, step)
