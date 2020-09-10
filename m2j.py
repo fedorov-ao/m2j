@@ -557,9 +557,14 @@ class PolynomialApproximator:
     
 class SegmentApproximator:
   def __call__(self, x):
+    if len(self.x_) == 0 or len(self.y_) == 0:
+      return 0.0
     i = bisect.bisect_left(self.x_, x)-1
-    i = clamp(i, 0, len(self.x_)-2)
-    dy, dx = self.y_[i+1] - self.y_[i], self.x_[i+1] - self.x_[i]
+    i = clamp(i, 0, max(len(self.x_)-2, 0))
+    j = clamp(i+1, 0, max(len(self.x_)-1, 0))
+    dy, dx = self.y_[j] - self.y_[i], self.x_[j] - self.x_[i]
+    if dx == 0.0:
+      raise ArithmeticError("Zero argument delta")
     y = 0.0
     if x < self.x_[0] and self.clampLeft_:
       y = self.y_[0]
@@ -570,9 +575,12 @@ class SegmentApproximator:
     return y
 
   def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False):
-    temp = [(float(d[0]), float(d[1])) for d in data]
+    temp = [(float(d[0]), float(d[1])) for d in data if len(d) == 2]
     temp.sort(key = lambda d : d[0])
-    self.x_, self.y_ = zip(*temp)
+    if len(temp) == 0:
+      self.x_, self.y_ = (), ()
+    else:
+      self.x_, self.y_ = zip(*temp)
     self.factor_ = factor
     self.clampLeft_, self.clampRight_ = clampLeft, clampRight
 
@@ -907,6 +915,7 @@ class MovingValuePoint:
       return None
     else:
       s = sign(value - self.tempValue_)
+      logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.tempValue_, value, s))
       self.tempValue_ = value
       if self.s_ != 0 and s != self.s_:
         self.value_ = value if self.value_ is None else self.valueOp_(self.value_, value)
@@ -983,13 +992,11 @@ class ValueOpDeltaAxisCurve:
     #self.valueOp_ typically returns sensitivity based on current self.value_
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
     value = self.axis_.get()
+    deltaLimits = (l-value for l in self.axis_.limits()) 
     delta = self.deltaOp_(x, self.valueOp_(value))
-    value += delta
-    if value == clamp(value, *self.axis_.limits()):
-      self.axis_.move(delta, True)
-      return delta
-    else:
-      return 0.0
+    delta = clamp(delta, *deltaLimits)
+    self.axis_.move(delta, True)
+    return delta
 
   def reset(self):
     logger.debug("{}: resetting".format(self))
@@ -1749,32 +1756,27 @@ def make_curve_makers():
       def op(value):
         return approx(abs(value))
       return op
-    curveData = (
-      ( "joystick", ( 
-          (0, ( codes.ABS_X, codes.ABS_Y, codes.ABS_Z )),
-          (1, ( codes.ABS_Z, codes.ABS_Y, codes.ABS_X )),
-          (2, ( codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER )),
-        ),
-      ),
-    )
-
     curves = {}
     with open("curves.cfg", "r") as f:
       cfg = json.load(f)
-      for setName,setData in curveData:
-        t = {}
-        curves[setName] = t
-        for modeId,modeData in setData:
-          s = {}
-          t[modeId] = s 
-          for axisId in modeData:
+      for setName,setData in cfg.items():
+        setEntry = {}
+        curves[setName] = setEntry
+        for modeName,modeData in setData.items():
+          modeEntry = {}
+          setEntry[int(modeName)] = modeEntry 
+          for axisName,axisData in modeData.items():
+            ops = {}
+            for opName,opData in axisData.items():
+              ops[opName] = SensitivityOp(opData["points"])
+            points = []
+            if "fixed" in ops:
+              points.append(FixedValuePoint(ops["fixed"], 0.0))
+            if "moving" in ops:
+              points.append(MovingValuePoint(ops["moving"]))
+            axisId = nameToAxis[axisName]
             axis = data[axisId]
-            ops = {} 
-            for opName in ("fixed", "moving"):
-              entry = cfg[setName][str(modeId)][axisToName[axisId]][opName] 
-              d = zip(entry["x"], entry["y"])
-              ops[opName] = SensitivityOp(d)
-            s[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(ops["fixed"], 0.0), MovingValuePoint(ops["moving"]),)), axis)
+            modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
 
     return curves
 
@@ -1790,14 +1792,20 @@ def init_main_sink(settings, make_next):
   modifierSink = clickSink.set_next(ModifierSink())
   scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
-  stateSink =  mainSink.add((), StateSink(), 1)
+  stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
   for d in settings.get("grabbed", ()):
     mainSink.add(ED.doubleclick(toggleKey), DeviceGrabberSink(d), 0)
   mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
-  stateSink.set_next(make_next(settings))
-  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : stateSink.set_next(make_next(settings)), 0)
-  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : stateSink.set_next(make_next(settings)), 0)
+  def makeAndSetNext():
+    try:
+      stateSink.set_next(make_next(settings))
+      logger.info("Sink initialized")
+    except Exception as e:
+      logger.error("Failed to make sink: {}".format(e))
+  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : makeAndSetNext(), 0)
+  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : makeAndSetNext(), 0)
+  makeAndSetNext()
   return clickSink
 
 
