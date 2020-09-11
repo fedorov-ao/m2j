@@ -133,7 +133,11 @@ class MoveAxis2:
     assert(self.curve_ is not None)
 
     if event.type in (codes.EV_REL,):  
-      self.curve_.move_by(event.value, event.timestamp)
+      try:
+        self.curve_.move_by(event.value, event.timestamp)
+      except Exception as e:
+        logger.error("{}: exception in curve ({})".format(self, e))
+        return False
       return True
     else:
       return False
@@ -991,15 +995,18 @@ class ValueOpDeltaAxisCurve:
     assert(self.deltaOp_ is not None)
     #self.valueOp_ typically returns sensitivity based on current self.value_
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
-    td = 0.0
+    value, limits = self.axis_.get(), self.axis_.limits()
+    baseValue = value
     for xx in (0.01*x, 0.99*x):
-      value = self.axis_.get()
-      deltaLimits = (l-value for l in self.axis_.limits()) 
-      delta = self.deltaOp_(xx, self.valueOp_(value))
-      delta = clamp(delta, *deltaLimits)
-      self.axis_.move(delta, True)
-      td += delta
-    return td
+      factor = self.valueOp_(value)
+      if factor is None:
+        raise ArithmeticError("Cannot compute value, factor is None")
+      value += self.deltaOp_(xx, factor)
+      value = clamp(value, *limits)
+      logger.debug("{}: xx: {: .4f}; value: {: .4f}".format(self, xx, value))
+    delta = value - baseValue
+    self.axis_.move(delta, True)
+    return delta
 
   def reset(self):
     logger.debug("{}: resetting".format(self))
