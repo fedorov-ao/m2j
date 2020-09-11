@@ -922,8 +922,9 @@ class MovingValuePoint:
       logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.tempValue_, value, s))
       self.tempValue_ = value
       if self.s_ != 0 and s != self.s_:
-        self.value_ = value if self.value_ is None else self.valueOp_(self.value_, value)
-        logger.debug("{}: New reference value: {: .3f}".format(self, self.value_))
+        v = value if self.value_ is None else self.valueOp_(self.value_, value)
+        logger.debug("{}: old reference value: {}; new reference value: {}".format(self, self.value_, v))
+        self.value_ = v
       self.s_ = s
       return None if self.value_ is None else (self.deltaOp_(value - self.value_), self.value_)
 
@@ -1776,14 +1777,22 @@ def make_curve_makers():
           modeEntry = {}
           setEntry[int(modeName)] = modeEntry 
           for axisName,axisData in modeData.items():
-            ops = {}
-            for opName,opData in axisData.items():
-              ops[opName] = SensitivityOp(opData["points"])
             points = []
-            if "fixed" in ops:
-              points.append(FixedValuePoint(ops["fixed"], 0.0))
-            if "moving" in ops:
-              points.append(MovingValuePoint(ops["moving"], valueOp=lambda old,new : 0.3*old+0.7*new))
+            for opName,opData in axisData.items():
+              op = SensitivityOp(opData["points"])
+              point = None
+              if opName == "fixed":
+                point = FixedValuePoint(op, opData.get("value", 0.0))
+              elif opName == "moving":
+                newRatio = clamp(opData.get("new", 0.5), 0.0, 1.0)
+                oldRatio = 1.0 - newRatio
+                logger.debug("{}.{}.{}: oldRatio: {}, newRatio: {}".format(setName, modeName, axisName, oldRatio, newRatio))
+                def make_value_op(oldRatio, newRatio):
+                  def op(old,new):
+                    return oldRatio*old+newRatio*new
+                  return op
+                point = MovingValuePoint(op, make_value_op(oldRatio, newRatio))
+              points.append(point)
             axisId = nameToAxis[axisName]
             axis = data[axisId]
             modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
