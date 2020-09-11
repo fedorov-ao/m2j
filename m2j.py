@@ -991,12 +991,15 @@ class ValueOpDeltaAxisCurve:
     assert(self.deltaOp_ is not None)
     #self.valueOp_ typically returns sensitivity based on current self.value_
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
-    value = self.axis_.get()
-    deltaLimits = (l-value for l in self.axis_.limits()) 
-    delta = self.deltaOp_(x, self.valueOp_(value))
-    delta = clamp(delta, *deltaLimits)
-    self.axis_.move(delta, True)
-    return delta
+    td = 0.0
+    for xx in (0.01*x, 0.99*x):
+      value = self.axis_.get()
+      deltaLimits = (l-value for l in self.axis_.limits()) 
+      delta = self.deltaOp_(xx, self.valueOp_(value))
+      delta = clamp(delta, *deltaLimits)
+      self.axis_.move(delta, True)
+      td += delta
+    return td
 
   def reset(self):
     logger.debug("{}: resetting".format(self))
@@ -1773,7 +1776,7 @@ def make_curve_makers():
             if "fixed" in ops:
               points.append(FixedValuePoint(ops["fixed"], 0.0))
             if "moving" in ops:
-              points.append(MovingValuePoint(ops["moving"]))
+              points.append(MovingValuePoint(ops["moving"], valueOp=lambda old,new : 0.3*old+0.7*new))
             axisId = nameToAxis[axisName]
             axis = data[axisId]
             modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
