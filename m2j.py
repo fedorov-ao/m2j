@@ -130,9 +130,7 @@ class MoveAxis:
 
 class MoveAxis2:
   def __call__(self, event):
-    assert(self.curve_ is not None)
-
-    if event.type in (codes.EV_REL,):  
+    if self.curve_ is not None and event.type in (codes.EV_REL,):  
       try:
         self.curve_.move_by(event.value, event.timestamp)
       except Exception as e:
@@ -143,8 +141,6 @@ class MoveAxis2:
       return False
 
   def __init__(self, curve):
-    if curve is None:
-      raise ArgumentError("Curve is None")
     self.curve_ = curve
 
 
@@ -164,26 +160,32 @@ def SetAxes(joystick, axesAndValues):
 def SetCurveAxis(curve, value):
   def op(event):
     curve.get_axis().move(value, False) 
-  return op
+  def noneOp(event):
+    pass
+  return op if curve is not None else noneOp
 
 
 def SetCurvesAxes(*curvesAndValues):
   def op(event):
     for curve, value in curvesAndValues:
-      curve.get_axis().move(value, False) 
+      if curve is not None: 
+        curve.get_axis().move(value, False) 
   return op
 
 
 def ResetCurve(curve):
   def op(event):
     curve.reset()
-  return op
+  def noneOp(event):
+    pass
+  return op if curve is not None else noneOp
 
 
 def ResetCurves(curves):
   def op(event):
     for curve in curves:
-      curve.reset()
+      if curve is not None: 
+        curve.reset()
   return op
 
 
@@ -1785,13 +1787,13 @@ def make_curve_makers():
                 point = FixedValuePoint(op, opData.get("value", 0.0))
               elif opName == "moving":
                 newRatio = clamp(opData.get("new", 0.5), 0.0, 1.0)
-                oldRatio = 1.0 - newRatio
-                logger.debug("{}.{}.{}: oldRatio: {}, newRatio: {}".format(setName, modeName, axisName, oldRatio, newRatio))
-                def make_value_op(oldRatio, newRatio):
+                logger.debug("{}.{}.{}: newRatio: {}".format(setName, modeName, axisName, newRatio))
+                def make_value_op(newRatio):
+                  oldRatio = 1.0 - newRatio 
                   def op(old,new):
                     return oldRatio*old+newRatio*new
                   return op
-                point = MovingValuePoint(op, make_value_op(oldRatio, newRatio))
+                point = MovingValuePoint(op, make_value_op(newRatio))
               points.append(point)
             axisId = nameToAxis[axisName]
             axis = data[axisId]
@@ -1813,9 +1815,16 @@ def init_main_sink(settings, make_next):
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
   stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
-  for d in settings.get("grabbed", ()):
-    mainSink.add(ED.doubleclick(toggleKey), DeviceGrabberSink(d), 0)
-  mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
+  def make_toggle(settings, stateSink):
+    grabberSinks = [DeviceGrabberSink(d) for d in settings.get("grabbed", ())]
+    toggleSink = ToggleSink(stateSink)
+    def toggle(event):
+      toggleSink(event)
+      for s in grabberSinks: 
+        s(event)
+      logger.info("Emulation {}".format("enabled" if stateSink.get_state() == True else "disabled"))
+    return toggle
+  mainSink.add(ED.doubleclick(toggleKey), make_toggle(settings, stateSink), 0)
   def makeAndSetNext():
     try:
       stateSink.set_next(make_next(settings))
@@ -1828,7 +1837,7 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
-def init_mode_sink(curves, binding, resetOnMove=None, resetOnLeave=None, setOnLeave=None):
+def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLeave=None):
   sink = Binding(CmpWithModifiers())
   ms = sink.add(ED.any(), StateSink(), 1)
   sink.add(ED.init(1), SetState(ms, True), 0)
@@ -2055,41 +2064,41 @@ def init_sinks_descent(settings):
     cs = curves[0]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_Z], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_X], 0.0), (cs[codes.ABS_Y], 0.0)), 0)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_Z, None), 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_X, None), 0.0), (cs.get(codes.ABS_Y, None), 0.0)), 0)
 
-    joystickModeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
+    joystickModeSink.add(0, init_mode_sink(ss, cs, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 1 in curves:
     logger.debug("Init mode 1")
     cs = curves[1]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_Z]), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_X]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_X], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_Y], 0.0), (cs[codes.ABS_Z], 0.0)), 0)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_X, None), 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_Y, None), 0.0), (cs.get(codes.ABS_Z, None), 0.0)), 0)
       
-    joystickModeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
+    joystickModeSink.add(1, init_mode_sink(ss, cs, cs.keys(), cs.keys(), ((k, 0.0) for k in cs.keys() if k != codes.ABS_Y)))
 
   if 2 in curves:
     logger.debug("Init mode 2")
     cs = curves[2]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
-    ss.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs[codes.ABS_THROTTLE], 0.0), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs[codes.ABS_RX], 0.0), (cs[codes.ABS_RY], 0.0)), 0)
-    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis(cs[codes.ABS_RUDDER], 0.0), 0)
+    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_THROTTLE, None), 0.0), 0)
+    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_RX, None), 0.0), (cs.get(codes.ABS_RY, None), 0.0)), 0)
+    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs.get(codes.ABS_RUDDER, None)), 0)
+    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis(cs.get(codes.ABS_RUDDER, None), 0.0), 0)
 
-    joystickModeSink.add(2, init_mode_sink( cs, ss, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
+    joystickModeSink.add(2, init_mode_sink(ss, cs, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
 
   joystickModeSink.set_mode(0)
 
