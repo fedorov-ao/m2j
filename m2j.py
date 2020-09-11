@@ -1946,39 +1946,39 @@ def init_sinks_base(settings):
       cs = cj[0]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
+      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 0), 0)
 
-      joystickModeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), None))
+      joystickModeSink.add(0, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
 
     if 1 in cj:
       logger.debug("Init mode 1")
       cs = cj[1]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_RUDDER]), 0)
+      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 3), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 1), 0)
         
-      joystickModeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), None))
+      joystickModeSink.add(1, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
 
     if 2 in cj:
       logger.debug("Init mode 2")
       cs = cj[2]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
+      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 2), 0)
 
-      joystickModeSink.add(2, init_mode_sink(cs, ss, cs.keys(), cs.keys(), None))
+      joystickModeSink.add(2, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
 
     joystickModeSink.set_mode(0)
 
@@ -1997,25 +1997,25 @@ def init_sinks_base(settings):
       cs = cj[0]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_RX]), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_RY]), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_THROTTLE]), 0)
+      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(headSnaps, 3), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 4), 0)
 
-      headModeSink.add(0, init_mode_sink(cs, ss, cs.keys(), cs.keys(), None))
+      headModeSink.add(0, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
 
     if 1 in cj:
       logger.debug("Init mode 1")
       cs = cj[1]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs[codes.ABS_X]), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs[codes.ABS_Y]), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs[codes.ABS_Z]), 0)
+      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 5), 0)
 
-      headModeSink.add(1, init_mode_sink(cs, ss, cs.keys(), cs.keys(), None))
+      headModeSink.add(1, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
 
   headModeSink.set_mode(0)
 
