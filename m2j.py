@@ -10,6 +10,7 @@ import struct
 import bisect
 import logging
 import json
+import traceback
 
 EV_BCAST = -1
 BC_INIT = 0
@@ -1779,25 +1780,33 @@ def make_curve_makers():
           modeEntry = {}
           setEntry[int(modeName)] = modeEntry 
           for axisName,axisData in modeData.items():
-            points = []
-            for opName,opData in axisData.items():
-              op = SensitivityOp(opData["points"])
-              point = None
-              if opName == "fixed":
-                point = FixedValuePoint(op, opData.get("value", 0.0))
-              elif opName == "moving":
-                newRatio = clamp(opData.get("new", 0.5), 0.0, 1.0)
-                logger.debug("{}.{}.{}: newRatio: {}".format(setName, modeName, axisName, newRatio))
-                def make_value_op(newRatio):
-                  oldRatio = 1.0 - newRatio 
-                  def op(old,new):
-                    return oldRatio*old+newRatio*new
-                  return op
-                point = MovingValuePoint(op, make_value_op(newRatio))
-              points.append(point)
-            axisId = nameToAxis[axisName]
-            axis = data[axisId]
-            modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
+            curveName, curveData = axisData.get("curve", None), axisData.get("data", None)
+            if curveName is None:
+              raise Exception("{}.{}.{}: Curve type not set".format(setName, modeName, axisName))
+            if curveData is None:
+              raise Exception("{}.{}.{}: Curve data not set".format(setName, modeName, axisName))
+            if curveName == "valuePoints":
+              points = []
+              for opName,opData in curveData.items():
+                op = SensitivityOp(opData["points"])
+                point = None
+                if opName == "fixed":
+                  point = FixedValuePoint(op, opData.get("value", 0.0))
+                elif opName == "moving":
+                  newRatio = clamp(opData.get("newValueRatio", 0.5), 0.0, 1.0)
+                  logger.debug("{}.{}.{}: newRatio: {}".format(setName, modeName, axisName, newRatio))
+                  def make_value_op(newRatio):
+                    oldRatio = 1.0 - newRatio 
+                    def op(old,new):
+                      return oldRatio*old+newRatio*new
+                    return op
+                  point = MovingValuePoint(op, make_value_op(newRatio))
+                points.append(point)
+              axisId = nameToAxis[axisName]
+              axis = data[axisId]
+              modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
+            else:
+              raise Exception("{}.{}.{}: Unknown curve type: {}".format(setName, modeName, axisName, curveTypeName))
 
     return curves
 
@@ -1830,7 +1839,7 @@ def init_main_sink(settings, make_next):
       stateSink.set_next(make_next(settings))
       logger.info("Sink initialized")
     except Exception as e:
-      logger.error("Failed to make sink: {}".format(e))
+      logger.error("Failed to make sink: {} (traceback: {})".format(e, traceback.print_tb(sys.exc_info()[2])))
   mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : makeAndSetNext(), 0)
   mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : makeAndSetNext(), 0)
   makeAndSetNext()
