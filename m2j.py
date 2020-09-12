@@ -1719,49 +1719,7 @@ def make_curve_makers():
   curves["base_value"] = make_base_value_curves
 
 
-  def make_descent_value_curves(data):
-    """Work ok"""
-    data = data["joystick"]["axes"]
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
-    sensOp = SensitivityOp( ((0.05,0.10),(0.25,1.0)) )
-    sensOp2 = SensitivityOp( ((0.05,0.25),(0.25,1.0)) )
-    sensOpZ = SensitivityOp( ((0.05,0.5),(0.25,5.0)) )
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
-    #These settings work
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
-    curves = {
-      "joystick" : {
-        0 : {
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_X]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Y]),
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_Z]),
-        },
-        1 : {
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Z]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_Y]),
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_X]),
-        },
-        2 : {
-          codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_RX]),
-          codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp2),)), data[codes.ABS_RY]),
-          codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_THROTTLE]),
-          codes.ABS_RUDDER : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), data[codes.ABS_RUDDER]),
-        },
-      },
-    }
-
-    return curves
-
-  curves["descent_value"] = make_descent_value_curves
-
-
-  def make_descent_value_config_curves(data):
+  def make_value_config_curves(data):
     data = data["joystick"]["axes"]
     deltaOp = lambda x,value : x*value
     def SensitivityOp(data):
@@ -1810,7 +1768,7 @@ def make_curve_makers():
 
     return curves
 
-  curves["descent_value_config"] = make_descent_value_config_curves
+  curves["value_config"] = make_value_config_curves
 
   return curves
 
