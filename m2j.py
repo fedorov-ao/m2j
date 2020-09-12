@@ -190,22 +190,6 @@ def ResetCurves(curves):
   return op
 
 
-def SetAxisToAndResetCurve(curve, value):
-  def op(event):
-    curve.get_axis().move(value, False)
-    curve.reset()
-  return op
-
-
-def SetAxesToAndResetCurves(*curvesAndValues):
-  def op(event):
-    for p in curvesAndValues:
-      curve, value = p[0], p[1]
-      curve.get_axis().move(value, False)
-      curve.reset()
-  return op
-
-
 def SetButtonState(joystick, button, state):
   def op(event):
     joystick.set_button_state(button, state) 
@@ -639,51 +623,6 @@ class DirectionBasedCurve:
     self.s_, self.distance_, self.level_, self.levels_, self.dropToLowest_ = 0, 0, 0, levels, dropToLowest
 
 
-class DirectionBasedCurve2:
-  """Converts input to output based on coefficient that depends on previous input behaviour.
-     Changes coefficient when input changes sign. Gradually restores coefficient if input does not change sign.
-  """
-  def calc(self, x, timestamp):
-    s = sign(x)
-    dirChanged = self.s_ != 0 and s != self.s_
-    self.s_ = s
-
-    if dirChanged:
-      self.level_ =  min(self.level_+self.levelChange_, len(self.levels_)-1)
-      self.distance_ = 0
-    else:
-      self.distance_ += abs(x)
-      if self.distance_ > self.levels_[self.level_][0]:
-        self.level_ = max(self.level_-1, 0)
-        self.distance_ = 0
-
-    currentLevelData, nextLevelData = self.levels_[self.level_], self.levels_[max(self.level_-1, 0)]
-    dd = self.distance_ / currentLevelData[0]
-    i, j = 1, 1
-    if s < 0:
-      if len(nextLevelData) == 3: i = 2
-      if len(currentLevelData) == 3: j = 2
-    dk = nextLevelData[i] - currentLevelData[j]
-    k = currentLevelData[j] + dd**self.factor_*dk
-    r = x*k
-    logger.debug("level={} distance={: .3f} k={: .3f} x={: .3f} r={: .3f}".format(self.level_, self.distance_, k, x, r))
-
-    return r
-
-  def reset(self):
-    self.s_, self.distance_, self.level_ = 0, 0, self.startingLevel_
-
-  def __init__(self, levels, levelChange=1, startingLevel=None, factor=1.0):
-    """ levels = sequence of pairs (levelDistance, levelCoeffPos, levelCoeffNeg)
-        levelDistance - distance that input must change for before curve increases level 
-        levelCoeffPos - conversion coeff for positive input change
-        levelCoeffNeg - conversion coeff for negative input change
-    """
-    self.s_, self.distance_, self.levels_, self.levelChange_, self.factor_ = 0, 0, levels, levelChange, factor
-    self.startingLevel_ = clamp(startingLevel, 0, len(self.levels_)-1) if startingLevel is not None else int(0.5*(len(self.levels_)-1))
-    self.level_ = self.startingLevel_
-
-
 class DirectionBasedCurve3:
   """Using approximator to compute sensitivity based on distance."""
   def calc(self, x, timestamp):
@@ -711,93 +650,6 @@ class DirectionBasedCurve3:
     self.distance_, self.s_, self.approx_, self.distanceOp_, self.startingDistance_ = startingDistance, 0, approx, distanceOp, startingDistance
 
 
-class DirectionBasedCurve35:
-  def calc(self, i, x, timestamp):
-    def calc_distance():
-      distance = 0.0
-      for v in self.data_.values():
-        distance += v[0]**2.0
-      distance = distance**0.5
-      return distance
-
-    if i not in self.data_:
-      self.data_[i] = [0.0, 0]
-
-    if self.data_[i][1] == 0:
-      self.data_[i][0] = -sign(x)*self.startingDistance_
-      self.data_[i][1] = sign(x)
-    elif self.data_[i][1] != sign(x):
-      logger.debug("{}: sign changed for {}".format(self, i))
-      self.data_[i][0] = sign(self.data_[i][0])*abs(self.distanceOp_(self.data_[i][0]))
-      self.data_[i][1] = sign(x)
-
-    self.data_[i][0] += x
-
-    distance = calc_distance()
-    k = self.approx_(distance)
-    delta = k*x
-
-    logger.debug("{}: i={} x={: .3f} coord_distance={: .3f} total_distance={: .3f} k={: .3f}".format(self, i, x, self.data_[i][0], distance, k))
-
-    return delta
-
-  def reset(self, i):
-    logger.debug("{}: reset i={}".format(self, i))
-    if i not in self.data_:
-      self.data_[i] = [0.0, 0]
-    self.data_[i][1] = 0
-
-  def get_caller(self, i):
-    class Caller:
-      def calc(self, x, timestamp):
-        return self.parent_.calc(self.i_, x, timestamp)
-      def reset(self):
-        self.parent_.reset(self.i_)
-      def __init__(self, parent, i):
-        self.parent_, self.i_ = parent, i
-    return Caller(self, i)
-
-  def __init__(self, approx, distanceOp=lambda x : 0.0, startingDistance=0.0):
-    assert(approx)
-    self.approx_, self.distanceOp_, self.startingDistance_ = approx, distanceOp, startingDistance
-    self.data_ = {}
-
-
-class DirectionBasedCurve4:
-  """Using approximator to compute axis value based on distance."""
-  def calc(self, x, timestamp):
-    s = sign(x)
-    dirChanged = self.s_ != 0 and s != self.s_
-    self.s_ = s
-
-    if dirChanged:
-      self.distance_ = 0.0
-      self.offset_ += self.value_
-      self.value_ = self.approx_(self.distance_)
-
-    distance = self.distance_ + x
-    value = s*self.approx_(abs(distance))
-    delta = 0.0
-    if abs(value+self.offset_) < self.limit_:
-      self.distance_ = distance
-      delta = value - self.value_
-      self.value_ = value
-
-    logger.debug("x={: .3f} distance={: .3f} value={: .3f} delta={: .3f} offset={: .3f}".format(x, self.distance_, self.value_, delta, self.offset_))
-
-    return delta
-
-  def reset(self):
-    self.distance_ = 0.0
-    self.s_ = 0
-    self.value_ = self.approx_(self.distance_)
-    self.offset_ = 0.0
-
-  def __init__(self, approx, limit):
-    self.approx_, self.limit_ = approx, limit
-    self.reset()
-
-
 class DistanceBasedCurve:
   def calc(self, x, timestamp):
     distance = self.distance_ + x
@@ -818,92 +670,6 @@ class DistanceBasedCurve:
     """limit is output limit"""
     assert(approx)
     self.distance_, self.value_, self.approx_, self.limit_ = 0.0, 0.0, approx, limit
-
-
-class DistanceBasedCurve1:
-  def calc(self, i, x, timestamp):
-
-    if i not in self.data_:
-      self.data_[i] = [0.0, 0.0]
-    d = self.data_[i]
-    d[0] += x
-
-    distance = self.calc_distance_()
-    value = 0.0 if distance == 0.0 else d[0]/distance*self.approx_(distance)
-
-    delta = 0.0
-    if abs(value) < self.limit_:
-      delta = value - d[1]
-      d[1] = value
-
-    logger.debug("{}: i={} x={: .3f} coord_distance={: .3f} total_distance={: .3f} delta={: .3f}".format(self, i, x, self.data_[i][0], distance, delta))
-
-    return delta
-
-  def reset(self, i):
-    logger.debug("{}: reset i={}".format(self, i))
-    if i not in self.data_:
-      self.data_[i] = [0.0, 0.0]
-    d = self.data_[i]
-    d[0] = 0.0
-    d[1] = 0.0
-
-  def get_caller(self, i):
-    class Caller:
-      def calc(self, x, timestamp):
-        return self.parent_.calc(self.i_, x, timestamp)
-      def reset(self):
-        self.parent_.reset(self.i_)
-      def __init__(self, parent, i):
-        self.parent_, self.i_ = parent, i
-    return Caller(self, i)
-
-  def __init__(self, approx, limit):
-    assert(approx)
-    self.approx_ = approx
-    self.data_, self.distance_, self.limit_ = {}, 0.0, limit
-
-  def calc_distance_(self):
-    distance = 0.0
-    for v in self.data_.values():
-      distance += v[0]**2.0
-    distance = distance**0.5
-    return distance
-
-
-class ValueOpDeltaCurve:
-  def calc(self, x, timestamp):
-    #self.valueOp_ typically returns sensitivity based on current self.value_
-    #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
-    delta = self.deltaOp_(x, self.valueOp_(self.value_))
-    value = self.value_ + delta
-    if abs(value) < self.valueLimit_:
-      self.value_ = value
-      return delta
-    else:
-      return 0.0
-
-  def reset(self):
-    #FIXME discrepancy: self.value_ is reset to initial value, but axis can be reset to another value
-    self.value_ = self.initialValue_
-    self.valueOp_(None)
-    #TODO Should also call self.deltaOp_?
-
-  def get_current_value(self):
-    return self.value_
-
-  def set_initial_value(self, value):
-    self.initialValue_ = clamp(value, -self.valueLimit_, self.valueLimit_)
-
-  def get_initial_value(self):
-    return self.initialValue_
-
-  def __init__(self, deltaOp, valueOp, valueLimit, initialValue=0.0):
-    assert(deltaOp)
-    assert(valueOp)
-    self.deltaOp_, self.valueOp_, self.valueLimit_ = deltaOp, valueOp, valueLimit
-    self.initialValue_ = clamp(initialValue, -self.valueLimit_, self.valueLimit_)
-    self.value_ = self.initialValue_
 
 
 class FixedValuePoint:
@@ -1086,40 +852,6 @@ class SpeedBasedCurve:
     self.s_ = 0
 
 
-class ArgCurve:
-  def calc(self, x, timestamp):
-    assert(self.approx_)
-    return self.next_.calc(self.approx_(x), timestamp) if self.next_ is not None else False
-  
-  def reset(self):
-    if self.next_ is not None:
-      self.next_.reset()
-
-  def __init__(self, next, approx):
-    self.next_, self.approx_ = next, approx
-    assert(self.approx_)
-
-
-class OpCurve:
-  def calc(self, x, timestamp):
-    v = self.start_
-    for c in self.curves_:
-      if c is None: continue
-      v = self.op_(v, c.calc(x, timestamp))
-    return v
-
-  def reset(self):
-    for c in self.curves_:
-      if c is None: continue
-      c.reset()
-
-  def add_curve(self, curve):
-    self.curves_.append(curve)
-
-  def __init__(self, op, start):
-    self.curves_, self.op_, self.start_ = [], op, start
-    
-
 class EmaFilter:
   def process(self, v):
     if self.needInit_:
@@ -1295,40 +1027,6 @@ class MappingJoystick:
         self.data_[d[0]] = (d[1], d[2])
 
 
-class AdjustingJoystick:
-  """Adjusts relative movement using curves"""
-
-  def move_axis(self, axis, value, relative):
-    if not self.next_:
-      return
-    c = self.curves_.get(axis) 
-    if c: 
-      if relative:
-        value = c.calc(value, time.time())
-      else:
-        c.reset()
-      self.next_.move_axis(axis, value, relative)
-
-  def get_axis(self, axis):
-    return self.next_.get_axis(axis) if self.next_ else 0
-
-  def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
-
-  def set_button_state(self, button, state):
-    self.next_.set_button_state(button, state)
-
-  def set_curve(self, axis, curve):
-    self.curves_[axis] = curve
-
-  def set_next(self, next):
-    self.next_ = next
-    return next
-
-  def __init__(self):
-    self.curves_, self.next_ = dict(), None
-
-
 class NodeJoystick(object):
   def move_axis(self, axis, value, relative):
     if self.next_ is not None:
@@ -1448,23 +1146,6 @@ def make_curve_makers():
 
   curves["speed"] = CurveAdapter(make_speed_curves)
 
-  def make_dir_curves(data):
-    #levels = [(0.2,x) for x in [0.2*x for x in range(1,6,1)]]
-    #levels.reverse()
-    levels = ((1.0,1.0), (0.333,0.5), (0.333,0.1))
-    curves = {
-      codes.ABS_X : DirectionBasedCurve(levels), 
-      codes.ABS_Y : DirectionBasedCurve(levels), 
-      codes.ABS_Z : DirectionBasedCurve(levels),
-      codes.ABS_RX : DirectionBasedCurve2(levels),
-      codes.ABS_RY : DirectionBasedCurve2(levels),
-      codes.ABS_RZ : DirectionBasedCurve2(levels),
-      codes.ABS_THROTTLE : DirectionBasedCurve2(levels),
-      codes.ABS_RUDDER : DirectionBasedCurve2(levels),
-    }
-    return curves
-
-  curves["direction"] = CurveAdapter(make_dir_curves)
 
   def make_dir_curves2(data):
     #dataX = [(0.0,0.2), (0.1,0.1), (0.3,0.1), (0.95,1.0), (1.0, 1.0)]
@@ -1497,18 +1178,6 @@ def make_curve_makers():
 
   curves["direction2"] = CurveAdapter(make_dir_curves2)
 
-  def make_dir_curves3(data):
-    a = 0.5
-    approxX = PolynomialApproximator((0.0, 0.0, a))
-    limit = 1.0
-    curves = {
-      codes.ABS_X : DirectionBasedCurve4(approxX, limit), 
-      codes.ABS_Y : DirectionBasedCurve4(approxX, limit), 
-      codes.ABS_Z : DirectionBasedCurve4(approxX, limit),
-    }
-    return curves
-
-  curves["direction3"] = CurveAdapter(make_dir_curves3)
 
   def make_dir_curves4(data):
     approxX = SegmentApproximator(((0.0,0.0), (0.25,0.1), (0.5,0.1), (1.0,1.0)))
@@ -1553,91 +1222,6 @@ def make_curve_makers():
 
   curves["direction6"] = CurveAdapter(make_dir_curves6)
  
-  def make_dir_curves7(data):
-    """Works"""
-    dataX = [(0.0,0.0), (2.0,1.0)]
-    factor = 1.0
-    approxX = SegmentApproximator(dataX, factor, True, True)
-    dataZ = [(0.0,0.0), (0.3,2.0)]
-    approxZ = SegmentApproximator(dataZ, factor, True, True)
-    #distanceOp = lambda x : min(0.1*x,0.1)
-    distanceOp = lambda x : 0
-    startingDistance = 0.0
-    curve = DirectionBasedCurve35(approxX, distanceOp, startingDistance)
-    curve2 = DirectionBasedCurve35(approxX, distanceOp, startingDistance)
-    curves = {
-      0 : {
-        codes.ABS_X : curve.get_caller(0), 
-        codes.ABS_Y : curve.get_caller(1), 
-        codes.ABS_Z : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-      1 : {
-        codes.ABS_Z : curve2.get_caller(0), 
-        codes.ABS_Y : curve2.get_caller(1), 
-        codes.ABS_X : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-      2 : {
-        codes.ABS_RX : ProportionalCurve(1.0), 
-        codes.ABS_RY : ProportionalCurve(1.0),
-        codes.ABS_RUDDER : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-        codes.ABS_THROTTLE : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-    }
-    return curves
-
-  curves["direction7"] = CurveAdapter(make_dir_curves7)
-
-  def make_dir_curves8(data):
-    """Does not work, produces unpredictable axis movement"""
-    dataX = [(0.0,0.0), (2.0,1.0)]
-    factor = 1.0
-    approxX = SegmentApproximator(dataX, factor, True, True)
-    dataZ = [(0.0,0.0), (0.3,2.0)]
-    approxZ = SegmentApproximator(dataZ, factor, True, True)
-    #distanceOp = lambda x : min(0.1*x,0.1)
-    distanceOp = lambda x : 0
-    startingDistance = 0.0
-
-    op = lambda x,y : x if abs(x) < abs(y) else y
-    #op = lambda x,y : 0.25*x + 0.75*y
-    #op = lambda x,y : sign(y)*(x**2*abs(y))**0.5
-    #op = lambda x,y : sign(y)*abs(x)*abs(y)
-    curveX = OpCurve(op, 100.0)
-    #op2 = lambda x : min(abs(x), 1.0)
-    #op2 = lambda x : x
-    op2 = PowerApproximator(0.5, 2.0)
-    distCurveX = DistanceBasedCurve(op2, 100.0) 
-    curveX.add_curve(distCurveX)
-    dirCurveX = DirectionBasedCurve3(approxX, distanceOp, startingDistance)
-    curveX.add_curve(dirCurveX)
-
-    curveY = OpCurve(op, 100.0)
-    distCurveY = DistanceBasedCurve(op2, 100.0) 
-    curveY.add_curve(distCurveY)
-    dirCurveY = DirectionBasedCurve3(approxX, distanceOp, startingDistance)
-    curveY.add_curve(dirCurveY)
-
-    curves = {
-      0 : {
-        codes.ABS_X : curveX, 
-        codes.ABS_Y : curveY, 
-        codes.ABS_Z : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-      1 : {
-        codes.ABS_Z : curveX, 
-        codes.ABS_Y : curveY, 
-        codes.ABS_X : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-      2 : {
-        codes.ABS_RX : ProportionalCurve(1.0), 
-        codes.ABS_RY : ProportionalCurve(1.0),
-        codes.ABS_RUDDER : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-        codes.ABS_THROTTLE : DirectionBasedCurve3(approxZ, distanceOp, startingDistance),
-      },
-    }
-    return curves
-
-  curves["direction8"] = CurveAdapter(make_dir_curves8)
 
   def make_dist_curves(data):
     """Work ok"""

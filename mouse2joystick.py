@@ -138,13 +138,7 @@ def run():
   settings["clickTime"] = 0.5
   settings["grabbed"] = (settings["mouse"],)
 
-  settings["modes"] = {}
-  settings["modes"]["head"] = {}
-  settings["modes"]["head"]["curves"] = {}
-  settings["modes"]["head"]["curves"]["zoom"] = DirectionBasedCurve2(((1.0,1.0), (0.5,0.75), (0.5,0.5), (0.5,0.25),))
-
   settings["sens"] = {codes.REL_X:0.005, codes.REL_Y:0.005, codes.REL_WHEEL:0.02,}
-
 
   initializer = sink_initializers.get(settings["layout"], None)
   if not initializer:
