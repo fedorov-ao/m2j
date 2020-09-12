@@ -1304,7 +1304,6 @@ def make_curve_makers():
 
 
   def make_value_config_curves(data):
-    data = data["joystick"]["axes"]
     deltaOp = lambda x,value : x*value
     def SensitivityOp(data):
       """Symmetric"""
@@ -1345,7 +1344,7 @@ def make_curve_makers():
                   point = MovingValuePoint(op, make_value_op(newRatio))
                 points.append(point)
               axisId = nameToAxis[axisName]
-              axis = data[axisId]
+              axis = data[setName]["axes"][axisId]
               modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
             else:
               raise Exception("{}.{}.{}: Unknown curve type: {}".format(setName, modeName, axisName, curveTypeName))
