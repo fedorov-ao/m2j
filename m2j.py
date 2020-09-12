@@ -129,7 +129,7 @@ class MoveAxis:
     self.j_, self.axis_, self.curve_, self.relative_ = j, axis, curve, relative
 
 
-class MoveAxis2:
+class MoveCurve:
   def __call__(self, event):
     if self.curve_ is not None and event.type in (codes.EV_REL,):  
       try:
@@ -1904,9 +1904,9 @@ def init_sinks_base(settings):
       cs = cj[0]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, 0), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 1), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 0), 0)
@@ -1918,9 +1918,9 @@ def init_sinks_base(settings):
       cs = cj[1]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_RUDDER, None)), 0)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, 3), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 1), 0)
         
@@ -1931,9 +1931,9 @@ def init_sinks_base(settings):
       cs = cj[2]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 2), 0)
 
       joystickModeSink.add(2, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
@@ -1955,9 +1955,9 @@ def init_sinks_base(settings):
       cs = cj[0]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(headSnaps, 3), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 4), 0)
 
@@ -1968,9 +1968,9 @@ def init_sinks_base(settings):
       cs = cj[1]
 
       ss = Binding(cmpOp)
-      ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
-      ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 5), 0)
 
       headModeSink.add(1, init_mode_sink(ss, cs, cs.keys(), cs.keys(), None))
@@ -2031,9 +2031,9 @@ def init_sinks_descent(settings):
     cs = curves[0]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_Z, None), 0.0), 0)
     ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_X, None), 0.0), (cs.get(codes.ABS_Y, None), 0.0)), 0)
 
@@ -2044,9 +2044,9 @@ def init_sinks_descent(settings):
     cs = curves[1]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveAxis2(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_X, None), 0.0), 0)
     ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_Y, None), 0.0), (cs.get(codes.ABS_Z, None), 0.0)), 0)
       
@@ -2057,12 +2057,12 @@ def init_sinks_descent(settings):
     cs = curves[2]
 
     ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveAxis2(cs.get(codes.ABS_RX, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveAxis2(cs.get(codes.ABS_RY, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL, ()), MoveAxis2(cs.get(codes.ABS_THROTTLE, None)), 0)
+    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
     ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis(cs.get(codes.ABS_THROTTLE, None), 0.0), 0)
     ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes((cs.get(codes.ABS_RX, None), 0.0), (cs.get(codes.ABS_RY, None), 0.0)), 0)
-    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveAxis2(cs.get(codes.ABS_RUDDER, None)), 0)
+    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
     ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis(cs.get(codes.ABS_RUDDER, None), 0.0), 0)
 
     joystickModeSink.add(2, init_mode_sink(ss, cs, cs.keys(), cs.keys(), ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),) ))
