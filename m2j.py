@@ -1322,6 +1322,7 @@ def make_curve_makers():
       pointParsers["fixed"] = fixedPointParser
 
       def movingPointParser(cfg, state):
+        op = SensitivityOp(cfg["points"])
         newRatio = clamp(cfg.get("newValueRatio", 0.5), 0.0, 1.0)
         def make_value_op(newRatio):
           oldRatio = 1.0 - newRatio 
@@ -1330,12 +1331,14 @@ def make_curve_makers():
           return op
         return MovingValuePoint(op, make_value_op(newRatio))
 
-      pointParsers["moving"] = fixedPointParser
+      pointParsers["moving"] = movingPointParser
 
       r = []
-      for name,data in cfg.items():
-        state["point"] = name
-        r.append(pointParsers[name](data,state))
+      for pd in cfg:
+        t = pd["type"]
+        state["point"] = t
+        r.append(pointParsers[t](pd, state))
+      print r
       return r
 
     def parseAxis(cfg, state):
@@ -1343,7 +1346,7 @@ def make_curve_makers():
 
       def parseValuePointsCurve(cfg, state):
         axis = state["data"][state["set"]]["axes"][nameToAxis[state["axis"]]]
-        points = parsePoints(data, state)
+        points = parsePoints(cfg["points"], state)
         return ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
