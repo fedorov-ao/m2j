@@ -1353,6 +1353,87 @@ def make_curve_makers():
 
   curves["value_config"] = make_value_config_curves
 
+  def make_value_config_curves2(data):
+    deltaOp = lambda x,value : x*value
+    def SensitivityOp(data):
+      """Symmetric"""
+      approx = SegmentApproximator(data, 1.0, True, True)
+      def op(value):
+        return approx(abs(value))
+      return op
+
+    def parsePoints(cfg, state):
+      pointParsers = {}
+
+      def fixedPointParser(cfg, state):
+        op = SensitivityOp(cfg["points"])
+        return FixedValuePoint(op, cfg.get("value", 0.0))
+
+      pointParsers["fixed"] = fixedPointParser
+
+      def movingPointParser(cfg, state):
+        newRatio = clamp(cfg.get("newValueRatio", 0.5), 0.0, 1.0)
+        def make_value_op(newRatio):
+          oldRatio = 1.0 - newRatio 
+          def op(old,new):
+            return oldRatio*old+newRatio*new
+          return op
+        return MovingValuePoint(op, make_value_op(newRatio))
+
+      pointParsers["moving"] = fixedPointParser
+
+      r = []
+      for name,data in cfg.items():
+        state["point"] = name
+        r.append(pointParsers[name](data,state))
+      return r
+
+    def parseAxis(cfg, state):
+      curveParsers = {}
+
+      def parseValuePointsCurve(cfg, state):
+        axis = state["data"][state["set"]]["axes"][nameToAxis[state["axis"]]]
+        points = parsePoints(data, state)
+        return ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
+
+      curveParsers["valuePoints"] = parseValuePointsCurve
+
+      curve,data = cfg.get("curve", None), cfg.get("data", None) 
+      if curve is None:
+        raise Exception("Curve type not set")
+      if data is None:
+        raise Exception("Curve data not set")
+      state["curve"] = curve
+      return curveParsers[curve](data, state)
+          
+    def parseAxes(cfg, state):
+      r = {}
+      for axisName,axisData in cfg.items():
+        state["axis"] = axisName
+        r[nameToAxis[axisName]] = parseAxis(axisData, state)
+      return r
+
+    def parseModes(cfg, state):
+      r = {}
+      for modeName,modeData in cfg.items():
+        state["mode"] = modeName
+        r[int(modeName)] = parseAxes(modeData, state)
+      return r
+
+    def parseSets(cfg, state):
+      r = {}
+      for setName,setData in cfg.items():
+        state["set"] = str(setName)
+        r[setName] = parseModes(setData, state)
+      return r
+
+    with open("curves.cfg", "r") as f:
+      cfg = json.load(f)
+      r = parseSets(cfg, {"data":data})
+      return r
+
+  curves["value_config2"] = make_value_config_curves2
+
   return curves
 
 curveMakers = make_curve_makers()
@@ -1380,7 +1461,8 @@ def init_main_sink(settings, make_next):
       stateSink.set_next(make_next(settings))
       logger.info("Sink initialized")
     except Exception as e:
-      logger.error("Failed to make sink: {} (traceback: {})".format(e, traceback.print_tb(sys.exc_info()[2])))
+      logger.error("Failed to make sink: {}".format(e))
+      traceback.print_tb(sys.exc_info()[2])
   mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : makeAndSetNext(), 0)
   mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : makeAndSetNext(), 0)
   makeAndSetNext()
