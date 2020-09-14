@@ -1311,56 +1311,6 @@ def make_curve_makers():
       def op(value):
         return approx(abs(value))
       return op
-    curves = {}
-    with open("curves.cfg", "r") as f:
-      cfg = json.load(f)
-      for setName,setData in cfg.items():
-        setEntry = {}
-        curves[setName] = setEntry
-        for modeName,modeData in setData.items():
-          modeEntry = {}
-          setEntry[int(modeName)] = modeEntry 
-          for axisName,axisData in modeData.items():
-            curveName, curveData = axisData.get("curve", None), axisData.get("data", None)
-            if curveName is None:
-              raise Exception("{}.{}.{}: Curve type not set".format(setName, modeName, axisName))
-            if curveData is None:
-              raise Exception("{}.{}.{}: Curve data not set".format(setName, modeName, axisName))
-            if curveName == "valuePoints":
-              points = []
-              for opName,opData in curveData.items():
-                op = SensitivityOp(opData["points"])
-                point = None
-                if opName == "fixed":
-                  point = FixedValuePoint(op, opData.get("value", 0.0))
-                elif opName == "moving":
-                  newRatio = clamp(opData.get("newValueRatio", 0.5), 0.0, 1.0)
-                  logger.debug("{}.{}.{}: newRatio: {}".format(setName, modeName, axisName, newRatio))
-                  def make_value_op(newRatio):
-                    oldRatio = 1.0 - newRatio 
-                    def op(old,new):
-                      return oldRatio*old+newRatio*new
-                    return op
-                  point = MovingValuePoint(op, make_value_op(newRatio))
-                points.append(point)
-              axisId = nameToAxis[axisName]
-              axis = data[setName]["axes"][axisId]
-              modeEntry[axisId] = ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
-            else:
-              raise Exception("{}.{}.{}: Unknown curve type: {}".format(setName, modeName, axisName, curveTypeName))
-
-    return curves
-
-  curves["value_config"] = make_value_config_curves
-
-  def make_value_config_curves2(data):
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
 
     def parsePoints(cfg, state):
       pointParsers = {}
@@ -1400,9 +1350,9 @@ def make_curve_makers():
 
       curve,data = cfg.get("curve", None), cfg.get("data", None) 
       if curve is None:
-        raise Exception("Curve type not set")
+        raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
       if data is None:
-        raise Exception("Curve data not set")
+        raise Exception("{}.{}.{}: Curve data not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
       return curveParsers[curve](data, state)
           
@@ -1432,7 +1382,7 @@ def make_curve_makers():
       r = parseSets(cfg, {"data":data})
       return r
 
-  curves["value_config2"] = make_value_config_curves2
+  curves["value_config"] = make_value_config_curves
 
   return curves
 
