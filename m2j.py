@@ -1453,6 +1453,12 @@ def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLe
 
 sink_initializers = {}
 
+def init_sinks_empty(settings): 
+  return None
+
+sink_initializers["empty"] = init_sinks_empty
+
+
 def init_sinks_base(settings): 
   cmpOp = CmpWithModifiers()
   curveSet = settings.get("curves", None)

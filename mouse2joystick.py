@@ -45,6 +45,12 @@ class EvdevJoystick:
 
     self.limit = limit
 
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    self.js.close()
+    logger.debug("{} destroyed".format(self))
+
   def move_axis(self, axis, v, relative):
     if relative:
       self.move_axis_by(axis, v)
@@ -107,6 +113,7 @@ def run():
     buttons = [codes.BTN_0, codes.BTN_1]
     joystick = EvdevJoystick(axes, limit, buttons)
     head = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
+
     settings["joystick"] = joystick 
     settings["head"] = head
 
