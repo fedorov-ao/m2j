@@ -40,6 +40,16 @@ def clamp(v, lo, hi):
   return lo if v < lo else hi if v > hi else v
 
 
+nameToAxis = {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}
+axisToName = {p[1]:p[0] for p in nameToAxis.items()}
+
+nameToRelativeAxis = {"x":codes.REL_X, "y":codes.REL_Y, "z":codes.ABS_Z, "wheel":codes.REL_WHEEL}
+relativeAxisToName = {p[1]:p[0] for p in nameToRelativeAxis.items()}
+
+
+class ReloadException:
+  pass
+
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
     for c in self.children_:
@@ -243,9 +253,9 @@ class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       if event.code in self.modifiers_:
-        if event.value == 1:
+        if event.value == 1 and event.code not in self.m_:
           self.m_.append(event.code)
-        elif event.value == 0:
+        elif event.value == 0 and event.code in self.m_:
           self.m_.remove(event.code)
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
@@ -257,7 +267,8 @@ class ModifierSink:
     return next
 
   def __init__(self, next = None, modifiers = None):
-    self.m_, self.next_, self.modifiers_ = [], next, (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT) if modifiers is None else modifiers
+    defmod = (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
+    self.m_, self.next_, self.modifiers_ = [], next, defmod if modifiers is None else modifiers
 
 
 class ScaleSink:
@@ -1104,9 +1115,6 @@ class MetricsJoystick:
     self.data_ = dict()
 
 
-nameToAxis = {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}
-axisToName = {p[1]:p[0] for p in nameToAxis.items()}
-
 def make_curve_makers():
   def CurveAdapter(curveMaker):
     class AdaptingCurve:
@@ -1338,7 +1346,6 @@ def make_curve_makers():
         t = pd["type"]
         state["point"] = t
         r.append(pointParsers[t](pd, state))
-      print r
       return r
 
     def parseAxis(cfg, state):
@@ -1380,10 +1387,9 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
-    with open("curves.cfg", "r") as f:
-      cfg = json.load(f)
-      r = parseSets(cfg, {"data":data})
-      return r
+    cfg = data["settings"]["config"]["curves"]
+    r = parseSets(cfg, {"data":data})
+    return r
 
   curves["value_config"] = make_value_config_curves
 
@@ -1416,8 +1422,10 @@ def init_main_sink(settings, make_next):
     except Exception as e:
       logger.error("Failed to make sink: {}".format(e))
       traceback.print_tb(sys.exc_info()[2])
-  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), lambda e : makeAndSetNext(), 0)
-  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), lambda e : makeAndSetNext(), 0)
+  def rld(e):
+    raise ReloadException()
+  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), rld, 0)
+  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), rld, 0)
   makeAndSetNext()
   return clickSink
 
@@ -1463,6 +1471,7 @@ def init_sinks_base(settings):
     "head" : {
       "axes" : {axis:Axis(head, axis) for axis in axisToName.keys()}
     },
+    "settings" : settings,
   }
 
   curves = curveMaker(data)
@@ -1614,6 +1623,7 @@ def init_sinks_descent(settings):
   joystick = NotifyingJoystick(sink=None, next=settings["joystick"])
 
   data = {}
+  data["settings"] = settings
   data["joystick"] = {"axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}}
 
   curves = curveMaker(data)["joystick"]

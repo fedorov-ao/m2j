@@ -100,9 +100,34 @@ def find_devices(names):
   
   
 def run():
+  def run2(settings):
+    names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
+    devices = find_devices(names)
+
+    settings["mouse"] = next((d for d in devices if d.source_ == 0), None)
+    settings["mouse2"] = next((d for d in devices if d.source_ == 2), None)
+    settings["clickTime"] = 0.5
+    settings["grabbed"] = (settings["mouse"],)
+
+    settings["sens"] = {codes.REL_X:0.005, codes.REL_Y:0.005, codes.REL_WHEEL:0.02,}
+
+    initializer = sink_initializers.get(settings["layout"], None)
+    if not initializer:
+      raise Exception("Initialiser for {} not found".format(settings["layout"]))
+    else:
+      print("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
+
+    sink = init_main_sink(settings, initializer)
+
+    step = 0.01
+    source = EventSource(devices, sink, step)
+
+    source.run_loop()
+    return 0
+
   settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL"}
 
-  opts, args = getopt.getopt(sys.argv[1:], "l:c:o:", ["layout=", "curves=", "log_level="])
+  opts, args = getopt.getopt(sys.argv[1:], "l:c:o:n:", ["layout=", "curves=", "log_level=", "config="])
   for o, a in opts:
     if o in ("-l", "--layout"):
       settings["layout"] = a
@@ -110,6 +135,8 @@ def run():
       settings["curves"] = a
     elif o in ("-o", "--log_level"):
       settings["log_level"] = a
+    elif o in ("-n", "--config"):
+      settings["config"] = json.load(open(a, "r"))
 
   logLevelName = settings["log_level"].upper()
   nameToLevel = {logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)}
@@ -122,37 +149,20 @@ def run():
   handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
   root.addHandler(handler)
 
-  names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
-  devices = find_devices(names)
-
   axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
   limit = 32767
   buttons = [codes.BTN_0, codes.BTN_1]
   joystick = EvdevJoystick(axes, limit, buttons)
   head = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
-  
-  settings["mouse"] = next((d for d in devices if d.source_ == 0), None)
-  settings["mouse2"] = next((d for d in devices if d.source_ == 2), None)
   settings["joystick"] = joystick 
   settings["head"] = head
-  settings["clickTime"] = 0.5
-  settings["grabbed"] = (settings["mouse"],)
+    
+  while (True):
+    try:
+      run2(settings)
+    except ReloadException as e:
+      logger.info("Reloading")
 
-  settings["sens"] = {codes.REL_X:0.005, codes.REL_Y:0.005, codes.REL_WHEEL:0.02,}
-
-  initializer = sink_initializers.get(settings["layout"], None)
-  if not initializer:
-    raise Exception("Initialiser for {} not found".format(settings["layout"]))
-  else:
-    print("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
-
-  sink = init_main_sink(settings, initializer)
-
-  step = 0.01
-  source = EventSource(devices, sink, step)
-
-
-  source.run_loop()
   return 0
 
 
