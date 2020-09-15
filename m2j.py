@@ -11,6 +11,7 @@ import bisect
 import logging
 import json
 import traceback
+import weakref
 
 EV_BCAST = -1
 BC_INIT = 0
@@ -1063,16 +1064,16 @@ class NodeJoystick(object):
 class NotifyingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
     super(NotifyingJoystick, self).move_axis(axis, value, relative)
-    if not relative and self.sink_:
-      self.sink_(Event(codes.EV_ABS, axis, value, time.time()))
+    if not relative and self.sink_() is not None:
+      self.sink_()(Event(codes.EV_ABS, axis, value, time.time()))
 
   def set_sink(self, sink):
-    self.sink_ = sink
+    self.sink_ = weakref.ref(sink)
     return sink
 
   def __init__(self, sink=None, next=None):
     super(NotifyingJoystick, self).__init__(next)
-    self.sink_ = sink
+    if sink is not None: self.sink_ = weakref.ref(sink)
 
 
 class MetricsJoystick:

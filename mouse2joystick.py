@@ -12,6 +12,7 @@
 
 import sys
 sys.path.append(".")
+import gc
 import getopt
 import traceback
 import logging
@@ -100,6 +101,15 @@ def find_devices(names):
   
   
 def run():
+  def init_joysticks(settings):
+    axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
+    limit = 32767
+    buttons = [codes.BTN_0, codes.BTN_1]
+    joystick = EvdevJoystick(axes, limit, buttons)
+    head = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
+    settings["joystick"] = joystick 
+    settings["head"] = head
+
   def run2(settings):
     names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
     devices = find_devices(names)
@@ -110,6 +120,8 @@ def run():
     settings["grabbed"] = (settings["mouse"],)
 
     settings["sens"] = {codes.REL_X:0.005, codes.REL_Y:0.005, codes.REL_WHEEL:0.02,}
+
+    init_joysticks(settings)
 
     initializer = sink_initializers.get(settings["layout"], None)
     if not initializer:
@@ -149,19 +161,12 @@ def run():
   handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
   root.addHandler(handler)
 
-  axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
-  limit = 32767
-  buttons = [codes.BTN_0, codes.BTN_1]
-  joystick = EvdevJoystick(axes, limit, buttons)
-  head = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
-  settings["joystick"] = joystick 
-  settings["head"] = head
-    
   while (True):
     try:
       run2(settings)
     except ReloadException as e:
       logger.info("Reloading")
+      gc.collect()
 
   return 0
 
