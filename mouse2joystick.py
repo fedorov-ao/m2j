@@ -118,6 +118,9 @@ def run():
     settings["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
   def run2(settings):
+    if "configName" in settings:
+      settings["config"] = json.load(open(settings["configName"], "r"))
+
     names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
     devices = find_devices(names)
 
@@ -125,10 +128,6 @@ def run():
     settings["mouse2"] = next((d for d in devices if d.source_ == 2), None)
     settings["clickTime"] = 0.5
     settings["grabbed"] = (settings["mouse"],)
-
-    settings["sens"] = {codes.REL_X:0.005, codes.REL_Y:0.005, codes.REL_WHEEL:0.02,}
-
-    init_joysticks(settings)
 
     initializer = sink_initializers.get(settings["layout"], None)
     if not initializer:
@@ -159,7 +158,7 @@ def run():
     elif o in ("-o", "--log_level"):
       settings["log_level"] = a
     elif o in ("-n", "--config"):
-      settings["config"] = json.load(open(a, "r"))
+      settings["configName"] = a
 
   logLevelName = settings["log_level"].upper()
   nameToLevel = {logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)}
@@ -171,6 +170,8 @@ def run():
   handler.setLevel(logLevel)
   handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
   root.addHandler(handler)
+
+  init_joysticks(settings)
 
   while (True):
     r = run2(settings)

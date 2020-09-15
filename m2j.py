@@ -1421,7 +1421,10 @@ def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
   clickSink = ClickSink(settings.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink())
-  scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
+  sens = settings["config"].get("sens", None)
+  if sens is not None:
+    sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
+  scaleSink = modifierSink.set_next(ScaleSink(sens))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
   stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
