@@ -98,11 +98,11 @@ class EvdevDevice:
 
 def find_devices(names):
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
-  r = []
+  r = {}
   for s,n in names.items():
     for d in devices:
       if n == d.name:
-        r.append(EvdevDevice(d, s))
+        r[s] = EvdevDevice(d, s)
   return r
   
 
@@ -144,9 +144,6 @@ def run():
 
     settings["inputs"] = find_devices(settings["config"]["inputs"])
 
-    settings["clickTime"] = 0.5
-    settings["grabbed"] = (next((d for d in settings["inputs"] if d.source_ == "mouse"), None),)
-
     initializer = sink_initializers.get(settings["layout"], None)
     if not initializer:
       raise Exception("Initialiser for {} not found".format(settings["layout"]))
@@ -156,7 +153,7 @@ def run():
     sink = init_main_sink(settings, initializer)
 
     step = 0.01
-    source = EventSource(settings["inputs"], sink, step)
+    source = EventSource(settings["inputs"].values(), sink, step)
 
     try:
       source.run_loop()

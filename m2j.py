@@ -1419,7 +1419,7 @@ curveMakers = make_curve_makers()
 
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
-  clickSink = ClickSink(settings.get("clickTime", 0.5))
+  clickSink = ClickSink(settings["config"].get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink())
   sens = settings["config"].get("sens", None)
   if sens is not None:
@@ -1429,7 +1429,10 @@ def init_main_sink(settings, make_next):
   stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
-    grabberSinks = [DeviceGrabberSink(d) for d in settings.get("grabbed", ())]
+    grabberSinks = []
+    for g in settings["config"].get("grabbed", ()):
+      dev = settings["inputs"][g]
+      grabberSinks.append(DeviceGrabberSink(dev))
     toggleSink = ToggleSink(stateSink)
     def toggle(event):
       toggleSink(event)
