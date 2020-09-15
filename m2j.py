@@ -1499,8 +1499,8 @@ def init_sinks_base(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  joystick = NotifyingJoystick(sink=None, next=settings["joystick"])
-  head = NotifyingJoystick(sink=None, next=settings["head"])
+  joystick = NotifyingJoystick(sink=None, next=settings["outputs"]["joystick"])
+  head = NotifyingJoystick(sink=None, next=settings["outputs"]["head"])
 
   data = {
     "joystick" : {
@@ -1657,7 +1657,7 @@ def init_sinks_descent(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  joystick = NotifyingJoystick(sink=None, next=settings["joystick"])
+  joystick = NotifyingJoystick(sink=None, next=settings["outputs"]["joystick"])
 
   data = {}
   data["settings"] = settings

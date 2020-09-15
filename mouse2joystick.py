@@ -133,10 +133,12 @@ def run():
     limit = 32767
     buttons = [codes.BTN_0, codes.BTN_1]
 
-    if "joystick" in settings: del settings["joystick"]
-    settings["joystick"] = EvdevJoystick(axes, limit, buttons)
-    if "head" in settings: del settings["head"]
-    settings["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
+    if "outputs" not in settings: settings["outputs"] = {}
+    outputs = settings["outputs"]
+    if "joystick" in outputs: del outputs["joystick"]
+    outputs["joystick"] = EvdevJoystick(axes, limit, buttons)
+    if "head" in outputs: del outputs["head"]
+    outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
   def run2(settings):
     if "configName" in settings:
