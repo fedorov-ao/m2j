@@ -99,14 +99,35 @@ class EvdevDevice:
 def find_devices(names):
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   r = []
-  for n, s in names:
+  for s,n in names.items():
     for d in devices:
       if n == d.name:
         r.append(EvdevDevice(d, s))
   return r
   
+
+def print_devices():
+  devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
+  for d in devices:
+    print "{} : {}; {}".format(d.name, [f for f,s in d.capabilities(verbose=True, absinfo=False).keys()], d.fn) 
+
   
 def run():
+  def init_log(settings):
+    logLevelName = settings["log_level"].upper()
+    nameToLevel = {
+      logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
+    }
+
+    print("Setting log level to {}".format(logLevelName))
+    logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
+    root = logging.getLogger()
+    root.setLevel(logLevel)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logLevel)
+    handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
+    root.addHandler(handler)
+
   def init_joysticks(settings):
     axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
     limit = 32767
@@ -121,13 +142,10 @@ def run():
     if "configName" in settings:
       settings["config"] = json.load(open(settings["configName"], "r"))
 
-    names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
-    devices = find_devices(names)
+    settings["inputs"] = find_devices(settings["config"]["inputs"])
 
-    settings["mouse"] = next((d for d in devices if d.source_ == 0), None)
-    settings["mouse2"] = next((d for d in devices if d.source_ == 2), None)
     settings["clickTime"] = 0.5
-    settings["grabbed"] = (settings["mouse"],)
+    settings["grabbed"] = (next((d for d in settings["inputs"] if d.source_ == "mouse"), None),)
 
     initializer = sink_initializers.get(settings["layout"], None)
     if not initializer:
@@ -138,7 +156,7 @@ def run():
     sink = init_main_sink(settings, initializer)
 
     step = 0.01
-    source = EventSource(devices, sink, step)
+    source = EventSource(settings["inputs"], sink, step)
 
     try:
       source.run_loop()
@@ -149,8 +167,11 @@ def run():
 
   settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL"}
 
-  opts, args = getopt.getopt(sys.argv[1:], "l:c:o:n:", ["layout=", "curves=", "log_level=", "config="])
+  opts, args = getopt.getopt(sys.argv[1:], "pl:c:o:n:", ["print", "layout=", "curves=", "log_level=", "config="])
   for o, a in opts:
+    if o in ("-p", "--print"):
+      print_devices()
+      return 0
     if o in ("-l", "--layout"):
       settings["layout"] = a
     elif o in ("-c", "--curves"):
@@ -160,17 +181,7 @@ def run():
     elif o in ("-n", "--config"):
       settings["configName"] = a
 
-  logLevelName = settings["log_level"].upper()
-  nameToLevel = {logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)}
-  print("Setting log level to {}".format(logLevelName))
-  logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
-  root = logging.getLogger()
-  root.setLevel(logLevel)
-  handler = logging.StreamHandler(sys.stdout)
-  handler.setLevel(logLevel)
-  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
-  root.addHandler(handler)
-
+  init_log(settings)
   init_joysticks(settings)
 
   while (True):
