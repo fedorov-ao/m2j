@@ -48,7 +48,7 @@ nameToRelativeAxis = {"x":codes.REL_X, "y":codes.REL_Y, "z":codes.ABS_Z, "wheel"
 relativeAxisToName = {p[1]:p[0] for p in nameToRelativeAxis.items()}
 
 
-class ReloadException:
+class ReloadException(Exception):
   pass
 
 class CompositeJoystick:
@@ -115,6 +115,10 @@ class EventSource:
 
   def __init__(self, devices, sink, step):
     self.devices_, self.sink_, self.step_ = devices, sink, step
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
 
 
 def print_sink(event):
@@ -156,10 +160,16 @@ class MoveCurve:
     self.curve_ = curve
 
 
-def SetAxis(joystick, axis, value):
-  def op(event):
-    joystick.move_axis(axis, value, False) 
-  return op
+class SetAxis:
+  def __init__(self, joystick, axis, value):
+    self.js_, self.axis_, self.value_ = joystick, axis, value
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
+  
+  def __call__(self, event):
+    self.js_.move_axis(self.axis_, self.value_, False) 
 
 
 def SetAxes(joystick, axesAndValues):
@@ -248,6 +258,10 @@ class ClickSink:
 
   def __init__(self, clickTime):
     self.next_, self.keys_, self.clickTime_ = None, {}, clickTime
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
 
 
 class ModifierSink:
@@ -346,6 +360,10 @@ class Binding:
     self.children_ = children 
     self.cmp_ = cmp
     self.dirty_ = True
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
 
 
 class CmpWithModifiers:
@@ -1400,6 +1418,7 @@ curveMakers = make_curve_makers()
 
 
 def init_main_sink(settings, make_next):
+  logger.debug("init_main_sink()")
   clickSink = ClickSink(settings.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink())
   scaleSink = modifierSink.set_next(ScaleSink(settings.get("sens", None)))
@@ -1457,6 +1476,12 @@ def init_sinks_empty(settings):
   return None
 
 sink_initializers["empty"] = init_sinks_empty
+
+
+def init_sinks_main(settings): 
+  return init_main_sink(settings, lambda s : None)
+
+sink_initializers["main"] = init_sinks_empty
 
 
 def init_sinks_base(settings): 
@@ -1613,7 +1638,6 @@ def init_sinks_base(settings):
 
   return topBindingSink
 
-
 sink_initializers["base"] = init_sinks_base
 
 
@@ -1707,4 +1731,3 @@ def init_sinks_descent(settings):
   return joystickSink
 
 sink_initializers["descent"] = init_sinks_descent
-

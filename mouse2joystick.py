@@ -111,11 +111,11 @@ def run():
     axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
     limit = 32767
     buttons = [codes.BTN_0, codes.BTN_1]
-    joystick = EvdevJoystick(axes, limit, buttons)
-    head = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
-    settings["joystick"] = joystick 
-    settings["head"] = head
+    if "joystick" in settings: del settings["joystick"]
+    settings["joystick"] = EvdevJoystick(axes, limit, buttons)
+    if "head" in settings: del settings["head"]
+    settings["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
   def run2(settings):
     names = (("B16_b_02 USB-PS/2 Optical Mouse", 0), ('HID 0461:4d04', 2), ("HID Keyboard Device", 1))
@@ -134,15 +134,19 @@ def run():
     if not initializer:
       raise Exception("Initialiser for {} not found".format(settings["layout"]))
     else:
-      print("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
+      logger.info("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
 
     sink = init_main_sink(settings, initializer)
 
     step = 0.01
     source = EventSource(devices, sink, step)
 
-    source.run_loop()
-    return 0
+    try:
+      source.run_loop()
+    except ReloadException:
+      return -1
+    except KeyboardInterrupt:
+      return 0
 
   settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL"}
 
@@ -169,13 +173,12 @@ def run():
   root.addHandler(handler)
 
   while (True):
-    try:
-      run2(settings)
-    except ReloadException as e:
+    r = run2(settings)
+    if r == -1: 
       logger.info("Reloading")
-      gc.collect()
-
-  return 0
+    else:
+      logger.info("Exiting with code {}".format(r))
+      return r
 
 
 def test():
