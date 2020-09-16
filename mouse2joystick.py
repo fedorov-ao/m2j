@@ -113,21 +113,6 @@ def print_devices():
 
   
 def run():
-  def init_log(settings):
-    logLevelName = settings["log_level"].upper()
-    nameToLevel = {
-      logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
-    }
-
-    print("Setting log level to {}".format(logLevelName))
-    logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
-    root = logging.getLogger()
-    root.setLevel(logLevel)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logLevel)
-    handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
-    root.addHandler(handler)
-
   def init_joysticks(settings):
     axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
     limit = 32767

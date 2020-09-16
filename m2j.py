@@ -76,6 +76,7 @@ class CompositeJoystick:
 
 class Event:
   def __str__(self):
+    #does not work in FreePie
     return "type: {}, code: {}, value: {}, timestamp: {}".format(self.type, self.code, self.value, self.timestamp) 
 
   def __init__(self, type, code, value, timestamp=None):
@@ -86,6 +87,7 @@ class Event:
 
 class InputEvent(Event):
   def __str__(self):
+    #does not work in FreePie
     return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
 
   def __init__(self, type, code, value, timestamp, source, modifiers = None):
@@ -817,6 +819,11 @@ class ValueOpDeltaAxisCurve:
   def get_axis(self):
     return self.axis_
 
+  def move_axis(self, v, relative=True, reset=True):
+    self.axis_.move(v, relative)
+    if reset:
+      self.reset()
+
   #TODO Not needed since can return axis?
   def set_value(self, value):
     """Sets value directly to axis and optionally resets itself."""
@@ -1475,6 +1482,21 @@ def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLe
       sink.add(ED.init(0), SetCurveAxis(curves[p[0]], p[1]), 2)
   return sink
 
+def init_log(settings, handler=None):
+  logLevelName = settings["log_level"].upper()
+  nameToLevel = {
+    logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
+  }
+
+  print("Setting log level to {}".format(logLevelName))
+  logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
+  root = logging.getLogger()
+  root.setLevel(logLevel)
+  if handler is None:
+    handler = logging.StreamHandler(sys.stdout)
+  handler.setLevel(logLevel)
+  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
+  root.addHandler(handler)
 
 sink_initializers = {}
 
