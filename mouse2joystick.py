@@ -37,6 +37,7 @@ class EvdevJoystick:
       axesData.append((a, AbsInfo(value=0, min=-limit, max=limit, fuzz=0, flat=0, resolution=0)))
     cap = { ecodes.EV_ABS : axesData }
     if buttons: cap[ecodes.EV_KEY] = buttons
+    self.js = None
     self.js = UInput(cap, name='virtual-joystick', version=0x3)
 
     self.coords = {}
@@ -48,7 +49,8 @@ class EvdevJoystick:
     logger.debug("{} created".format(self))
 
   def __del__(self):
-    self.js.close()
+    if self.js is not None: 
+      self.js.close()
     logger.debug("{} destroyed".format(self))
 
   def move_axis(self, axis, v, relative):
