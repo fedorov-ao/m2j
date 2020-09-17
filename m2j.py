@@ -74,9 +74,8 @@ class CompositeJoystick:
     self.children_ = children
 
 
-class Event:
+class Event(object):
   def __str__(self):
-    #does not work in FreePie
     return "type: {}, code: {}, value: {}, timestamp: {}".format(self.type, self.code, self.value, self.timestamp) 
 
   def __init__(self, type, code, value, timestamp=None):
@@ -87,11 +86,12 @@ class Event:
 
 class InputEvent(Event):
   def __str__(self):
-    #does not work in FreePie
-    return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #TODO check whether it works in FreePie
+    return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
 
   def __init__(self, type, code, value, timestamp, source, modifiers = None):
-    self.type, self.code, self.value, self.timestamp, self.source = type, code, value, timestamp, source 
+    super(InputEvent, self).__init__(type, code, value, timestamp)
+    self.source = source 
     self.modifiers = () if modifiers is None else modifiers
 
   
