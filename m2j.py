@@ -1411,7 +1411,7 @@ def make_curve_makers():
   curves["base_value"] = make_base_value_curves
 
 
-  def make_value_config_curves(data):
+  def make_config_curves(data):
     deltaOp = lambda x,value : x*value
     def SensitivityOp(data):
       """Symmetric"""
@@ -1487,11 +1487,11 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
-    cfg = data["settings"]["config"]["curves"]
+    cfg = data["settings"]["config"]["curves"][data["settings"]["configCurveSetName"]]
     r = parseSets(cfg, {"data":data})
     return r
 
-  curves["value_config"] = make_value_config_curves
+  curves["config"] = make_config_curves
 
   return curves
 
