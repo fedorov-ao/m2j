@@ -1898,6 +1898,173 @@ def init_sinks_base2(settings):
 sink_initializers["base2"] = init_sinks_base2
 
 
+def init_sinks_base3(settings):
+  cmpOp = CmpWithModifiers()
+  curveSet = settings.get("curves", None)
+  if curveSet is None:
+    raise Exception("No curve set specified in settings")
+  curveMaker = curveMakers.get(curveSet, None)
+  if curveMaker is None:
+    raise Exception("No curves for {}".format(curveSet))
+  
+  joystick = settings["outputs"]["joystick"]
+  head = settings["outputs"]["head"]
+
+  data = {
+    "joystick" : {
+      "axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}
+    }, 
+    "head" : {
+      "axes" : {axis:Axis(head, axis) for axis in axisToName.keys()}
+    },
+    "settings" : settings,
+  }
+
+  curves = curveMaker(data)
+
+  joySnaps = CurveSnapManager(joystick)
+  joySnaps.set_snap("z", ((codes.ABS_Z, 0.0, True),))
+  joySnaps.set_snap("xy", ((codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True),))
+  joySnaps.set_snap("x", ((codes.ABS_X, 0.0, True),))
+  joySnaps.set_snap("zy", ((codes.ABS_Z, 0.0, True), (codes.ABS_Y, 0.0, True),))
+  joySnaps.set_snap("rxry", ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),))
+
+  headSnaps = SnapManager(head, False)
+  zero = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 0.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 0.0),)
+  headSnaps.set_snap(0, zero)
+  fullForward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 1.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 1.0),)
+  headSnaps.set_snap(1, fullForward)
+  fullBackward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, -1.0), (codes.ABS_RX, 0), (codes.ABS_RY, -0.15), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, -1.0),)
+  headSnaps.set_snap(2, fullBackward)
+  zoomOut = ((codes.ABS_THROTTLE, -1.0),)
+  headSnaps.set_snap(3, zoomOut)
+  centerView = ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),)
+  headSnaps.set_snap(4, centerView)
+  centerViewPos = ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),)
+  headSnaps.set_snap(5, centerViewPos)
+
+
+  topBindingSink = Binding(cmpOp)
+  topModeSink = ModeSink()
+  topBindingSink.add(ED.any(), topModeSink, 1)
+  topBindingSink.add(ED.press(codes.BTN_RIGHT), SetMode(topModeSink, 1), 0)
+  topBindingSink.add(ED.release(codes.BTN_RIGHT), SetMode(topModeSink, 0), 0)
+  topBindingSink.add(ED.release(codes.BTN_RIGHT), UpdateSnap(headSnaps, 0), 0)
+
+  joystickBindingSink = Binding(cmpOp)
+  topModeSink.add(0, joystickBindingSink)
+  topModeSink.set_mode(0)
+
+  joystickModeSink = joystickBindingSink.add(ED.any(), ModeSink(), 1)
+  oldMode =  []
+  def save_mode(event):
+    oldMode.append(joystickModeSink.get_mode())
+  def restore_mode(event):
+    if len(oldMode):
+      joystickModeSink.set_mode(oldMode.pop())
+  def clear_mode(event):
+    oldMode = []
+  joystickBindingSink.add(ED.press(codes.BTN_EXTRA), save_mode, 0)
+  joystickBindingSink.add(ED.press(codes.BTN_EXTRA), SetMode(joystickModeSink, 1), 0)
+  joystickBindingSink.add(ED.release(codes.BTN_EXTRA), restore_mode, 0)
+  joystickBindingSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
+  joystickBindingSink.add(ED.press(codes.BTN_SIDE), SetMode(joystickModeSink, 2), 0)
+  joystickBindingSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
+
+  if "joystick" in curves:
+    cj = curves["joystick"]
+    if 0 in cj:
+      logger.debug("Init mode 0")
+      cs = cj[0]
+
+      ss = Binding(cmpOp)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_LEFTSHIFT,)), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTCTRL,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_LEFTCTRL,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
+      ss.add(ED.click(codes.BTN_MIDDLE, ()), SnapTo(joySnaps, "z"), 0)
+      ss.add(ED.doubleclick(codes.BTN_MIDDLE, ()), SnapTo(joySnaps, "xy"), 0)
+      ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 0), 0)
+      ss.add(ED.init(1), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+      joystickModeSink.add(0, ss)
+
+    if 1 in cj:
+      logger.debug("Init mode 1")
+      cs = cj[1]
+
+      ss = Binding(cmpOp)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_LEFTSHIFT,)), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTCTRL,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_LEFTCTRL,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
+      ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(joySnaps, "x"), 0)
+      ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, "zy"), 0)
+      ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 1), 0)
+      ss.add(ED.init(1), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+      joystickModeSink.add(1, ss)
+
+    if 2 in cj:
+      logger.debug("Init mode 2")
+      cs = cj[2]
+
+      ss = Binding(cmpOp)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_RZ, None)), 0)
+      ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(joySnaps, "rxry"), 0)
+      ss.add(ED.click(codes.BTN_LEFT), SnapTo(headSnaps, 2), 0)
+      ss.add(ED.init(1), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)]))
+      joystickModeSink.add(2, ss)
+
+    joystickModeSink.set_mode(0)
+
+  headBindingSink = Binding(cmpOp)
+  topModeSink.add(1, headBindingSink)
+
+  headModeSink = ModeSink()
+  headBindingSink.add(ED.any(), headModeSink, 1)
+  headBindingSink.add(ED.press(codes.BTN_EXTRA), SetMode(headModeSink, 1), 0)
+  headBindingSink.add(ED.release(codes.BTN_EXTRA), SetMode(headModeSink, 0), 0)
+
+  if "head" in curves:
+    cj = curves["head"]
+    if 0 in cj:
+      logger.debug("Init mode 0")
+      cs = cj[0]
+
+      ss = Binding(cmpOp)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+      ss.add(ED.click(codes.BTN_MIDDLE), SnapTo(headSnaps, 3), 0)
+      ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 4), 0)
+      headModeSink.add(0, ss)
+
+    if 1 in cj:
+      logger.debug("Init mode 1")
+      cs = cj[1]
+
+      ss = Binding(cmpOp)
+      ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+      ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+      ss.add(ED.doubleclick(codes.BTN_MIDDLE), SnapTo(headSnaps, 5), 0)
+      headModeSink.add(1, ss)
+
+
+  headModeSink.set_mode(0)
+
+  return topBindingSink
+
+sink_initializers["base3"] = init_sinks_base3
+
+
 def init_sinks_descent(settings):
   cmpOp = CmpWithModifiers()
 
