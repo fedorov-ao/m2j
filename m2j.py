@@ -1452,7 +1452,9 @@ def make_curve_makers():
       curveParsers = {}
 
       def parseValuePointsCurve(cfg, state):
-        axis = state["data"][state["set"]]["axes"][nameToAxis[state["axis"]]]
+        oName = state["set"] #TODO Temporary, refactor
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
         return ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
 
@@ -1487,9 +1489,12 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
+    state = {"data" : data, "axes" : {}}
+    for oName,o in data["outputs"].items():
+      state["axes"][oName] = {axisId:Axis(o, axisId) for axisId in axisToName.keys()}
     settings = data["settings"]
     sets = settings["config"]["layouts"][settings["configCurveLayoutName"]]
-    r = parseSets(sets, {"data":data})
+    r = parseSets(sets, state)
     return r
 
   curves["config"] = make_config_curves
@@ -1600,12 +1605,7 @@ def init_sinks_base(settings):
   head = NotifyingJoystick(sink=None, next=settings["outputs"]["head"])
 
   data = {
-    "joystick" : {
-      "axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}
-    }, 
-    "head" : {
-      "axes" : {axis:Axis(head, axis) for axis in axisToName.keys()}
-    },
+    "outputs" : { "joystick" : joystick, "head" : head },
     "settings" : settings,
   }
 
@@ -1757,12 +1757,7 @@ def init_sinks_base2(settings):
   head = settings["outputs"]["head"]
 
   data = {
-    "joystick" : {
-      "axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}
-    }, 
-    "head" : {
-      "axes" : {axis:Axis(head, axis) for axis in axisToName.keys()}
-    },
+    "outputs" : { "joystick" : joystick, "head" : head },
     "settings" : settings,
   }
 
@@ -1912,12 +1907,7 @@ def init_sinks_base3(settings):
   head = settings["outputs"]["head"]
 
   data = {
-    "joystick" : {
-      "axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}
-    }, 
-    "head" : {
-      "axes" : {axis:Axis(head, axis) for axis in axisToName.keys()}
-    },
+    "outputs" : { "joystick" : joystick, "head" : head },
     "settings" : settings,
   }
 
@@ -2078,9 +2068,10 @@ def init_sinks_descent(settings):
   
   joystick = settings["outputs"]["joystick"]
 
-  data = {}
-  data["settings"] = settings
-  data["joystick"] = {"axes" : {axis:Axis(joystick, axis) for axis in axisToName.keys()}}
+  data = {
+    "outputs" : { "joystick" : joystick },
+    "settings" : settings,
+  }
 
   curves = curveMaker(data)["joystick"]
 
