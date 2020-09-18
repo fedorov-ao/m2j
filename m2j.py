@@ -1478,14 +1478,14 @@ def make_curve_makers():
     def parseGroups(cfg, state):
       groupParsers = {}
 
-      def parseAxesGroup(cfg, state):
+      def parseCurvesGroup(cfg, state):
         r = {}
         for outputName,outputData in cfg.items():
           state["output"] = outputName
           r[outputName] = parseAxes(outputData, state)
         return r 
 
-      groupParsers["axes"] = parseAxesGroup
+      groupParsers["curves"] = parseCurvesGroup
 
       r = {}
       for groupName,groupData in cfg.items():
@@ -1681,7 +1681,7 @@ def init_sinks_base(settings):
     cj = curves["primary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["joystick"]
+      cs = cj[0]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1695,7 +1695,7 @@ def init_sinks_base(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["joystick"]
+      cs = cj[1]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -1708,7 +1708,7 @@ def init_sinks_base(settings):
 
     if 2 in cj:
       logger.debug("Init mode 2")
-      cs = cj[2]["axes"]["joystick"]
+      cs = cj[2]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1732,7 +1732,7 @@ def init_sinks_base(settings):
     cj = curves["secondary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["head"]
+      cs = cj[0]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -1745,7 +1745,7 @@ def init_sinks_base(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["head"]
+      cs = cj[1]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1832,7 +1832,7 @@ def init_sinks_base2(settings):
     cj = curves["primary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["joystick"]
+      cs = cj[0]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1846,7 +1846,7 @@ def init_sinks_base2(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["joystick"]
+      cs = cj[1]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -1859,7 +1859,7 @@ def init_sinks_base2(settings):
 
     if 2 in cj:
       logger.debug("Init mode 2")
-      cs = cj[2]["axes"]["joystick"]
+      cs = cj[2]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1883,7 +1883,7 @@ def init_sinks_base2(settings):
     cj = curves["secondary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["head"]
+      cs = cj[0]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -1895,7 +1895,7 @@ def init_sinks_base2(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["head"]
+      cs = cj[1]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -1984,7 +1984,7 @@ def init_sinks_base3(settings):
     cj = curves["primary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["joystick"]
+      cs = cj[0]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2002,7 +2002,7 @@ def init_sinks_base3(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["joystick"]
+      cs = cj[1]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2020,7 +2020,7 @@ def init_sinks_base3(settings):
 
     if 2 in cj:
       logger.debug("Init mode 2")
-      cs = cj[2]["axes"]["joystick"]
+      cs = cj[2]["curves"]["joystick"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -2045,7 +2045,7 @@ def init_sinks_base3(settings):
     cj = curves["secondary"]
     if 0 in cj:
       logger.debug("Init mode 0")
-      cs = cj[0]["axes"]["head"]
+      cs = cj[0]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -2057,7 +2057,7 @@ def init_sinks_base3(settings):
 
     if 1 in cj:
       logger.debug("Init mode 1")
-      cs = cj[1]["axes"]["head"]
+      cs = cj[1]["curves"]["head"]
 
       ss = Binding(cmpOp)
       ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2120,7 +2120,7 @@ def init_sinks_descent(settings):
 
   if 0 in curves:
     logger.debug("Init mode 0")
-    cs = curves[0]["axes"]["joystick"]
+    cs = curves[0]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2134,7 +2134,7 @@ def init_sinks_descent(settings):
 
   if 1 in curves:
     logger.debug("Init mode 1")
-    cs = curves[1]["axes"]["joystick"]
+    cs = curves[1]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2148,7 +2148,7 @@ def init_sinks_descent(settings):
 
   if 2 in curves:
     logger.debug("Init mode 2")
-    cs = curves[2]["axes"]["joystick"]
+    cs = curves[2]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
     ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
