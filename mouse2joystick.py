@@ -162,7 +162,7 @@ def run():
       settings["layout"] = a
     elif o in ("-c", "--curves"):
       if a.find("config") == 0:
-        settings["curves"], settings["configCurveSetName"] = a.split(":")
+        settings["curves"], settings["configCurveLayoutName"] = a.split(":")
       else:
         settings["curves"] = a
     elif o in ("-o", "--log_level"):

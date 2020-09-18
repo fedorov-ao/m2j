@@ -1487,8 +1487,9 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
-    cfg = data["settings"]["config"]["curves"][data["settings"]["configCurveSetName"]]
-    r = parseSets(cfg, {"data":data})
+    settings = data["settings"]
+    sets = settings["config"]["layouts"][settings["configCurveLayoutName"]]
+    r = parseSets(sets, {"data":data})
     return r
 
   curves["config"] = make_config_curves
