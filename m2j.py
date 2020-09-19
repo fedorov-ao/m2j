@@ -1634,12 +1634,12 @@ curveMakers = make_curve_makers()
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
   clickSink = ClickSink(settings["config"].get("clickTime", 0.5))
-  modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
+  modifierSink = clickSink.set_next(ModifierSink())
   sens = settings["config"].get("sens", None)
   if sens is not None:
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink(sens))
-  mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
+  mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
   stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
@@ -1664,8 +1664,8 @@ def init_main_sink(settings, make_next):
       traceback.print_tb(sys.exc_info()[2])
   def rld(e):
     raise ReloadException()
-  mainSink.add(ED.click(toggleKey, ((None, codes.KEY_RIGHTSHIFT),)), rld, 0)
-  mainSink.add(ED.click(toggleKey, ((None, codes.KEY_LEFTSHIFT),)), rld, 0)
+  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), rld, 0)
+  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), rld, 0)
   makeAndSetNext()
   return clickSink
 
@@ -2150,7 +2150,7 @@ def init_sinks_base3(settings):
   headBindingSink.add(ED.press(codes.BTN_EXTRA), SetMode(headModeSink, 1), 0)
   headBindingSink.add(ED.release(codes.BTN_EXTRA), SetMode(headModeSink, 0), 0)
 
-  if "head" in curves:
+  if "secondary" in curves:
     cj = curves["secondary"]
     if 0 in cj:
       logger.debug("Init mode 0")
@@ -2184,101 +2184,6 @@ sink_initializers["base3"] = init_sinks_base3
 
 
 def init_sinks_descent(settings):
-  cmpOp = CmpWithModifiers()
-
-  curveSet = settings.get("curves", None)
-  if curveSet is None:
-    raise Exception("No curve set specified in settings")
-  curveMaker = curveMakers.get(curveSet, None)
-  if curveMaker is None:
-    raise Exception("No curves for {}".format(curveSet))
-  
-  joystick = settings["outputs"]["joystick"]
-
-  data = {
-    "outputs" : { "joystick" : joystick },
-    "settings" : settings,
-  }
-
-  curves = curveMaker(data)["primary"]
-
-  joystickSink = Binding(cmpOp)
-  joystickSink.add(ED.press(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
-  joystickSink.add(ED.release(codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
-  joystickSink.add(ED.press(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
-  joystickSink.add(ED.release(codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
-
-  joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
-  oldMode =  []
-  def save_mode(event):
-    oldMode.append(joystickModeSink.get_mode())
-  def restore_mode(event):
-    if len(oldMode) >= 1 : joystickModeSink.set_mode(oldMode.pop())
-  def clear_mode(event):
-    oldMode = []
-  joystickSink.add(ED.press(codes.BTN_SIDE), save_mode, 0)
-  joystickSink.add(ED.press(codes.BTN_SIDE), SetMode(joystickModeSink, 2), 0)
-  joystickSink.add(ED.release(codes.BTN_SIDE), restore_mode, 0)
-
-  #It is crucial to get current mode from modeSink itself
-  cycleMode = lambda e : joystickModeSink.set_mode(0 if joystickModeSink.get_mode() == 1 else 1)
-  joystickSink.add(ED.press(codes.BTN_EXTRA, ()), save_mode, 0)
-  joystickSink.add(ED.press(codes.BTN_EXTRA, ()), cycleMode, 0)
-  joystickSink.add(ED.release(codes.BTN_EXTRA, ()), restore_mode, 0)
-  joystickSink.add(ED.doubleclick(codes.BTN_EXTRA), cycleMode, 0)
-
-  if 0 in curves:
-    logger.debug("Init mode 0")
-    cs = curves[0]["curves"]["joystick"]
-
-    ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
-    ss.add(ED.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
-    ss.add(ED.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
-    joystickModeSink.add(0, ss)
-
-  if 1 in curves:
-    logger.debug("Init mode 1")
-    cs = curves[1]["curves"]["joystick"]
-
-    ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
-    ss.add(ED.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
-    ss.add(ED.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
-    joystickModeSink.add(1, ss)
-
-  if 2 in curves:
-    logger.debug("Init mode 2")
-    cs = curves[2]["curves"]["joystick"]
-
-    ss = Binding(cmpOp)
-    ss.add(ED.move(codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
-    ss.add(ED.move(codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
-    ss.add(ED.move(codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE, ()), SetCurveAxis2(cs.get(codes.ABS_THROTTLE, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED.doubleclick(codes.BTN_MIDDLE, ()), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
-    ss.add(ED.move(codes.REL_WHEEL, (codes.KEY_RIGHTSHIFT,)), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
-    ss.add(ED.click(codes.BTN_MIDDLE, (codes.KEY_RIGHTSHIFT,)), SetCurveAxis2(cs.get(codes.ABS_RUDDER, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
-    ss.add(ED.init(0), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
-    joystickModeSink.add(2, ss)
-
-  joystickModeSink.set_mode(0)
-
-  return joystickSink
-
-sink_initializers["descent"] = init_sinks_descent
-
-
-def init_sinks_descent2(settings):
   cmpOp = CmpWithModifiers2()
 
   curveSet = settings.get("curves", None)
@@ -2371,7 +2276,10 @@ def init_sinks_descent2(settings):
     joystickModeSink.add(2, ss)
 
   joystickModeSink.set_mode(0)
+    
+  modifierSink = ModifierSink2(source="keyboard")
+  modifierSink.set_next(joystickSink)
 
-  return joystickSink
+  return modifierSink
 
-sink_initializers["descent2"] = init_sinks_descent2
+sink_initializers["descent"] = init_sinks_descent
