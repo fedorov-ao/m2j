@@ -12,6 +12,7 @@ import logging
 import json
 import traceback
 import weakref
+import re
 
 EV_BCAST = -1
 BC_INIT = 0
@@ -436,14 +437,19 @@ class CmpWithModifiers2:
         r = False
       elif len(attrValue) != len(eventValue):
         r = False
-      else:
+      elif len(attrValue) == 0 and len(eventValue) == 0:
         r = True
+      else:
+        r = False
         for m in attrValue:
-          if type(m) is not tuple or m[0] is not None:
-            r = r and (m in eventValue)
-          else:
-            for n in eventValue:
-              r = r and (m[1] == n[1])
+          for n in eventValue:
+            if len(m) == 0 and len(n) != 0:
+              r = False
+              break
+            else:
+              r = r or (m[1] == n[1]) if m[0] is None else (m == n)
+              if r: break
+      print name, eventValue, attrValue, r
     else:
       r = eventValue == attrValue
     return r
@@ -573,6 +579,59 @@ class ED2:
   @staticmethod
   def any():
     return ()
+
+
+class ED3:
+  inputActionRe = re.compile("(press|release|click|doubleclick|move|move_to)\((.*)\)")
+  sourceRe = re.compile("(.*)\.(.*)")
+
+  @staticmethod
+  def parse(s):
+    tokens = s.split("+")
+    r, modifiers = [], None
+    for t in tokens:
+      m = ED3.inputActionRe.match(t)
+      if m is not None:
+        action, data = m.group(1), m.group(2)
+        #print m.group(0), m.groups()
+        m2 = ED3.sourceRe.match(data)
+        source, inpt = None, None
+        if m2 is not None:
+          source, inpt = m2.group(1), m2.group(2)
+          #print m2.group(0), m2.groups()
+        else:
+          inpt = data
+          #print action, source, inpt
+        if source is not None:
+          r.append(("source", source))
+        r.append(("code", codesDict[inpt]))
+        if action == "press":
+          r += [("type", codes.EV_KEY), ("value", 1)]
+        elif action == "release":
+          r += [("type", codes.EV_KEY), ("value", 0)]
+        elif action == "click":
+          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 1)]
+        elif action == "doubleclick":
+          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 2)]
+        elif action == "move":
+          r += [("type", codes.EV_REL)]
+        elif action == "move_to":
+          r += [("type", codes.EV_ABS)]
+      else:
+        if modifiers is None:
+          modifiers = []
+        if t != "":
+          m2 = ED3.sourceRe.match(t)
+          source, inpt = None, None
+          if m2 is not None:
+            source, inpt = m2.group(1), m2.group(2)
+          else:
+            inpt = t
+          modifiers.append((source, codesDict[inpt]))
+      if modifiers is not None:
+        r.append(("modifiers", modifiers))
+    logger.debug(s, "->", r) 
+    return r
 
 
 class StateSink:
@@ -2203,10 +2262,10 @@ def init_sinks_descent(settings):
   curves = curveMaker(data)["primary"]
 
   joystickSink = Binding(cmpOp)
-  joystickSink.add(ED2.press("mouse", codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
-  joystickSink.add(ED2.release("mouse", codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
-  joystickSink.add(ED2.press("mouse", codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
-  joystickSink.add(ED2.release("mouse", codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)+keyboard.KEY_LEFTSHIFT+keyboard.KEY_LEFTCTRL"), SetButtonState(joystick, codes.BTN_0, 1), 0)
+  joystickSink.add(ED3.parse("release(mouse.BTN_LEFT)+KEY_LEFTSHIFT+KEY_LEFTCTRL"), SetButtonState(joystick, codes.BTN_0, 0), 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_RIGHT)+"), SetButtonState(joystick, codes.BTN_1, 1), 0)
+  joystickSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
   joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
   oldMode =  []
