@@ -304,6 +304,29 @@ class ModifierSink:
     self.m_, self.next_, self.modifiers_ = [], next, defmod if modifiers is None else modifiers
 
 
+class ModifierSink2:
+  def __call__(self, event):
+    if event.type == codes.EV_KEY:
+      p = (event.source, event.code)
+      if p in self.modifiers_:
+        if event.value == 1 and p not in self.m_:
+          self.m_.append(p)
+        elif event.value == 0 and p in self.m_:
+          self.m_.remove(p)
+
+    if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
+      event.modifiers = self.m_ 
+      self.next_(event)
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def __init__(self, next = None, source = None, modifiers = None):
+    defMod = [codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT]
+    self.m_, self.next_, self.modifiers_ = [], next, [(source,m) for m in defMod] if modifiers is None else modifiers
+
+
 class ScaleSink:
   def __call__(self, event):
     if event.type == codes.EV_REL:
@@ -403,6 +426,29 @@ class CmpWithModifiers:
     return r
 
 
+class CmpWithModifiers2:
+  def __call__(self, name, eventValue, attrValue):
+    r = True
+    if name == "modifiers":
+      if attrValue is None:
+        r = eventValue is None
+      elif eventValue is None:
+        r = False
+      elif len(attrValue) != len(eventValue):
+        r = False
+      else:
+        r = True
+        for m in attrValue:
+          if type(m) is not tuple or m[0] is not None:
+            r = r and (m in eventValue)
+          else:
+            for n in eventValue:
+              r = r and (m[1] == n[1])
+    else:
+      r = eventValue == attrValue
+    return r
+
+
 class ED:
   @staticmethod
   def move(axis, modifiers = None):
@@ -449,6 +495,69 @@ class ED:
   @staticmethod
   def multiclick(key, n, modifiers = None):
     r = (("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", n))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def bcast():
+    return (("type", EV_BCAST),)
+
+  @staticmethod
+  def init(i):
+    return (("type", EV_BCAST), ("code", BC_INIT), ("value", i))
+
+  @staticmethod
+  def any():
+    return ()
+
+
+class ED2:
+  @staticmethod
+  def move(source, axis, modifiers = None):
+    r = (("source", source), ("type", codes.EV_REL), ("code", axis))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def move_to(source, axis, modifiers = None):
+    r = (("source", source), ("type", codes.EV_ABS), ("code", axis))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def press(source, key, modifiers = None):
+    r  = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 1))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def release(source, key, modifiers = None):
+    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 0))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def click(source, key, modifiers = None):
+    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 1))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def doubleclick(source, key, modifiers = None):
+    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 2))
+    if modifiers is not None:
+      r = r + (("modifiers", modifiers),)
+    return r
+
+  @staticmethod
+  def multiclick(source, key, n, modifiers = None):
+    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", n))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
@@ -1525,12 +1634,12 @@ curveMakers = make_curve_makers()
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
   clickSink = ClickSink(settings["config"].get("clickTime", 0.5))
-  modifierSink = clickSink.set_next(ModifierSink())
+  modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
   sens = settings["config"].get("sens", None)
   if sens is not None:
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink(sens))
-  mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
+  mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
   stateSink = mainSink.add((), StateSink(), 1)
   toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
@@ -1555,8 +1664,8 @@ def init_main_sink(settings, make_next):
       traceback.print_tb(sys.exc_info()[2])
   def rld(e):
     raise ReloadException()
-  mainSink.add(ED.click(toggleKey, (codes.KEY_RIGHTSHIFT,)), rld, 0)
-  mainSink.add(ED.click(toggleKey, (codes.KEY_LEFTSHIFT,)), rld, 0)
+  mainSink.add(ED.click(toggleKey, ((None, codes.KEY_RIGHTSHIFT),)), rld, 0)
+  mainSink.add(ED.click(toggleKey, ((None, codes.KEY_LEFTSHIFT),)), rld, 0)
   makeAndSetNext()
   return clickSink
 
@@ -2167,3 +2276,102 @@ def init_sinks_descent(settings):
   return joystickSink
 
 sink_initializers["descent"] = init_sinks_descent
+
+
+def init_sinks_descent2(settings):
+  cmpOp = CmpWithModifiers2()
+
+  curveSet = settings.get("curves", None)
+  if curveSet is None:
+    raise Exception("No curve set specified in settings")
+  curveMaker = curveMakers.get(curveSet, None)
+  if curveMaker is None:
+    raise Exception("No curves for {}".format(curveSet))
+  
+  joystick = settings["outputs"]["joystick"]
+
+  data = {
+    "outputs" : { "joystick" : joystick },
+    "settings" : settings,
+  }
+
+  curves = curveMaker(data)["primary"]
+
+  joystickSink = Binding(cmpOp)
+  joystickSink.add(ED2.press("mouse", codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 1), 0)
+  joystickSink.add(ED2.release("mouse", codes.BTN_LEFT), SetButtonState(joystick, codes.BTN_0, 0), 0)
+  joystickSink.add(ED2.press("mouse", codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 1), 0)
+  joystickSink.add(ED2.release("mouse", codes.BTN_RIGHT), SetButtonState(joystick, codes.BTN_1, 0), 0)
+
+  joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
+  oldMode =  []
+  def save_mode(event):
+    oldMode.append(joystickModeSink.get_mode())
+  def restore_mode(event):
+    if len(oldMode) >= 1 : joystickModeSink.set_mode(oldMode.pop())
+  def clear_mode(event):
+    oldMode = []
+  joystickSink.add(ED2.press("mouse", codes.BTN_SIDE), save_mode, 0)
+  joystickSink.add(ED2.press("mouse", codes.BTN_SIDE), SetMode(joystickModeSink, 2), 0)
+  joystickSink.add(ED2.release("mouse", codes.BTN_SIDE), restore_mode, 0)
+
+  #It is crucial to get current mode from modeSink itself
+  cycleMode = lambda e : joystickModeSink.set_mode(0 if joystickModeSink.get_mode() == 1 else 1)
+  joystickSink.add(ED2.press("mouse", codes.BTN_EXTRA, ()), save_mode, 0)
+  joystickSink.add(ED2.press("mouse", codes.BTN_EXTRA, ()), cycleMode, 0)
+  joystickSink.add(ED2.release("mouse", codes.BTN_EXTRA, ()), restore_mode, 0)
+  joystickSink.add(ED2.doubleclick("mouse", codes.BTN_EXTRA, ()), cycleMode, 0)
+
+  if 0 in curves:
+    logger.debug("Init mode 0")
+    cs = curves[0]["curves"]["joystick"]
+
+    ss = Binding(cmpOp)
+    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED2.click("mouse", codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
+    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
+    ss.add(ED2.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
+    joystickModeSink.add(0, ss)
+
+  if 1 in curves:
+    logger.debug("Init mode 1")
+    cs = curves[1]["curves"]["joystick"]
+
+    ss = Binding(cmpOp)
+    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED2.click("mouse", codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
+    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
+    ss.add(ED2.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
+    joystickModeSink.add(1, ss)
+
+  if 2 in curves:
+    logger.debug("Init mode 2")
+    cs = curves[2]["curves"]["joystick"]
+
+    ss = Binding(cmpOp)
+    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED2.move("mouse", codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, ()), SetCurveAxis2(cs.get(codes.ABS_THROTTLE, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE, ()), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
+    moveRudder = MoveCurve(cs.get(codes.ABS_RUDDER, None))
+    ss.add(ED2.move("mouse", codes.REL_WHEEL, (("keyboard", codes.KEY_RIGHTSHIFT),)), moveRudder, 0)
+    ss.add(ED2.move("mouse", codes.REL_WHEEL, (("keyboard", codes.KEY_LEFTSHIFT),)), moveRudder, 0)
+    setRudder = SetCurveAxis2(cs.get(codes.ABS_RUDDER, None), value=0.0, relative=False, reset=True)
+    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, (("keyboard", codes.KEY_RIGHTSHIFT),)), setRudder, 0)
+    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, (("keyboard", codes.KEY_LEFTSHIFT),)), setRudder, 0)
+    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
+    ss.add(ED2.init(0), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+    joystickModeSink.add(2, ss)
+
+  joystickModeSink.set_mode(0)
+
+  return joystickSink
+
+sink_initializers["descent2"] = init_sinks_descent2
