@@ -435,20 +435,21 @@ class CmpWithModifiers2:
         r = eventValue is None
       elif eventValue is None:
         r = False
-      elif len(attrValue) != len(eventValue):
-        r = False
       elif len(attrValue) == 0 and len(eventValue) == 0:
         r = True
-      else:
+      elif len(attrValue) != len(eventValue):
         r = False
+      else:
+        r = True
         for m in attrValue:
+          found = False
           for n in eventValue:
-            if len(m) == 0 and len(n) != 0:
-              r = False
-              break
-            else:
-              r = r or (m[1] == n[1]) if m[0] is None else (m == n)
-              if r: break
+            assert(len(m) == 2)
+            assert(len(n) == 2)
+            found = (m[1] == n[1]) if m[0] is None else (m == n)
+            if found: break
+          r = r and found
+          if not r: break
       print name, eventValue, attrValue, r
     else:
       r = eventValue == attrValue
