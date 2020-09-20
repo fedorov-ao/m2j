@@ -342,6 +342,21 @@ class ScaleSink:
     self.next_, self.sens_ = None, sens
 
 
+#TODO Figure out how to match events from any source
+class ScaleSink2:
+  def __call__(self, event):
+    if event.type in (codes.EV_REL, codes.EV_ABS):
+      event.value *= 1.0 if self.sens_ is None else self.sens_.get(self.keyOp_(event), 1.0)
+    return self.next_(event) if self.next_ is not None else False
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def __init__(self, sens, keyOp = lambda event : event.code):
+    self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
+
+
 class Binding:
   def __call__(self, event):
     if self.dirty_ == True:
@@ -1653,6 +1668,16 @@ def make_curve_makers():
 
       groupParsers["curves"] = parseCurvesGroup
 
+      def parseSensGroup(cfg, state):
+        r = {}
+        for inputSourceAndAxisName,inputAxisData in cfg.items():
+          inputSourceName, inputAxisName = inputSourceAndAxisName.split(".")
+          inputAxis = nameToRelativeAxis[inputAxisName]
+          r[(inputSourceName, inputAxis)] = float(inputAxisData)
+        return r 
+
+      groupParsers["sens"] = parseSensGroup
+
       r = {}
       for groupName,groupData in cfg.items():
         state["group"] = groupName
@@ -2145,6 +2170,11 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
     ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
     ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+
+    if "sens" in curves[0]:
+      sensSink = ScaleSink2(curves[0]["sens"], lambda event : (event.source, event.code))
+      sensSink.set_next(ss)
+      ss = sensSink 
     joystickModeSink.add(0, ss)
 
   if 1 in curves:
