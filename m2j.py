@@ -1689,6 +1689,10 @@ def init_main_sink(settings, make_next):
   modifierSink = clickSink.set_next(ModifierSink())
   sens = settings["config"].get("sens", None)
   if sens is not None:
+    sensSet = settings["config"].get("sensSet", 0)
+    if sensSet < 0 or sensSet >= len(sens):
+      raise Exception("Invalid sensitivity set: {}".format(sensSet))
+    sens = sens[sensSet]
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink(sens))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers()))
