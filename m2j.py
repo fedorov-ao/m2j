@@ -450,7 +450,6 @@ class CmpWithModifiers2:
             if found: break
           r = r and found
           if not r: break
-      print name, eventValue, attrValue, r
     else:
       r = eventValue == attrValue
     return r
@@ -583,7 +582,7 @@ class ED2:
 
 
 class ED3:
-  inputActionRe = re.compile("(press|release|click|doubleclick|move|move_to)\((.*)\)")
+  inputActionRe = re.compile("([^ ]*) *\( *([^\., ]*?)\.?([^\., ]*) *,? *([^\., ]*) *\)")
   sourceRe = re.compile("(.*)\.(.*)")
 
   @staticmethod
@@ -593,17 +592,8 @@ class ED3:
     for t in tokens:
       m = ED3.inputActionRe.match(t)
       if m is not None:
-        action, data = m.group(1), m.group(2)
-        #print m.group(0), m.groups()
-        m2 = ED3.sourceRe.match(data)
-        source, inpt = None, None
-        if m2 is not None:
-          source, inpt = m2.group(1), m2.group(2)
-          #print m2.group(0), m2.groups()
-        else:
-          inpt = data
-          #print action, source, inpt
-        if source is not None:
+        action, source, inpt, num  = m.groups()
+        if source != "":
           r.append(("source", source))
         r.append(("code", codesDict[inpt]))
         if action == "press":
@@ -614,6 +604,8 @@ class ED3:
           r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 1)]
         elif action == "doubleclick":
           r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 2)]
+        elif action == "multiclick":
+          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", int(num))]
         elif action == "move":
           r += [("type", codes.EV_REL)]
         elif action == "move_to":
@@ -629,9 +621,9 @@ class ED3:
           else:
             inpt = t
           modifiers.append((source, codesDict[inpt]))
-      if modifiers is not None:
-        r.append(("modifiers", modifiers))
-    logger.debug(s, "->", r) 
+    if modifiers is not None:
+      r.append(("modifiers", modifiers))
+    logger.debug("ED3.parse(): {} -> {}".format(s, r)) 
     return r
 
 
@@ -2263,9 +2255,9 @@ def init_sinks_descent(settings):
   curves = curveMaker(data)["primary"]
 
   joystickSink = Binding(cmpOp)
-  joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)+keyboard.KEY_LEFTSHIFT+keyboard.KEY_LEFTCTRL"), SetButtonState(joystick, codes.BTN_0, 1), 0)
-  joystickSink.add(ED3.parse("release(mouse.BTN_LEFT)+KEY_LEFTSHIFT+KEY_LEFTCTRL"), SetButtonState(joystick, codes.BTN_0, 0), 0)
-  joystickSink.add(ED3.parse("press(mouse.BTN_RIGHT)+"), SetButtonState(joystick, codes.BTN_1, 1), 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 1), 0)
+  joystickSink.add(ED3.parse("release(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 0), 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 1), 0)
   joystickSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
   joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
@@ -2276,29 +2268,28 @@ def init_sinks_descent(settings):
     if len(oldMode) >= 1 : joystickModeSink.set_mode(oldMode.pop())
   def clear_mode(event):
     oldMode = []
-  joystickSink.add(ED2.press("mouse", codes.BTN_SIDE), save_mode, 0)
-  joystickSink.add(ED2.press("mouse", codes.BTN_SIDE), SetMode(joystickModeSink, 2), 0)
-  joystickSink.add(ED2.release("mouse", codes.BTN_SIDE), restore_mode, 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), save_mode, 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), SetMode(joystickModeSink, 2), 0)
+  joystickSink.add(ED3.parse("release(mouse.BTN_SIDE)"), restore_mode, 0)
 
   #It is crucial to get current mode from modeSink itself
   cycleMode = lambda e : joystickModeSink.set_mode(0 if joystickModeSink.get_mode() == 1 else 1)
-  joystickSink.add(ED2.press("mouse", codes.BTN_EXTRA, ()), save_mode, 0)
-  joystickSink.add(ED2.press("mouse", codes.BTN_EXTRA, ()), cycleMode, 0)
-  joystickSink.add(ED2.release("mouse", codes.BTN_EXTRA, ()), restore_mode, 0)
-  joystickSink.add(ED2.doubleclick("mouse", codes.BTN_EXTRA, ()), cycleMode, 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)+"), save_mode, 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)+"), cycleMode, 0)
+  joystickSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), restore_mode, 0)
+  joystickSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)+"), cycleMode, 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
     cs = curves[0]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
-    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED2.click("mouse", codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
-    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
-    ss.add(ED2.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
+    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     joystickModeSink.add(0, ss)
 
   if 1 in curves:
@@ -2306,13 +2297,12 @@ def init_sinks_descent(settings):
     cs = curves[1]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
-    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_WHEEL), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED2.click("mouse", codes.BTN_MIDDLE), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
-    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Z)]))
-    ss.add(ED2.init(0), ResetCurve(cs.get(codes.ABS_Y, None)))
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
+    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     joystickModeSink.add(1, ss)
 
   if 2 in curves:
@@ -2320,17 +2310,17 @@ def init_sinks_descent(settings):
     cs = curves[2]["curves"]["joystick"]
 
     ss = Binding(cmpOp)
-    ss.add(ED2.move("mouse", codes.REL_X), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_Y), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
-    ss.add(ED2.move("mouse", codes.REL_WHEEL, ()), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, ()), SetCurveAxis2(cs.get(codes.ABS_THROTTLE, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED2.doubleclick("mouse", codes.BTN_MIDDLE, ()), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SetCurveAxis2(cs.get(codes.ABS_THROTTLE, None), value=0.0, relative=False, reset=True), 0)
+    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
     moveRudder = MoveCurve(cs.get(codes.ABS_RUDDER, None))
-    ss.add(ED2.move("mouse", codes.REL_WHEEL, (("keyboard", codes.KEY_RIGHTSHIFT),)), moveRudder, 0)
-    ss.add(ED2.move("mouse", codes.REL_WHEEL, (("keyboard", codes.KEY_LEFTSHIFT),)), moveRudder, 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_RIGHTSHIFT"), moveRudder, 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTSHIFT"), moveRudder, 0)
     setRudder = SetCurveAxis2(cs.get(codes.ABS_RUDDER, None), value=0.0, relative=False, reset=True)
-    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, (("keyboard", codes.KEY_RIGHTSHIFT),)), setRudder, 0)
-    ss.add(ED2.click("mouse", codes.BTN_MIDDLE, (("keyboard", codes.KEY_LEFTSHIFT),)), setRudder, 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_RIGHTSHIFT"), setRudder, 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_LEFTSHIFT"), setRudder, 0)
     ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
     ss.add(ED2.init(0), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
     joystickModeSink.add(2, ss)
