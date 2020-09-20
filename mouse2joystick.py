@@ -128,8 +128,13 @@ def run():
     outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
   def run2(settings):
-    if "configName" in settings:
-      settings["config"] = json.load(open(settings["configName"], "r"))
+    if "configNames" in settings:
+      configNames = settings["configNames"]
+      cfg = {}
+      for configName in configNames:
+        #TODO Figure out how to recursively merge contents of configs
+        cfg.update(json.load(open(configName, "r")))
+      settings["config"] = cfg
 
     settings["inputs"] = find_devices(settings["config"]["inputs"])
 
@@ -151,7 +156,7 @@ def run():
     except KeyboardInterrupt:
       return 0
 
-  settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL"}
+  settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL", "configNames" : []}
 
   opts, args = getopt.getopt(sys.argv[1:], "pl:c:o:n:", ["print", "layout=", "curves=", "log_level=", "config="])
   for o, a in opts:
@@ -168,7 +173,7 @@ def run():
     elif o in ("-o", "--log_level"):
       settings["log_level"] = a
     elif o in ("-n", "--config"):
-      settings["configName"] = a
+      settings["configNames"].append(a)
 
   init_log(settings)
   init_joysticks(settings)
