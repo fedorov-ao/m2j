@@ -593,23 +593,28 @@ class ED3:
       m = ED3.inputActionRe.match(t)
       if m is not None:
         action, source, inpt, num  = m.groups()
-        if source != "":
-          r.append(("source", source))
-        r.append(("code", codesDict[inpt]))
-        if action == "press":
-          r += [("type", codes.EV_KEY), ("value", 1)]
-        elif action == "release":
-          r += [("type", codes.EV_KEY), ("value", 0)]
-        elif action == "click":
-          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 1)]
-        elif action == "doubleclick":
-          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 2)]
-        elif action == "multiclick":
-          r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", int(num))]
-        elif action == "move":
-          r += [("type", codes.EV_REL)]
-        elif action == "move_to":
-          r += [("type", codes.EV_ABS)]
+        if action == "any":
+          pass
+        elif action == "init":
+          r += [("type", EV_BCAST), ("code", BC_INIT), ("value", int(inpt))]
+        else:
+          if source != "":
+            r.append(("source", source))
+          r.append(("code", codesDict[inpt]))
+          if action == "press":
+            r += [("type", codes.EV_KEY), ("value", 1)]
+          elif action == "release":
+            r += [("type", codes.EV_KEY), ("value", 0)]
+          elif action == "click":
+            r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 1)]
+          elif action == "doubleclick":
+            r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", 2)]
+          elif action == "multiclick":
+            r += [("type", codes.EV_KEY), ("value", 3), ("num_clicks", int(num))]
+          elif action == "move":
+            r += [("type", codes.EV_REL)]
+          elif action == "move_to":
+            r += [("type", codes.EV_ABS)]
       else:
         if modifiers is None:
           modifiers = []
@@ -2120,7 +2125,7 @@ def init_sinks_base3(settings):
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
-  topBindingSink.add(ED.any(), topModeSink, 1)
+  topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
   topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
   topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
   topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), UpdateSnap(headSnaps, 0), 0)
@@ -2129,7 +2134,7 @@ def init_sinks_base3(settings):
   topModeSink.add(0, joystickBindingSink)
   topModeSink.set_mode(0)
 
-  joystickModeSink = joystickBindingSink.add(ED.any(), ModeSink(), 1)
+  joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
   oldMode =  []
   def save_mode(event):
     oldMode.append(joystickModeSink.get_mode())
@@ -2202,7 +2207,7 @@ def init_sinks_base3(settings):
   topModeSink.add(1, headBindingSink)
 
   headModeSink = ModeSink()
-  headBindingSink.add(ED.any(), headModeSink, 1)
+  headBindingSink.add(ED3.parse("any()"), headModeSink, 1)
   headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
   headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
 
@@ -2267,7 +2272,7 @@ def init_sinks_descent(settings):
   joystickSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 1), 0)
   joystickSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
-  joystickModeSink = joystickSink.add(ED.any(), ModeSink(), 1)
+  joystickModeSink = joystickSink.add(ED3.parse("any()"), ModeSink(), 1)
   oldMode =  []
   def save_mode(event):
     oldMode.append(joystickModeSink.get_mode())
@@ -2296,7 +2301,7 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
     ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
-    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     joystickModeSink.add(0, ss)
 
   if 1 in curves:
@@ -2309,7 +2314,7 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
-    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     joystickModeSink.add(1, ss)
 
   if 2 in curves:
@@ -2328,8 +2333,8 @@ def init_sinks_descent(settings):
     setRudder = SetCurveAxis2(cs.get(codes.ABS_RUDDER, None), value=0.0, relative=False, reset=True)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_RIGHTSHIFT"), setRudder, 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_LEFTSHIFT"), setRudder, 0)
-    ss.add(ED2.init(0), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
-    ss.add(ED2.init(0), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
+    ss.add(ED3.parse("init(0)"), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
     joystickModeSink.add(2, ss)
 
   joystickModeSink.set_mode(0)
