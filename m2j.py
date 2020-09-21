@@ -1653,6 +1653,15 @@ def make_curve_makers():
 
       curveParsers["valuePoints"] = parseValuePointsCurve
 
+      def parsePresetCurve(cfg, state):
+        presets = state["data"]["settings"]["config"]["presets"]
+        preset = presets[cfg]
+        curve,data = preset["curve"], preset["data"]
+        state["curve"] = curve
+        return curveParsers[curve](data, state)
+
+      curveParsers["preset"] = parsePresetCurve
+
       curve,data = cfg.get("curve", None), cfg.get("data", None) 
       if curve is None:
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
