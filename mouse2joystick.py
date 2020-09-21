@@ -129,12 +129,7 @@ def run():
 
   def run2(settings):
     if "configNames" in settings:
-      configNames = settings["configNames"]
-      cfg = {}
-      for configName in configNames:
-        #TODO Figure out how to recursively merge contents of configs
-        cfg.update(json.load(open(configName, "r")))
-      settings["config"] = cfg
+      settings["config"] = init_config(settings["configNames"])
 
     settings["inputs"] = find_devices(settings["config"]["inputs"])
 
