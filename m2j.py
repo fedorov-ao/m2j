@@ -931,11 +931,13 @@ class MovingValuePoint:
       s = sign(value - self.tempValue_)
       logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.tempValue_, value, s))
       self.tempValue_ = value
-      if self.s_ != 0 and s != self.s_:
-        v = value if self.value_ is None else self.valueOp_(self.value_, value)
-        logger.debug("{}: old reference value: {}; new reference value: {}".format(self, self.value_, v))
-        self.value_ = v
-      self.s_ = s
+      #TODO Check that s != 0 condition does not break something
+      if s != 0:
+        if self.s_ != 0 and s != self.s_:
+          v = value if self.value_ is None else self.valueOp_(self.value_, value)
+          logger.debug("{}: old reference value: {}; new reference value: {}".format(self, self.value_, v))
+          self.value_ = v
+        self.s_ = s
       return None if self.value_ is None else (self.deltaOp_(value - self.value_), self.value_)
 
   def __init__(self, deltaOp, valueOp = lambda old,new : 0.5*old+0.5*new):
@@ -973,11 +975,52 @@ class ValuePointOp:
       r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
     else:
       r = (left if right is None else right)[0]
-      logger.debug("{}: left: {}, right: {}, result: {}".format(self, left, right, r))
+    tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
+    float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
+    logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
     return r
 
   def __init__(self, vps):
     self.vps_ = vps
+
+
+class ValuePointOp2:
+  def __call__(self, value):
+    left, right = None, None
+    for vp in self.vps_:
+      p = vp(value) #p is (result, value)
+      logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
+      if p is None or value is None:
+        continue
+      delta = value - p[1]
+      s = sign(delta)
+      delta = abs(delta)
+      logger.debug("{}: value: {}, s: {}".format(self, value, s))
+      if s == 1:
+        if left is None or delta < left[1]: 
+          left = (p[0], delta) #left and right are (result, delta)
+      elif s == -1:
+      #else:
+        if right is None or delta < right[1]: 
+          right = (p[0], delta)
+      else:
+        left = (p[0], delta)
+        right = (p[0], delta)
+
+    r = None
+    if left is None and right is None:
+      r = None
+    elif left is not None and right is not None:
+      r = self.interpolateOp_(left, right)
+    else:
+      r = (left if right is None else right)[0]
+    tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
+    float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
+    logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
+    return r
+
+  def __init__(self, vps, interpolateOp):
+    self.vps_, self.interpolateOp_ = vps, interpolateOp
 
 
 class Axis:
@@ -1649,7 +1692,9 @@ def make_curve_makers():
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
-        return ValueOpDeltaAxisCurve(deltaOp, ValuePointOp(points), axis)
+        vpoName = cfg.get("vpo", None)
+        vpo = ValuePointOp2(points, lambda left,right : min(left[0], right[0])) if vpoName == "min" else ValuePointOp(points)
+        return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
 
