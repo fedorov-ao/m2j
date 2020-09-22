@@ -925,7 +925,12 @@ class FixedValuePoint:
 class MovingValuePoint:
   def __call__(self, value):
     if value is None:
+      logger.debug("{}: got None value, hard-resetting".format(self))
       self.s_, self.tempValue_, self.value_ = 0, 0.0, None
+      return None
+    elif self.value_ is not None and abs(value-self.value_) > self.resetDistance_:
+      logger.debug("{}: resetDistance reached, soft-resetting".format(self))
+      self.value_ = None
       return None
     else:
       s = sign(value - self.tempValue_)
@@ -935,15 +940,15 @@ class MovingValuePoint:
       if s != 0:
         if self.s_ != 0 and s != self.s_:
           v = value if self.value_ is None else self.valueOp_(self.value_, value)
-          logger.debug("{}: old reference value: {}; new reference value: {}".format(self, self.value_, v))
+          logger.debug("{}: reference value changed (old: {}; new: {})".format(self, self.value_, v))
           self.value_ = v
         self.s_ = s
       return None if self.value_ is None else (self.deltaOp_(value - self.value_), self.value_)
 
-  def __init__(self, deltaOp, valueOp = lambda old,new : 0.5*old+0.5*new):
+  def __init__(self, deltaOp, valueOp = lambda old,new : 0.5*old+0.5*new, resetDistance = float("inf")):
     assert(deltaOp)
     assert(valueOp)
-    self.deltaOp_, self.valueOp_ = deltaOp, valueOp
+    self.deltaOp_, self.valueOp_, self.resetDistance_ = deltaOp, valueOp, resetDistance
     self.s_, self.tempValue_, self.value_ = 0, 0.0, None
 
 
@@ -1688,7 +1693,7 @@ def make_curve_makers():
           def op(old,new):
             return oldRatio*old+newRatio*new
           return op
-        return MovingValuePoint(op, make_value_op(newRatio))
+        return MovingValuePoint(deltaOp=op, valueOp=make_value_op(newRatio), resetDistance=cfg.get("resetDistance", float("inf")))
 
       pointParsers["moving"] = movingPointParser
 
