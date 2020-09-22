@@ -960,9 +960,12 @@ class ValuePointOp:
       if s == 1:
         if left is None or delta < left[1]: 
           left = (p[0], delta) #left and right are (result, delta)
-      else:
+      elif s == -1:
         if right is None or delta < right[1]: 
           right = (p[0], delta)
+      else:
+        left = (p[0], delta)
+        right = (p[0], delta)
 
     r = None
     if left is None and right is None:
@@ -1000,7 +1003,6 @@ class ValuePointOp2:
         if left is None or delta < left[1]: 
           left = (p[0], delta) #left and right are (result, delta)
       elif s == -1:
-      #else:
         if right is None or delta < right[1]: 
           right = (p[0], delta)
       else:
@@ -1021,6 +1023,19 @@ class ValuePointOp2:
 
   def __init__(self, vps, interpolateOp):
     self.vps_, self.interpolateOp_ = vps, interpolateOp
+
+
+def interpolate_op(left, right):
+  leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
+  totalDelta = leftDelta + rightDelta
+  #interpolating (sort of)
+  #left value is multiplied by right fraction of deltas sum and vice versa
+  r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
+  return r
+
+
+def get_min_op(left, right):
+  return min(left[0], right[0])
 
 
 class Axis:
@@ -1693,7 +1708,7 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
         vpoName = cfg.get("vpo", None)
-        vpo = ValuePointOp2(points, lambda left,right : min(left[0], right[0])) if vpoName == "min" else ValuePointOp(points)
+        vpo = ValuePointOp2(points, get_min_op) if vpoName == "min" else ValuePointOp2(points, interpolate_op)
         return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
