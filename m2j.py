@@ -166,6 +166,7 @@ class MoveCurve:
         self.curve_.move_by(event.value, event.timestamp)
       except Exception as e:
         logger.error("{}: exception in curve ({})".format(self, e))
+        traceback.print_tb(sys.exc_info()[2])
         return False
       return True
     else:
@@ -1114,6 +1115,145 @@ class ValueOpDeltaAxisCurve:
     self.deltaOp_, self.valueOp_, self.axis_, self.shouldReset_ = deltaOp, valueOp, axis, shouldReset
 
 
+class PosAxisCurve:
+  def move_by(self, x, timestamp):
+    self.pos_ += x
+    for p in self.points_:
+      p.move(self.pos_)
+    value = self.interpolateOp_(self.points_, self.pos_)
+    self.axis_.move(value, relative=False)
+
+  def reset(self):
+    logger.debug("{}: resetting".format(self))
+    for p in self.points_:
+      p.reset()
+    self.pos_ = self.initialPos_
+
+  def get_axis(self):
+    return self.axis_
+
+  def move_axis(self, x, relative=True, reset=True):
+    self.axis_.move(x, relative)
+    if reset:
+      self.reset()
+
+  def __init__(self, points, interpolateOp, axis, initialPos=0.0):
+    self.points_, self.interpolateOp_, self.axis_ = points, interpolateOp, axis
+    self.initialPos_ = initialPos
+    self.pos_ = initialPos
+
+
+class FixedPosPoint:
+  def move(self, pos):
+    pass
+
+  def get_value(self, pos):
+    return self.valueOp_(pos - self.center_)
+
+  def get_center(self):
+    return self.center_
+
+  def reset(self):
+    pass
+
+  def __init__(self, valueOp, center=0.0):
+    self.center_, self.valueOp_ = center, valueOp
+
+
+class MovingPosPoint:
+  def move(self, pos):
+    if self.pos_ is None:
+      self.pos_ = pos
+    s = sign(pos - self.pos_)
+    if s != 0: 
+      self.pos_ = pos
+      if self.s_ != 0 and s != self.s_:
+        #TODO Leave center cacl entirely to centerOp_?
+        self.center_ = pos if self.center_ is None else self.centerOp_(pos, self.center_)
+        logger.debug("{}: new center: {}".format(self, self.center_))
+      self.s_ = s
+
+  def get_value(self, pos):
+    return None if self.center_ is None else self.valueOp_(pos - self.center_)
+
+  def get_center(self):
+    return self.center_
+
+  def reset(self):
+    self.pos_, self.center_, self.s_ = None, None, 0
+
+  def __init__(self, valueOp, centerOp):
+    self.valueOp_, self.centerOp_ = valueOp, centerOp
+    self.reset()
+
+
+class FMPosInterpolateOp:
+  def __call__(self, points, pos):
+    assert(len(points) == 2)
+    fixed, moving = None, None
+    for p in points:
+      if isinstance(p, FixedPosPoint): fixed = p
+      elif isinstance(p, MovingPosPoint): moving = p
+    assert(fixed is not None)
+    assert(moving is not None)
+    fixedValueAtPos, movingValueAtPos = fixed.get_value(pos), moving.get_value(pos)
+    if movingValueAtPos is None:
+      logger.debug("{}: movingValueAtPos is None, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    movingCenter = moving.get_center()
+    fixedValueAtMovingCenter = fixed.get_value(movingCenter)
+    movingValueAtPos += fixedValueAtMovingCenter
+    delta = abs(pos - movingCenter)
+    distance = min(self.distance_, abs(movingCenter - fixed.get_center()))
+    if delta == 0.0 or delta > distance:
+      logger.debug("{}: delta == 0.0 or delta > distance, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/delta, abs(movingValueAtPos-fixedValueAtMovingCenter)/delta
+    if fixedSlope < movingSlope:
+      logger.debug("{}: fixedSlope < movingSlope, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    distanceFraction = (delta / distance)**self.factor_
+    value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
+    logger.debug("{}: f:{: .3f}; m:{: .3f}; interpolated:{: .3f}".format(self, fixedValueAtPos, movingValueAtPos, value))
+    return value
+
+  def __init__(self, distance, factor):
+    self.distance_, self.factor_ = distance, factor
+    
+#TODO Does not work, delete.
+class FMPosInterpolateOp2:
+  def __call__(self, points, pos):
+    assert(len(points) == 2)
+    fixed, moving = None, None
+    for p in points:
+      if isinstance(p, FixedPosPoint): fixed = p
+      elif isinstance(p, MovingPosPoint): moving = p
+    assert(fixed is not None)
+    assert(moving is not None)
+    movingCenter = moving.get_center()
+    fixedValueAtPos, movingValueAtPos = fixed.get_value(pos), moving.get_value(pos)
+    if movingValueAtPos is None:
+      logger.debug("{}: movingValueAtPos is None, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    fixedValueAtMovingCenter, movingValueAtMovingCenter = fixed.get_value(movingCenter), moving.get_value(movingCenter)
+    delta = abs(pos - movingCenter)
+    distance = min(self.distance_, abs(movingCenter - fixed.get_center()))
+    if delta == 0.0 or delta > distance:
+      logger.debug("{}: delta == 0.0 or delta > distance, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/delta, abs(movingValueAtPos-movingValueAtMovingCenter)/delta
+    if fixedSlope < movingSlope:
+      logger.debug("{}: fixedSlope < movingSlope, {}".format(self, fixedValueAtPos))
+      return fixedValueAtPos
+    distanceFraction = (delta / distance)**self.factor_
+    value = fixedValueAtPos - movingValueAtPos*(1.0-distanceFraction) 
+    logger.debug("{}: f:{: .3f}; m:{: .3f}; interpolated:{: .3f}".format(self, fixedValueAtPos, movingValueAtPos, value))
+    return value
+
+  def __init__(self, distance, factor):
+    self.distance_, self.factor_ = distance, factor
+
+
 class SpeedBasedCurve:
   def calc(self, x, timestamp):
     assert(self.approx_ is not None)
@@ -1717,6 +1857,19 @@ def make_curve_makers():
         return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
+
+      def parsePosAxisCurve(cfg, state):
+        oName = state["output"]
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
+        points = [
+          FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**1.0, center=0.0),
+          MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=lambda n,o : 0.5*n+0.5*o)
+        ]
+        interpolateOp = FMPosInterpolateOp(distance=0.3, factor=1.0)
+        return PosAxisCurve(points, interpolateOp, axis, 0.0)
+
+      curveParsers["posAxis"] = parsePosAxisCurve
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
