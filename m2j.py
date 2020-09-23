@@ -1203,7 +1203,7 @@ class FMPosInterpolateOp:
     assert(moving is not None)
     fixedValueAtPos, movingValueAtPos = fixed.get_value(pos), moving.get_value(pos)
     if movingValueAtPos is None:
-      logger.debug("{}: movingValueAtPos is None, {}".format(self, fixedValueAtPos))
+      logger.debug("{}: movingValueAtPos is None, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     movingCenter = moving.get_center()
     fixedValueAtMovingCenter = fixed.get_value(movingCenter)
@@ -1211,11 +1211,11 @@ class FMPosInterpolateOp:
     delta = abs(pos - movingCenter)
     distance = min(self.distance_, abs(movingCenter - fixed.get_center()))
     if delta == 0.0 or delta > distance:
-      logger.debug("{}: delta == 0.0 or delta > distance, {}".format(self, fixedValueAtPos))
+      logger.debug("{}: {}, f:{: .3f}".format(self, "delta == 0.0" if delta == 0.0 else "delta > distance" if delta > distance else "unknown", fixedValueAtPos))
       return fixedValueAtPos
     fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/delta, abs(movingValueAtPos-fixedValueAtMovingCenter)/delta
     if fixedSlope < movingSlope:
-      logger.debug("{}: fixedSlope < movingSlope, {}".format(self, fixedValueAtPos))
+      logger.debug("{}: fixedSlope < movingSlope, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     distanceFraction = (delta / distance)**self.factor_
     value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
@@ -1252,6 +1252,7 @@ class IterativeInterpolateOp:
         value = self.next_(points, pos)
         if abs(currentValue - value) < self.eps_:
           self.updateNeeded_ = False
+          logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c))
           return currentValue
         elif currentValue < value:
           e = middle
@@ -1264,40 +1265,6 @@ class IterativeInterpolateOp:
     self.updateNeeded_ = False  
 
     
-#TODO Does not work, delete.
-class FMPosInterpolateOp2:
-  def __call__(self, points, pos):
-    assert(len(points) == 2)
-    fixed, moving = None, None
-    for p in points:
-      if isinstance(p, FixedPosPoint): fixed = p
-      elif isinstance(p, MovingPosPoint): moving = p
-    assert(fixed is not None)
-    assert(moving is not None)
-    movingCenter = moving.get_center()
-    fixedValueAtPos, movingValueAtPos = fixed.get_value(pos), moving.get_value(pos)
-    if movingValueAtPos is None:
-      logger.debug("{}: movingValueAtPos is None, {}".format(self, fixedValueAtPos))
-      return fixedValueAtPos
-    fixedValueAtMovingCenter, movingValueAtMovingCenter = fixed.get_value(movingCenter), moving.get_value(movingCenter)
-    delta = abs(pos - movingCenter)
-    distance = min(self.distance_, abs(movingCenter - fixed.get_center()))
-    if delta == 0.0 or delta > distance:
-      logger.debug("{}: delta == 0.0 or delta > distance, {}".format(self, fixedValueAtPos))
-      return fixedValueAtPos
-    fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/delta, abs(movingValueAtPos-movingValueAtMovingCenter)/delta
-    if fixedSlope < movingSlope:
-      logger.debug("{}: fixedSlope < movingSlope, {}".format(self, fixedValueAtPos))
-      return fixedValueAtPos
-    distanceFraction = (delta / distance)**self.factor_
-    value = fixedValueAtPos - movingValueAtPos*(1.0-distanceFraction) 
-    logger.debug("{}: f:{: .3f}; m:{: .3f}; interpolated:{: .3f}".format(self, fixedValueAtPos, movingValueAtPos, value))
-    return value
-
-  def __init__(self, distance, factor):
-    self.distance_, self.factor_ = distance, factor
-
-
 class SpeedBasedCurve:
   def calc(self, x, timestamp):
     assert(self.approx_ is not None)
@@ -1920,7 +1887,7 @@ def make_curve_makers():
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
         fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, center=0.0)
-        mp = MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=None, resetDistance=0.3)
+        mp = MovingPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, centerOp=None, resetDistance=0.4)
         points = [fp, mp]
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(distance=0.3, factor=1.0), mp=mp, eps=0.01)
         #TODO Set with method
