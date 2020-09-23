@@ -1117,7 +1117,7 @@ class ValueOpDeltaAxisCurve:
 
 class PosAxisCurve:
   def move_by(self, x, timestamp):
-    self.pos_ += x
+    self.pos_ = clamp(self.pos_ + x, *self.posLimits_)
     for p in self.points_:
       p.move(self.pos_)
     value = self.interpolateOp_(self.points_, self.pos_)
@@ -1127,18 +1127,20 @@ class PosAxisCurve:
     logger.debug("{}: resetting".format(self))
     for p in self.points_:
       p.reset()
+    #TODO need better way to revert pos
     self.pos_ = self.initialPos_
 
   def get_axis(self):
     return self.axis_
 
   def move_axis(self, x, relative=True, reset=True):
+    #TODO And what value self.pos_ should be set to?
     self.axis_.move(x, relative)
     if reset:
       self.reset()
 
-  def __init__(self, points, interpolateOp, axis, initialPos=0.0):
-    self.points_, self.interpolateOp_, self.axis_ = points, interpolateOp, axis
+  def __init__(self, points, interpolateOp, axis, initialPos=0.0, posLimits=(-1.0, 1.0)):
+    self.points_, self.interpolateOp_, self.axis_, self.posLimits_ = points, interpolateOp, axis, posLimits
     self.initialPos_ = initialPos
     self.pos_ = initialPos
 
@@ -1888,7 +1890,7 @@ def make_curve_makers():
         mp = MovingPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, centerOp=None, resetDistance=0.4)
         points = [fp, mp]
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0), mp=mp, eps=0.01)
-        return PosAxisCurve(points, interpolateOp, axis, 0.0)
+        return PosAxisCurve(points, interpolateOp, axis, 0.0, (-1.1, 1.1))
 
       curveParsers["posAxis2"] = parsePosAxisCurve2
 
