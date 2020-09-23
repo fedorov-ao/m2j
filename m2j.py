@@ -1136,6 +1136,7 @@ class PosAxisCurve:
     value = self.op_.calc_value(pos)
     self.axis_.move(value, relative=False)
     self.pos_ = pos
+    self.op_.move(pos)
     if reset:
       self.reset()
 
@@ -1254,20 +1255,22 @@ class IterativeInterpolateOp:
     return self.CenterOp(self)
 
   def calc_value(self, pos):
+    logger.debug("{}: calc_value()".format(self))
     assert(self.next_ is not None)
     currentValue = self.next_.calc_value(pos)
     if self.updateNeeded_:
       assert(self.mp_ is not None)
       center = self.mp_.get_center()
       b,e = (pos,center) if pos < center else (center,pos)
+      logger.debug("{}: calc_value(): starting mp center binary search".format(self))
       for c in xrange(100):
         middle = 0.5*b + 0.5*e
         self.mp_.set_center(middle)
         value = self.next_.calc_value(pos)
         if abs(currentValue - value) < self.eps_:
           self.updateNeeded_ = False
-          logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c))
-          return currentValue
+          logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
+          return value
         elif currentValue < value:
           e = middle
         else:
@@ -1914,8 +1917,9 @@ def make_curve_makers():
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
-        fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, center=0.0)
-        mp = MovingPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, centerOp=None, resetDistance=0.4)
+        valueOp=lambda d : sign(d)*abs(d)**2.0
+        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
+        mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
         points = [fp, mp]
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
