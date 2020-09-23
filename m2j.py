@@ -1184,6 +1184,9 @@ class MovingPosPoint:
   def set_center(self, center):
     self.center_ = center
 
+  def set_center_op(self, op):
+    self.centerOp_ = op
+
   def reset(self):
     self.pos_, self.center_, self.s_ = None, None, 0
 
@@ -1194,22 +1197,15 @@ class MovingPosPoint:
 
 class FMPosInterpolateOp:
   def __call__(self, points, pos):
-    assert(len(points) == 2)
-    fixed, moving = None, None
-    for p in points:
-      if isinstance(p, FixedPosPoint): fixed = p
-      elif isinstance(p, MovingPosPoint): moving = p
-    assert(fixed is not None)
-    assert(moving is not None)
-    fixedValueAtPos, movingValueAtPos = fixed.get_value(pos), moving.get_value(pos)
+    fixedValueAtPos, movingValueAtPos = self.fp_.get_value(pos), self.mp_.get_value(pos)
     if movingValueAtPos is None:
       logger.debug("{}: movingValueAtPos is None, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
-    movingCenter = moving.get_center()
-    fixedValueAtMovingCenter = fixed.get_value(movingCenter)
+    movingCenter = self.mp_.get_center()
+    fixedValueAtMovingCenter = self.fp_.get_value(movingCenter)
     movingValueAtPos += fixedValueAtMovingCenter
     delta = abs(pos - movingCenter)
-    distance = min(self.distance_, abs(movingCenter - fixed.get_center()))
+    distance = min(self.distance_, abs(movingCenter - self.fp_.get_center()))
     if delta == 0.0 or delta > distance:
       logger.debug("{}: {}, f:{: .3f}".format(self, "delta == 0.0" if delta == 0.0 else "delta > distance" if delta > distance else "unknown", fixedValueAtPos))
       return fixedValueAtPos
@@ -1222,8 +1218,8 @@ class FMPosInterpolateOp:
     logger.debug("{}: f:{: .3f}; m:{: .3f}; interpolated:{: .3f}".format(self, fixedValueAtPos, movingValueAtPos, value))
     return value
 
-  def __init__(self, distance, factor):
-    self.distance_, self.factor_ = distance, factor
+  def __init__(self, fp, mp, distance, factor):
+    self.fp_, self.mp_, self.distance_, self.factor_ = fp, mp, distance, factor
 
 
 class IterativeInterpolateOp:
@@ -1263,6 +1259,8 @@ class IterativeInterpolateOp:
   def __init__(self, next, mp, eps):
     self.next_, self.mp_, self.eps_ = next, mp, eps
     self.updateNeeded_ = False  
+    assert(mp is not None)
+    mp.set_center_op(self.make_center_op())
 
     
 class SpeedBasedCurve:
@@ -1889,9 +1887,7 @@ def make_curve_makers():
         fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, center=0.0)
         mp = MovingPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, centerOp=None, resetDistance=0.4)
         points = [fp, mp]
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(distance=0.3, factor=1.0), mp=mp, eps=0.01)
-        #TODO Set with method
-        mp.centerOp_  = interpolateOp.make_center_op()
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0), mp=mp, eps=0.01)
         return PosAxisCurve(points, interpolateOp, axis, 0.0)
 
       curveParsers["posAxis2"] = parsePosAxisCurve2
