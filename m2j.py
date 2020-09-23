@@ -1179,6 +1179,9 @@ class MovingPosPoint:
   def get_center(self):
     return self.center_
 
+  def set_center(self, center):
+    self.center_ = center
+
   def reset(self):
     self.pos_, self.center_, self.s_ = None, None, 0
 
@@ -1219,6 +1222,45 @@ class FMPosInterpolateOp:
 
   def __init__(self, distance, factor):
     self.distance_, self.factor_ = distance, factor
+
+
+class IterativeInterpolateOp:
+  class CenterOp:
+    def __call__(self, n, o):
+      parent = self.parent_()
+      if parent is not None:
+        parent.updateNeeded_ = True
+      return o
+    def __init__(self, parent):
+      self.parent_ = weakref.ref(parent)
+      
+  def make_center_op(self):
+    return self.CenterOp(self)
+
+  def __call__(self, points, pos):
+    assert(self.next_ is not None)
+    currentValue = self.next_(points, pos)
+    if self.updateNeeded_:
+      assert(self.mp_ is not None)
+      center = self.mp_.get_center()
+      b,e = (pos,center) if pos < center else (center,pos)
+      for c in xrange(100):
+        middle = 0.5*b + 0.5*e
+        self.mp_.set_center(middle)
+        value = self.next_(points, pos)
+        if abs(currentValue - value) < self.eps_:
+          self.updateNeeded_ = False
+          return currentValue
+        elif currentValue < value:
+          e = middle
+        else:
+          b = middle
+    return currentValue
+           
+  def __init__(self, next, mp, eps):
+    self.next_, self.mp_, self.eps_ = next, mp, eps
+    self.updateNeeded_ = False  
+
     
 #TODO Does not work, delete.
 class FMPosInterpolateOp2:
@@ -1870,6 +1912,20 @@ def make_curve_makers():
         return PosAxisCurve(points, interpolateOp, axis, 0.0)
 
       curveParsers["posAxis"] = parsePosAxisCurve
+
+      def parsePosAxisCurve2(cfg, state):
+        oName = state["output"]
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
+        fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**1.0, center=0.0)
+        mp = MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=None)
+        points = [fp, mp]
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(distance=0.3, factor=1.0), mp=mp, eps=0.01)
+        #TODO Set with method
+        mp.centerOp_  = interpolateOp.make_center_op()
+        return PosAxisCurve(points, interpolateOp, axis, 0.0)
+
+      curveParsers["posAxis2"] = parsePosAxisCurve2
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
