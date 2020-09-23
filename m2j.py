@@ -1166,6 +1166,8 @@ class MovingPosPoint:
       self.pos_ = pos
     s = sign(pos - self.pos_)
     if s != 0: 
+      if self.center_ is not None and abs(pos - self.center_) > self.resetDistance_:
+        self.center_ = None
       self.pos_ = pos
       if self.s_ != 0 and s != self.s_:
         #TODO Leave center cacl entirely to centerOp_?
@@ -1185,8 +1187,8 @@ class MovingPosPoint:
   def reset(self):
     self.pos_, self.center_, self.s_ = None, None, 0
 
-  def __init__(self, valueOp, centerOp):
-    self.valueOp_, self.centerOp_ = valueOp, centerOp
+  def __init__(self, valueOp, centerOp, resetDistance):
+    self.valueOp_, self.centerOp_, self.resetDistance_ = valueOp, centerOp, resetDistance
     self.reset()
 
 
@@ -1906,7 +1908,7 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
         points = [
           FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**1.0, center=0.0),
-          MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=lambda n,o : 0.5*n+0.5*o)
+          MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=lambda n,o : 0.5*n+0.5*o, resetDistance=0.3)
         ]
         interpolateOp = FMPosInterpolateOp(distance=0.3, factor=1.0)
         return PosAxisCurve(points, interpolateOp, axis, 0.0)
@@ -1917,8 +1919,8 @@ def make_curve_makers():
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
-        fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**1.0, center=0.0)
-        mp = MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=None)
+        fp = FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**2.0, center=0.0)
+        mp = MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=None, resetDistance=0.3)
         points = [fp, mp]
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(distance=0.3, factor=1.0), mp=mp, eps=0.01)
         #TODO Set with method
