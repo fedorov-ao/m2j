@@ -1199,6 +1199,9 @@ class MovingPosPoint:
 
 class FMPosInterpolateOp:
   def calc_value(self, pos):
+    assert(self.fp_ is not None)
+    if self.mp_ is None:
+      return self.fp_.get_value(pos)
     fixedValueAtPos, movingValueAtPos = self.fp_.get_value(pos), self.mp_.get_value(pos)
     if movingValueAtPos is None:
       logger.debug("{}: movingValueAtPos is None, f:{: .3f}".format(self, fixedValueAtPos))
@@ -1230,12 +1233,16 @@ class FMPosInterpolateOp:
       else: e = m
 
   def move(self, pos):
+    assert(self.fp_ is not None)
     self.fp_.move(pos)
-    self.mp_.move(pos)
+    if self.mp_ is not None:
+      self.mp_.move(pos)
 
   def reset(self):
+    assert(self.fp_ is not None)
     self.fp_.reset()
-    self.mp_.reset()
+    if self.mp_ is not None:
+      self.mp_.reset()
 
   def __init__(self, fp, mp, distance, factor, posLimits, eps):
     self.fp_, self.mp_, self.distance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, distance, factor, posLimits, eps
@@ -1904,12 +1911,11 @@ def make_curve_makers():
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
-        points = [
-          FixedPosPoint(valueOp=lambda d : sign(d)*abs(d)**1.0, center=0.0),
-          MovingPosPoint(valueOp=lambda d : 0.01*d, centerOp=lambda n,o : 0.5*n+0.5*o, resetDistance=0.3)
-        ]
-        interpolateOp = FMPosInterpolateOp(distance=0.3, factor=1.0)
-        return PosAxisCurve(points, interpolateOp, axis, 0.0)
+        valueOp=lambda d : sign(d)*abs(d)**2.0
+        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
+        mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["posAxis"] = parsePosAxisCurve
 
@@ -1919,9 +1925,7 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
         valueOp=lambda d : sign(d)*abs(d)**2.0
         fp = FixedPosPoint(valueOp=valueOp, center=0.0)
-        mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
-        points = [fp, mp]
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01)
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["posAxis2"] = parsePosAxisCurve2
