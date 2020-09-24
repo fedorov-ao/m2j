@@ -1162,6 +1162,7 @@ class FixedPosPoint:
     self.center_, self.valueOp_ = center, valueOp
 
 
+#TODO Extract center recalculation and moving in separate classes, leave only one point class (get_value() should return None if center_ is None)
 class MovingPosPoint:
   def move(self, pos):
     if self.pos_ is None:
@@ -1233,16 +1234,10 @@ class FMPosInterpolateOp:
       else: e = m
 
   def move(self, pos):
-    assert(self.fp_ is not None)
-    self.fp_.move(pos)
-    if self.mp_ is not None:
-      self.mp_.move(pos)
+    pass
 
   def reset(self):
-    assert(self.fp_ is not None)
-    self.fp_.reset()
-    if self.mp_ is not None:
-      self.mp_.reset()
+    pass
 
   def __init__(self, fp, mp, distance, factor, posLimits, eps):
     self.fp_, self.mp_, self.distance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, distance, factor, posLimits, eps
@@ -1289,10 +1284,14 @@ class IterativeInterpolateOp:
     return self.next_.calc_pos(value)
 
   def move(self, pos):
+    assert(self.mp_ is not None)
+    self.mp_.move(pos)
     assert(self.next_ is not None)
     self.next_.move(pos)
     
   def reset(self):
+    assert(self.mp_ is not None)
+    self.mp_.reset()
     assert(self.next_ is not None)
     self.next_.reset()
            
