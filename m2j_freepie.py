@@ -21,6 +21,8 @@ g_w2nKeyMapping = {
   codes.BTN_MIDDLE : 2,
   codes.BTN_SIDE : 3,
   codes.BTN_EXTRA : 4,
+  codes.BTN_0 : 0,
+  codes.BTN_1 : 1,
 }
 
 def w2n_key(k):
@@ -65,8 +67,8 @@ class PollingKeyDevice:
         
         self.append_event_(codes.EV_KEY, wKey, value)
         
-  def append_event_(self, type, code, value):
-    self.events_.append(InputEvent(type, code, value, time.time(), self.id_))     
+  def append_event_(self, t, code, value):
+    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))     
     
   def __init__(self, id, keys, get_key_value):
     self.id_ = id
@@ -92,8 +94,8 @@ class PollingAxisDevice:
       if value != 0.0:
         self.append_event_(ad[0], ad[1], value)
         
-  def append_event_(self, type, code, value):
-    self.events_.append(InputEvent(type, code, value, time.time(), self.id_))     
+  def append_event_(self, t, code, value):
+    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))     
     
   def __init__(self, id, axes, get_axis_value):
     self.id_ = id
@@ -108,6 +110,9 @@ def mouseAxisReporter(wAxis):
   elif wAxis == codes.REL_Y: v = mouse.deltaY
   elif wAxis == codes.REL_WHEEL: v = mouse.wheel
   return v
+
+def keyboardKeyReporter(wKey):
+  return keyboard.getKeyDown(w2n_key(wKey))
   
 class CompositePollingDevice:
   def read_one(self):
@@ -134,6 +139,7 @@ class CompositePollingDevice:
     self.i_ = 0
     
     
+#Does not work
 class MouseBlocker:   
   user32 = ctypes.windll.user32
   kernel32 = ctypes.windll.kernel32
@@ -145,20 +151,19 @@ class MouseBlocker:
     if s != self.s_:
       if s == True:
         assert(self.hookId_ is None)
-        self.hookId_ = user32.SetWindowsHookExA(WH_MOUSE_LL, self.hook_, kernel32.GetModuleHandleA(None), 0)
+        self.hookId_ = self.user32.SetWindowsHookExA(self.WH_MOUSE_LL, self.hook_, self.kernel32.GetModuleHandleA(None), 0)
         if not self.hookId_:
           raise OSError("Failed to install mouse hook")
       else:
         assert(self.hookId_ is not None)
-        b = user32.UnhookWindowsHookEx(self.hookId_)
+        b = self.user32.UnhookWindowsHookEx(self.hookId_)
         if not b:
           raise OSError("Failed to remove mouse hook")
         self.hookId_ = None
     self.s_ = s
 
   def hook(nCode, wParam, lParam):
-    #return 1
-    return user32.CallNextHookEx(None, nCode, wParam, lParam)   
+    return self.user32.CallNextHookEx(None, nCode, wParam, lParam)   
 
   def __init__(self):
     self.s_ = False
@@ -168,7 +173,9 @@ class MouseBlocker:
 
 
 class CursorBlocker:   
-  """Blocks mouse cursor movement by confining it in 1x1 rectangle"""
+  """Blocks mouse cursor movement by confining it in 1x1 rectangle at current cursor pos. 
+     Does not block mouse buttons.
+  """
   user32 = ctypes.windll.user32
   kernel32 = ctypes.windll.kernel32
   wintypes = ctypes.wintypes
@@ -179,7 +186,7 @@ class CursorBlocker:
       if s == True:
         if not self.user32.GetClipCursor(ctypes.byref(self.r_)):
           raise Exception("Failed to retrieve current cursor clip rectangle")
-        p = wintypes.POINT
+        p = wintypes.POINT()
         if not self.user32.GetCursorPos(ctypes.byref(p)):
           raise Exception("Failed to get current cursor position")
         r = wintypes.RECT(p.x, p.y, p.x+1, p.y+1)
@@ -231,8 +238,8 @@ class FreePIEMouse:
     if dw != 0:
       self.append_event_(codes.EV_REL, codes.REL_WHEEL, dw)   
       
-  def append_event_(self, type, code, value):
-    self.events_.append(InputEvent(type, code, value, time.time(), self.source_))
+  def append_event_(self, t, code, value):
+    self.events_.append(InputEvent(t, code, value, time.time(), self.source_))
 
   def __init__(self, source):
     self.source_ = source
@@ -270,24 +277,47 @@ if starting:
   global logger
 
 
-  settings = {"layout" : "descent", "curves" : "value_config", "log_level" : "CRITICAL", "configName" : "curves.cfg"}
-  settings["config"] = json.load(open(settings["configName"], "r"))
+  settings = {"layout" : "base", "curves" : "config", "configCurveLayoutName" : "base", "log_level" : "INFO", "configNames" : ["curves.cfg", "m2j_freepie.cfg"]}
+  settings["config"] = init_config(settings["configNames"])
 
   init_log(settings)
   logger = logging.getLogger(__name__)
 
-  mouseAxisDevice = PollingAxisDevice(0, ((codes.EV_REL, codes.REL_X), (codes.EV_REL, codes.REL_Y), (codes.EV_REL, codes.REL_WHEEL),), mouseAxisReporter)
-  mouseKeyDevice = PollingKeyDevice(0, (codes.BTN_LEFT, codes.BTN_RIGHT, codes.BTN_MIDDLE, codes.BTN_SIDE, codes.BTN_EXTRA), lambda wKey : mouse.getButton(w2n_key(wKey)))
-  #ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, CursorBlocker())
-  ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, None)
+  class DiagnosticsStream:
+    def write(self, s):
+      diagnostics.debug(s.strip("\n"))
+    def flush(self):
+      pass
+
+  root = logging.getLogger()
+  handler = logging.StreamHandler(DiagnosticsStream())
+  handler.setLevel(logging.DEBUG)
+  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
+  root.addHandler(handler)
+
+  mouseAxisDevice = PollingAxisDevice(
+    "mouse", 
+    ((codes.EV_REL, codes.REL_X), (codes.EV_REL, codes.REL_Y), (codes.EV_REL, codes.REL_WHEEL)), 
+    mouseAxisReporter
+  )
+  mouseKeyDevice = PollingKeyDevice(
+    "mouse", 
+    (codes.BTN_LEFT, codes.BTN_RIGHT, codes.BTN_MIDDLE, codes.BTN_SIDE, codes.BTN_EXTRA),
+    lambda wKey : mouse.getButton(w2n_key(wKey))
+  )
+  ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, CursorBlocker())
+  #ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, None)
   kbd = PollingKeyDevice(
-    1, 
+    "keyboard", 
     (codes.KEY_SCROLLLOCK, codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT), 
-    lambda wKey : keyboard.getPressed(w2n_key(wKey))
+    keyboardKeyReporter
   )
   settings["inputs"] = {"mouse" : ms, "keyboard" : kbd}
 
-  joystick = PPJoystick(0, {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 5, codes.ABS_RY : 10.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,})
+  joystick = PPJoystick(
+    0, 
+    {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 999.0, codes.ABS_RY : 999.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,}
+  )
   head = Opentrack("127.0.0.1", 5555)
   settings["outputs"] = {"joystick" : joystick, "head" : head}
 

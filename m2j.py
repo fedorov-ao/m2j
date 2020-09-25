@@ -99,11 +99,17 @@ class Event(object):
 
 class InputEvent(Event):
   def __str__(self):
-    #TODO check whether it works in FreePie
-    return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #these do not work in FreePie
+    #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #return super().__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
+    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers) 
+    #return "source: {}, modifiers: {}".format(self.source, self.modifiers)
 
-  def __init__(self, type, code, value, timestamp, source, modifiers = None):
-    super(InputEvent, self).__init__(type, code, value, timestamp)
+  def __init__(self, t, code, value, timestamp, source, modifiers = None):
+    #super().__init__(t, code, value, timestamp)
+    self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
     self.source = source 
     self.modifiers = () if modifiers is None else modifiers
 
@@ -1263,6 +1269,7 @@ class IterativeInterpolateOp:
     if self.updateNeeded_:
       assert(self.mp_ is not None)
       center = self.mp_.get_center()
+      if center is None: center = pos
       b,e = (pos,center) if pos < center else (center,pos)
       logger.debug("{}: calc_value(): starting mp center binary search".format(self))
       for c in xrange(100):
