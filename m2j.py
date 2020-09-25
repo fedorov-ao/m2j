@@ -99,15 +99,18 @@ class Event(object):
 
 class InputEvent(Event):
   def __str__(self):
+    #Had to reference members of parent class directly, because FreePie does not handle super() well
+    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers) 
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super().__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
-    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers) 
     #return "source: {}, modifiers: {}".format(self.source, self.modifiers)
 
   def __init__(self, t, code, value, timestamp, source, modifiers = None):
+    #Had to reference members of parent class directly, because FreePie does not handle super() well
+    #This does not work in FreePie
     #super().__init__(t, code, value, timestamp)
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
     self.source = source 
@@ -834,6 +837,32 @@ class SigmoidApproximator:
     self.k_, self.b_, self.c_, self.d_ = k, b, c, d
 
 
+class BezierApproximator:
+  def __call__(self, x):
+    l, r = self.points_[0], self.points_[len(self.points_)-1]
+    if x <= l[0]:
+      return l[1]
+    elif x >= r[0]:
+      return r[1]
+    else:
+      points = [p for p in self.points_]
+      fraction = (x - l[0]) / (r[0] - l[0])
+      logger.debug("{}: points: {}".format(self, points))
+      logger.debug("{}: fraction: {: .3f}".format(self, fraction))
+      for n in xrange(len(points)-1, 0, -1):
+        for i in xrange(0, n):
+          p0, p1 = points[i], points[i+1]
+          p = (fraction*p1[0] + (1.0-fraction)*p0[0], fraction*p1[1] + (1.0-fraction)*p0[1])
+          points[i] = p
+          logger.debug("{}: n: {}, i: {}, points: {}".format(self, n,i,points))
+      logger.debug("{}: result: {: .3f}".format(self, points[0][1]))
+      return points[0][1]
+
+  def __init__(self, points):
+    self.points_ = [(p[0],p[1]) for p in points]
+    self.points_.sort(key=lambda p : p[0])
+
+
 class DirectionBasedCurve:
   """Converts input to output based on coefficient that depends on previous input behaviour.
      Changes coefficient when input changes sign. Restores coefficient in steps if input does not change sign.
@@ -984,6 +1013,8 @@ class ValuePointOp:
       r = None
     elif left is not None and right is not None:
       leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
+      if leftDelta == 0.0 and rightDelta == 0.0:
+        leftDelta, rightDelta = 0.5, 0.5
       totalDelta = leftDelta + rightDelta
       #interpolating (sort of)
       #left value is multiplied by right fraction of deltas sum and vice versa
@@ -1039,6 +1070,8 @@ class ValuePointOp2:
 
 def interpolate_op(left, right):
   leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
+  if leftDelta == 0.0 and rightDelta == 0.0:
+    leftDelta, rightDelta = 0.5, 0.5
   totalDelta = leftDelta + rightDelta
   #interpolating (sort of)
   #left value is multiplied by right fraction of deltas sum and vice versa
@@ -1926,6 +1959,13 @@ def make_curve_makers():
       curveParsers["posAxis"] = parsePosAxisCurve
 
       def parsePosAxisCurve2(cfg, state):
+        def make_cubic_op(x, y):
+          a = (y - x**2) / (x**3 - x**2)
+          b = 1.0 - a
+          def op(v):
+            return a*v**3 + b*v**2
+          return op
+
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
@@ -1935,6 +1975,17 @@ def make_curve_makers():
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["posAxis2"] = parsePosAxisCurve2
+
+      def parseBezierPosAxisCurve(cfg, state):
+        oName = state["output"]
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
+        valueOp = BezierApproximator(cfg["points"])
+        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
+
+      curveParsers["bezierPosAxis"] = parseBezierPosAxisCurve
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
