@@ -839,28 +839,23 @@ class SigmoidApproximator:
 
 class BezierApproximator:
   def __call__(self, x):
-    l, r = self.points_[0], self.points_[len(self.points_)-1]
-    if x <= l[0]:
-      return l[1]
-    elif x >= r[0]:
-      return r[1]
-    else:
-      points = [p for p in self.points_]
-      fraction = (x - l[0]) / (r[0] - l[0])
-      logger.debug("{}: points: {}".format(self, points))
-      logger.debug("{}: fraction: {: .3f}".format(self, fraction))
-      for n in xrange(len(points)-1, 0, -1):
-        for i in xrange(0, n):
-          p0, p1 = points[i], points[i+1]
-          p = (fraction*p1[0] + (1.0-fraction)*p0[0], fraction*p1[1] + (1.0-fraction)*p0[1])
-          points[i] = p
-          logger.debug("{}: n: {}, i: {}, points: {}".format(self, n,i,points))
-      logger.debug("{}: result: {: .3f}".format(self, points[0][1]))
-      return points[0][1]
+    l, r = self.points_[0][0], self.points_[len(self.points_)-1][0]
+    x = clamp(x, l, r)
+    fraction = (x - l) / (r - l)
+    points = [p for p in self.points_]
+    logger.debug("{}: points: {}".format(self, points))
+    logger.debug("{}: fraction: {: .3f}".format(self, fraction))
+    for n in xrange(len(points)-1, 0, -1):
+      for i in xrange(0, n):
+        p0, p1 = points[i], points[i+1]
+        p = (fraction*p1[0] + (1.0-fraction)*p0[0], fraction*p1[1] + (1.0-fraction)*p0[1])
+        points[i] = p
+        logger.debug("{}: n: {}, i: {}, points: {}".format(self, n,i,points))
+    logger.debug("{}: result: {: .3f}".format(self, points[0][1]))
+    return points[0][1]
 
   def __init__(self, points):
     self.points_ = [(p[0],p[1]) for p in points]
-    self.points_.sort(key=lambda p : p[0])
 
 
 class DirectionBasedCurve:
