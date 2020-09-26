@@ -1942,42 +1942,36 @@ def make_curve_makers():
       curveParsers["valuePoints"] = parseValuePointsCurve
 
       def parsePosAxisCurve(cfg, state):
+        def make_value_op(a,b,c,d):
+          def op(x):
+            s = sign(x)
+            x = abs(x)
+            return s*(a*x**3 + b*x**2 + c*x + d)
+          return op
+
+        def parseFixedPoint(cfg, state):
+          p = FixedPosPoint(valueOp=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=cfg.get("center", 0.0))
+          return p
+
+        def parseMovingPoint(cfg, state):
+          p = MovingPosPoint(valueOp=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), centerOp=None, resetDistance=cfg.get("resetDistance", 0.4))
+          return p
+
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
-        valueOp=lambda d : sign(d)*abs(d)**2.0
-        def valueOp(d):
-          s = sign(d)
-          d = abs(d)
-          a = 0.5
-          b = 1.0 - a
-          return s*(a*d**3 + b*d**2)
-        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
-        mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
+        fp = parseFixedPoint(cfg["points"]["fixed"], state)
+        mp = parseMovingPoint(cfg["points"]["moving"], state)
+        interpolationDistance = cfg.get("interpolationDistance", 0.3)
+        interpolationFactor = cfg.get("interpolationFactor", 1.0)
+        posLimits = (-1.1, 1.1)
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, eps=0.01)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
       curveParsers["posAxis"] = parsePosAxisCurve
 
-      def parsePosAxisCurve2(cfg, state):
-        def make_cubic_op(x, y):
-          a = (y - x**2) / (x**3 - x**2)
-          b = 1.0 - a
-          def op(v):
-            return a*v**3 + b*v**2
-          return op
-
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
-        valueOp=lambda d : sign(d)*abs(d)**2.0
-        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
-
-      curveParsers["posAxis2"] = parsePosAxisCurve2
-
       def parseBezierPosAxisCurve(cfg, state):
+        """Fixed point only."""
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
@@ -1989,7 +1983,7 @@ def make_curve_makers():
       curveParsers["bezierPosAxis"] = parseBezierPosAxisCurve
 
       def parseBezierPosAxisCurve2(cfg, state):
-        """Lags too much"""
+        """Fixed and moving points. Lags too much."""
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
