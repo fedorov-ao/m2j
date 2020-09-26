@@ -1113,17 +1113,6 @@ class ValueOpDeltaAxisCurve:
     if reset:
       self.reset()
 
-  #TODO Not needed since can return axis?
-  def set_value(self, value):
-    """Sets value directly to axis and optionally resets itself."""
-    assert(self.axis_ is not None)
-    if value == clamp(value, *self.axis_.limits()):
-      self.axis_.move(value, False)
-    else:
-      raise ArgumentError("Value {} out of limits {}".format(value, self.axis_.limits()))
-    if self.shouldReset_:
-      self.reset()
-
   def __init__(self, deltaOp, valueOp, axis, shouldReset=False):
     assert(deltaOp)
     assert(valueOp)
