@@ -1113,17 +1113,19 @@ class ValueOpDeltaAxisCurve:
     if reset:
       self.reset()
 
-  def __init__(self, deltaOp, valueOp, axis, shouldReset=False):
+  def __init__(self, deltaOp, valueOp, axis):
     assert(deltaOp)
     assert(valueOp)
     assert(axis)
-    self.deltaOp_, self.valueOp_, self.axis_, self.shouldReset_, self.s_ = deltaOp, valueOp, axis, shouldReset, 0
+    self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
 
 
 class PosAxisCurve:
   def move_by(self, x, timestamp):
-    self.pos_ = clamp(self.pos_ + x, *self.posLimits_)
-    self.op_.move(self.pos_)
+    pos = clamp(self.pos_ + x, *self.posLimits_)
+    if pos == self.pos_:
+      return
+    self.pos_ = pos
     value = self.op_.calc_value(self.pos_)
     self.axis_.move(value, relative=False)
 
@@ -1141,7 +1143,6 @@ class PosAxisCurve:
     value = self.op_.calc_value(pos)
     self.axis_.move(value, relative=False)
     self.pos_ = pos
-    self.op_.move(pos)
     if reset:
       self.reset()
 
@@ -1150,70 +1151,17 @@ class PosAxisCurve:
     self.pos_ = self.op_.calc_pos(self.axis_.get())
 
 
-class FixedPosPoint:
-  def move(self, pos):
-    pass
-
-  def get_value(self, pos):
-    return self.valueOp_(pos - self.center_)
-
-  def get_center(self):
-    return self.center_
-
-  def reset(self):
-    pass
-
-  def __init__(self, valueOp, center=0.0):
-    self.center_, self.valueOp_ = center, valueOp
-
-
-#TODO Extract center recalculation and moving in separate classes, leave only one point class (get_value() should return None if center_ is None)
-class MovingPosPoint:
-  def move(self, pos):
-    if self.pos_ is None:
-      self.pos_ = pos
-    s = sign(pos - self.pos_)
-    if s != 0: 
-      if self.center_ is not None and abs(pos - self.center_) > self.resetDistance_:
-        self.center_ = None
-      self.pos_ = pos
-      if self.s_ != 0 and s != self.s_:
-        #TODO Leave center calculation entirely to centerOp_?
-        self.center_ = pos if self.center_ is None else self.centerOp_(pos, self.center_)
-        logger.debug("{}: new center: {}".format(self, self.center_))
-      self.s_ = s
-
-  def get_value(self, pos):
-    return None if self.center_ is None else self.valueOp_(pos - self.center_)
-
-  def get_center(self):
-    return self.center_
-
-  def set_center(self, center):
-    self.center_ = center
-
-  def set_center_op(self, op):
-    self.centerOp_ = op
-
-  def reset(self):
-    self.pos_, self.center_, self.s_ = None, None, 0
-
-  def __init__(self, valueOp, centerOp, resetDistance):
-    self.valueOp_, self.centerOp_, self.resetDistance_ = valueOp, centerOp, resetDistance
-    self.reset()
-
-
 class FMPosInterpolateOp:
   def calc_value(self, pos):
     assert(self.fp_ is not None)
     if self.mp_ is None:
-      return self.fp_.get_value(pos)
-    fixedValueAtPos, movingValueAtPos = self.fp_.get_value(pos), self.mp_.get_value(pos)
+      return self.fp_.calc(pos)
+    fixedValueAtPos, movingValueAtPos = self.fp_.calc(pos), self.mp_.calc(pos)
     if movingValueAtPos is None:
       logger.debug("{}: movingValueAtPos is None, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     movingCenter = self.mp_.get_center()
-    fixedValueAtMovingCenter = self.fp_.get_value(movingCenter)
+    fixedValueAtMovingCenter = self.fp_.calc(movingCenter)
     movingValueAtPos += fixedValueAtMovingCenter
     delta = abs(pos - movingCenter)
     distance = min(self.distance_, abs(movingCenter - self.fp_.get_center()))
@@ -1231,15 +1179,14 @@ class FMPosInterpolateOp:
 
   def calc_pos(self, value):
     b,e = self.posLimits_
+    m = 0.0
     for c in xrange(100):
       m = 0.5*b + 0.5*e
       v = self.calc_value(m)
       if abs(v - value) < self.eps_: return m
       elif v < value: b = m
       else: e = m
-
-  def move(self, pos):
-    pass
+    return m
 
   def reset(self):
     pass
@@ -1249,63 +1196,63 @@ class FMPosInterpolateOp:
 
 
 class IterativeInterpolateOp:
-  class CenterOp:
-    def __call__(self, n, o):
-      parent = self.parent_()
-      if parent is not None:
-        parent.updateNeeded_ = True
-      return o
-    def __init__(self, parent):
-      self.parent_ = weakref.ref(parent)
-      
-  def make_center_op(self):
-    return self.CenterOp(self)
-
   def calc_value(self, pos):
-    logger.debug("{}: calc_value()".format(self))
-    assert(self.next_ is not None)
-    currentValue = self.next_.calc_value(pos)
-    if self.updateNeeded_:
+    def update_mp_center(self, pos):
       assert(self.mp_ is not None)
       center = self.mp_.get_center()
-      if center is None: center = pos
-      b,e = (pos,center) if pos < center else (center,pos)
-      logger.debug("{}: calc_value(): starting mp center binary search".format(self))
-      for c in xrange(100):
-        middle = 0.5*b + 0.5*e
-        self.mp_.set_center(middle)
-        value = self.next_.calc_value(pos)
-        if abs(currentValue - value) < self.eps_:
-          self.updateNeeded_ = False
-          logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
-          return value
-        elif currentValue < value:
-          e = middle
-        else:
-          b = middle
-    return currentValue
+      currentValue = self.next_.calc_value(pos)
+      if center is None: 
+        center = pos
+        self.mp_.set_center(center)
+      else:
+        b,e = (pos,center) if pos < center else (center,pos)
+        logger.debug("{}: calc_value(): starting mp center binary search".format(self))
+        for c in xrange(100):
+          middle = 0.5*b + 0.5*e
+          self.mp_.set_center(middle)
+          value = self.next_.calc_value(pos)
+          if abs(currentValue - value) < self.eps_:
+            logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
+          elif currentValue < value:
+            e = middle
+          else:
+            b = middle
+
+    def check_pos(self, pos):
+      if self.pos_ is None:
+        self.pos_ = pos
+      s = sign(pos - self.pos_)
+      if s != 0: 
+        center = self.mp_.get_center()
+        if center is not None and abs(pos - center) > self.resetDistance_:
+          self.mp_.set_center(None)
+        self.pos_ = pos
+        if self.s_ != 0 and s != self.s_:
+          update_mp_center(self, pos)
+        self.s_ = s
+
+    logger.debug("{}: calc_value()".format(self))
+    assert(self.next_ is not None)
+    assert(self.mp_ is not None)
+
+    check_pos(self, pos)
+    return self.next_.calc_value(pos)
 
   def calc_pos(self, value):
     assert(self.next_ is not None)
     return self.next_.calc_pos(value)
 
-  def move(self, pos):
-    assert(self.mp_ is not None)
-    self.mp_.move(pos)
-    assert(self.next_ is not None)
-    self.next_.move(pos)
-    
   def reset(self):
     assert(self.mp_ is not None)
-    self.mp_.reset()
+    self.mp_.set_center(None)
+    self.pos_, self.s_ = None, 0
     assert(self.next_ is not None)
     self.next_.reset()
            
-  def __init__(self, next, mp, eps):
-    self.next_, self.mp_, self.eps_ = next, mp, eps
-    self.updateNeeded_ = False  
+  def __init__(self, next, mp, resetDistance, eps):
     assert(mp is not None)
-    mp.set_center_op(self.make_center_op())
+    self.next_, self.mp_, self.resetDistance_, self.eps_ = next, mp, resetDistance, eps
+    self.pos_, self.s_ = None, 0
 
     
 class SpeedBasedCurve:
@@ -1921,11 +1868,11 @@ def make_curve_makers():
           return op
 
         def parseFixedPoint(cfg, state):
-          p = FixedPosPoint(valueOp=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=cfg.get("center", 0.0))
+          p = Point(op=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=cfg.get("center", 0.0))
           return p
 
         def parseMovingPoint(cfg, state):
-          p = MovingPosPoint(valueOp=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), centerOp=None, resetDistance=cfg.get("resetDistance", 0.4))
+          p = Point(op=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=None)
           return p
 
         oName = state["output"]
@@ -1935,8 +1882,9 @@ def make_curve_makers():
         mp = parseMovingPoint(cfg["points"]["moving"], state)
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
+        resetDistance = cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = (-1.1, 1.1)
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, eps=0.01)
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, resetDistance=resetDistance, eps=0.01)
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
       curveParsers["posAxis"] = parsePosAxisCurve
