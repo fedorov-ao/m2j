@@ -983,7 +983,7 @@ class PointMover:
 
     if s != 0:
       if self.s_ != 0 and s != self.s_:
-        c = x if center is None else self.centerOp_(center, x)
+        c = x if center is None else self.centerOp_(x, center)
         logger.debug("{}: center has changed (old: {}; new: {})".format(self, center, c))
         self.point_.set_center(c)
       self.s_ = s
@@ -993,7 +993,7 @@ class PointMover:
   def get_center(self):
     return self.point_.get_center()
 
-  def __init__(self, point, centerOp = lambda old,new : 0.5*old+0.5*new, resetDistance = float("inf")):
+  def __init__(self, point, centerOp = lambda new,old : 0.5*old+0.5*new, resetDistance = float("inf")):
     assert(point)
     assert(centerOp)
     self.point_, self.centerOp_, self.resetDistance_ = point, centerOp, resetDistance
@@ -1895,7 +1895,7 @@ def make_curve_makers():
         newRatio = clamp(cfg.get("newValueRatio", 0.5), 0.0, 1.0)
         def make_center_op(newRatio):
           oldRatio = 1.0 - newRatio 
-          def op(old,new):
+          def op(new,old):
             return oldRatio*old+newRatio*new
           return op
         return PointMover(point=Point(op=op), centerOp=make_center_op(newRatio), resetDistance=cfg.get("resetDistance", float("inf")))
