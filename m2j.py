@@ -2072,8 +2072,15 @@ def make_curve_makers():
     for oName,o in data["outputs"].items():
       state["axes"][oName] = {axisId:Axis(o, axisId) for axisId in axisToName.keys()}
     settings = data["settings"]
-    sets = settings["config"]["layouts"][settings["configCurveLayoutName"]]
-    r = parseSets(sets, state)
+    config = settings["config"]
+    configCurves = config["configCurves"]
+    logger.info("Using {} config curves".format(configCurves))
+    sets = config["layouts"].get(configCurves, None)
+    if sets is None:
+      logger.error("{} curves not found in config".format(configCurves))
+      r = None
+    else:
+      r = parseSets(sets, state)
     return r
 
   curves["config"] = make_config_curves
@@ -2097,7 +2104,7 @@ def init_main_sink(settings, make_next):
   scaleSink = modifierSink.set_next(ScaleSink(sens))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
   stateSink = mainSink.add((), StateSink(), 1)
-  toggleKey = settings.get("toggleKey", codes.KEY_SCROLLLOCK)
+  toggleKey = settings["config"].get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
     grabberSinks = []
     for g in settings["config"].get("grabbed", ()):
@@ -2147,7 +2154,7 @@ def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLe
 
 
 def init_log(settings, handler=None):
-  logLevelName = settings["log_level"].upper()
+  logLevelName = settings["config"]["logLevel"].upper()
   nameToLevel = {
     logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
   }
@@ -2187,7 +2194,7 @@ sink_initializers["main"] = init_sinks_empty
 
 def init_sinks_base(settings): 
   cmpOp = CmpWithModifiers2()
-  curveSet = settings.get("curves", None)
+  curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
   curveMaker = curveMakers.get(curveSet, None)
@@ -2336,7 +2343,7 @@ sink_initializers["base"] = init_sinks_base
 
 def init_sinks_base3(settings):
   cmpOp = CmpWithModifiers2()
-  curveSet = settings.get("curves", None)
+  curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
   curveMaker = curveMakers.get(curveSet, None)
@@ -2498,7 +2505,7 @@ sink_initializers["base3"] = init_sinks_base3
 def init_sinks_descent(settings):
   cmpOp = CmpWithModifiers2()
 
-  curveSet = settings.get("curves", None)
+  curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
   curveMaker = curveMakers.get(curveSet, None)

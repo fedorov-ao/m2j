@@ -127,17 +127,23 @@ def run():
     if "head" in outputs: del outputs["head"]
     outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
-  def run2(settings):
+  def init_config2(settings):
     if "configNames" in settings:
-      settings["config"] = init_config(settings["configNames"])
+      settings["config"] = {}
+      merge_dicts(settings["config"], init_config(settings["configNames"]))
+      merge_dicts(settings["config"], settings["options"])
 
-    settings["inputs"] = find_devices(settings["config"]["inputs"])
+  def run2(settings):
+    init_config2(settings)
+    config = settings["config"]
 
-    initializer = sink_initializers.get(settings["layout"], None)
+    settings["inputs"] = find_devices(config["inputs"])
+
+    initializer = sink_initializers.get(config["layout"], None)
     if not initializer:
-      raise Exception("Initialiser for {} not found".format(settings["layout"]))
+      raise Exception("Initialiser for {} not found".format(config["layout"]))
     else:
-      logger.info("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
+      logger.info("Initializing for {}, using {} curves".format(config["layout"], config["curves"]))
 
     sink = init_main_sink(settings, initializer)
 
@@ -151,25 +157,26 @@ def run():
     except KeyboardInterrupt:
       return 0
 
-  settings = {"layout" : "base", "curves" : "distance", "log_level" : "CRITICAL", "configNames" : []}
+  settings = {"options" : {}, "config" : {}, "configNames" : []}
+  config, options = settings["config"], settings["options"]
 
-  opts, args = getopt.getopt(sys.argv[1:], "pl:c:o:n:", ["print", "layout=", "curves=", "log_level=", "config="])
+  opts, args = getopt.getopt(sys.argv[1:], "pl:c:f:o:n:", ["print", "layout=", "curves=", "configCurves=", "logLevel=", "config="])
   for o, a in opts:
     if o in ("-p", "--print"):
       print_devices()
       return 0
     if o in ("-l", "--layout"):
-      settings["layout"] = a
+      options["layout"] = a
     elif o in ("-c", "--curves"):
-      if a.find("config") == 0:
-        settings["curves"], settings["configCurveLayoutName"] = a.split(":")
-      else:
-        settings["curves"] = a
-    elif o in ("-o", "--log_level"):
-      settings["log_level"] = a
+      options["curves"] = a
+    elif o in ("-f", "--configCurves"):
+      options["configCurves"] = a
+    elif o in ("-o", "--logLevel"):
+      options["logLevel"] = a
     elif o in ("-n", "--config"):
       settings["configNames"].append(a)
 
+  init_config2(settings)
   init_log(settings)
   init_joysticks(settings)
 
