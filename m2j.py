@@ -1946,6 +1946,12 @@ def make_curve_makers():
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
         valueOp=lambda d : sign(d)*abs(d)**2.0
+        def valueOp(d):
+          s = sign(d)
+          d = abs(d)
+          a = 0.5
+          b = 1.0 - a
+          return s*(a*d**3 + b*d**2)
         fp = FixedPosPoint(valueOp=valueOp, center=0.0)
         mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
@@ -1981,6 +1987,19 @@ def make_curve_makers():
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["bezierPosAxis"] = parseBezierPosAxisCurve
+
+      def parseBezierPosAxisCurve2(cfg, state):
+        """Lags too much"""
+        oName = state["output"]
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
+        valueOp = BezierApproximator(cfg["points"])
+        fp = FixedPosPoint(valueOp=valueOp, center=0.0)
+        mp = MovingPosPoint(valueOp=valueOp, centerOp=None, resetDistance=0.4)
+        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, eps=0.01)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
+
+      curveParsers["bezierPosAxis2"] = parseBezierPosAxisCurve2
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
