@@ -944,94 +944,69 @@ class DistanceBasedCurve:
     self.distance_, self.value_, self.approx_, self.limit_ = 0.0, 0.0, approx, limit
 
 
-class FixedValuePoint:
-  def __call__(self, value):
-    return None if value is None else (self.op_(value - self.fixedValue_), self.fixedValue_)
+class Point:
+  def calc(self, x):
+    return None if (x is None or self.center_ is None) else self.op_(x - self.center_)
 
-  def __init__(self, op, fixedValue):
+  def get_center(self):
+    return self.center_
+
+  def set_center(self, center):
+    self.center_ = center
+
+  def __init__(self, op, center=None):
     self.op_ = op
-    self.fixedValue_ = fixedValue
+    self.center_ = center
 
 
-class MovingValuePoint:
-  def __call__(self, value):
-    if value is None:
-      logger.debug("{}: got None value, hard-resetting".format(self))
-      self.s_, self.tempValue_, self.value_ = 0, 0.0, None
+class PointMover:
+  def calc(self, x):
+    if x is None:
+      logger.debug("{}: got None arg, hard-resetting".format(self))
+      self.s_, self.current_ = 0, None
+      self.point_.set_center(None)
       return None
-    elif self.value_ is not None and abs(value-self.value_) > self.resetDistance_:
-      logger.debug("{}: resetDistance reached, soft-resetting".format(self))
-      self.value_ = None
-      return None
-    else:
-      s = sign(value - self.tempValue_)
-      logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.tempValue_, value, s))
-      self.tempValue_ = value
-      #TODO Check that s != 0 condition does not break something
-      if s != 0:
-        if self.s_ != 0 and s != self.s_:
-          v = value if self.value_ is None else self.valueOp_(self.value_, value)
-          logger.debug("{}: reference value changed (old: {}; new: {})".format(self, self.value_, v))
-          self.value_ = v
-        self.s_ = s
-      return None if self.value_ is None else (self.deltaOp_(value - self.value_), self.value_)
 
-  def __init__(self, deltaOp, valueOp = lambda old,new : 0.5*old+0.5*new, resetDistance = float("inf")):
-    assert(deltaOp)
-    assert(valueOp)
-    self.deltaOp_, self.valueOp_, self.resetDistance_ = deltaOp, valueOp, resetDistance
-    self.s_, self.tempValue_, self.value_ = 0, 0.0, None
+    center = self.point_.get_center()
+    if center is not None and abs(x - center) > self.resetDistance_:
+      logger.debug("{}: reset distance reached, soft-resetting".format(self))
+      self.point_.set_center(None)
+      return None
+
+    if self.current_ is None:
+      self.current_ = x
+      return None
+
+    s = sign(x - self.current_)
+    logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.current_, x, s))
+    self.current_ = x
+
+    if s != 0:
+      if self.s_ != 0 and s != self.s_:
+        c = x if center is None else self.centerOp_(center, x)
+        logger.debug("{}: center has changed (old: {}; new: {})".format(self, center, c))
+        self.point_.set_center(c)
+      self.s_ = s
+
+    return None if center is None else self.point_.calc(x)
+
+  def get_center(self):
+    return self.point_.get_center()
+
+  def __init__(self, point, centerOp = lambda old,new : 0.5*old+0.5*new, resetDistance = float("inf")):
+    assert(point)
+    assert(centerOp)
+    self.point_, self.centerOp_, self.resetDistance_ = point, centerOp, resetDistance
+    self.s_, self.current_ = 0, None
 
 
 class ValuePointOp:
   def __call__(self, value):
     left, right = None, None
     for vp in self.vps_:
-      p = vp(value) #p is (result, value)
-      if p is None or value is None:
-        continue
-      delta = value - p[1]
-      s = sign(delta)
-      delta = abs(delta)
-      if s == 1:
-        if left is None or delta < left[1]: 
-          left = (p[0], delta) #left and right are (result, delta)
-      elif s == -1:
-        if right is None or delta < right[1]: 
-          right = (p[0], delta)
-      else:
-        left = (p[0], delta)
-        right = (p[0], delta)
-
-    r = None
-    if left is None and right is None:
-      r = None
-    elif left is not None and right is not None:
-      leftDelta, rightDelta = left[1], right[1] #absolute values of deltas
-      if leftDelta == 0.0 and rightDelta == 0.0:
-        leftDelta, rightDelta = 0.5, 0.5
-      totalDelta = leftDelta + rightDelta
-      #interpolating (sort of)
-      #left value is multiplied by right fraction of deltas sum and vice versa
-      r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
-    else:
-      r = (left if right is None else right)[0]
-    tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
-    float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
-    logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
-    return r
-
-  def __init__(self, vps):
-    self.vps_ = vps
-
-
-class ValuePointOp2:
-  def __call__(self, value):
-    left, right = None, None
-    for vp in self.vps_:
-      p = vp(value) #p is (result, value)
+      p = (vp.calc(value), vp.get_center()) #p is (result, center)
       logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
-      if p is None or value is None:
+      if value is None or p[0] is None:
         continue
       delta = value - p[1]
       s = sign(delta)
@@ -1911,19 +1886,19 @@ def make_curve_makers():
 
       def fixedPointParser(cfg, state):
         op = SensitivityOp(cfg["points"])
-        return FixedValuePoint(op, cfg.get("value", 0.0))
+        return Point(op, cfg.get("value", 0.0))
 
       pointParsers["fixed"] = fixedPointParser
 
       def movingPointParser(cfg, state):
         op = SensitivityOp(cfg["points"])
         newRatio = clamp(cfg.get("newValueRatio", 0.5), 0.0, 1.0)
-        def make_value_op(newRatio):
+        def make_center_op(newRatio):
           oldRatio = 1.0 - newRatio 
           def op(old,new):
             return oldRatio*old+newRatio*new
           return op
-        return MovingValuePoint(deltaOp=op, valueOp=make_value_op(newRatio), resetDistance=cfg.get("resetDistance", float("inf")))
+        return PointMover(point=Point(op=op), centerOp=make_center_op(newRatio), resetDistance=cfg.get("resetDistance", float("inf")))
 
       pointParsers["moving"] = movingPointParser
 
@@ -1943,7 +1918,7 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
         vpoName = cfg.get("vpo", None)
-        vpo = ValuePointOp2(points, get_min_op) if vpoName == "min" else ValuePointOp2(points, interpolate_op)
+        vpo = ValuePointOp(points, get_min_op) if vpoName == "min" else ValuePointOp(points, interpolate_op)
         return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
