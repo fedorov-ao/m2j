@@ -1106,7 +1106,13 @@ class ValueOpDeltaAxisCurve:
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
     value, limits = self.axis_.get(), self.axis_.limits()
     baseValue = value
-    for xx in (0.01*x, 0.99*x):
+    s = sign(x)
+    if s == 0:
+      return 0.0
+    #If x has changed sign, call deltaOp twice to help it react better
+    xsteps = (x,) if s == self.s_ else (0.01*x, 0.99*x)
+    self.s_ = s
+    for xx in xsteps:
       factor = self.valueOp_(value)
       if factor is None:
         raise ArithmeticError("Cannot compute value, factor is None")
@@ -1121,6 +1127,7 @@ class ValueOpDeltaAxisCurve:
     logger.debug("{}: resetting".format(self))
     assert(self.valueOp_ is not None)
     self.valueOp_(None)
+    self.s_ = 0
     #TODO Should also call self.deltaOp_?
 
   def get_axis(self):
@@ -1146,7 +1153,7 @@ class ValueOpDeltaAxisCurve:
     assert(deltaOp)
     assert(valueOp)
     assert(axis)
-    self.deltaOp_, self.valueOp_, self.axis_, self.shouldReset_ = deltaOp, valueOp, axis, shouldReset
+    self.deltaOp_, self.valueOp_, self.axis_, self.shouldReset_, self.s_ = deltaOp, valueOp, axis, shouldReset, 0
 
 
 class PosAxisCurve:
