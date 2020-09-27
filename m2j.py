@@ -1902,19 +1902,12 @@ def make_curve_makers():
       curveParsers["valuePoints"] = parseValuePointsCurve
 
       def parsePosAxisCurve(cfg, state):
-        def parseFixedPoint(cfg, state):
-          p = Point(op=parseOp(cfg, state), center=cfg.get("center", 0.0))
-          return p
-
-        def parseMovingPoint(cfg, state):
-          p = Point(op=parseOp(cfg, state), center=None)
-          return p
-
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
-        fp = parseFixedPoint(cfg["points"]["fixed"], state)
-        mp = parseMovingPoint(cfg["points"]["moving"], state)
+        points = parsePoints(cfg["points"], state)
+        fp = points["fixed"]
+        mp = points["moving"]
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         resetDistance = cfg["points"]["moving"].get("resetDistance", 0.4)
