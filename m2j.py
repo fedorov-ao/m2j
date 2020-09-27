@@ -1158,7 +1158,7 @@ class FMPosInterpolateOp:
       return self.fp_.calc(pos)
     fixedValueAtPos, movingValueAtPos = self.fp_.calc(pos), self.mp_.calc(pos)
     if movingValueAtPos is None:
-      logger.debug("{}: movingValueAtPos is None, f:{: .3f}".format(self, fixedValueAtPos))
+      logger.debug("{}: movingValueAtPos is None, f:{}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     movingCenter = self.mp_.get_center()
     fixedValueAtMovingCenter = self.fp_.calc(movingCenter)
@@ -1808,15 +1808,58 @@ def make_curve_makers():
 
 
   def make_config_curves(data):
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
+    def parseOp(cfg, state):
+      def make_symm_wrapper(wrapped, symm):
+        if symm == 1:
+          return lambda x : wrapped(abs(x))
+        elif symm == 2:
+          return lambda x : sign(x)*wrapped(wrapped(abs(x)))
+        else:
+          return wrapped
+
+      parsers = {}
+
+      def segment(cfg, state):
+        def make_op(data, symmetric):
+          approx = SegmentApproximator(data, 1.0, True, True)
+          return make_symm_wrapper(approx, symmetric)
+        return make_op(cfg["points"], cfg["symmetric"])
+
+      parsers["segment"] = segment
+
+      def poly(cfg, state):
+        def make_op(data, symmetric):
+          d = [(k,int(p)) for p,k in data.items()]
+          def op(x):
+            r = 0.0
+            for k,p in d:
+              r += k*x**p
+            return r
+          return make_symm_wrapper(op, symmetric)
+        return make_op(cfg["coeffs"], cfg["symmetric"])
+
+      parsers["poly"] = poly 
+      
+      def bezier(cfg, state):
+        def make_op(data, symmetric):
+          approx = BezierApproximator(data)
+          def op(x):
+            return approx(x)
+          return make_symm_wrapper(op, symmetric)
+        return make_op(cfg["points"], cfg["symmetric"])
+
+      parsers["bezier"] = bezier 
+
+      return parsers[cfg["type"]](cfg["data"], state)
 
     def parsePoints(cfg, state):
+      def SensitivityOp(data):
+        """Symmetric"""
+        approx = SegmentApproximator(data, 1.0, True, True)
+        def op(value):
+          return approx(abs(value))
+        return op
+
       pointParsers = {}
 
       def fixedPointParser(cfg, state):
@@ -1854,24 +1897,18 @@ def make_curve_makers():
         points = parsePoints(cfg["points"], state)
         vpoName = cfg.get("vpo", None)
         vpo = ValuePointOp(points, get_min_op) if vpoName == "min" else ValuePointOp(points, interpolate_op)
+        deltaOp = lambda x,value : x*value
         return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
 
       curveParsers["valuePoints"] = parseValuePointsCurve
 
       def parsePosAxisCurve(cfg, state):
-        def make_value_op(a,b,c,d):
-          def op(x):
-            s = sign(x)
-            x = abs(x)
-            return s*(a*x**3 + b*x**2 + c*x + d)
-          return op
-
         def parseFixedPoint(cfg, state):
-          p = Point(op=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=cfg.get("center", 0.0))
+          p = Point(op=parseOp(cfg["op"], state), center=cfg.get("center", 0.0))
           return p
 
         def parseMovingPoint(cfg, state):
-          p = Point(op=make_value_op(*(cfg.get(n, 0.0) for n in ("a", "b", "c", "d"))), center=None)
+          p = Point(op=parseOp(cfg["op"], state), center=None)
           return p
 
         oName = state["output"]
@@ -1887,31 +1924,6 @@ def make_curve_makers():
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
       curveParsers["posAxis"] = parsePosAxisCurve
-
-      def parseBezierPosAxisCurve(cfg, state):
-        """Fixed point only."""
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
-        valueOp = BezierApproximator(cfg["points"])
-        fp = Point(op=valueOp, center=0.0)
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
-
-      curveParsers["bezierPosAxis"] = parseBezierPosAxisCurve
-
-      def parseBezierPosAxisCurve2(cfg, state):
-        """Fixed and moving points."""
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
-        valueOp = BezierApproximator(cfg["points"])
-        fp = Point(op=valueOp, center=0.0)
-        mp = Point(op=valueOp, center=None)
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, resetDistance=0.4, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
-
-      curveParsers["bezierPosAxis2"] = parseBezierPosAxisCurve2
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
