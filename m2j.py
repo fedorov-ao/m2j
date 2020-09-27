@@ -1853,38 +1853,24 @@ def make_curve_makers():
       return parsers[cfg["op"]](cfg, state)
 
     def parsePoints(cfg, state):
-      def SensitivityOp(data):
-        """Symmetric"""
-        approx = SegmentApproximator(data, 1.0, True, True)
-        def op(value):
-          return approx(abs(value))
-        return op
-
       pointParsers = {}
 
-      def fixedPointParser(cfg, state):
-        op = SensitivityOp(cfg["points"])
-        return Point(op, cfg.get("value", 0.0))
+      def parseFixedPoint(cfg, state):
+        p = Point(op=parseOp(cfg, state), center=cfg.get("center", 0.0))
+        return p
 
-      pointParsers["fixed"] = fixedPointParser
+      pointParsers["fixed"] = parseFixedPoint
 
-      def movingPointParser(cfg, state):
-        op = SensitivityOp(cfg["points"])
-        newRatio = clamp(cfg.get("newValueRatio", 0.5), 0.0, 1.0)
-        def make_center_op(newRatio):
-          oldRatio = 1.0 - newRatio 
-          def op(new,old):
-            return oldRatio*old+newRatio*new
-          return op
-        return PointMover(point=Point(op=op), centerOp=make_center_op(newRatio), resetDistance=cfg.get("resetDistance", float("inf")))
+      def parseMovingPoint(cfg, state):
+        p = Point(op=parseOp(cfg, state), center=None)
+        return p
 
-      pointParsers["moving"] = movingPointParser
+      pointParsers["moving"] = parseMovingPoint
 
-      r = []
-      for pd in cfg:
-        t = pd["type"]
-        state["point"] = t
-        r.append(pointParsers[t](pd, state))
+      r = {}
+      for n,d in cfg.items():
+        state["point"] = n
+        r[n] = pointParsers[n](d, state)
       return r
 
     def parseAxis(cfg, state):
@@ -1894,7 +1880,20 @@ def make_curve_makers():
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
+
         points = parsePoints(cfg["points"], state)
+        if "moving" in points:
+          pointCfg = cfg["points"]["moving"]
+          newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
+          resetDistance = pointCfg.get("resetDistance", float("inf"))
+          def make_center_op(newRatio):
+            oldRatio = 1.0 - newRatio 
+            def op(new,old):
+              return oldRatio*old+newRatio*new
+            return op
+          points["moving"] = PointMover(point=points["moving"], centerOp=make_center_op(newRatio), resetDistance=resetDistance)
+        points = points.values()
+
         vpoName = cfg.get("vpo", None)
         vpo = ValuePointOp(points, get_min_op) if vpoName == "min" else ValuePointOp(points, interpolate_op)
         deltaOp = lambda x,value : x*value
@@ -1927,20 +1926,20 @@ def make_curve_makers():
 
       def parsePresetCurve(cfg, state):
         presets = state["data"]["settings"]["config"]["presets"]
-        preset = presets[cfg]
-        curve,data = preset["curve"], preset["data"]
+        preset = presets[cfg["name"]]
+        curve = preset["curve"]
         state["curve"] = curve
-        return curveParsers[curve](data, state)
+        return curveParsers[curve](preset, state)
 
       curveParsers["preset"] = parsePresetCurve
 
-      curve,data = cfg.get("curve", None), cfg.get("data", None) 
+      curve = cfg.get("curve", None)
       if curve is None:
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
       if data is None:
         raise Exception("{}.{}.{}: Curve data not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
-      return curveParsers[curve](data, state)
+      return curveParsers[curve](cfg, state)
           
     def parseAxes(cfg, state):
       r = {}
