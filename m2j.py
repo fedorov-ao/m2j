@@ -1122,7 +1122,10 @@ class ValueOpDeltaAxisCurve:
 
 class PosAxisCurve:
   def move_by(self, x, timestamp):
-    self.pos_ += x
+    pos = clamp(self.pos_ + x, *self.posLimits_)
+    if pos == self.pos_:
+      return
+    self.pos_ = pos
     value = self.op_.calc_value(self.pos_)
     self.axis_.move(value, relative=False)
 
@@ -1135,14 +1138,16 @@ class PosAxisCurve:
 
   def move_axis(self, x, relative=True, reset=True):
     value = self.axis_.get()+x if relative else x
-    self.pos_ = self.op_.calc_pos(value)
-    value = self.op_.calc_value(self.pos_)
+    pos = self.op_.calc_pos(value)
+    pos = clamp(pos, *self.posLimits_)
+    value = self.op_.calc_value(pos)
     self.axis_.move(value, relative=False)
+    self.pos_ = pos
     if reset:
       self.reset()
 
-  def __init__(self, op, axis):
-    self.op_, self.axis_ = op, axis
+  def __init__(self, op, axis, posLimits=(-1.0, 1.0)):
+    self.op_, self.axis_, self.posLimits_ = op, axis, posLimits
     self.pos_ = self.op_.calc_pos(self.axis_.get())
 
 
@@ -1879,7 +1884,7 @@ def make_curve_makers():
         resetDistance = cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = (-1.1, 1.1)
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, resetDistance=resetDistance, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
       curveParsers["posAxis"] = parsePosAxisCurve
 
@@ -1891,7 +1896,7 @@ def make_curve_makers():
         valueOp = BezierApproximator(cfg["points"])
         fp = Point(op=valueOp, center=0.0)
         interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["bezierPosAxis"] = parseBezierPosAxisCurve
 
@@ -1904,7 +1909,7 @@ def make_curve_makers():
         fp = Point(op=valueOp, center=0.0)
         mp = Point(op=valueOp, center=None)
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=0.3, factor=1.0, posLimits=(-1.1, 1.1), eps=0.01), mp=mp, resetDistance=0.4, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=(-1.1, 1.1))
 
       curveParsers["bezierPosAxis2"] = parseBezierPosAxisCurve2
 
