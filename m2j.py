@@ -1850,7 +1850,7 @@ def make_curve_makers():
 
       parsers["bezier"] = bezier 
 
-      return parsers[cfg["type"]](cfg["data"], state)
+      return parsers[cfg["op"]](cfg, state)
 
     def parsePoints(cfg, state):
       def SensitivityOp(data):
@@ -1904,11 +1904,11 @@ def make_curve_makers():
 
       def parsePosAxisCurve(cfg, state):
         def parseFixedPoint(cfg, state):
-          p = Point(op=parseOp(cfg["op"], state), center=cfg.get("center", 0.0))
+          p = Point(op=parseOp(cfg, state), center=cfg.get("center", 0.0))
           return p
 
         def parseMovingPoint(cfg, state):
-          p = Point(op=parseOp(cfg["op"], state), center=None)
+          p = Point(op=parseOp(cfg, state), center=None)
           return p
 
         oName = state["output"]
