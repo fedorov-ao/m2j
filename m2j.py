@@ -842,7 +842,9 @@ def calc_bezier(points, t):
   for n in xrange(len(points)-1, 0, -1):
     for i in xrange(0, n):
       p0, p1 = points[i], points[i+1]
-      p = (t*p1[0] + (1.0-t)*p0[0], t*p1[1] + (1.0-t)*p0[1])
+      p = []
+      for j in xrange(min(len(p0),len(p1))):
+        p.append(t*p1[j] + (1.0-t)*p0[j])
       points[i] = p
   return points[0]
 
