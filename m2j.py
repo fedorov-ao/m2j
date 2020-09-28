@@ -1077,6 +1077,7 @@ class FMPosInterpolateOp:
       logger.debug("{}: movingValueAtPos is None, f:{}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     movingCenter = self.mp_.get_center()
+    assert(movingCenter is not None) #since movingValueAtPos is not None, movingCenter cannot be None
     fixedValueAtMovingCenter = self.fp_.calc(movingCenter)
     movingValueAtPos += fixedValueAtMovingCenter
     delta = abs(pos - movingCenter)
@@ -1116,11 +1117,11 @@ class IterativeInterpolateOp:
     def update_mp_center(self, pos):
       assert(self.mp_ is not None)
       center = self.mp_.get_center()
-      currentValue = self.next_.calc_value(pos)
       if center is None: 
         center = pos
         self.mp_.set_center(center)
       else:
+        currentValue = self.next_.calc_value(pos)
         b,e = (pos,center) if pos < center else (center,pos)
         for c in xrange(100):
           middle = 0.5*b + 0.5*e
@@ -1137,6 +1138,8 @@ class IterativeInterpolateOp:
     def check_pos(self, pos):
       if self.pos_ is None:
         self.pos_ = pos
+        #TODO Check it does not break anything, mb make optional?
+        update_mp_center(self, pos)
       s = sign(pos - self.pos_)
       if s != 0: 
         center = self.mp_.get_center()
@@ -1155,7 +1158,13 @@ class IterativeInterpolateOp:
 
   def calc_pos(self, value):
     assert(self.next_ is not None)
-    return self.next_.calc_pos(value)
+    pos = self.next_.calc_pos(value)
+    #TODO Check, mb make optional
+    if self.pos_ is None:
+      self.pos_ = pos
+    if self.mp_.get_center() is None:
+      self.mp_.set_center(pos)
+    return pos
 
   def reset(self):
     assert(self.mp_ is not None)
