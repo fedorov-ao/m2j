@@ -1167,8 +1167,8 @@ class PosAxisCurve:
   def get_axis(self):
     return self.axis_
 
-  def move_axis(self, x, relative=True, reset=True):
-    value = self.axis_.get()+x if relative else x
+  def move_axis(self, value, relative=True, reset=True):
+    value = self.axis_.get()+value if relative else value
     pos = self.op_.calc_pos(value)
     pos = clamp(pos, *self.posLimits_)
     value = self.op_.calc_value(pos)
