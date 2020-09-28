@@ -145,11 +145,7 @@ class EventSource:
     logger.debug("{} destroyed".format(self))
 
 
-def print_sink(event):
-  print event
- 
-
-class MoveAxis:
+class MoveJoystickAxis:
   def __call__(self, event):
     assert(self.curve_ is not None)
     assert(self.j_ is not None)
@@ -185,7 +181,7 @@ class MoveCurve:
     self.curve_ = curve
 
 
-class SetAxis:
+class SetJoystickAxis:
   def __init__(self, joystick, axis, value):
     self.js_, self.axis_, self.value_ = joystick, axis, value
     logger.debug("{} created".format(self))
@@ -197,7 +193,7 @@ class SetAxis:
     self.js_.move_axis(self.axis_, self.value_, False) 
 
 
-def SetAxes(joystick, axesAndValues):
+def SetJoystickAxes(joystick, axesAndValues):
   def op(event):
     for axis, value in axesAndValues:
       joystick.move_axis(axis, value, False) 
@@ -750,33 +746,6 @@ class SetMode:
     self.modeSink, self.mode = modeSink, mode
 
 
-class ConstantCurve:
-  def calc(self, v, t):
-    return self.n
-  def reset(self):
-    pass
-  def __init__(self, n):
-    self.n = n
-
-
-class ProportionalCurve:
-  def calc(self, v, t):
-    return self.k*v
-  def reset(self):
-    pass
-  def __init__(self, k):
-    self.k = k
-
-
-class PowerCurve:
-  def calc(self, v, t):
-    return sign(v)*self.k*abs(v)**self.n
-  def reset(self):
-    pass
-  def __init__(self, k, n):
-    self.k, self.n = k, n
-
-
 class PowerApproximator:
   def __call__(self, v):
     return sign(v)*self.k*abs(v)**self.n
@@ -887,92 +856,6 @@ class SegmentedBezierApproximator:
 
   def __init__(self, points):
     self.points_ = [p for p in points]
-
-
-class DirectionBasedCurve:
-  """Converts input to output based on coefficient that depends on previous input behaviour.
-     Changes coefficient when input changes sign. Restores coefficient in steps if input does not change sign.
-  """
-  def calc(self, x, timestamp):
-    s = sign(x)
-    dirChanged = self.s_ != 0 and s != self.s_
-    self.s_ = s
-
-    if dirChanged:
-      lowest = len(self.levels_) - 1
-      self.level_ = lowest if self.dropToLowest_ else min(self.level_+1, lowest)
-      self.distance_ = 0
-    else:
-      self.distance_ += abs(x)
-      if self.distance_ > self.levels_[self.level_][0]:
-        self.level_ = max(self.level_-1, 0)
-        self.distance_ = 0
-
-    k = self.levels_[self.level_][1]
-    value = x*k
-
-    logger.debug("level={} distance={: .3f} x={: .3f} k={: .3f} value={: .3f}".format(self.level_, self.distance_, x, k, value))
-
-    return value
-
-  def reset(self):
-    self.s_, self.distance_, self.level_ = 0, 0, 0
-
-  def __init__(self, levels, dropToLowest=False):
-    """ levels = sequence of pairs (levelCoeff, levelDistance)
-        levelCoeff - conversion coeff for given level
-        levelDistance - distance input must travel before curve increases level 
-    """
-    self.s_, self.distance_, self.level_, self.levels_, self.dropToLowest_ = 0, 0, 0, levels, dropToLowest
-
-
-class DirectionBasedCurve3:
-  """Using approximator to compute sensitivity based on distance."""
-  def calc(self, x, timestamp):
-    s = sign(x)
-    if self.s_ == 0:
-      self.distance_ = -s*self.startingDistance_
-    dirChanged = self.s_ != 0 and s != self.s_
-    self.s_ = s
-
-    if dirChanged:
-      self.distance_ = self.distanceOp_(self.distance_)
-
-    self.distance_ += x
-
-    k = self.approx_(abs(self.distance_))
-    delta = k*x
-    logger.debug("{}: distance={: .3f} x={: .3f} k={: .3f} delta={: .3f}".format(self, self.distance_, x, k, delta))
-
-    return delta
-
-  def reset(self):
-    self.s_ = 0
-
-  def __init__(self, approx, distanceOp=lambda x : 0.0, startingDistance=0.0):
-    self.distance_, self.s_, self.approx_, self.distanceOp_, self.startingDistance_ = startingDistance, 0, approx, distanceOp, startingDistance
-
-
-class DistanceBasedCurve:
-  def calc(self, x, timestamp):
-    distance = self.distance_ + x
-    value = sign(distance)*self.approx_(abs(distance))
-    delta = 0.0
-    if abs(value) < self.limit_:
-      self.distance_ = distance
-      delta = value - self.value_
-      self.value_ = value
-
-    logger.debug(self.distance_, self.value_)
-    return delta
-
-  def reset(self):
-    self.distance_, self.value_ = 0.0, 0.0
-
-  def __init__(self, approx, limit):
-    """limit is output limit"""
-    assert(approx)
-    self.distance_, self.value_, self.approx_, self.limit_ = 0.0, 0.0, approx, limit
 
 
 class Point:
@@ -1287,71 +1170,6 @@ class IterativeInterpolateOp:
     self.pos_, self.s_ = None, 0
 
     
-class SpeedBasedCurve:
-  def calc(self, x, timestamp):
-    assert(self.approx_ is not None)
-
-    dt = timestamp - self.timestamp_
-    self.timestamp_ = timestamp
-    if dt == 0.0:
-      return 0.0
-
-    s = sign(x)
-    dirChanged = s != self.s_
-    self.s_ = s
-
-    x = float(x)
-    if self.symmetric_ == True:
-      x = abs(x)
-    else:
-      s = 1
-
-    speed = x/dt
-    logger.debug(speed)
-    if self.filter_:
-      if dirChanged or dt > self.resetTime_:
-        self.filter_.reset()
-      speed = self.filter_.process(speed)
-    k = self.approx_(speed)
-    y = s*k*x
-    logger.debug("{:+04.3f} {:0.3f} {:0.3f} {:0.3f}".format(x, speed, k, y))
-
-    return y
-
-  def reset(self):
-    logger.debug("Resetting")
-    if self.filter_:
-      self.filter_.reset()
-
-  def __init__(self, approx, filtr = None, resetTime = 2.0, symmetric = True):
-    if approx is None:
-      raise ArgumentError("Approximator is None")
-    self.approx_ = approx
-    self.filter_ = filtr
-    self.resetTime_ = resetTime
-    self.symmetric_ = symmetric
-    self.timestamp_ = 0.0
-    self.s_ = 0
-
-
-class EmaFilter:
-  def process(self, v):
-    if self.needInit_:
-      self.needInit_ = False
-      self.v_ = v
-      return v
-    else:
-      self.v_ += self.a_*(v - self.v_)
-      return self.v_
-
-  def reset(self):
-    self.needInit_ = True
-
-  def __init__(self, a):
-    self.a_ = a
-    self.v_, self.needInit_ = 0.0, True
-
-
 class DemaFilter:
   def process(self, v):
     if self.needInit_:
@@ -1668,177 +1486,6 @@ def make_curve_makers():
     return op
 
   curves = {}
-
-  def make_speed_curves(data):
-    resetTime = 0.5
-    alpha = 0.5
-    beta = 0.5
-    stepData = [(0, 0.0), (100, 0.001), (1000, 0.005), (3000, 0.01), (5000, 0.01)]
-    stepX = SpeedBasedCurve(SigmoidApproximator(12.0/3000, -6.0, 0.01), EmaFilter(alpha), resetTime)
-    stepY = SpeedBasedCurve(SegmentApproximator(stepData), EmaFilter(alpha), resetTime)
-    stepDataZ = [(0, 0.0), (10, 0.001), (20, 0.005), (50, 0.01), (100, 0.1), (200, 0.1)]
-    stepZ = ProportionalCurve(0.001)
-    curves = {codes.ABS_X:stepX, codes.ABS_Y:stepY, codes.ABS_Z:stepZ}
-    return curves
-
-  curves["speed"] = CurveAdapter(make_speed_curves)
-
-
-  def make_dir_curves2(data):
-    #dataX = [(0.0,0.2), (0.1,0.1), (0.3,0.1), (0.95,1.0), (1.0, 1.0)]
-    #dataX = [(0.0,0.1), (0.2,0.1), (0.95,1.0), (1.0, 1.0)]
-    #dataX = [(0.0,0.2), (0.5,0.0), (0.99,1.0), (1.0, 1.0)]
-    #dataX = [(0.0,0.05), (0.1,0.05), (1.45,1.0), (1.5, 1.0)]
-    def f():
-      x = [0.1*x for x in range(0,11)]
-      dataX = zip(x, slopes(x, lambda x : 0.5*x**2))
-      dataX += [(1000,dataX[len(dataX)-1][1])]
-      return dataX
-    #dataX = f()
-    dataX = [(0.0,0.0), (1.0,1.0)]
-    factor = 1.0
-    approxX = SegmentApproximator(dataX, factor, True, True)
-    #distanceOp = lambda x : 0.1 
-    distanceOp = lambda x : 0.8*x 
-    startingDistance = 0.0
-    #approxX = SigmoidApproximator(12.0, -8.0, 1.0, 0.0)
-    curves = {
-      0 : {
-        codes.ABS_X : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        codes.ABS_Y : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        codes.ABS_Z : DirectionBasedCurve3(approxX, distanceOp),
-        codes.ABS_RX : DirectionBasedCurve3(approxX, distanceOp, startingDistance), 
-        codes.ABS_RY : DirectionBasedCurve3(approxX, distanceOp), 
-      }
-    }
-    return curves
-
-  curves["direction2"] = CurveAdapter(make_dir_curves2)
-
-
-  def make_dir_curves4(data):
-    approxX = SegmentApproximator(((0.0,0.0), (0.25,0.1), (0.5,0.1), (1.0,1.0)))
-    approxZ = SegmentApproximator(((0.1*x,(0.1*x)**2) for x in range(0,8,1)))
-    limit = 1.0
-    curves = {
-      codes.ABS_X : DirectionBasedCurve4(approxX, limit), 
-      codes.ABS_Y : DirectionBasedCurve4(approxX, limit), 
-      codes.ABS_Z : DirectionBasedCurve4(approxZ, limit),
-    }
-    return curves
-
-  curves["direction4"] = CurveAdapter(make_dir_curves4)
-
-  def make_dir_curves5(data):
-    levels = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
-    curves = {
-      codes.ABS_X : DirectionBasedCurve(levels, False), 
-      codes.ABS_Y : DirectionBasedCurve(levels, False), 
-      codes.ABS_Z : DirectionBasedCurve(levels, False),
-    }
-    return curves
-
-  curves["direction5"] = CurveAdapter(make_dir_curves5)
-
-  def make_dir_curves6(data):
-    #levelsX = ((1.0, 1.0), (0.5, 0.5), (0.5, 0.1))
-    levelsX = ((1.0, 1.0), (0.5, 0.0),)
-    levelsZ = ((1.0, 1.0), (0.5, 0.0),)
-    factor = 1.0
-    curves = {
-      0 : {
-        codes.ABS_X : DirectionBasedCurve2(levelsX, factor=factor), 
-        codes.ABS_Y : DirectionBasedCurve2(levelsX, factor=factor), 
-        codes.ABS_Z : DirectionBasedCurve2(levelsZ, factor=factor),
-        codes.ABS_RX : DirectionBasedCurve2(levelsX, factor=factor), 
-        codes.ABS_RY : DirectionBasedCurve2(levelsX, factor=factor), 
-        codes.ABS_RUDDER : DirectionBasedCurve2(levelsZ, factor=factor),
-      }
-    }
-    return curves
-
-  curves["direction6"] = CurveAdapter(make_dir_curves6)
- 
-
-  def make_dist_curves(data):
-    """Work ok"""
-    approxX = PowerApproximator(0.25, 2.0)
-    approxZ = PowerApproximator(0.25, 2.0)
-    limit = 1.0
-    curves = {
-      0 : {
-        codes.ABS_X : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_Y : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_Z : DistanceBasedCurve(approxZ, limit),
-      },
-      1 : {
-        codes.ABS_Z : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_Y : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_X : DistanceBasedCurve(approxZ, limit),
-      },
-      2 : {
-        codes.ABS_RX : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_RY : DistanceBasedCurve(approxX, limit), 
-        codes.ABS_RUDDER : DistanceBasedCurve(approxZ, limit),
-        codes.ABS_THROTTLE : DistanceBasedCurve(approxZ, limit),
-      },
-    }
-    return curves
-
-  curves["distance"] = CurveAdapter(make_dist_curves)
-
-
-  def make_base_value_curves(data):
-    """Work ok"""
-    dj, dh = data["joystick"]["axes"], data["head"]["axes"]
-    deltaOp = lambda x,value : x*value
-    def SensitivityOp(data):
-      """Symmetric"""
-      approx = SegmentApproximator(data, 1.0, True, True)
-      def op(value):
-        return approx(abs(value))
-      return op
-    sensOp = SensitivityOp( ((0.05,0.10),(0.15,1.0)) )
-    sensOpZ = SensitivityOp( ((0.05,0.5),(0.15,5.0)) )
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 0.5)
-    #These settings work
-    #valuePointOp = lambda value : clamp(5.0*abs(value), 0.15, 1.0)
-    curves = {
-      "joystick" : {
-        0 : {
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_X]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_Y]),
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), dj[codes.ABS_Z]),
-        },
-        1 : {
-          codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_RX]),
-          codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_RY]),
-          codes.ABS_RUDDER : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), dj[codes.ABS_RUDDER]),
-        },
-        2 : {
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_X]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dj[codes.ABS_Y]),
-          codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), dj[codes.ABS_THROTTLE]),
-        },
-      },
-      "head" : {
-        0 : {
-          codes.ABS_RX : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dh[codes.ABS_RX]),
-          codes.ABS_RY : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dh[codes.ABS_RY]),
-          codes.ABS_THROTTLE : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), dh[codes.ABS_THROTTLE]),
-        },
-        1 : {
-          codes.ABS_X : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dh[codes.ABS_X]),
-          codes.ABS_Y : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOp, 0.0), MovingValuePoint(sensOp),)), dh[codes.ABS_Y]),
-          codes.ABS_Z : ValueOpDeltaAxisCurve(deltaOp, ValuePointOp((FixedValuePoint(sensOpZ, 0.0), MovingValuePoint(sensOpZ),)), dh[codes.ABS_Z]),
-        },
-      },
-    }
-
-    return curves
-
-  curves["base_value"] = make_base_value_curves
-
 
   def make_config_curves(data):
     def parseOp(cfg, state):
