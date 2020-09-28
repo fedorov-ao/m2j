@@ -1907,11 +1907,11 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
-        mp = points["moving"]
+        mp = points.get("moving", None)
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
-        resetDistance = cfg["points"]["moving"].get("resetDistance", 0.4)
-        posLimits = (-1.1, 1.1)
+        resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
+        posLimits = cfg.get("posLimits", (-1.1, 1.1))
         interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, resetDistance=resetDistance, eps=0.01)
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
