@@ -1118,8 +1118,7 @@ class IterativeInterpolateOp:
       assert(self.mp_ is not None)
       center = self.mp_.get_center()
       if center is None: 
-        center = pos
-        self.mp_.set_center(center)
+        self.mp_.set_center(pos)
       else:
         currentValue = self.next_.calc_value(pos)
         b,e = (pos,center) if pos < center else (center,pos)
@@ -1138,8 +1137,9 @@ class IterativeInterpolateOp:
     def check_pos(self, pos):
       if self.pos_ is None:
         self.pos_ = pos
-        #TODO Check it does not break anything, mb make optional?
-        update_mp_center(self, pos)
+      #TODO Check it does not break anything, mb make optional?
+      if self.mp_.get_center() is None:
+        self.mp_.set_center(pos)
       s = sign(pos - self.pos_)
       if s != 0: 
         center = self.mp_.get_center()
