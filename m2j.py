@@ -867,6 +867,9 @@ class Point:
 
   def set_center(self, center):
     self.center_ = center
+    
+  def reset(self):
+    pass
 
   def __init__(self, op, center=None):
     self.op_ = op
@@ -875,12 +878,6 @@ class Point:
 
 class PointMover:
   def calc(self, x):
-    if x is None:
-      logger.debug("{}: got None arg, hard-resetting".format(self))
-      self.s_, self.current_ = 0, None
-      self.point_.set_center(None)
-      return None
-
     center = self.point_.get_center()
     if center is not None and abs(x - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached, soft-resetting".format(self))
@@ -888,10 +885,10 @@ class PointMover:
       return None
 
     if self.current_ is None:
+      self.current_ = x
       #TODO Check it does not break anything
       center = x
-      self.current_ = x
-      #TODO Check, make optional
+      #TODO Make optional
       self.point_.set_center(x)
 
     s = sign(x - self.current_)
@@ -907,6 +904,11 @@ class PointMover:
 
     return None if center is None else self.point_.calc(x)
 
+  def reset(self):
+    logger.debug("{}: hard-resetting".format(self))
+    self.s_, self.current_ = 0, None
+    self.point_.set_center(None)
+
   def get_center(self):
     return self.point_.get_center()
 
@@ -918,12 +920,12 @@ class PointMover:
 
 
 class ValuePointOp:
-  def __call__(self, value):
+  def calc(self, value):
     left, right = None, None
     for vp in self.vps_:
       p = (vp.calc(value), vp.get_center()) #p is (result, center)
       logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
-      if value is None or p[0] is None:
+      if p[0] is None:
         continue
       delta = value - p[1]
       s = sign(delta)
@@ -950,6 +952,10 @@ class ValuePointOp:
     float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
     logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
     return r
+
+  def reset(self):
+    for vp in self.vps_:
+      vp.reset()
 
   def __init__(self, vps, interpolateOp):
     self.vps_, self.interpolateOp_ = vps, interpolateOp
@@ -1005,7 +1011,7 @@ class ValueOpDeltaAxisCurve:
     xsteps = (x,) if s == self.s_ else (0.01*x, 0.99*x)
     self.s_ = s
     for xx in xsteps:
-      factor = self.valueOp_(value)
+      factor = self.valueOp_.calc(value)
       if factor is None:
         raise ArithmeticError("Cannot compute value, factor is None")
       value += self.deltaOp_(xx, factor)
@@ -1018,7 +1024,7 @@ class ValueOpDeltaAxisCurve:
   def reset(self):
     logger.debug("{}: resetting".format(self))
     assert(self.valueOp_ is not None)
-    self.valueOp_(None)
+    self.valueOp_.reset()
     self.s_ = 0
     #TODO Should also call self.deltaOp_?
 
