@@ -2059,22 +2059,23 @@ curveMakers = make_curve_makers()
 
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
-  clickSink = ClickSink(settings["config"].get("clickTime", 0.5))
+  config = settings["config"]
+  clickSink = ClickSink(config.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
-  sens = settings["config"].get("sens", None)
+  sens = config.get("sens", None)
   if sens is not None:
-    sensSet = settings["config"].get("sensSet", 0)
-    if sensSet < 0 or sensSet >= len(sens):
+    sensSet = config.get("sensSet", None)
+    if sensSet not in sens:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink(sens))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
   stateSink = mainSink.add((), StateSink(), 1)
-  toggleKey = settings["config"].get("toggleKey", codes.KEY_SCROLLLOCK)
+  toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
     grabberSinks = []
-    for g in settings["config"].get("grabbed", ()):
+    for g in config.get("grabbed", ()):
       dev = settings["inputs"][g]
       grabberSinks.append(DeviceGrabberSink(dev))
     toggleSink = ToggleSink(stateSink)
