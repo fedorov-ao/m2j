@@ -837,22 +837,26 @@ class SigmoidApproximator:
     self.k_, self.b_, self.c_, self.d_ = k, b, c, d
 
 
+def calc_bezier(points, t):
+  """Uses points as scratch space."""
+  for n in xrange(len(points)-1, 0, -1):
+    for i in xrange(0, n):
+      p0, p1 = points[i], points[i+1]
+      p = (t*p1[0] + (1.0-t)*p0[0], t*p1[1] + (1.0-t)*p0[1])
+      points[i] = p
+  return points[0]
+
+
 class BezierApproximator:
   def __call__(self, x):
     l, r = self.points_[0][0], self.points_[len(self.points_)-1][0]
     x = clamp(x, l, r)
-    fraction = (x - l) / (r - l)
+    t = (x - l) / (r - l)
     points = [p for p in self.points_]
-    logger.debug("{}: points: {}".format(self, points))
-    logger.debug("{}: fraction: {: .3f}".format(self, fraction))
-    for n in xrange(len(points)-1, 0, -1):
-      for i in xrange(0, n):
-        p0, p1 = points[i], points[i+1]
-        p = (fraction*p1[0] + (1.0-fraction)*p0[0], fraction*p1[1] + (1.0-fraction)*p0[1])
-        points[i] = p
-        logger.debug("{}: n: {}, i: {}, points: {}".format(self, n,i,points))
-    logger.debug("{}: result: {: .3f}".format(self, points[0][1]))
-    return points[0][1]
+    logger.debug("{}: points: {}, t: {}".format(self, points, t))
+    r = calc_bezier(points, t)[1]
+    logger.debug("{}: result: {: .3f}".format(self, r))
+    return r
 
   def __init__(self, points):
     self.points_ = [(p[0],p[1]) for p in points]
