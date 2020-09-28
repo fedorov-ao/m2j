@@ -862,6 +862,34 @@ class BezierApproximator:
     self.points_ = [(p[0],p[1]) for p in points]
 
 
+class SegmentedBezierApproximator:
+  def __call__(self, x):
+    keys = [p["c"][0] for p in self.points_]
+    i = bisect.bisect_left(keys, x)-1
+    l = len(self.points_)
+    i = clamp(i, 0, max(l-2, 0))
+    j = clamp(i+1, 0, max(l-1, 0))
+
+    leftPoints, rightPoints = self.points_[i], self.points_[j]
+    l, r = leftPoints["c"][0], rightPoints["c"][0]
+    x = clamp(x, l, r)
+    t = (x - l) / (r - l)
+
+    points = []
+    points.append(leftPoints["c"])
+    if "r" in leftPoints : points.append(leftPoints["r"])
+    if "l" in rightPoints : points.append(rightPoints["l"])
+    points.append(rightPoints["c"])
+
+    logger.debug("{}: points: {}".format(self, points))
+    r = calc_bezier(points, t)[1]
+    logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, r))
+    return r
+
+  def __init__(self, points):
+    self.points_ = [p for p in points]
+
+
 class DirectionBasedCurve:
   """Converts input to output based on coefficient that depends on previous input behaviour.
      Changes coefficient when input changes sign. Restores coefficient in steps if input does not change sign.
@@ -1817,7 +1845,7 @@ def make_curve_makers():
         if symm == 1:
           return lambda x : wrapped(abs(x))
         elif symm == 2:
-          return lambda x : sign(x)*wrapped(wrapped(abs(x)))
+          return lambda x : sign(x)*wrapped(abs(x))
         else:
           return wrapped
 
@@ -1847,12 +1875,18 @@ def make_curve_makers():
       def bezier(cfg, state):
         def make_op(data, symmetric):
           approx = BezierApproximator(data)
-          def op(x):
-            return approx(x)
-          return make_symm_wrapper(op, symmetric)
+          return make_symm_wrapper(approx, symmetric)
         return make_op(cfg["points"], cfg["symmetric"])
 
       parsers["bezier"] = bezier 
+
+      def sbezier(cfg, state):
+        def make_op(data, symmetric):
+          approx = SegmentedBezierApproximator(data)
+          return make_symm_wrapper(approx, symmetric)
+        return make_op(cfg["points"], cfg["symmetric"])
+
+      parsers["sbezier"] = sbezier 
 
       return parsers[cfg["op"]](cfg, state)
 
@@ -1905,13 +1939,27 @@ def make_curve_makers():
 
       curveParsers["valuePoints"] = parseValuePointsCurve
 
+      def parsePosAxisFixedCurve(cfg, state):
+        oName = state["output"]
+        axisId = nameToAxis[state["axis"]]
+        axis = state["axes"][oName][axisId]
+        points = parsePoints(cfg["points"], state)
+        fp = points["fixed"]
+        interpolationDistance = cfg.get("interpolationDistance", 0.3)
+        interpolationFactor = cfg.get("interpolationFactor", 1.0)
+        posLimits = cfg.get("posLimits", (-1.1, 1.1))
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
+        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+
+      curveParsers["posAxisF"] = parsePosAxisFixedCurve
+
       def parsePosAxisCurve(cfg, state):
         oName = state["output"]
         axisId = nameToAxis[state["axis"]]
         axis = state["axes"][oName][axisId]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
-        mp = points.get("moving", None)
+        mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
