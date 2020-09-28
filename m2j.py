@@ -888,8 +888,11 @@ class PointMover:
       return None
 
     if self.current_ is None:
+      #TODO Check it does not break anything
+      center = x
       self.current_ = x
-      return None
+      #TODO Check, make optional
+      self.point_.set_center(x)
 
     s = sign(x - self.current_)
     logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.current_, x, s))
