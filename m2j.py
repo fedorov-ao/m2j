@@ -1163,6 +1163,8 @@ class PosAxisCurve:
   def reset(self):
     logger.debug("{}: resetting".format(self))
     self.op_.reset()
+    #TODO Check that it does not break something
+    self.pos_ = self.op_.calc_pos(self.axis_.get())
 
   def get_axis(self):
     return self.axis_
@@ -2238,7 +2240,9 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 0), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 1), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 0), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2251,7 +2255,9 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 3), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 1), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)]))
+      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
@@ -2263,7 +2269,9 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 2), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_THROTTLE)]))
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_THROTTLE)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(2, ss)
 
     joystickModeSink.set_mode(0)
@@ -2288,6 +2296,8 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 3), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
+      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       headModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2299,6 +2309,8 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       headModeSink.add(1, ss)
 
   headModeSink.set_mode(0)
@@ -2393,7 +2405,9 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 0), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2403,7 +2417,7 @@ def init_sinks_base3(settings):
       ss = Binding(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_WHEEL+"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+      ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_RIGHTSHIFT"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTSHIFT"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_RIGHTCTRL"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
@@ -2411,7 +2425,9 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "x"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "zy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 1), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
@@ -2424,7 +2440,9 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RZ, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 2), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)]))
+      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       joystickModeSink.add(2, ss)
 
     joystickModeSink.set_mode(0)
@@ -2449,6 +2467,8 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 3), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
+      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       headModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2460,6 +2480,8 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
+      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
       headModeSink.add(1, ss)
 
   headModeSink.set_mode(0)
