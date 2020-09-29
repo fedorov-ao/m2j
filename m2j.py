@@ -913,6 +913,7 @@ class ValueOpDeltaAxisCurve:
     value = clamp(value, *limits)
     delta = value - baseValue
     self.axis_.move(delta, True)
+    logger.debug("{}: value:{: .3f}, factor:{: .3f}, delta:{: .3f}".format(self, value, factor, delta))
     return delta
 
   def reset(self):
