@@ -946,23 +946,23 @@ class PointMovingCurve:
     if s != 0:
       if self.s_ != 0 and self.s_ != s:
         c = value if center is None else self.centerOp_(value, center)
-        logger.debug("{}: sign has changed; point center: old: {}; new: {})".format(self, center, c))
+        logger.debug("{}: sign has changed; new point center: {} (was: {})".format(self, c, center))
         self.point_.set_center(c)
       self.s_ = s
     r = self.next_.move_by(x, timestamp)
     if center is not None and abs(value - center) > self.resetDistance_:
-      logger.debug("{}: reset distance reached; point center: old: {}; new: {}".format(self, center, None))
+      logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
       self.point_.set_center(None)
     return r
 
   def reset(self):
+    self.s_ = 0
     #Setting new point center to current axis value (make optional?)
     self.point_.set_center(None)
     self.next_.reset()
     v = self.getValueOp_(self.next_)
     self.point_.set_center(v)
     logger.debug("{}: reset, new point center: {}".format(self, v))
-    self.s_ = 0
 
   def get_axis(self):
     return self.next_.get_axis()
@@ -1630,7 +1630,8 @@ def make_curve_makers():
             def op(new,old):
               return oldRatio*old+newRatio*new
             return op
-          getValueOp = lambda curve : curve.get_axis().get()
+          def getValueOp(curve): 
+            return curve.get_axis().get()
           curve = PointMovingCurve(next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance)
 
         return curve
