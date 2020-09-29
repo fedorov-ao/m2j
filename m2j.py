@@ -957,21 +957,23 @@ class PointMovingCurve:
 
   def reset(self):
     #Setting new point center to current axis value (make optional?)
+    self.point_.set_center(None)
+    self.next_.reset()
     v = self.getValueOp_(self.next_)
     self.point_.set_center(v)
     logger.debug("{}: reset, new point center: {}".format(self, v))
     self.s_ = 0
-    self.next_.reset()
 
   def get_axis(self):
     return self.next_.get_axis()
 
   def move_axis(self, value, relative=True, reset=True):
-    #Resetting point center if axis was moved directly (make optional?)
-    self.point_.set_center(None)
-    logger.debug("{}: axis was moved directly, new point center: {}".format(self, None))
-    self.s_ = 0
     self.next_.move_axis(value, relative, reset)
+    #Resetting point center if axis was moved directly (make optional?)
+    if reset:
+      self.s_ = 0
+      self.point_.set_center(None)
+      logger.debug("{}: axis was moved directly, new point center: {}".format(self, None))
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf")):
     assert(next)
@@ -1134,9 +1136,10 @@ class FMPosInterpolateOp:
     for c in xrange(100):
       m = 0.5*b + 0.5*e
       v = self.calc_value(m)
-      if abs(v - value) < self.eps_: return m
+      if abs(v - value) < self.eps_: break
       elif v < value: b = m
       else: e = m
+    logger.debug("{}: value:{: .3f}, v:{: .3f}, b:{: .3f}, e:{: .3f}, result:{: .3f}".format(self, value, v, b, e, m))
     return m
 
   def reset(self):
@@ -1659,12 +1662,10 @@ def make_curve_makers():
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
         curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
         def getValueOp(curve): 
-          axisValue = curve.get_axis().get()
-          pos = interpolateOp.calc_pos(axisValue)
-          return pos
+          return curve.get_pos()
         centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
         curve = PointMovingCurve(next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance)
         return curve
