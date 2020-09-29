@@ -963,7 +963,8 @@ class PointMovingCurve:
 
   def reset(self):
     self.s_ = 0
-    #Setting new point center to current axis value (make optional?)
+    #Need to disable controlled point by setting point center to None before resetting next_ curve
+    #Will produce inconsistent results otherwise
     if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
       self.point_.set_center(None)
     self.next_.reset()
@@ -976,16 +977,17 @@ class PointMovingCurve:
     return self.next_.get_axis()
 
   def move_axis(self, value, relative=True, reset=True):
-    self.next_.move_axis(value, relative, reset)
     #Resetting point center if axis was moved directly (make optional?)
     if reset:
       self.s_ = 0
-      if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
+      if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
         self.point_.set_center(None)
-      if self.onReset_ == self.SET_TO_CURRENT:
+    self.next_.move_axis(value, relative, reset)
+    if reset:
+      if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
         v = self.getValueOp_(self.next_)
         self.point_.set_center(v)
-      logger.debug("{}: axis was moved directly, new point center: {}".format(self, None))
+      logger.debug("{}: axis was moved directly, new point center: {}".format(self, v))
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
     assert(next is not None)
@@ -1129,16 +1131,19 @@ class FMPosInterpolateOp:
     assert(movingCenter is not None) #since movingValueAtPos is not None, movingCenter cannot be None
     fixedValueAtMovingCenter = self.fp_.calc(movingCenter)
     movingValueAtPos += fixedValueAtMovingCenter
-    delta = abs(pos - movingCenter)
-    distance = min(self.distance_, abs(movingCenter - self.fp_.get_center()))
-    if delta == 0.0 or delta > distance:
-      logger.debug("{}: {}, f:{: .3f}".format(self, "delta == 0.0" if delta == 0.0 else "delta > distance" if delta > distance else "unknown", fixedValueAtPos))
+    deltaPos, deltaFC = pos - movingCenter, self.fp_.get_center() - movingCenter
+    interpolationDistance = self.interpolationDistance_
+    if sign(deltaPos) == sign(deltaFC):
+      interpolationDistance = min(interpolationDistance, abs(deltaFC))
+    deltaPos = abs(deltaPos)
+    if deltaPos == 0.0 or deltaPos > interpolationDistance:
+      logger.debug("{}: {}, f:{: .3f}".format(self, "deltaPos == 0.0" if deltaPos == 0.0 else "deltaPos > interpolationDistance" if deltaPos > interpolationDistance else "unknown", fixedValueAtPos))
       return fixedValueAtPos
-    fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/delta, abs(movingValueAtPos-fixedValueAtMovingCenter)/delta
+    fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/deltaPos, abs(movingValueAtPos-fixedValueAtMovingCenter)/deltaPos
     if fixedSlope < movingSlope:
       logger.debug("{}: fixedSlope < movingSlope, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
-    distanceFraction = (delta / distance)**self.factor_
+    distanceFraction = (deltaPos / interpolationDistance)**self.factor_
     value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
     logger.debug("{}: pos:{: .3f}, f:{: .3f}, m:{: .3f}, interpolated:{: .3f}".format(self, pos, fixedValueAtPos, movingValueAtPos, value))
     return value
@@ -1165,8 +1170,8 @@ class FMPosInterpolateOp:
         logger.debug("{}: p:{: .3f} v:{: .3f}".format(self, p, self.calc_value(p)))
         p += 0.1
 
-  def __init__(self, fp, mp, distance, factor, posLimits, eps):
-    self.fp_, self.mp_, self.distance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, distance, factor, posLimits, eps
+  def __init__(self, fp, mp, interpolationDistance, factor, posLimits, eps):
+    self.fp_, self.mp_, self.interpolationDistance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, interpolationDistance, factor, posLimits, eps
 
     
 class DemaFilter:
@@ -1602,7 +1607,7 @@ def make_curve_makers():
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
         return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
 
       curveParsers["posAxisF"] = parsePosAxisFixedCurve
@@ -1618,7 +1623,7 @@ def make_curve_makers():
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
         curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
         def getValueOp(curve): 
           return curve.get_pos()
