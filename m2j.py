@@ -904,19 +904,13 @@ class ValueOpDeltaAxisCurve:
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
     value, limits = self.axis_.get(), self.axis_.limits()
     baseValue = value
-    s = sign(x)
-    if s == 0:
+    if x == 0:
       return 0.0
-    #If x has changed sign, call deltaOp twice to help it react better
-    xsteps = (x,) if s == self.s_ else (0.01*x, 0.99*x)
-    self.s_ = s
-    for xx in xsteps:
-      factor = self.valueOp_.calc(value)
-      if factor is None:
-        raise ArithmeticError("Cannot compute value, factor is None")
-      value += self.deltaOp_(xx, factor)
-      value = clamp(value, *limits)
-      logger.debug("{}: xx: {: .4f}; value: {: .4f}".format(self, xx, value))
+    factor = self.valueOp_.calc(value)
+    if factor is None:
+      raise ArithmeticError("Cannot compute value, factor is None")
+    value += self.deltaOp_(x, factor)
+    value = clamp(value, *limits)
     delta = value - baseValue
     self.axis_.move(delta, True)
     return delta
@@ -1042,49 +1036,6 @@ def interpolate_op(left, right):
 
 def get_min_op(left, right):
   return min(left[0], right[0])
-
-
-class PointMover:
-  def calc(self, x):
-    center = self.point_.get_center()
-    if center is not None and abs(x - center) > self.resetDistance_:
-      logger.debug("{}: reset distance reached, soft-resetting".format(self))
-      self.point_.set_center(None)
-      return None
-
-    if self.current_ is None:
-      self.current_ = x
-      #TODO Check it does not break anything
-      center = x
-      #TODO Make optional
-      self.point_.set_center(x)
-
-    s = sign(x - self.current_)
-    logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.current_, x, s))
-    self.current_ = x
-
-    if s != 0:
-      if self.s_ != 0 and s != self.s_:
-        c = x if center is None else self.centerOp_(x, center)
-        logger.debug("{}: center has changed (old: {}; new: {})".format(self, center, c))
-        self.point_.set_center(c)
-      self.s_ = s
-
-    return None if center is None else self.point_.calc(x)
-
-  def reset(self):
-    logger.debug("{}: hard-resetting".format(self))
-    self.s_, self.current_ = 0, None
-    self.point_.set_center(None)
-
-  def get_center(self):
-    return self.point_.get_center()
-
-  def __init__(self, point, centerOp = lambda new,old : 0.5*old+0.5*new, resetDistance = float("inf")):
-    assert(point)
-    assert(centerOp)
-    self.point_, self.centerOp_, self.resetDistance_ = point, centerOp, resetDistance
-    self.s_, self.current_ = 0, None
 
 
 class PosAxisCurve:
