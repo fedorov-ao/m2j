@@ -858,6 +858,25 @@ class SegmentedBezierApproximator:
     self.points_ = [p for p in points]
 
 
+class Axis:
+  def move(self, v, relative):
+    assert(self.j_)
+    return self.j_.move_axis(self.a_, v, relative)
+
+  def get(self):
+    assert(self.j_)
+    return self.j_.get_axis(self.a_)
+
+  def limits(self):
+    """Returns (-limit, limit)"""
+    assert(self.j_)
+    return self.j_.get_limits(self.a_)
+
+  def __init__(self, j, a):
+    assert(j)
+    self.j_, self.a_ = j, a
+
+
 class Point:
   def calc(self, x):
     return None if (x is None or self.center_ is None) else self.op_(x - self.center_)
@@ -876,47 +895,52 @@ class Point:
     self.center_ = center
 
 
-class PointMover:
-  def calc(self, x):
-    center = self.point_.get_center()
-    if center is not None and abs(x - center) > self.resetDistance_:
-      logger.debug("{}: reset distance reached, soft-resetting".format(self))
-      self.point_.set_center(None)
-      return None
-
-    if self.current_ is None:
-      self.current_ = x
-      #TODO Check it does not break anything
-      center = x
-      #TODO Make optional
-      self.point_.set_center(x)
-
-    s = sign(x - self.current_)
-    logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.current_, x, s))
-    self.current_ = x
-
-    if s != 0:
-      if self.s_ != 0 and s != self.s_:
-        c = x if center is None else self.centerOp_(x, center)
-        logger.debug("{}: center has changed (old: {}; new: {})".format(self, center, c))
-        self.point_.set_center(c)
-      self.s_ = s
-
-    return None if center is None else self.point_.calc(x)
+class ValueOpDeltaAxisCurve:
+  def move_by(self, x, timestamp):
+    assert(self.axis_ is not None)
+    assert(self.valueOp_ is not None)
+    assert(self.deltaOp_ is not None)
+    #self.valueOp_ typically returns sensitivity based on current self.value_
+    #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
+    value, limits = self.axis_.get(), self.axis_.limits()
+    baseValue = value
+    s = sign(x)
+    if s == 0:
+      return 0.0
+    #If x has changed sign, call deltaOp twice to help it react better
+    xsteps = (x,) if s == self.s_ else (0.01*x, 0.99*x)
+    self.s_ = s
+    for xx in xsteps:
+      factor = self.valueOp_.calc(value)
+      if factor is None:
+        raise ArithmeticError("Cannot compute value, factor is None")
+      value += self.deltaOp_(xx, factor)
+      value = clamp(value, *limits)
+      logger.debug("{}: xx: {: .4f}; value: {: .4f}".format(self, xx, value))
+    delta = value - baseValue
+    self.axis_.move(delta, True)
+    return delta
 
   def reset(self):
-    logger.debug("{}: hard-resetting".format(self))
-    self.s_, self.current_ = 0, None
-    self.point_.set_center(None)
+    logger.debug("{}: resetting".format(self))
+    assert(self.valueOp_ is not None)
+    self.valueOp_.reset()
+    self.s_ = 0
+    #TODO Should also call self.deltaOp_?
 
-  def get_center(self):
-    return self.point_.get_center()
+  def get_axis(self):
+    return self.axis_
 
-  def __init__(self, point, centerOp = lambda new,old : 0.5*old+0.5*new, resetDistance = float("inf")):
-    assert(point)
-    assert(centerOp)
-    self.point_, self.centerOp_, self.resetDistance_ = point, centerOp, resetDistance
-    self.s_, self.current_ = 0, None
+  def move_axis(self, value, relative=True, reset=True):
+    self.axis_.move(value, relative)
+    if reset:
+      self.reset()
+
+  def __init__(self, deltaOp, valueOp, axis):
+    assert(deltaOp)
+    assert(valueOp)
+    assert(axis)
+    self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
 
 
 class ValuePointOp:
@@ -976,71 +1000,47 @@ def get_min_op(left, right):
   return min(left[0], right[0])
 
 
-class Axis:
-  def move(self, v, relative):
-    assert(self.j_)
-    return self.j_.move_axis(self.a_, v, relative)
+class PointMover:
+  def calc(self, x):
+    center = self.point_.get_center()
+    if center is not None and abs(x - center) > self.resetDistance_:
+      logger.debug("{}: reset distance reached, soft-resetting".format(self))
+      self.point_.set_center(None)
+      return None
 
-  def get(self):
-    assert(self.j_)
-    return self.j_.get_axis(self.a_)
+    if self.current_ is None:
+      self.current_ = x
+      #TODO Check it does not break anything
+      center = x
+      #TODO Make optional
+      self.point_.set_center(x)
 
-  def limits(self):
-    """Returns (-limit, limit)"""
-    assert(self.j_)
-    return self.j_.get_limits(self.a_)
+    s = sign(x - self.current_)
+    logger.debug("{}: prev: {: .3f}; current: {: .3f}; s: {}".format(self, self.current_, x, s))
+    self.current_ = x
 
-  def __init__(self, j, a):
-    assert(j)
-    self.j_, self.a_ = j, a
+    if s != 0:
+      if self.s_ != 0 and s != self.s_:
+        c = x if center is None else self.centerOp_(x, center)
+        logger.debug("{}: center has changed (old: {}; new: {})".format(self, center, c))
+        self.point_.set_center(c)
+      self.s_ = s
 
-
-class ValueOpDeltaAxisCurve:
-  def move_by(self, x, timestamp):
-    assert(self.axis_ is not None)
-    assert(self.valueOp_ is not None)
-    assert(self.deltaOp_ is not None)
-    #self.valueOp_ typically returns sensitivity based on current self.value_
-    #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
-    value, limits = self.axis_.get(), self.axis_.limits()
-    baseValue = value
-    s = sign(x)
-    if s == 0:
-      return 0.0
-    #If x has changed sign, call deltaOp twice to help it react better
-    xsteps = (x,) if s == self.s_ else (0.01*x, 0.99*x)
-    self.s_ = s
-    for xx in xsteps:
-      factor = self.valueOp_.calc(value)
-      if factor is None:
-        raise ArithmeticError("Cannot compute value, factor is None")
-      value += self.deltaOp_(xx, factor)
-      value = clamp(value, *limits)
-      logger.debug("{}: xx: {: .4f}; value: {: .4f}".format(self, xx, value))
-    delta = value - baseValue
-    self.axis_.move(delta, True)
-    return delta
+    return None if center is None else self.point_.calc(x)
 
   def reset(self):
-    logger.debug("{}: resetting".format(self))
-    assert(self.valueOp_ is not None)
-    self.valueOp_.reset()
-    self.s_ = 0
-    #TODO Should also call self.deltaOp_?
+    logger.debug("{}: hard-resetting".format(self))
+    self.s_, self.current_ = 0, None
+    self.point_.set_center(None)
 
-  def get_axis(self):
-    return self.axis_
+  def get_center(self):
+    return self.point_.get_center()
 
-  def move_axis(self, value, relative=True, reset=True):
-    self.axis_.move(value, relative)
-    if reset:
-      self.reset()
-
-  def __init__(self, deltaOp, valueOp, axis):
-    assert(deltaOp)
-    assert(valueOp)
-    assert(axis)
-    self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
+  def __init__(self, point, centerOp = lambda new,old : 0.5*old+0.5*new, resetDistance = float("inf")):
+    assert(point)
+    assert(centerOp)
+    self.point_, self.centerOp_, self.resetDistance_ = point, centerOp, resetDistance
+    self.s_, self.current_ = 0, None
 
 
 class PosAxisCurve:
