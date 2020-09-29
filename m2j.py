@@ -943,6 +943,50 @@ class ValueOpDeltaAxisCurve:
     self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
 
 
+class PointMovingCurve:
+  def move_by(self, x, timestamp):
+    #Setting new point center if x movement direction has changed
+    s = sign(x)
+    center, value = self.point_.get_center(), self.get_axis().get()
+    if s != 0:
+      if self.s_ != 0 and self.s_ != s:
+        c = value if center is None else self.centerOp_(value, center)
+        logger.debug("{}: sign has changed, old point cener: {}; new: {})".format(self, center, c))
+        self.point_.set_center(c)
+      self.s_ = s
+    r = self.next_.move_by(x, timestamp)
+    if center is not None and abs(value - center) > self.resetDistance_:
+      logger.debug("{}: reset distance reached, soft-resetting".format(self))
+      self.point_.set_center(None)
+
+    return r
+
+  def reset(self):
+    #Setting new point center to current axis value (make optional?)
+    v = self.get_axis().get()
+    self.point_.set_center(v)
+    logger.debug("{}: reset, new point center: {}".format(self, v))
+    self.s_ = 0
+    self.next_.reset()
+
+  def get_axis(self):
+    return self.next_.get_axis()
+
+  def move_axis(self, value, relative=True, reset=True):
+    #Resetting point center if axis was moved directly (make optional?)
+    self.point_.set_center(None)
+    logger.debug("{}: axis was moved directly, new point center: {}".format(self, None))
+    self.s_ = 0
+    self.next_.move_axis(value, relative, reset)
+
+  def __init__(self, next, point, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf")):
+    assert(next)
+    assert(point)
+    assert(centerOp)
+    self.next_, self.point_, self.centerOp_, self.resetDistance_ = next, point, centerOp, resetDistance
+    self.s_ = 0
+
+
 class ValuePointOp:
   def calc(self, value):
     left, right = None, None
@@ -1586,7 +1630,14 @@ def make_curve_makers():
         axis = state["axes"][oName][axisId]
 
         points = parsePoints(cfg["points"], state)
+
+        vpoName = cfg.get("vpo", None)
+        vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
+        deltaOp = lambda x,value : x*value
+        curve = ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
+
         if "moving" in points:
+          point = points["moving"]
           pointCfg = cfg["points"]["moving"]
           newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
           resetDistance = pointCfg.get("resetDistance", float("inf"))
@@ -1595,13 +1646,9 @@ def make_curve_makers():
             def op(new,old):
               return oldRatio*old+newRatio*new
             return op
-          points["moving"] = PointMover(point=points["moving"], centerOp=make_center_op(newRatio), resetDistance=resetDistance)
-        points = points.values()
+          curve = PointMovingCurve(next=curve, point=point, centerOp=make_center_op(newRatio), resetDistance=resetDistance)
 
-        vpoName = cfg.get("vpo", None)
-        vpo = ValuePointOp(points, get_min_op) if vpoName == "min" else ValuePointOp(points, interpolate_op)
-        deltaOp = lambda x,value : x*value
-        return ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
+        return curve
 
       curveParsers["valuePoints"] = parseValuePointsCurve
 
