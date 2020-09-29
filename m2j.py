@@ -941,7 +941,7 @@ class PointMovingCurve:
   def move_by(self, x, timestamp):
     #Setting new point center if x movement direction has changed
     s = sign(x)
-    center, value = self.point_.get_center(), self.getValueOp_(self)
+    center, value = self.point_.get_center(), self.getValueOp_(self.next_)
     if s != 0:
       if self.s_ != 0 and self.s_ != s:
         c = value if center is None else self.centerOp_(value, center)
@@ -952,12 +952,11 @@ class PointMovingCurve:
     if center is not None and abs(value - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached; point center: old: {}; new: {}".format(self, center, None))
       self.point_.set_center(None)
-
     return r
 
   def reset(self):
     #Setting new point center to current axis value (make optional?)
-    v = self.getValueOp_(self)
+    v = self.getValueOp_(self.next_)
     self.point_.set_center(v)
     logger.debug("{}: reset, new point center: {}".format(self, v))
     self.s_ = 0
@@ -1067,9 +1066,38 @@ class PosAxisCurve:
     if reset:
       self.reset()
 
+  def get_pos(self):
+    return self.pos_
+
   def __init__(self, op, axis, posLimits=(-1.0, 1.0)):
     self.op_, self.axis_, self.posLimits_ = op, axis, posLimits
     self.pos_ = self.op_.calc_pos(self.axis_.get())
+
+
+class IterativeCenterOp:
+  """For PointMovingCurve"""
+  def __call__(self, pos, center):
+    assert(self.point_ is not None)
+    assert(self.op_ is not None)
+    currentValue = self.op_.calc_value(pos)
+    b,e = (pos,center) if pos < center else (center,pos)
+    for c in xrange(100):
+      middle = 0.5*b + 0.5*e
+      self.point_.set_center(middle)
+      value = self.op_.calc_value(pos)
+      if abs(currentValue - value) < self.eps_:
+        logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
+        return middle
+      elif currentValue < value:
+        e = middle
+      else:
+        b = middle
+    return middle
+
+  def __init__(self, point, op, eps=0.01):
+    assert(point is not None)
+    assert(op is not None)
+    self.point_, self.op_, self.eps_ = point, op, eps
 
 
 class FMPosInterpolateOp:
@@ -1630,8 +1658,15 @@ def make_curve_makers():
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = IterativeInterpolateOp(next=FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01), mp=mp, resetDistance=resetDistance, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, distance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
+        curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        def getValueOp(curve): 
+          axisValue = curve.get_axis().get()
+          pos = interpolateOp.calc_pos(axisValue)
+          return pos
+        centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
+        curve = PointMovingCurve(next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance)
+        return curve
 
       curveParsers["posAxis"] = parsePosAxisCurve
 
