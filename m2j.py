@@ -987,7 +987,7 @@ class PointMovingCurve:
       if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
         v = self.getValueOp_(self.next_)
         self.point_.set_center(v)
-      logger.debug("{}: axis was moved directly, new point center: {}".format(self, v))
+      logger.debug("{}: axis was moved directly, new point center: {}".format(self, self.point_.get_center()))
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
     assert(next is not None)
