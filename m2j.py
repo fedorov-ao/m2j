@@ -938,6 +938,12 @@ class ValueOpDeltaAxisCurve:
     self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
 
 
+class PointMovingCurveResetPolicy:
+  DONT_TOUCH = 0
+  SET_TO_NONE = 1
+  SET_TO_CURRENT = 2
+
+
 class PointMovingCurve:
   def move_by(self, x, timestamp):
     #Setting new point center if x movement direction has changed
@@ -958,10 +964,12 @@ class PointMovingCurve:
   def reset(self):
     self.s_ = 0
     #Setting new point center to current axis value (make optional?)
-    self.point_.set_center(None)
+    if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
+      self.point_.set_center(None)
     self.next_.reset()
-    v = self.getValueOp_(self.next_)
-    self.point_.set_center(v)
+    if self.onReset_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
+      v = self.getValueOp_(self.next_)
+      self.point_.set_center(v)
     logger.debug("{}: reset, new point center: {}".format(self, v))
 
   def get_axis(self):
@@ -972,15 +980,19 @@ class PointMovingCurve:
     #Resetting point center if axis was moved directly (make optional?)
     if reset:
       self.s_ = 0
-      self.point_.set_center(None)
+      if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
+        self.point_.set_center(None)
+      if self.onReset_ == self.SET_TO_CURRENT:
+        v = self.getValueOp_(self.next_)
+        self.point_.set_center(v)
       logger.debug("{}: axis was moved directly, new point center: {}".format(self, None))
 
-  def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf")):
-    assert(next)
-    assert(point)
-    assert(getValueOp)
-    assert(centerOp)
-    self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_ = next, point, getValueOp, centerOp, resetDistance
+  def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
+    assert(next is not None)
+    assert(point is not None)
+    assert(getValueOp is not None)
+    assert(centerOp is not None)
+    self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_, self.onReset_, self.onMove_ = next, point, getValueOp, centerOp, resetDistance, onReset, onMove
     self.s_ = 0
 
 
@@ -1109,6 +1121,7 @@ class FMPosInterpolateOp:
     if self.mp_ is None:
       return self.fp_.calc(pos)
     fixedValueAtPos, movingValueAtPos = self.fp_.calc(pos), self.mp_.calc(pos)
+    logger.debug("{}: pos:{: .3f}, moving value at pos:{}, moving center:{}".format(self, pos, movingValueAtPos, self.mp_.get_center()))
     if movingValueAtPos is None:
       logger.debug("{}: movingValueAtPos is None, f:{}".format(self, fixedValueAtPos))
       return fixedValueAtPos
@@ -1127,7 +1140,7 @@ class FMPosInterpolateOp:
       return fixedValueAtPos
     distanceFraction = (delta / distance)**self.factor_
     value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
-    logger.debug("{}: f:{: .3f}; m:{: .3f}; interpolated:{: .3f}".format(self, fixedValueAtPos, movingValueAtPos, value))
+    logger.debug("{}: pos:{: .3f}, f:{: .3f}, m:{: .3f}, interpolated:{: .3f}".format(self, pos, fixedValueAtPos, movingValueAtPos, value))
     return value
 
   def calc_pos(self, value):
@@ -1136,14 +1149,21 @@ class FMPosInterpolateOp:
     for c in xrange(100):
       m = 0.5*b + 0.5*e
       v = self.calc_value(m)
+      logger.debug("{}: target:{: .3f}, v:{: .3f}, b:{: .3f}, m:{: .3f}, e:{: .3f}".format(self, value, v, b, m, e))
       if abs(v - value) < self.eps_: break
       elif v < value: b = m
       else: e = m
-    logger.debug("{}: value:{: .3f}, v:{: .3f}, b:{: .3f}, e:{: .3f}, result:{: .3f}".format(self, value, v, b, e, m))
+    logger.debug("{}: value:{: .3f}, result:{: .3f}".format(self, value, m))
     return m
 
   def reset(self):
-    pass
+    #TODO Temp
+    if False:
+      logger.debug("{}: mp center: {}".format(self, self.mp_.get_center()))
+      p = self.posLimits_[0]
+      while p < self.posLimits_[1]:
+        logger.debug("{}: p:{: .3f} v:{: .3f}".format(self, p, self.calc_value(p)))
+        p += 0.1
 
   def __init__(self, fp, mp, distance, factor, posLimits, eps):
     self.fp_, self.mp_, self.distance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, distance, factor, posLimits, eps
@@ -1565,7 +1585,9 @@ def make_curve_makers():
             return op
           def getValueOp(curve): 
             return curve.get_axis().get()
-          curve = PointMovingCurve(next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance)
+          curve = PointMovingCurve(
+            next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance,
+            onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
 
         return curve
 
@@ -1601,7 +1623,9 @@ def make_curve_makers():
         def getValueOp(curve): 
           return curve.get_pos()
         centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
-        curve = PointMovingCurve(next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance)
+        curve = PointMovingCurve(
+          next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
+          onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
         return curve
 
       curveParsers["posAxis"] = parsePosAxisCurve
