@@ -750,26 +750,41 @@ class SetMode:
 class ModeSinkModeManager:
   def save(self):
     self.mode_ = self.sink_.get_mode()
-  def set(self, mode, save):
-    if save:
-      self.save()
-    self.sink_.set_mode(mode)
   def restore(self):
     if self.mode_ is not None:
       self.sink_.set_mode(self.mode_)
       self.mode_ = None
   def clear(self):
     self.mode_ = None
-  def __init__(self, sink):
-    self.sink_, self.mode_ = sink, None
+  def set(self, mode, save):
+    if save:
+      self.save()
+    self.sink_.set_mode(mode)
+  def cycle(self, save):
+    if self.modes_ is None or len(self.modes_) == 0:
+      return
+    if save:
+      self.save()
+    m = self.sink_.get_mode()
+    if m in self.modes_:
+      i = self.modes_.index(m)+1
+      if i >= len(self.modes_): i = 0
+      m = self.modes_[i]
+    else:
+      m = self.modes_[0]
+    self.sink_.set_mode(m)
+  def __init__(self, sink, modes=[]):
+    self.sink_, self.mode_, self.modes_ = sink, None, modes
   def make_save(self):
     return lambda event : self.save()
-  def make_set(self, mode, save):
-    return lambda event : self.set(mode, save)
   def make_restore(self):
     return lambda event : self.restore()
   def make_clear(self):
     return lambda event : self.clear()
+  def make_set(self, mode, save):
+    return lambda event : self.set(mode, save)
+  def make_cycle(self, save):
+    return lambda event : self.cycle(save)
 
 
 class PowerApproximator:
@@ -2253,9 +2268,10 @@ def init_sinks_base4(settings):
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
 
-  jmm = ModeSinkModeManager(joystickModeSink)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_set(1, True), 0)
+  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
   joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
   joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
