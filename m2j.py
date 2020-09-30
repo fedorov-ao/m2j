@@ -1975,25 +1975,8 @@ def init_sinks_base(settings):
 
   curves = curveMaker(data)
 
-  joySnaps = CurveSnapManager()
-  joySnaps.set_snap(0, ((codes.ABS_Z, 0.0, True),))
-  joySnaps.set_snap(1, ((codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True),))
-  joySnaps.set_snap(3, ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),))
-
-  headSnaps = SnapManager(head, False)
-  zero = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 0.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 0.0),)
-  headSnaps.set_snap(0, zero)
-  fullForward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 1.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 1.0),)
-  headSnaps.set_snap(1, fullForward)
-  fullBackward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, -1.0), (codes.ABS_RX, 0), (codes.ABS_RY, -0.15), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(2, fullBackward)
-  zoomOut = ((codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(3, zoomOut)
-  centerView = ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),)
-  headSnaps.set_snap(4, centerView)
-  centerViewPos = ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),)
-  headSnaps.set_snap(5, centerViewPos)
-
+  joySnaps = init_base_joystick_snaps()
+  headSnaps = init_base_head_snaps()
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
@@ -2006,20 +1989,14 @@ def init_sinks_base(settings):
   topModeSink.set_mode(0)
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
-  oldMode =  []
-  def save_mode(event):
-    oldMode.append(joystickModeSink.get_mode())
-  def restore_mode(event):
-    if len(oldMode):
-      joystickModeSink.set_mode(oldMode.pop())
-  def clear_mode(event):
-    oldMode = []
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(joystickModeSink, 1), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), restore_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), SetMode(joystickModeSink, 2), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), restore_mode, 0)
+  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
@@ -2031,12 +2008,11 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-      ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 0), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 1), 0)
+      ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "z"), 0)
+      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 0), 0)
-      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
 
@@ -2048,11 +2024,10 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, 3), 0)
+      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 1), 0)
-      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
 
@@ -2065,9 +2040,8 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 2), 0)
-      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_THROTTLE)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
 
@@ -2082,35 +2056,7 @@ def init_sinks_base(settings):
   headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
 
   if "secondary" in curves:
-    cj = curves["secondary"]
-    if 0 in cj:
-      logger.debug("Init mode 0")
-      cs = cj[0]["curves"]["head"]
-
-      ss = Binding(cmpOp)
-      ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-      ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 3), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
-      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
-      ss = add_scale_sink(ss, cj[0])
-      headModeSink.add(0, ss)
-
-    if 1 in cj:
-      logger.debug("Init mode 1")
-      cs = cj[1]["curves"]["head"]
-
-      ss = Binding(cmpOp)
-      ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
-      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
-      ss = add_scale_sink(ss, cj[1])
-      headModeSink.add(1, ss)
+    topModeSink.add(1, init_base_head(curves["secondary"], headSnaps))
 
   headModeSink.set_mode(0)
 
@@ -2152,20 +2098,14 @@ def init_sinks_base3(settings):
   topModeSink.set_mode(0)
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
-  oldMode =  []
-  def save_mode(event):
-    oldMode.append(joystickModeSink.get_mode())
-  def restore_mode(event):
-    if len(oldMode):
-      joystickModeSink.set_mode(oldMode.pop())
-  def clear_mode(event):
-    oldMode = []
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(joystickModeSink, 1), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), restore_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), SetMode(joystickModeSink, 2), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), restore_mode, 0)
+  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
@@ -2368,23 +2308,14 @@ def init_sinks_descent(settings):
   joystickSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
   joystickModeSink = joystickSink.add(ED3.parse("any()"), ModeSink(), 1)
-  oldMode =  []
-  def save_mode(event):
-    oldMode.append(joystickModeSink.get_mode())
-  def restore_mode(event):
-    if len(oldMode) >= 1 : joystickModeSink.set_mode(oldMode.pop())
-  def clear_mode(event):
-    oldMode = []
-  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), save_mode, 0)
-  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), SetMode(joystickModeSink, 2), 0)
-  joystickSink.add(ED3.parse("release(mouse.BTN_SIDE)"), restore_mode, 0)
-
-  #It is crucial to get current mode from modeSink itself
-  cycleMode = lambda e : joystickModeSink.set_mode(0 if joystickModeSink.get_mode() == 1 else 1)
-  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)+"), save_mode, 0)
-  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)+"), cycleMode, 0)
-  joystickSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), restore_mode, 0)
-  joystickSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)+"), cycleMode, 0)
+  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
