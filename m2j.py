@@ -1838,6 +1838,74 @@ def init_sinks_main(settings):
 sink_initializers["main"] = init_sinks_empty
 
 
+def init_base_head_snaps():
+  snaps = CurveSnapManager()
+  zero = (
+    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True), 
+    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, 0.0, True),
+  )
+  snaps.set_snap(0, zero)
+  fullForward = (
+    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True), 
+    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, 1.0, True),
+  )
+  snaps.set_snap(1, fullForward)
+  fullBackward = (
+    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, -1.0, True), 
+    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, -0.15, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, -1.0, True),
+  )
+  snaps.set_snap(2, fullBackward)
+  zoomOut = ((codes.ABS_THROTTLE, -1.0, True),)
+  snaps.set_snap(3, zoomOut)
+  centerView = ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),)
+  snaps.set_snap(4, centerView)
+  centerViewPos = ((codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True),)
+  snaps.set_snap(5, centerViewPos)
+  return snaps
+
+
+def init_base_head(curves, snaps):
+  cmpOp = CmpWithModifiers2()
+  headBindingSink = Binding(cmpOp)
+  headModeSink = ModeSink()
+  headBindingSink.add(ED3.parse("any()"), headModeSink, 1)
+  headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
+  headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
+  headBindingSink.add(ED3.parse("init(0)"), UpdateSnap(snaps, 0), 0)
+
+  if 0 in curves:
+    logger.debug("Init mode 0")
+    cs = curves[0]["curves"]["head"]
+    ss = Binding(cmpOp)
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(snaps, 3), 0)
+    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, 4), 0)
+    axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
+    ss.add(ED3.parse("init(1)"), SetCurves(snaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+    ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+    ss = add_scale_sink(ss, curves[0])
+    headModeSink.add(0, ss)
+
+  if 1 in curves:
+    logger.debug("Init mode 1")
+    cs = curves[1]["curves"]["head"]
+    ss = Binding(cmpOp)
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, 5), 0)
+    axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+    ss.add(ED3.parse("init(1)"), SetCurves(snaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
+    ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+    ss = add_scale_sink(ss, curves[1])
+    headModeSink.add(1, ss)
+
+  headModeSink.set_mode(0)
+  return headBindingSink
+
+
 def init_sinks_base(settings): 
   cmpOp = CmpWithModifiers2()
   curveSet = settings["config"].get("curves", None)
@@ -1845,7 +1913,7 @@ def init_sinks_base(settings):
     raise Exception("No curve set specified in settings")
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
-    raise Exception("No curves for {}".format(curveSet))
+     raise Exception("No curves for {}".format(curveSet))
   
   joystick = settings["outputs"]["joystick"]
   head = settings["outputs"]["head"]
@@ -1882,7 +1950,6 @@ def init_sinks_base(settings):
   topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
   topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
   topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
-  topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), UpdateSnap(headSnaps, 0), 0)
 
   joystickBindingSink = Binding(cmpOp)
   topModeSink.add(0, joystickBindingSink)
@@ -2028,27 +2095,13 @@ def init_sinks_base3(settings):
   joySnaps.set_snap("zy", ((codes.ABS_Z, 0.0, True), (codes.ABS_Y, 0.0, True),))
   joySnaps.set_snap("rxry", ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),))
 
-  headSnaps = SnapManager(head, False)
-  zero = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 0.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 0.0),)
-  headSnaps.set_snap(0, zero)
-  fullForward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, 1.0), (codes.ABS_RX, 0), (codes.ABS_RY, 0), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, 1.0),)
-  headSnaps.set_snap(1, fullForward)
-  fullBackward = ((codes.ABS_X, 0), (codes.ABS_Y, 0), (codes.ABS_Z, -1.0), (codes.ABS_RX, 0), (codes.ABS_RY, -0.15), (codes.ABS_RZ, 0), (codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(2, fullBackward)
-  zoomOut = ((codes.ABS_THROTTLE, -1.0),)
-  headSnaps.set_snap(3, zoomOut)
-  centerView = ((codes.ABS_RX, 0.0), (codes.ABS_RY, 0.0),)
-  headSnaps.set_snap(4, centerView)
-  centerViewPos = ((codes.ABS_X, 0.0), (codes.ABS_Y, 0.0), (codes.ABS_Z, 0.0),)
-  headSnaps.set_snap(5, centerViewPos)
-
+  headSnaps = init_base_head_snaps()
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
   topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
   topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
   topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
-  topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), UpdateSnap(headSnaps, 0), 0)
 
   joystickBindingSink = Binding(cmpOp)
   topModeSink.add(0, joystickBindingSink)
@@ -2132,46 +2185,8 @@ def init_sinks_base3(settings):
 
     joystickModeSink.set_mode(0)
 
-  headBindingSink = Binding(cmpOp)
-  topModeSink.add(1, headBindingSink)
-
-  headModeSink = ModeSink()
-  headBindingSink.add(ED3.parse("any()"), headModeSink, 1)
-  headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
-  headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
-
   if "secondary" in curves:
-    cj = curves["secondary"]
-    if 0 in cj:
-      logger.debug("Init mode 0")
-      cs = cj[0]["curves"]["head"]
-
-      ss = Binding(cmpOp)
-      ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-      ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 3), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
-      axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
-      ss = add_scale_sink(ss, cj[0])
-      headModeSink.add(0, ss)
-
-    if 1 in cj:
-      logger.debug("Init mode 1")
-      cs = cj[1]["curves"]["head"]
-
-      ss = Binding(cmpOp)
-      ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
-      ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-      ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
-      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
-      ss = add_scale_sink(ss, cj[1])
-      headModeSink.add(1, ss)
-
-  headModeSink.set_mode(0)
+    topModeSink.add(1, init_base_head(curves["secondary"], headSnaps))
 
   return topBindingSink
 
