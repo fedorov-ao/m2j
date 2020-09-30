@@ -1872,6 +1872,7 @@ def init_base_head(curves, snaps):
   headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
   headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
   headBindingSink.add(ED3.parse("init(0)"), UpdateSnap(snaps, 0), 0)
+  headBindingSink.add(ED3.parse("init(1)"), SetMode(headModeSink, 0), 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
@@ -1882,9 +1883,8 @@ def init_base_head(curves, snaps):
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(snaps, 3), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, 4), 0)
-    axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
-    ss.add(ED3.parse("init(1)"), SetCurves(snaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-    ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+    ss.add(ED3.parse("init(1)"), SetCurves(snaps, cs.items()))
+    ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
     ss = add_scale_sink(ss, curves[0])
     headModeSink.add(0, ss)
 
@@ -1897,8 +1897,8 @@ def init_base_head(curves, snaps):
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, 5), 0)
     axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-    ss.add(ED3.parse("init(1)"), SetCurves(snaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-    ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+    ss.add(ED3.parse("init(1)"), SetCurves(snaps, cs.items()))
+    ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
     ss = add_scale_sink(ss, curves[1])
     headModeSink.add(1, ss)
 
@@ -2140,9 +2140,8 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 0), 0)
-      axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
 
@@ -2162,8 +2161,8 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "zy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 1), 0)
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
 
@@ -2178,8 +2177,8 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, 2), 0)
       axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
-      ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
+      ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
 
