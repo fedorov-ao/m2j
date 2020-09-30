@@ -747,6 +747,31 @@ class SetMode:
     self.modeSink, self.mode = modeSink, mode
 
 
+class ModeSinkModeManager:
+  def save(self):
+    self.mode_ = self.sink_.get_mode()
+  def set(self, mode, save):
+    if save:
+      self.save()
+    self.sink_.set_mode(mode)
+  def restore(self):
+    if self.mode_ is not None:
+      self.sink_.set_mode(self.mode_)
+      self.mode_ = None
+  def clear(self):
+    self.mode_ = None
+  def __init__(self, sink):
+    self.sink_, self.mode_ = sink, None
+  def make_save(self):
+    return lambda event : self.save()
+  def make_set(self, mode, save):
+    return lambda event : self.set(mode, save)
+  def make_restore(self):
+    return lambda event : self.restore()
+  def make_clear(self):
+    return lambda event : self.clear()
+
+
 class PowerApproximator:
   def __call__(self, v):
     return sign(v)*self.k*abs(v)**self.n
@@ -2227,22 +2252,14 @@ def init_sinks_base4(settings):
   topModeSink.set_mode(0)
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
-  oldMode =  []
-  def save_mode(event):
-    oldMode.append(joystickModeSink.get_mode())
-  def restore_mode(event):
-    if len(oldMode):
-      joystickModeSink.set_mode(oldMode.pop())
-  def clear_mode(event):
-    oldMode = []
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(joystickModeSink, 1), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), restore_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), save_mode, 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), SetMode(joystickModeSink, 2), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), restore_mode, 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), SetMode(joystickModeSink, 0), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), clear_mode, 0)
+
+  jmm = ModeSinkModeManager(joystickModeSink)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_set(1, True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
