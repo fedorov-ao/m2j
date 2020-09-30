@@ -360,11 +360,12 @@ class ScaleSink:
     self.next_, self.sens_ = None, sens
 
 
-#TODO Figure out how to match events from any source
 class ScaleSink2:
   def __call__(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
-      event.value *= 1.0 if self.sens_ is None else self.sens_.get(self.keyOp_(event), 1.0)
+      if self.sens_ is not None:
+        keys = self.keyOp_(event)
+        event.value *= self.sens_.get(keys[0], self.sens_.get(keys[1], 1.0))
     return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
@@ -1672,9 +1673,12 @@ def make_curve_makers():
       groupParsers["curves"] = parseCurvesGroup
 
       def parseSensGroup(cfg, state):
+        def sp(s, sep):
+          i = s.find(sep)
+          return (None, s) if i == -1 else (s[:i], s[i+1:])
         r = {}
         for inputSourceAndAxisName,inputAxisData in cfg.items():
-          inputSourceName, inputAxisName = inputSourceAndAxisName.split(".")
+          inputSourceName, inputAxisName = sp(inputSourceAndAxisName, ".")
           inputAxis = nameToRelativeAxis[inputAxisName]
           r[(inputSourceName, inputAxis)] = float(inputAxisData)
         return r 
@@ -1812,6 +1816,14 @@ def init_config(configFilesNames):
   return cfg
                               
 
+def add_scale_sink(sink, cfg):
+  if "sens" in cfg:
+    sensSink = ScaleSink2(cfg["sens"], lambda event : ((event.source, event.code), (None, event.code)))
+    sensSink.set_next(sink)
+    return sensSink 
+  else:
+    return sink
+
 sink_initializers = {}
 
 def init_sinks_empty(settings): 
@@ -1908,6 +1920,7 @@ def init_sinks_base(settings):
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
@@ -1923,6 +1936,7 @@ def init_sinks_base(settings):
       axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
@@ -1937,6 +1951,7 @@ def init_sinks_base(settings):
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_THROTTLE)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
 
     joystickModeSink.set_mode(0)
@@ -1963,6 +1978,7 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
       axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[0])
       headModeSink.add(0, ss)
 
     if 1 in cj:
@@ -1976,6 +1992,7 @@ def init_sinks_base(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[1])
       headModeSink.add(1, ss)
 
   headModeSink.set_mode(0)
@@ -2073,6 +2090,7 @@ def init_sinks_base3(settings):
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2093,6 +2111,7 @@ def init_sinks_base3(settings):
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_THROTTLE, codes.ABS_RUDDER)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
@@ -2108,6 +2127,7 @@ def init_sinks_base3(settings):
       axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
       ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, [(axisId, cs.get(axisId, None)) for axisId in axisIds]))
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
 
     joystickModeSink.set_mode(0)
@@ -2134,6 +2154,7 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 4), 0)
       axisIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE)
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[0])
       headModeSink.add(0, ss)
 
     if 1 in cj:
@@ -2147,6 +2168,7 @@ def init_sinks_base3(settings):
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(headSnaps, 5), 0)
       axisIds = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
       ss.add(ED3.parse("init(1)"), ResetCurves([cs.get(axisId, None) for axisId in axisIds]))
+      ss = add_scale_sink(ss, cj[1])
       headModeSink.add(1, ss)
 
   headModeSink.set_mode(0)
@@ -2211,11 +2233,7 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
     ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
     ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
-
-    if "sens" in curves[0]:
-      sensSink = ScaleSink2(curves[0]["sens"], lambda event : (event.source, event.code))
-      sensSink.set_next(ss)
-      ss = sensSink 
+    ss = add_scale_sink(ss, curves[0])
     joystickModeSink.add(0, ss)
 
   if 1 in curves:
@@ -2229,6 +2247,7 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
     ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+    ss = add_scale_sink(ss, curves[1])
     joystickModeSink.add(1, ss)
 
   if 2 in curves:
@@ -2249,6 +2268,7 @@ def init_sinks_descent(settings):
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_LEFTSHIFT"), setRudder, 0)
     ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
     ss.add(ED3.parse("init(0)"), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
+    ss = add_scale_sink(ss, curves[2])
     joystickModeSink.add(2, ss)
 
   joystickModeSink.set_mode(0)
