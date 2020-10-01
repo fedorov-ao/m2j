@@ -139,11 +139,11 @@ def run():
 
     settings["inputs"] = find_devices(config["inputs"])
 
-    initializer = sink_initializers.get(config["layout"], None)
+    initializer = layout_initializers.get(config["layout"], None)
     if not initializer:
-      raise Exception("Initialiser for {} not found".format(config["layout"]))
+      raise Exception("Initialiser for '{}' not found".format(config["layout"]))
     else:
-      logger.info("Initializing for {}, using {} curves".format(config["layout"], config["curves"]))
+      logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
 
     sink = init_main_sink(settings, initializer)
 

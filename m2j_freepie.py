@@ -321,7 +321,7 @@ if starting:
   head = Opentrack("127.0.0.1", 5555)
   settings["outputs"] = {"joystick" : joystick, "head" : head}
 
-  initializer = sink_initializers.get(settings["layout"], None)
+  initializer = layout_initializers.get(settings["layout"], None)
   if not initializer:
     raise Exception("Initialiser for {} not found".format(settings["layout"]))
   else:

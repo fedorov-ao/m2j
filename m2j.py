@@ -1753,11 +1753,10 @@ def make_curve_makers():
     settings = data["settings"]
     config = settings["config"]
     configCurves = config["configCurves"]
-    logger.info("Using {} config curves".format(configCurves))
+    logger.info("Using '{}' curves from config".format(configCurves))
     sets = config["layouts"].get(configCurves, None)
     if sets is None:
-      logger.error("{} curves not found in config".format(configCurves))
-      r = None
+      raise Exception("'{}' curves not found in config".format(configCurves))
     else:
       r = parseSets(sets, state)
     return r
@@ -1801,10 +1800,10 @@ def init_main_sink(settings, make_next):
   def makeAndSetNext():
     try:
       stateSink.set_next(make_next(settings))
-      logger.info("Sink initialized")
+      logger.info("Initialization successfull")
     except Exception as e:
-      logger.error("Failed to make sink: {}".format(e))
-      traceback.print_tb(sys.exc_info()[2])
+      logger.error("Failed to initialize: {}".format(e))
+      #traceback.print_tb(sys.exc_info()[2])
   def rld(e):
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
@@ -1846,7 +1845,7 @@ def init_log(settings, handler=None):
   if handler is None:
     handler = logging.StreamHandler(sys.stdout)
   handler.setLevel(logLevel)
-  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
+  handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
   root.addHandler(handler)
 
 
@@ -1866,18 +1865,18 @@ def add_scale_sink(sink, cfg):
   else:
     return sink
 
-sink_initializers = {}
+layout_initializers = {}
 
-def init_sinks_empty(settings): 
+def init_layout_empty(settings): 
   return None
 
-sink_initializers["empty"] = init_sinks_empty
+layout_initializers["empty"] = init_layout_empty
 
 
-def init_sinks_main(settings): 
+def init_layout_main(settings): 
   return init_main_sink(settings, lambda s : None)
 
-sink_initializers["main"] = init_sinks_empty
+layout_initializers["main"] = init_layout_empty
 
 
 def init_base_joystick_snaps():
@@ -1973,7 +1972,7 @@ def init_base_head(curves, snaps):
   return headBindingSink
 
 
-def init_sinks_base(settings): 
+def init_layout_base(settings): 
   cmpOp = CmpWithModifiers2()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
@@ -2079,10 +2078,10 @@ def init_sinks_base(settings):
 
   return topBindingSink
 
-sink_initializers["base"] = init_sinks_base
+layout_initializers["base"] = init_layout_base
 
 
-def init_sinks_base3(settings):
+def init_layout_base3(settings):
   cmpOp = CmpWithModifiers2()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
@@ -2188,10 +2187,10 @@ def init_sinks_base3(settings):
 
   return topBindingSink
 
-sink_initializers["base3"] = init_sinks_base3
+layout_initializers["base3"] = init_layout_base3
 
 
-def init_sinks_base4(settings):
+def init_layout_base4(settings):
   cmpOp = CmpWithModifiers2()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
@@ -2296,10 +2295,10 @@ def init_sinks_base4(settings):
 
   return topBindingSink
 
-sink_initializers["base4"] = init_sinks_base4
+layout_initializers["base4"] = init_layout_base4
 
 
-def init_sinks_descent(settings):
+def init_layout_descent(settings):
   cmpOp = CmpWithModifiers2()
 
   curveSet = settings["config"].get("curves", None)
@@ -2387,4 +2386,4 @@ def init_sinks_descent(settings):
     
   return joystickSink
 
-sink_initializers["descent"] = init_sinks_descent
+layout_initializers["descent"] = init_layout_descent
