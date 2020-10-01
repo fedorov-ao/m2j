@@ -1954,28 +1954,28 @@ def init_base_joystick_snaps(axes):
   return snaps
 
 
-def init_base_head_snaps():
-  snaps = CurveSnapManager()
+def init_base_head_snaps(axes):
+  snaps = AxisSnapManager()
   zero = (
-    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True), 
-    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, 0.0, True),
+    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], 0.0), 
+    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 0.0),
   )
   snaps.set_snap("current", zero)
   fullForward = (
-    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True), 
-    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, 1.0, True),
+    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], 0.0), 
+    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 1.0),
   )
   snaps.set_snap("ff", fullForward)
   fullBackward = (
-    (codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, -1.0, True), 
-    (codes.ABS_RX, 0.0, True), (codes.ABS_RY, -0.15, True), (codes.ABS_RZ, 0.0, True), (codes.ABS_THROTTLE, -1.0, True),
+    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], -1.0), 
+    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], -0.15), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], -1.0),
   )
   snaps.set_snap("fb", fullBackward)
-  zoomOut = ((codes.ABS_THROTTLE, -1.0, True),)
+  zoomOut = ((axes[codes.ABS_THROTTLE], -1.0),)
   snaps.set_snap("zo", zoomOut)
-  centerView = ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),)
+  centerView = ((axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0),)
   snaps.set_snap("cdir", centerView)
-  centerViewPos = ((codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True), (codes.ABS_Z, 0.0, True),)
+  centerViewPos = ((axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], 0.0),)
   snaps.set_snap("cpos", centerViewPos)
   return snaps
 
@@ -1997,10 +1997,6 @@ def bind_moves(sink, curves, data):
 
 
 def init_base_head(curves, snaps):
-  for cs in curves.values():
-    for axisId,curve in cs["curves"]["head"].items():
-      snaps.set_curve(axisId, curve)
-
   cmpOp = CmpWithModifiers2()
   headBindingSink = Binding(cmpOp)
   headModeSink = ModeSink()
@@ -2053,7 +2049,7 @@ def init_layout_base(settings):
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
-  headSnaps = init_base_head_snaps()
+  headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
@@ -2087,7 +2083,7 @@ def init_layout_base(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
@@ -2101,7 +2097,7 @@ def init_layout_base(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
@@ -2114,7 +2110,7 @@ def init_layout_base(settings):
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
@@ -2155,7 +2151,7 @@ def init_layout_base3(settings):
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
-  headSnaps = init_base_head_snaps()
+  headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
@@ -2193,7 +2189,7 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTCTRL"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "xy"), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
@@ -2212,7 +2208,7 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTCTRL"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "x"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "zy"), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
@@ -2226,7 +2222,7 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RZ, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
-      ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
+      ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
@@ -2257,7 +2253,7 @@ def init_layout_base4(settings):
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
-  headSnaps = init_base_head_snaps()
+  headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
   topBindingSink = Binding(cmpOp)
   topModeSink = ModeSink()
