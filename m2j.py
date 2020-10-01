@@ -974,6 +974,9 @@ class ValueOpDeltaAxisCurve:
     assert(self.deltaOp_ is not None)
     #self.valueOp_ typically returns sensitivity based on current self.value_
     #self.deltaOp_ typically multiplies sensitivity by x (input delta) to produce output delta
+    if self.dirty_:
+      self.reset()
+      self.dirty_ = False
     value, limits = self.axis_.get(), self.axis_.limits()
     baseValue = value
     if x == 0:
@@ -984,34 +987,45 @@ class ValueOpDeltaAxisCurve:
     value += self.deltaOp_(x, factor)
     value = clamp(value, *limits)
     delta = value - baseValue
-    self.axis_.move(delta, True)
+    self.move_axis_(delta, True)
     logger.debug("{}: value:{: .3f}, factor:{: .3f}, delta:{: .3f}".format(self, value, factor, delta))
     return delta
 
   def reset(self):
     logger.debug("{}: resetting".format(self))
+    self.s_, self.busy_, self.dirty_  = 0, False, False
     assert(self.valueOp_ is not None)
     self.valueOp_.reset()
-    self.s_ = 0
     #TODO Should also call self.deltaOp_?
 
   def get_axis(self):
     return self.axis_
 
   def move_axis(self, value, relative=True, reset=True):
-    self.axis_.move(value, relative)
+    self.move_axis_(value, relative)
     if reset:
       self.reset()
 
   def on_move_axis(self, axis, old, new):
     assert(axis == self.axis_)
-    self.reset()
+    if self.busy_ or self.dirty_: return
+    self.dirty_ = True
 
   def __init__(self, deltaOp, valueOp, axis):
     assert(deltaOp is not None)
     assert(valueOp is not None)
     assert(axis is not None)
-    self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
+    self.deltaOp_, self.valueOp_, self.axis_ = deltaOp, valueOp, axis
+    self.s_, self.busy_, self.dirty_  = 0, False, False
+
+  def move_axis_(self, value, relative):
+    try:
+      self.busy_ = True
+      self.axis_.move(value, relative)
+    except:
+      raise
+    finally:
+      self.busy_ = False
 
 
 class PointMovingCurveResetPolicy:
@@ -1022,6 +1036,10 @@ class PointMovingCurveResetPolicy:
 
 class PointMovingCurve:
   def move_by(self, x, timestamp):
+    if self.dirty_:
+      logger.debug("{}: was dirty, resetting".format(self))
+      self.reset()
+      self.dirty_ = False
     #Setting new point center if x movement direction has changed
     s = sign(x)
     center, value = self.point_.get_center(), self.getValueOp_(self.next_)
@@ -1031,14 +1049,21 @@ class PointMovingCurve:
         logger.debug("{}: sign has changed; new point center: {} (was: {})".format(self, c, center))
         self.point_.set_center(c)
       self.s_ = s
-    r = self.next_.move_by(x, timestamp)
+    r = None
+    try:
+      self.busy_ = True
+      r = self.next_.move_by(x, timestamp)
+    except:
+      raise
+    finally:
+      self.busy_ = False 
     if center is not None and abs(value - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
       self.point_.set_center(None)
     return r
 
   def reset(self):
-    self.s_ = 0
+    self.s_, self.busy_, self.dirty_ = 0, False, False
     #Need to disable controlled point by setting point center to None before resetting next_ curve
     #Will produce inconsistent results otherwise
     if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
@@ -1054,11 +1079,18 @@ class PointMovingCurve:
 
   def move_axis(self, value, relative=True, reset=True):
     #Resetting point center if axis was moved directly (make optional?)
+    #FIXME Exception in next_.move() leads to inconsistent state
     if reset:
-      self.s_ = 0
+      self.s_, self.busy_, self.dirty_ = 0, False, False
       if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
         self.point_.set_center(None)
-    self.next_.move_axis(value, relative, reset)
+    try:
+      self.busy_ = True
+      self.next_.move_axis(value, relative, reset)
+    except:
+      raise
+    finally:
+      self.busy_ = False
     if reset:
       if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
         v = self.getValueOp_(self.next_)
@@ -1066,7 +1098,11 @@ class PointMovingCurve:
       logger.debug("{}: axis was moved directly, new point center: {}".format(self, self.point_.get_center()))
 
   def on_move_axis(self, axis, old, new):
-    self.reset()
+    logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
+    if self.busy_ or self.dirty_: 
+      logger.debug("{}: on_move_axis(): {}{}".format(self, "busy " if self.busy_ else "", "dirty" if self.dirty_ else ""))
+      return
+    self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
@@ -1075,7 +1111,7 @@ class PointMovingCurve:
     assert(getValueOp is not None)
     assert(centerOp is not None)
     self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_, self.onReset_, self.onMove_ = next, point, getValueOp, centerOp, resetDistance, onReset, onMove
-    self.s_ = 0
+    self.s_, self.busy_, self.dirty_ = 0, False, False
 
 
 class ValuePointOp:
@@ -1137,35 +1173,42 @@ def get_min_op(left, right):
 
 class PosAxisCurve:
   def move_by(self, x, timestamp):
+    if self.dirty_:
+      self.reset()
+      self.dirty_ = False
     pos = clamp(self.pos_ + x, *self.posLimits_)
     if pos == self.pos_:
       return
     self.pos_ = pos
     value = self.op_.calc_value(self.pos_)
-    self.axis_.move(value, relative=False)
+    self.move_axis_(value, relative=False)
 
   def reset(self):
     logger.debug("{}: resetting".format(self))
     self.op_.reset()
     #TODO Check that it does not break something
     self.pos_ = self.op_.calc_pos(self.axis_.get())
+    #TODO Needed?
+    self.busy_, self.dirty_ = False, False
 
   def get_axis(self):
     return self.axis_
 
   def move_axis(self, value, relative=True, reset=True):
+    #TODO Refactor or remove
     value = self.axis_.get()+value if relative else value
     pos = self.op_.calc_pos(value)
     pos = clamp(pos, *self.posLimits_)
     value = self.op_.calc_value(pos)
-    self.axis_.move(value, relative=False)
+    self.move_axis_(value, relative=False)
     self.pos_ = pos
-    if reset:
-      self.reset()
+    self.reset()
 
   def on_move_axis(self, axis, old, new):
+    if self.busy_ or self.dirty_: return
     assert(axis == self.axis_)
-    self.reset()
+    assert(new == self.axis_.get())
+    self.dirty_ = True
 
   def get_pos(self):
     return self.pos_
@@ -1173,6 +1216,16 @@ class PosAxisCurve:
   def __init__(self, op, axis, posLimits=(-1.0, 1.0)):
     self.op_, self.axis_, self.posLimits_ = op, axis, posLimits
     self.pos_ = self.op_.calc_pos(self.axis_.get())
+    self.busy_, self.dirty_ = False, False
+
+  def move_axis_(self, value, relative):
+    try:
+      self.busy_ = True
+      self.axis_.move(value, relative)
+    except:
+      raise
+    finally:
+      self.busy_ = False
 
 
 class IterativeCenterOp:
@@ -1372,10 +1425,10 @@ class AxisSnapManager:
       logger.debug("{}: no snap {}".format(self, i))
     else:
       for p in snap:
-        p[0].move(p[1], self.relative_)
+        p[0].move(p[1], False)
 
-  def __init__(self, relative):
-    self.snaps_, self.relative_ = dict(), relative
+  def __init__(self):
+    self.snaps_ = dict()
 
 
 class CurveSnapManager:
@@ -1652,6 +1705,7 @@ def make_curve_makers():
             next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance,
             onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
 
+        axis.add_curve(curve)
         return curve
 
       curveParsers["valuePoints"] = parseValuePointsCurve
@@ -1664,7 +1718,9 @@ def make_curve_makers():
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
         interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
-        return PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        axis.add_curve(curve)
+        return curve
 
       curveParsers["posAxisF"] = parsePosAxisFixedCurve
 
@@ -1685,6 +1741,7 @@ def make_curve_makers():
         curve = PointMovingCurve(
           next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
           onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
+        axis.add_curve(curve)
         return curve
 
       curveParsers["posAxis"] = parsePosAxisCurve
@@ -1887,13 +1944,13 @@ def init_layout_main(settings):
 layout_initializers["main"] = init_layout_empty
 
 
-def init_base_joystick_snaps():
-  snaps = CurveSnapManager()
-  snaps.set_snap("z", ((codes.ABS_Z, 0.0, True),))
-  snaps.set_snap("xy", ((codes.ABS_X, 0.0, True), (codes.ABS_Y, 0.0, True),))
-  snaps.set_snap("x", ((codes.ABS_X, 0.0, True),))
-  snaps.set_snap("zy", ((codes.ABS_Z, 0.0, True), (codes.ABS_Y, 0.0, True),))
-  snaps.set_snap("rxry", ((codes.ABS_RX, 0.0, True), (codes.ABS_RY, 0.0, True),))
+def init_base_joystick_snaps(axes):
+  snaps = AxisSnapManager()
+  snaps.set_snap("z", ((axes[codes.ABS_Z], 0.0),))
+  snaps.set_snap("xy", ((axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0),))
+  snaps.set_snap("x", ((axes[codes.ABS_X], 0.0),))
+  snaps.set_snap("zy", ((axes[codes.ABS_Z], 0.0), (axes[codes.ABS_Y], 0.0),))
+  snaps.set_snap("rxry", ((axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0),))
   return snaps
 
 
@@ -1995,7 +2052,7 @@ def init_layout_base(settings):
 
   curves = curveMaker(settings)
 
-  joySnaps = init_base_joystick_snaps()
+  joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps()
 
   topBindingSink = Binding(cmpOp)
@@ -2031,7 +2088,6 @@ def init_layout_base(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
@@ -2046,7 +2102,6 @@ def init_layout_base(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
@@ -2060,7 +2115,6 @@ def init_layout_base(settings):
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
@@ -2100,7 +2154,7 @@ def init_layout_base3(settings):
 
   curves = curveMaker(settings)
 
-  joySnaps = init_base_joystick_snaps()
+  joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps()
 
   topBindingSink = Binding(cmpOp)
@@ -2140,7 +2194,6 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
@@ -2160,7 +2213,6 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "x"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "zy"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
@@ -2175,7 +2227,6 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RZ, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "rxry"), 0)
       ss.add(ED3.parse("click(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
@@ -2205,7 +2256,7 @@ def init_layout_base4(settings):
 
   curves = curveMaker(settings)
 
-  joySnaps = init_base_joystick_snaps()
+  joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps()
 
   topBindingSink = Binding(cmpOp)
@@ -2242,7 +2293,6 @@ def init_layout_base4(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
@@ -2258,7 +2308,6 @@ def init_layout_base4(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "x"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "zy"), 0)
       ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "ff"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[1])
       joystickModeSink.add(1, ss)
@@ -2279,7 +2328,6 @@ def init_layout_base4(settings):
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTALT"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "fb"), 0)
-      ss.add(ED3.parse("init(1)"), SetCurves(joySnaps, cs.items()))
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[2])
       joystickModeSink.add(2, ss)
