@@ -127,11 +127,6 @@ def run():
     if "head" in outputs: del outputs["head"]
     outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
 
-  def init_config2(settings):
-    if "configNames" in settings:
-      settings["config"] = {}
-      merge_dicts(settings["config"], init_config(settings["configNames"]))
-      merge_dicts(settings["config"], settings["options"])
 
   def run2(settings):
     init_config2(settings)
@@ -144,7 +139,6 @@ def run():
       raise Exception("Initialiser for '{}' not found".format(config["layout"]))
     else:
       logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
-
     sink = init_main_sink(settings, initializer)
 
     step = 0.01
@@ -157,8 +151,9 @@ def run():
     except KeyboardInterrupt:
       return 0
 
-  settings = {"options" : {}, "config" : {}, "configNames" : []}
-  config, options = settings["config"], settings["options"]
+  settings = {"options" : {}, "configNames" : []}
+  options = {}
+  settings["options"] = options
 
   opts, args = getopt.getopt(sys.argv[1:], "pl:c:f:o:n:", ["print", "layout=", "curves=", "configCurves=", "logLevel=", "config="])
   for o, a in opts:

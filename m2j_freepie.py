@@ -276,24 +276,19 @@ if starting:
   global g_inputs
   global logger
 
+  settings = {}
+  settings["options"] = {"layout" : "base", "curves" : "config", "configCurveLayoutName" : "base", "logLevel" : "INFO" }
+  settings["configNames"] = ["curves.cfg", "m2j_freepie.cfg"]
 
-  settings = {"layout" : "base", "curves" : "config", "configCurveLayoutName" : "base", "log_level" : "INFO", "configNames" : ["curves.cfg", "m2j_freepie.cfg"]}
-  settings["config"] = init_config(settings["configNames"])
-
-  init_log(settings)
-  logger = logging.getLogger(__name__)
+  init_config2(settings)
 
   class DiagnosticsStream:
     def write(self, s):
       diagnostics.debug(s.strip("\n"))
     def flush(self):
       pass
-
-  root = logging.getLogger()
-  handler = logging.StreamHandler(DiagnosticsStream())
-  handler.setLevel(logging.DEBUG)
-  handler.setFormatter(logging.Formatter("%(name)s:%(levelname)s:%(message)s"))
-  root.addHandler(handler)
+  init_log(settings, logging.StreamHandler(DiagnosticsStream()))
+  logger = logging.getLogger(__name__)
 
   mouseAxisDevice = PollingAxisDevice(
     "mouse", 
@@ -323,9 +318,9 @@ if starting:
 
   initializer = layout_initializers.get(settings["layout"], None)
   if not initializer:
-    raise Exception("Initialiser for {} not found".format(settings["layout"]))
+    raise Exception("Initialiser for '{}' not found".format(config["layout"]))
   else:
-    logger.info("Initializing for {}, using {} curves".format(settings["layout"], settings["curves"]))
+    logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
   sink = init_main_sink(settings, initializer)
 
   g_es = EventSource(settings["inputs"].values(), sink, 0.01)

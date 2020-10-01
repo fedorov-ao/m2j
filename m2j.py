@@ -1832,7 +1832,7 @@ def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLe
   return sink
 
 
-def init_log(settings, handler=None):
+def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   logLevelName = settings["config"]["logLevel"].upper()
   nameToLevel = {
     logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
@@ -1842,8 +1842,6 @@ def init_log(settings, handler=None):
   logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
   root = logging.getLogger()
   root.setLevel(logLevel)
-  if handler is None:
-    handler = logging.StreamHandler(sys.stdout)
   handler.setLevel(logLevel)
   handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
   root.addHandler(handler)
@@ -1856,6 +1854,13 @@ def init_config(configFilesNames):
       merge_dicts(cfg, json.load(f))
   return cfg
                               
+
+def init_config2(settings):
+  if "configNames" in settings:
+    settings["config"] = {}
+    merge_dicts(settings["config"], init_config(settings["configNames"]))
+    merge_dicts(settings["config"], settings["options"])
+
 
 def add_scale_sink(sink, cfg):
   if "sens" in cfg:
