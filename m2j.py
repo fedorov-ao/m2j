@@ -1551,31 +1551,9 @@ class MetricsJoystick:
 
 
 def make_curve_makers():
-  def CurveAdapter(curveMaker):
-    class AdaptingCurve:
-      def move_by(self, x, timestamp):
-        self.a_.move(self.c_.calc(x, timestamp), True)
-      def reset(self):
-        self.c_.reset()
-      def set_value(self, value):
-        self.a_.move(value, False)
-        self.c_reset()
-      def __init__(self, calcCurve, axis):
-        self.c_, self.a_ = calcCurve, axis
-      
-    def op(data):
-      curves = curveMaker(data)
-      for mode in curves:
-        md = curves[mode]
-        for axis in md:
-          md[axis] = AdaptingCurve(md[axis], data["axes"][axis])
-      return curves
-
-    return op
-
   curves = {}
 
-  def make_config_curves(data):
+  def make_config_curves(settings):
     def parseOp(cfg, state):
       def make_symm_wrapper(wrapped, symm):
         if symm == 1:
@@ -1651,12 +1629,8 @@ def make_curve_makers():
       curveParsers = {}
 
       def parseValuePointsCurve(cfg, state):
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
-
+        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
-
         vpoName = cfg.get("vpo", None)
         vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
         deltaOp = lambda x,value : x*value
@@ -1683,9 +1657,7 @@ def make_curve_makers():
       curveParsers["valuePoints"] = parseValuePointsCurve
 
       def parsePosAxisFixedCurve(cfg, state):
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
+        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
         interpolationDistance = cfg.get("interpolationDistance", 0.3)
@@ -1697,9 +1669,7 @@ def make_curve_makers():
       curveParsers["posAxisF"] = parsePosAxisFixedCurve
 
       def parsePosAxisCurve(cfg, state):
-        oName = state["output"]
-        axisId = nameToAxis[state["axis"]]
-        axis = state["axes"][oName][axisId]
+        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
         mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
@@ -1720,7 +1690,7 @@ def make_curve_makers():
       curveParsers["posAxis"] = parsePosAxisCurve
 
       def parsePresetCurve(cfg, state):
-        presets = state["data"]["settings"]["config"]["presets"]
+        presets = state["settings"]["config"]["presets"]
         preset = presets[cfg["name"]]
         curve = preset["curve"]
         state["curve"] = curve
@@ -1731,8 +1701,6 @@ def make_curve_makers():
       curve = cfg.get("curve", None)
       if curve is None:
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
-      if data is None:
-        raise Exception("{}.{}.{}: Curve data not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
       return curveParsers[curve](cfg, state)
           
@@ -1785,10 +1753,6 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
-    state = {"data" : data, "axes" : {}}
-    for oName,o in data["outputs"].items():
-      state["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
-    settings = data["settings"]
     config = settings["config"]
     configCurves = config["configCurves"]
     logger.info("Using '{}' curves from config".format(configCurves))
@@ -1796,6 +1760,7 @@ def make_curve_makers():
     if sets is None:
       raise Exception("'{}' curves not found in config".format(configCurves))
     else:
+      state = {"settings" : settings}
       r = parseSets(sets, state)
     return r
 
@@ -1841,7 +1806,7 @@ def init_main_sink(settings, make_next):
       logger.info("Initialization successfull")
     except Exception as e:
       logger.error("Failed to initialize: {}".format(e))
-      #traceback.print_tb(sys.exc_info()[2])
+      traceback.print_tb(sys.exc_info()[2])
   def rld(e):
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
@@ -2024,15 +1989,11 @@ def init_layout_base(settings):
   if curveMaker is None:
      raise Exception("No curves for {}".format(curveSet))
   
-  joystick = settings["outputs"]["joystick"]
-  head = settings["outputs"]["head"]
+  settings["axes"] = {}
+  for oName,o in settings["outputs"].items():
+    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
-  data = {
-    "outputs" : { "joystick" : joystick, "head" : head },
-    "settings" : settings,
-  }
-
-  curves = curveMaker(data)
+  curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps()
   headSnaps = init_base_head_snaps()
@@ -2133,15 +2094,11 @@ def init_layout_base3(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  joystick = settings["outputs"]["joystick"]
-  head = settings["outputs"]["head"]
+  settings["axes"] = {}
+  for oName,o in settings["outputs"].items():
+    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
-  data = {
-    "outputs" : { "joystick" : joystick, "head" : head },
-    "settings" : settings,
-  }
-
-  curves = curveMaker(data)
+  curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps()
   headSnaps = init_base_head_snaps()
@@ -2242,15 +2199,11 @@ def init_layout_base4(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  joystick = settings["outputs"]["joystick"]
-  head = settings["outputs"]["head"]
+  settings["axes"] = {}
+  for oName,o in settings["outputs"].items():
+    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
-  data = {
-    "outputs" : { "joystick" : joystick, "head" : head },
-    "settings" : settings,
-  }
-
-  curves = curveMaker(data)
+  curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps()
   headSnaps = init_base_head_snaps()
@@ -2353,12 +2306,11 @@ def init_layout_descent(settings):
   
   joystick = settings["outputs"]["joystick"]
 
-  data = {
-    "outputs" : { "joystick" : joystick },
-    "settings" : settings,
-  }
+  settings["axes"] = {}
+  for oName,o in settings["outputs"].items():
+    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
-  curves = curveMaker(data)["primary"]
+  curves = curveMaker(settings)["primary"]
 
   joystickSink = Binding(cmpOp)
   joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 1), 0)
