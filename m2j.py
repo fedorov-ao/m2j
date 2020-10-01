@@ -904,7 +904,7 @@ class SegmentedBezierApproximator:
     self.points_ = [p for p in points]
 
 
-class Axis:
+class JoystickAxis:
   def move(self, v, relative):
     assert(self.j_)
     return self.j_.move_axis(self.a_, v, relative)
@@ -921,6 +921,32 @@ class Axis:
   def __init__(self, j, a):
     assert(j)
     self.j_, self.a_ = j, a
+
+
+class CurveAxis:
+  def move(self, v, relative):
+    old = self.next_.get()
+    self.next_.move(v, relative)
+    new = self.next_.get()
+    for c in self.curves_:
+      if c() is None: continue
+      c().on_move_axis(self, old, new)
+    #TODO Implement cleanup
+
+  def get(self):
+    return self.next_.get()
+
+  def limits(self):
+    return self.next_.limits()
+
+  def add_curve(self, curve):
+    self.curves_.append(weakref.ref(curve))
+
+  #TODO Implement remove_curve()
+
+  def __init__(self, next):
+    assert(next is not None)
+    self.next_, self.curves_ = next, []
 
 
 class Point:
@@ -977,10 +1003,14 @@ class ValueOpDeltaAxisCurve:
     if reset:
       self.reset()
 
+  def on_move_axis(self, axis, old, new):
+    assert(axis == self.axis_)
+    self.reset()
+
   def __init__(self, deltaOp, valueOp, axis):
-    assert(deltaOp)
-    assert(valueOp)
-    assert(axis)
+    assert(deltaOp is not None)
+    assert(valueOp is not None)
+    assert(axis is not None)
     self.deltaOp_, self.valueOp_, self.axis_, self.s_ = deltaOp, valueOp, axis, 0
 
 
@@ -1034,6 +1064,10 @@ class PointMovingCurve:
         v = self.getValueOp_(self.next_)
         self.point_.set_center(v)
       logger.debug("{}: axis was moved directly, new point center: {}".format(self, self.point_.get_center()))
+
+  def on_move_axis(self, axis, old, new):
+    self.reset()
+    self.next_.on_move_axis(axis, old, new)
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
     assert(next is not None)
@@ -1128,6 +1162,10 @@ class PosAxisCurve:
     self.pos_ = pos
     if reset:
       self.reset()
+
+  def on_move_axis(self, axis, old, new):
+    assert(axis == self.axis_)
+    self.reset()
 
   def get_pos(self):
     return self.pos_
@@ -1749,7 +1787,7 @@ def make_curve_makers():
 
     state = {"data" : data, "axes" : {}}
     for oName,o in data["outputs"].items():
-      state["axes"][oName] = {axisId:Axis(o, axisId) for axisId in axisToName.keys()}
+      state["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
     settings = data["settings"]
     config = settings["config"]
     configCurves = config["configCurves"]
