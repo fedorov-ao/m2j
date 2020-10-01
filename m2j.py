@@ -1831,6 +1831,7 @@ curveMakers = make_curve_makers()
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
   config = settings["config"]
+
   clickSink = ClickSink(config.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
   sens = config.get("sens", None)
@@ -1840,9 +1841,11 @@ def init_main_sink(settings, make_next):
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
+
   scaleSink = modifierSink.set_next(ScaleSink(sens))
   mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
   stateSink = mainSink.add((), StateSink(), 1)
+
   toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
   def make_toggle(settings, stateSink):
     grabberSinks = []
@@ -1857,18 +1860,23 @@ def init_main_sink(settings, make_next):
       logger.info("Emulation {}".format("enabled" if stateSink.get_state() == True else "disabled"))
     return toggle
   mainSink.add(ED.doubleclick(toggleKey), make_toggle(settings, stateSink), 0)
-  def makeAndSetNext():
-    try:
-      stateSink.set_next(make_next(settings))
-      logger.info("Initialization successfull")
-    except Exception as e:
-      logger.error("Failed to initialize: {}".format(e))
-      traceback.print_tb(sys.exc_info()[2])
+
   def rld(e):
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
-  makeAndSetNext()
+
+  settings["axes"] = {}
+  for oName,o in settings["outputs"].items():
+    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
+
+  try:
+    stateSink.set_next(make_next(settings))
+    logger.info("Initialization successfull")
+  except Exception as e:
+    logger.error("Failed to initialize: {}".format(e))
+    traceback.print_tb(sys.exc_info()[2])
+      
   return clickSink
 
 
@@ -2042,10 +2050,6 @@ def init_layout_base(settings):
   if curveMaker is None:
      raise Exception("No curves for {}".format(curveSet))
   
-  settings["axes"] = {}
-  for oName,o in settings["outputs"].items():
-    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
-
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -2144,10 +2148,6 @@ def init_layout_base3(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  settings["axes"] = {}
-  for oName,o in settings["outputs"].items():
-    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
-
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -2246,10 +2246,6 @@ def init_layout_base4(settings):
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
   
-  settings["axes"] = {}
-  for oName,o in settings["outputs"].items():
-    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
-
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -2349,10 +2345,6 @@ def init_layout_descent(settings):
     raise Exception("No curves for {}".format(curveSet))
   
   joystick = settings["outputs"]["joystick"]
-
-  settings["axes"] = {}
-  for oName,o in settings["outputs"].items():
-    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
   curves = curveMaker(settings)["primary"]
 
