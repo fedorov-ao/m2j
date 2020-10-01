@@ -1037,9 +1037,9 @@ class PointMovingCurveResetPolicy:
 class PointMovingCurve:
   def move_by(self, x, timestamp):
     if self.dirty_:
-      logger.debug("{}: was dirty, resetting".format(self))
-      self.reset()
+      self.after_move_axis_()
       self.dirty_ = False
+      logger.debug("{}: someone has moved axis, new point center: {}".format(self, self.point_.get_center()))
     #Setting new point center if x movement direction has changed
     s = sign(x)
     center, value = self.point_.get_center(), self.getValueOp_(self.next_)
@@ -1072,7 +1072,7 @@ class PointMovingCurve:
     if self.onReset_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
       v = self.getValueOp_(self.next_)
       self.point_.set_center(v)
-    logger.debug("{}: reset, new point center: {}".format(self, v))
+    logger.debug("{}: direct reset, new point center: {}".format(self, v))
 
   def get_axis(self):
     return self.next_.get_axis()
@@ -1095,7 +1095,7 @@ class PointMovingCurve:
       if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
         v = self.getValueOp_(self.next_)
         self.point_.set_center(v)
-      logger.debug("{}: axis was moved directly, new point center: {}".format(self, self.point_.get_center()))
+      logger.debug("{}: moving axis directly, new point center: {}".format(self, self.point_.get_center()))
 
   def on_move_axis(self, axis, old, new):
     logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
@@ -1113,6 +1113,14 @@ class PointMovingCurve:
     self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_, self.onReset_, self.onMove_ = next, point, getValueOp, centerOp, resetDistance, onReset, onMove
     self.s_, self.busy_, self.dirty_ = 0, False, False
 
+  def after_move_axis_(self):
+    self.s_, self.busy_, self.dirty_ = 0, False, False
+    if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
+      self.point_.set_center(None)
+    if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
+      v = self.getValueOp_(self.next_)
+      self.point_.set_center(v)
+      
 
 class ValuePointOp:
   def calc(self, value):
@@ -2190,6 +2198,7 @@ def init_layout_base3(settings):
       ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "z"), 0)
       ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SnapTo(joySnaps, "xy"), 0)
       ss.add(ED3.parse("release(mouse.BTN_LEFT)"), SnapTo(headSnaps, "current"), 0)
+      #This reset is needed to set the center of the moving point of curves to current values of corresponding axes
       ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
       ss = add_scale_sink(ss, cj[0])
       joystickModeSink.add(0, ss)
