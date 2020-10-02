@@ -69,19 +69,26 @@ class CompositeJoystick:
     for c in self.children_:
       c.move_axis(axis, v, relative)
 
+  #TODO Come up with something better
   def get_axis(self, axis):
-    #TODO Come up with something better
     if len(self.children_):
       return self.children_[0].get_axis(axis)
     else:
       return 0.0
 
+  #TODO Come up with something better
   def get_limits(self, axis):
-    #TODO Come up with something better
     if len(self.children_):
       return self.children_[0].get_limits(axis)
     else:
       return (0.0, 0.0)
+
+  #TODO Come up with something better
+  def get_supported_axes(self):
+    if len(self.children_):
+      return self.children_[0].get_supported_axes()
+    else:
+      return []
 
   def __init__(self, children):
     self.children_ = children
@@ -1330,12 +1337,18 @@ class Opentrack:
   def move_axis(self, axis, v, relative = True):
     if axis not in self.axes_:
       return
-    v = self.v_[axis]+v if relative else v 
-    self.v_[axis] = clamp(v, -1.0, 1.0)
+    v = self.v_.get(axis, 0.0)+v if relative else v 
+    self.v_[axis] = clamp(v, *self.get_limits(axis))
     self.dirty_ = True
 
   def get_axis(self, axis):
-    return self.v_[axis]
+    return self.v_.get(axis, 0.0)
+
+  def get_limits(self, axis):
+    return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.axes_
 
   def send(self):
     if self.dirty_ == True:
@@ -1783,7 +1796,7 @@ def init_main_sink(settings, make_next):
   settings["axes"] = {}
   for oName,o in settings["outputs"].items():
     #TODO Get axes from output
-    settings["axes"][oName] = {axisId:ReportingAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
+    settings["axes"][oName] = {axisId:ReportingAxis(JoystickAxis(o, axisId)) for axisId in o.get_supported_axes()}
 
   try:
     stateSink.set_next(make_next(settings))

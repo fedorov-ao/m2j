@@ -42,7 +42,7 @@ class EvdevJoystick:
 
     self.coords = {}
     for a in axes:
-      self.coords[a] = 0
+      self.coords[a] = 0.0
 
     self.limit = limit
 
@@ -60,19 +60,24 @@ class EvdevJoystick:
       self.move_axis_to(axis, v)
 
   def move_axis_by(self, axis, v):
-    self.move_axis_to(axis, self.coords[axis]+v)
+    self.move_axis_to(axis, self.get_axis(axis)+v)
 
   def move_axis_to(self, axis, v):
+    if axis not in self.coords:
+      return
     v = clamp(v, -1.0, 1.0)
     self.coords[axis] = v
     self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.limit))
     self.js.syn()
 
   def get_axis(self, axis):
-    return self.coords[axis]
+    return self.coords.get(axis, 0.0)
 
   def get_limits(self, axis):
     return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.coords.keys()
 
   def set_button_state(self, button, state):
     self.js.write(ecodes.EV_KEY, code2ecode(button), state)
