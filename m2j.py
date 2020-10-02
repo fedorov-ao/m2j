@@ -1346,6 +1346,19 @@ class DeviceGrabberSink:
     self.device_, self.state_ = device, False
 
 
+class SwallowDevices:
+  def __call__(self, event):
+    for d in self.devices_:
+      try:
+        d.swallow(self.mode_)
+      except IOError as e:
+        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+        continue
+
+  def __init__(self, devices, mode):
+    self.mode_, self.devices_ = mode, devices
+
+
 class Opentrack:
   """Opentrack head movement emulator. Don't forget to call send()!"""
 
@@ -1779,13 +1792,16 @@ def make_curve_makers():
 
 curveMakers = make_curve_makers()
 
+initState = False
 
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
+  cmpOp = CmpWithModifiers2()
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
   modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
+
   sens = config.get("sens", None)
   if sens is not None:
     sensSet = config.get("sensSet", None)
@@ -1793,41 +1809,46 @@ def init_main_sink(settings, make_next):
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
-
   scaleSink = modifierSink.set_next(ScaleSink(sens))
-  mainSink = scaleSink.set_next(Binding(CmpWithModifiers2()))
+
+  mainSink = scaleSink.set_next(Binding(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
   toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
-  def make_toggle(settings, stateSink):
-    grabberSinks = []
-    for g in config.get("grabbed", ()):
-      dev = settings["inputs"][g]
-      grabberSinks.append(DeviceGrabberSink(dev))
-    toggleSink = ToggleSink(stateSink)
-    def toggle(event):
-      toggleSink(event)
-      for s in grabberSinks: 
-        s(event)
-      logger.info("Emulation {}".format("enabled" if stateSink.get_state() == True else "disabled"))
-    return toggle
-  mainSink.add(ED.doubleclick(toggleKey), make_toggle(settings, stateSink), 0)
+  mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
 
   def rld(e):
+    global initState
+    initState = stateSink.get_state()
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
 
+  grabSink = stateSink.set_next(Binding(cmpOp))
+  grabbed = [settings["inputs"][g] for g in config.get("grabbed", ())]
+  grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
+  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
+
+  def print_enabled(event):
+    logger.info("Emulation enabled")
+  def print_disabled(event):
+    logger.info("Emulation disabled")
+  grabSink.add(ED.init(1), print_enabled, 0)
+  grabSink.add(ED.init(0), print_disabled, 0)
+
+  #make_next() may need axes, so initializing them here
   settings["axes"] = {}
   for oName,o in settings["outputs"].items():
     #TODO Get axes from output
     settings["axes"][oName] = {axisId:ReportingAxis(JoystickAxis(o, axisId)) for axisId in o.get_supported_axes()}
 
   try:
-    stateSink.set_next(make_next(settings))
+    grabSink.add(ED.any(), make_next(settings), 1)
+    global initState
     logger.info("Initialization successfull")
+    stateSink.set_state(initState)
   except Exception as e:
-    logger.error("Failed to initialize: {}".format(e))
+    logger.error("Failed to initialize ({}: {})".format(type(e), e))
     traceback.print_tb(sys.exc_info()[2])
       
   return clickSink
