@@ -189,32 +189,6 @@ def run():
       return r
 
 
-def test():
-  def get_callback(n):
-    def callback(event):
-      print "callback '{}' called with event {}".format(n, event)
-    return callback
-
-  class Event:
-    def __init__(self, type, code, value):
-      self.type, self.code, self.value = type, code, value
-
-    def __str__(self):
-      return "type: {}; code: {}; value: {}".format(self.type, self.code, self.value)
-
-  data = [
-    [[("type", codes.EV_REL), ("code", e.ABS_X)], get_callback("axis x")],
-    [[("type", codes.EV_KEY), ("code", e.KEY_Z)], get_callback("key z")],
-    [[("type", codes.EV_KEY), ("code", e.KEY_Z), ("value", 1)], get_callback("key z press")],
-  ]
-  sink = BindingSink(data)
-
-  sink(Event(codes.EV_REL, e.ABS_X, 0))
-  sink(Event(codes.EV_REL, e.ABS_X, 1))
-  sink(Event(codes.EV_KEY, e.KEY_Z, 0))
-  sink(Event(codes.EV_KEY, e.KEY_Z, 1))
-
-
 def print_tech_data():
   #print evdev.codes.EV 
   constsList = []
