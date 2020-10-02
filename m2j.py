@@ -1623,6 +1623,14 @@ def make_curve_makers():
     def parseAxis(cfg, state):
       curveParsers = {}
 
+      def parseResetPolicy(cfg, state):
+        d = {
+          "setToCurrent" : PointMovingCurveResetPolicy.SET_TO_CURRENT,
+          "setToNone" : PointMovingCurveResetPolicy.SET_TO_NONE,
+          "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH
+        }
+        return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
+
       def parseValuePointsCurve(cfg, state):
         axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
@@ -1643,9 +1651,10 @@ def make_curve_makers():
             return op
           def getValueOp(curve): 
             return curve.get_axis().get()
+          onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
+          onMove = parseResetPolicy(pointCfg.get("onMove", "setToNone"), state)
           curve = PointMovingCurve(
-            next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance,
-            onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
+            next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance, onReset=onReset, onMove=onMove)
 
         axis.add_listener(curve)
         return curve
@@ -1680,9 +1689,10 @@ def make_curve_makers():
         def getValueOp(curve): 
           return curve.get_pos()
         centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
+        onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
+        onMove = parseResetPolicy(cfg.get("onMove", "setToNone"), state)
         curve = PointMovingCurve(
-          next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
-          onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
+          next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
         axis.add_listener(curve)
         return curve
 
