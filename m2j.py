@@ -2394,3 +2394,24 @@ def init_layout_descent(settings):
   return joystickSink
 
 layout_initializers["descent"] = init_layout_descent
+
+
+#TODO Incomplete
+def init_layout_config(settings):
+  def parseLayout(cfg, state):
+    cmpOp = CmpWithModifiers2()
+    r = Binding(cmpOp)
+    return r
+
+  config = settings["config"]
+  layoutName = config["configCurves"]
+  logger.info("Using '{}' layout from config".format(layoutName))
+  layout = config["layouts"].get(layoutName, None)
+  if layout is None:
+    raise Exception("'{}' layout not found in config".format(layoutName))
+  else:
+    state = {"settings" : settings}
+    r = parseLayout(layout, state)
+    return r
+
+layout_initializers["config"] = init_layout_config
