@@ -914,7 +914,6 @@ class JoystickAxis:
     return self.j_.get_axis(self.a_)
 
   def limits(self):
-    """Returns (-limit, limit)"""
     assert(self.j_)
     return self.j_.get_limits(self.a_)
 
@@ -1001,11 +1000,6 @@ class ValueOpDeltaAxisCurve:
   def get_axis(self):
     return self.axis_
 
-  def move_axis(self, value, relative=True, reset=True):
-    self.move_axis_(value, relative)
-    if reset:
-      self.reset()
-
   def on_move_axis(self, axis, old, new):
     assert(axis == self.axis_)
     if self.busy_ or self.dirty_: return
@@ -1076,26 +1070,6 @@ class PointMovingCurve:
 
   def get_axis(self):
     return self.next_.get_axis()
-
-  def move_axis(self, value, relative=True, reset=True):
-    #Resetting point center if axis was moved directly (make optional?)
-    #FIXME Exception in next_.move() leads to inconsistent state
-    if reset:
-      self.s_, self.busy_, self.dirty_ = 0, False, False
-      if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
-        self.point_.set_center(None)
-    try:
-      self.busy_ = True
-      self.next_.move_axis(value, relative, reset)
-    except:
-      raise
-    finally:
-      self.busy_ = False
-    if reset:
-      if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
-        v = self.getValueOp_(self.next_)
-        self.point_.set_center(v)
-      logger.debug("{}: moving axis directly, new point center: {}".format(self, self.point_.get_center()))
 
   def on_move_axis(self, axis, old, new):
     logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
@@ -1201,16 +1175,6 @@ class PosAxisCurve:
 
   def get_axis(self):
     return self.axis_
-
-  def move_axis(self, value, relative=True, reset=True):
-    #TODO Refactor or remove
-    value = self.axis_.get()+value if relative else value
-    pos = self.op_.calc_pos(value)
-    pos = clamp(pos, *self.posLimits_)
-    value = self.op_.calc_value(pos)
-    self.move_axis_(value, relative=False)
-    self.pos_ = pos
-    self.reset()
 
   def on_move_axis(self, axis, old, new):
     if self.busy_ or self.dirty_: return
@@ -1390,7 +1354,7 @@ class Opentrack:
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
 
 
-class SnapManager:
+class JoystickSnapManager:
   """Sets joystick axes to preset values and also can update preset values from joystick"""
 
   def set_snap(self, i, l):
@@ -1437,64 +1401,6 @@ class AxisSnapManager:
 
   def __init__(self):
     self.snaps_ = dict()
-
-
-class CurveSnapManager:
-  """Supports only non-relative snaps."""
-  def set_snap(self, i, snapData):
-    class Snap:
-      pass
-    self.snaps_[i] = []
-    for sd in snapData:
-      s = Snap()
-      s.axisId, s.value, s.reset = sd
-      self.snaps_[i].append(s)
-
-  def update_snap(self, i):
-    logger.debug("{}: updating snap {}".format(self, i))
-    data = self.snaps_.get(i, None)
-    if data is None:
-      logger.debug("{}: no snap {}".format(self, i))
-    else:
-      for s in data:
-        curve = self.curves_.get(s.axisId, None)
-        if curve is None:
-          logger.debug("{}: snap {}: no curve for axis {}".format(self, i, s.axisId))
-          continue
-        axis = curve.get_axis()
-        if axis is None:
-          logger.debug("{}: snap {}: no axis in curve for {}".format(self, i, s.axisId))
-          continue
-        s.value = axis.get()
-       
-  def snap_to(self, i):
-    logger.debug("{}: snapping to {}".format(self, i))
-    data = self.snaps_.get(i, None)
-    if data is None:
-      logger.debug("{}: no snap {}".format(self, i))
-    else:
-      for s in data:
-        curve = self.curves_.get(s.axisId, None)
-        if curve is None:
-          logger.debug("{}: snap {}: no curve for axis {}".format(self, i, s.axisId))
-          continue
-        curve.move_axis(value=s.value, relative=False, reset=s.reset)
-
-  def set_curve(self, axisId, curve):
-    self.curves_[axisId] = curve
-
-  def get_curve(self, axisId):
-    return self.curves_.get(axisId, None)
-
-  def __init__(self):
-    self.snaps_, self.curves_ = dict(), dict()
-
-
-def SetCurves(curveSnapManager, data):
-  def op(event):
-    for axisId, curve in data:
-      curveSnapManager.set_curve(axisId, curve) 
-  return op
 
 
 def SnapTo(snapManager, snap):
