@@ -922,12 +922,12 @@ class JoystickAxis:
     self.j_, self.a_ = j, a
 
 
-class CurveAxis:
+class ReportingAxis:
   def move(self, v, relative):
     old = self.next_.get()
     self.next_.move(v, relative)
     new = self.next_.get()
-    for c in self.curves_:
+    for c in self.listeners_:
       if c() is None: continue
       c().on_move_axis(self, old, new)
     #TODO Implement cleanup
@@ -938,14 +938,14 @@ class CurveAxis:
   def limits(self):
     return self.next_.limits()
 
-  def add_curve(self, curve):
-    self.curves_.append(weakref.ref(curve))
+  def add_listener(self, listener):
+    self.listeners_.append(weakref.ref(listener))
 
-  #TODO Implement remove_curve()
+  #TODO Implement remove_listener()
 
   def __init__(self, next):
     assert(next is not None)
-    self.next_, self.curves_ = next, []
+    self.next_, self.listeners_ = next, []
 
 
 class Point:
@@ -1619,7 +1619,7 @@ def make_curve_makers():
             next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance,
             onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
 
-        axis.add_curve(curve)
+        axis.add_listener(curve)
         return curve
 
       curveParsers["valuePoints"] = parseValuePointsCurve
@@ -1633,7 +1633,7 @@ def make_curve_makers():
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
         interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
         curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
-        axis.add_curve(curve)
+        axis.add_listener(curve)
         return curve
 
       curveParsers["posAxisF"] = parsePosAxisFixedCurve
@@ -1655,7 +1655,7 @@ def make_curve_makers():
         curve = PointMovingCurve(
           next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
           onReset=PointMovingCurveResetPolicy.SET_TO_CURRENT, onMove=PointMovingCurveResetPolicy.SET_TO_NONE)
-        axis.add_curve(curve)
+        axis.add_listener(curve)
         return curve
 
       curveParsers["posAxis"] = parsePosAxisCurve
@@ -1782,7 +1782,8 @@ def init_main_sink(settings, make_next):
 
   settings["axes"] = {}
   for oName,o in settings["outputs"].items():
-    settings["axes"][oName] = {axisId:CurveAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
+    #TODO Get axes from output
+    settings["axes"][oName] = {axisId:ReportingAxis(JoystickAxis(o, axisId)) for axisId in axisToName.keys()}
 
   try:
     stateSink.set_next(make_next(settings))
