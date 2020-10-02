@@ -255,6 +255,21 @@ def ResetCurves(curves):
   return op
 
 
+def MoveAxis(axis, value, relative=False):
+  def op(event):
+    if axis is not None:
+      axis.move(value, relative)
+  return op 
+
+
+def MoveAxes(axesAndValues):
+  def op(event):
+    for axis,value,relative in axesAndValues:
+      if axis is not None: 
+        axis.move(value, relative) 
+  return op
+
+
 def SetButtonState(joystick, button, state):
   def op(event):
     joystick.set_button_state(button, state) 
@@ -2276,6 +2291,7 @@ def init_layout_descent(settings):
   joystick = settings["outputs"]["joystick"]
 
   curves = curveMaker(settings)["primary"]
+  axes = settings["axes"]["joystick"]
 
   joystickSink = Binding(cmpOp)
   joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 1), 0)
@@ -2301,9 +2317,9 @@ def init_layout_descent(settings):
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_Z, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
-    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), MoveAxis(axes.get(codes.ABS_Z, None), value=0.0, relative=False), 0)
+    ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_X, codes.ABS_Y)]), 0)
+    ss.add(ED3.parse("init(0)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     ss = add_scale_sink(ss, curves[0])
     joystickModeSink.add(0, ss)
 
@@ -2315,9 +2331,9 @@ def init_layout_descent(settings):
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
-    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SetCurveAxis2(cs.get(codes.ABS_X, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
-    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), MoveAxis(axes.get(codes.ABS_X, None), value=0.0, relative=False), 0)
+    ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_Z, codes.ABS_Y)]), 0)
+    ss.add(ED3.parse("init(0)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]))
     ss = add_scale_sink(ss, curves[1])
     joystickModeSink.add(1, ss)
 
@@ -2329,15 +2345,15 @@ def init_layout_descent(settings):
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
-    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+"), SetCurveAxis2(cs.get(codes.ABS_THROTTLE, None), value=0.0, relative=False, reset=True), 0)
-    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)+"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
+    ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), MoveAxis(axes.get(codes.ABS_THROTTLE, None), value=0.0, relative=False), 0)
+    ss.add(ED3.parse("doubleclick(BTN_MIDDLE)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_RX, codes.ABS_RY)]), 0)
     moveRudder = MoveCurve(cs.get(codes.ABS_RUDDER, None))
     ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_RIGHTSHIFT"), moveRudder, 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)+keyboard.KEY_LEFTSHIFT"), moveRudder, 0)
     setRudder = SetCurveAxis2(cs.get(codes.ABS_RUDDER, None), value=0.0, relative=False, reset=True)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_RIGHTSHIFT"), setRudder, 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)+keyboard.KEY_LEFTSHIFT"), setRudder, 0)
-    ss.add(ED3.parse("init(0)"), SetCurvesAxes2([(cs.get(axisId, None), 0.0, False, True) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
+    ss.add(ED3.parse("init(0)"), MoveAxes([(axes.get(axisId, None), 0.0, False) for axisId in (codes.ABS_RX, codes.ABS_RY)]))
     ss.add(ED3.parse("init(0)"), ResetCurves([cs.get(axisId, None) for axisId in (codes.ABS_RX, codes.ABS_RY, codes.ABS_THROTTLE, codes.ABS_RUDDER)]))
     ss = add_scale_sink(ss, curves[2])
     joystickModeSink.add(2, ss)
