@@ -2398,20 +2398,64 @@ layout_initializers["descent"] = init_layout_descent
 
 #TODO Incomplete
 def init_layout_config(settings):
-  def parseLayout(cfg, state):
+  parsers = {}
+
+  def parseMode(cfg, state):
+    modeSink = ModeSink()
+    if "modes" in cfg:
+      for modeName,modeData in cfg["modes"].items():
+        mode = parseMode(modeData, state)
+        modeSink.add(modeName, mode)
+    state["sink"] = modeSink
+    bindingSink = parseBinding(cfg, state)
+    bindingSink.add(ED.any(), modeSink, 1)
+  parsers["mode"] = parseMode
+
+  def parseBinding(cfg, state):
+    def parseBind(cfg, state):
+      parsers = {}
+
+      def parseInput(cfg, state):
+        parsers = {}
+
+        def parsePress(cfg, state):
+          pass
+        parsers["press"] = parsePress
+
+        def parseRelease(cfg, state):
+          pass
+        parsers["release"] = parseRelease
+
+        def parseMove(cfg, state):
+          pass
+        parsers["move"] = parseMove
+
+        return parsers[cfg["type"]](cfg, state)
+        
+      parsers["input"] = parseInput
+
+      def parseOutput(cfg, state):
+        pass
+      parsers["output"] = parseOutput
+
+      return (parsers[i](cfg[i], state) for i in ("input", "output"))
+
     cmpOp = CmpWithModifiers2()
-    r = Binding(cmpOp)
-    return r
+    bindingSink = Binding(cmpOp)
+    for bind in cfg.get("binds", ()):
+      i,o = parseBind(bind, state)
+      bindingSink.add(i, o, 0)
+    return bindingSink
+  parsers["bind"] = parseBinding
 
   config = settings["config"]
   layoutName = config["configCurves"]
   logger.info("Using '{}' layout from config".format(layoutName))
-  layout = config["layouts"].get(layoutName, None)
-  if layout is None:
+  cfg = config["layouts"].get(layoutName, None)
+  if cfg is None:
     raise Exception("'{}' layout not found in config".format(layoutName))
   else:
     state = {"settings" : settings}
-    r = parseLayout(layout, state)
-    return r
+    return parsers[cfg["type"]](cfg, state)
 
 layout_initializers["config"] = init_layout_config
