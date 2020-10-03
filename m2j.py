@@ -2601,6 +2601,18 @@ def init_layout_config(settings):
     return bindingSink
   parsers["mode"] = parseMode
 
+  def parseState(cfg, state):
+    sink = StateSink()
+    if "initialState" in cfg:
+      sink.set_state(cfg["initialState"])
+    nextCfg = cfg["next"]
+    sink.set_next(parsers[nextCfg["type"]](nextCfg, state))
+    state["sink"] = sink
+    bindingSink = parseBinding(cfg, state)
+    bindingSink.add(ED.any(), sink, 1)
+    return bindingSink
+  parsers["state"] = parseState
+
   def parseBinding(cfg, state):
     def parseBind(cfg, state):
       parsers = {}
@@ -2677,6 +2689,11 @@ def init_layout_config(settings):
           mode = cfg["mode"]
           return SetMode(state["sink"], mode)
         parsers["setMode"] = parseSetMode
+
+        def parseSetState(cfg, state):
+          s = cfg["state"]
+          return SetState(state["sink"], s)
+        parsers["setState"] = parseSetState
 
         def parseMove(cfg, state):
           fullAxisName = cfg["axis"]
