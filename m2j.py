@@ -2720,7 +2720,15 @@ def init_layout_config(settings):
 
         def parseResetCurves(cfg, state):
           logger.debug("collected curves: {}".format(state["curves"]))
-          curves = [state["curves"][fullAxisName] for fullAxisName in cfg["axes"]]
+          allCurves = state.get("curves", None)
+          if allCurves is None:
+            raise Exception("No curves were initialized")
+          curves = []
+          for fullAxisName in cfg["axes"]:
+            curve = allCurves.get(fullAxisName, None)
+            if curve is None:
+              raise Exception("Curve for {} was not initialized".format(fullAxisName))
+            curves.append(curve)
           logger.debug("selected curves: {}".format(curves))
           return ResetCurves(curves)
         parsers["resetCurves"] = parseResetCurves
@@ -2734,12 +2742,11 @@ def init_layout_config(settings):
     cmpOp = CmpWithModifiers2()
     bindingSink = Binding(cmpOp)
     state["curves"] = {}
-    for bindInputType in ("press", "release", "move", "init"):
-      binds = [b for b in cfg.get("binds", ()) if b["input"]["type"] == bindInputType]
-      logger.debug("binds: {}".format(binds))
-      for bind in binds:
-        i,o = parseBind(bind, state)
-        bindingSink.add(i, o, 0)
+    binds = cfg.get("binds", ())
+    logger.debug("binds: {}".format(binds))
+    for bind in binds:
+      i,o = parseBind(bind, state)
+      bindingSink.add(i, o, 0)
     return bindingSink
   parsers["bind"] = parseBinding
 
