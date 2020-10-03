@@ -394,7 +394,7 @@ class ScaleSink2:
     self.next_ = next
     return next
 
-  def __init__(self, sens, keyOp = lambda event : event.code):
+  def __init__(self, sens, keyOp = lambda event : ((event.source, event.code), (None, event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
