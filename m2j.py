@@ -2397,6 +2397,11 @@ layout_initializers["descent"] = init_layout_descent
 
 
 #TODO Incomplete
+
+def get_event_type(i):
+  d = {"ABS" : codes.EV_ABS, "REL" : codes.EV_REL, "KEY" : codes.EV_KEY, "BTN" : codes.EV_KEY }
+  return d.get(i[:3], None)
+
 def init_layout_config(settings):
   parsers = {}
 
@@ -2418,24 +2423,85 @@ def init_layout_config(settings):
       def parseInput(cfg, state):
         parsers = {}
 
+        def parseKey_(cfg, state, value):
+          source, key = split_input(cfg["key"])
+          eventType = get_event_type(key)
+          key = codesDict[key]
+          r = [("type", eventType), ("code", key), ("value", value)]
+          if source is not None:
+            r.append(("source", source))
+          return r
+
         def parsePress(cfg, state):
-          pass
+          return parseKey_(cfg, state, 1) 
         parsers["press"] = parsePress
 
         def parseRelease(cfg, state):
-          pass
+          return parseKey_(cfg, state, 0) 
         parsers["release"] = parseRelease
 
+        def parseClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          r.append(("num_clicks", 1))
+          return r
+        parsers["click"] = parseClick
+
+        def parseDoubleClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          r.append(("num_clicks", 2))
+          return r
+        parsers["doubleclick"] = parseDoubleClick
+
+        def parseMultiClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          num = int(cfg["num"])
+          r.append(("num_clicks", num))
+          return r
+        parsers["multiclick"] = parseMultiClick
+
         def parseMove(cfg, state):
-          pass
+          source, axis = split_input(cfg["axis"])
+          eventType = get_event_type(axis)
+          axis = codesDict[axis]
+          r = [("type", eventType), ("code", axis)]
+          if source is not None:
+            r.append(("source", source))
+          return r
         parsers["move"] = parseMove
 
-        return parsers[cfg["type"]](cfg, state)
+        r = parsers[cfg["type"]](cfg, state)
+        if "modifiers" in cfg:
+          modifiers = (split_input(m) for m in cfg["modifiers"])
+          r.append(("modifiers", modifiers)) 
+        return r
         
       parsers["input"] = parseInput
 
       def parseOutput(cfg, state):
-        pass
+        parsers = {}
+
+        def parseSetMode(cfg, state):
+          mode = cfg["mode"]
+          return SetMode(state["sink"], mode)
+        parsers["setMode"] = parseSetMode
+
+        def parseMove(cfg, state):
+          output, axis = split_input(cfg["axis"])
+          #TODO Create curve
+          curve = None
+          return MoveCurve(curve)
+        parsers["move"] = parseMove
+
+        def parseSetKeyState(cfg, state):
+          output, key = split_input(cfg["key"])
+          output = state["settings"]["outputs"][output]
+          key = codesDict[key]
+          state = int(cfg["state"])
+          return SetButtonState(output, key, state)
+        parsers["setKeyState"] = parseSetKeyState
+
+        return parsers[cfg["type"]](cfg, state)
+
       parsers["output"] = parseOutput
 
       return (parsers[i](cfg[i], state) for i in ("input", "output"))
