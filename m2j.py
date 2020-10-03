@@ -1448,6 +1448,9 @@ class AxisSnapManager:
       for p in snap:
         p[0].move(p[1], False)
 
+  def has_snap(self, i):
+    return i in self.snaps_
+
   def __init__(self):
     self.snaps_ = dict()
 
@@ -2732,6 +2735,37 @@ def init_layout_config(settings):
           logger.debug("selected curves: {}".format(curves))
           return ResetCurves(curves)
         parsers["resetCurves"] = parseResetCurves
+
+        def createSnap_(cfg, state):
+          if "snapManager" not in state:
+            state["snapManager"] = AxisSnapManager()
+          snapManager = state["snapManager"]
+          snapName = cfg["snap"]
+          if not snapManager.has_snap(snapName): 
+            snaps = state["settings"]["config"]["snaps"]
+            fullAxesNamesAndValues = snaps[snapName]
+            allAxes = settings["axes"]
+            snap = []
+            for fullAxisName,value in fullAxesNamesAndValues.items():
+              outputName, axisName = split_input(fullAxisName)
+              axisId = codesDict[axisName]
+              axis = allAxes[outputName][axisId]
+              snap.append((axis, value))
+            snapManager.set_snap(snapName, snap)
+
+        def parseUpdateSnap(cfg, state):
+          createSnap_(cfg, state)
+          snapName = cfg["snap"]
+          snapManager = state["snapManager"]
+          return UpdateSnap(snapManager, snapName)
+        parsers["updateSnap"] = parseUpdateSnap
+
+        def parseSnapTo(cfg, state):
+          createSnap_(cfg, state)
+          snapName = cfg["snap"]
+          snapManager = state["snapManager"]
+          return SnapTo(snapManager, snapName)
+        parsers["snapTo"] = parseSnapTo
 
         return parsers[cfg["type"]](cfg, state)
 
