@@ -2687,6 +2687,29 @@ def init_layout_config(settings):
           return MoveCurve(curve)
         parsers["move"] = parseMove
 
+        def parseSetAxis(cfg, state):
+          fullAxisName = cfg["axis"]
+          outputName, axisName = split_input(fullAxisName)
+          axisId = codesDict[axisName]
+          axis = state["settings"]["axes"][outputName][axisId]
+          value = float(cfg["value"])
+          r = MoveAxis(axis, value, False)
+          return r
+        parsers["setAxis"] = parseSetAxis
+
+        def parseSetAxes(cfg, state):
+          axesAndValues = []
+          allAxes = state["settings"]["axes"]
+          for fullAxisName,value in cfg["axesAndValues"].items():
+            outputName, axisName = split_input(fullAxisName)
+            axisId = codesDict[axisName]
+            axis = allAxes[outputName][axisId]
+            value = float(value)
+            axesAndValues.append([axis, value, False])
+          r = MoveAxes(axesAndValues)
+          return r
+        parsers["setAxes"] = parseSetAxes
+
         def parseSetKeyState(cfg, state):
           output, key = split_input(cfg["key"])
           output = state["settings"]["outputs"][output]
