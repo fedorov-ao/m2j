@@ -251,6 +251,8 @@ def ResetCurves(curves):
   def op(event):
     for curve in curves:
       if curve is not None: 
+        #TODO Remove
+        print "Resetting curve: ", curve
         curve.reset()
   return op
 
@@ -1078,6 +1080,8 @@ class PointMovingCurve:
       raise
     finally:
       self.busy_ = False 
+    #TODO Remove
+    print "point center:{}, value before move:{}, value after move:{}".format(center, value, self.getValueOp_(self.next_))
     if center is not None and abs(value - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
       self.point_.set_center(None)
@@ -1087,8 +1091,9 @@ class PointMovingCurve:
     self.s_, self.busy_, self.dirty_ = 0, False, False
     #Need to disable controlled point by setting point center to None before resetting next_ curve
     #Will produce inconsistent results otherwise
+    v = None
     if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
-      self.point_.set_center(None)
+      self.point_.set_center(v)
     self.next_.reset()
     if self.onReset_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
       v = self.getValueOp_(self.next_)
@@ -1646,7 +1651,9 @@ def make_curve(cfg, state):
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
   def parseValuePointsCurve(cfg, state):
-    axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
+    axisId = state["axis"]
+    outputName = state["output"]
+    axis = state["settings"]["axes"][outputName][axisId]
     points = parsePoints(cfg["points"], state)
     vpoName = cfg.get("vpo", None)
     vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
@@ -1676,7 +1683,9 @@ def make_curve(cfg, state):
   curveParsers["valuePoints"] = parseValuePointsCurve
 
   def parsePosAxisFixedCurve(cfg, state):
-    axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
+    axisId = state["axis"]
+    outputName = state["output"]
+    axis = state["settings"]["axes"][outputName][axisId]
     points = parsePoints(cfg["points"], state)
     fp = points["fixed"]
     interpolationDistance = cfg.get("interpolationDistance", 0.3)
@@ -2644,6 +2653,14 @@ def init_layout_config(settings):
           return r
         parsers["move"] = parseMove
 
+        def parseInit(cfg, state):
+          eventName = cfg["event"]
+          value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
+          assert(value is not None)
+          r = [("type", EV_BCAST), ("code", BC_INIT), ("value", value)]
+          return r
+        parsers["init"] = parseInit
+
         r = parsers[cfg["type"]](cfg, state)
         if "modifiers" in cfg:
           modifiers = [split_input(m) for m in cfg["modifiers"]]
@@ -2661,9 +2678,14 @@ def init_layout_config(settings):
         parsers["setMode"] = parseSetMode
 
         def parseMove(cfg, state):
-          output, axis = split_input(cfg["axis"])
-          state["output"], state["axis"] = output, codesDict[axis]
+          fullAxisName = cfg["axis"]
+          outputName, axisName = split_input(fullAxisName)
+          state["output"], state["axis"] = outputName, codesDict[axisName]
           curve = make_curve(cfg, state)
+          if "curves" not in state:
+            state["curves"] = {fullAxisName:curve}
+          else:
+            state["curves"][fullAxisName] = curve
           return MoveCurve(curve)
         parsers["move"] = parseMove
 
@@ -2675,6 +2697,15 @@ def init_layout_config(settings):
           return SetButtonState(output, key, state)
         parsers["setKeyState"] = parseSetKeyState
 
+        def parseResetCurves(cfg, state):
+          #TODO Remove
+          print "collected curves:", state["curves"]
+          curves = [state["curves"][fullAxisName] for fullAxisName in cfg["axes"]]
+          #TODO Remove
+          print "selected curves:", curves
+          return ResetCurves(curves)
+        parsers["resetCurves"] = parseResetCurves
+
         return parsers[cfg["type"]](cfg, state)
 
       parsers["output"] = parseOutput
@@ -2683,9 +2714,13 @@ def init_layout_config(settings):
 
     cmpOp = CmpWithModifiers2()
     bindingSink = Binding(cmpOp)
-    for bind in cfg.get("binds", ()):
-      i,o = parseBind(bind, state)
-      bindingSink.add(i, o, 0)
+    state["curves"] = {}
+    for bindInputType in ("press", "release", "move", "init"):
+      binds = [b for b in cfg.get("binds", ()) if b["input"]["type"] == bindInputType]
+      logger.debug("binds: {}".format(binds))
+      for bind in binds:
+        i,o = parseBind(bind, state)
+        bindingSink.add(i, o, 0)
     return bindingSink
   parsers["bind"] = parseBinding
 
