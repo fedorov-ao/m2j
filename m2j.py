@@ -251,8 +251,7 @@ def ResetCurves(curves):
   def op(event):
     for curve in curves:
       if curve is not None: 
-        #TODO Remove
-        print "Resetting curve: ", curve
+        logger.debug("Resetting curve: {}".format(curve))
         curve.reset()
   return op
 
@@ -1080,8 +1079,7 @@ class PointMovingCurve:
       raise
     finally:
       self.busy_ = False 
-    #TODO Remove
-    print "point center:{}, value before move:{}, value after move:{}".format(center, value, self.getValueOp_(self.next_))
+    logger.debug("{}: point center:{}, value before move:{}, value after move:{}".format(self, center, value, self.getValueOp_(self.next_)))
     if center is not None and abs(value - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
       self.point_.set_center(None)
@@ -2698,11 +2696,9 @@ def init_layout_config(settings):
         parsers["setKeyState"] = parseSetKeyState
 
         def parseResetCurves(cfg, state):
-          #TODO Remove
-          print "collected curves:", state["curves"]
+          logger.debug("collected curves: {}".format(state["curves"]))
           curves = [state["curves"][fullAxisName] for fullAxisName in cfg["axes"]]
-          #TODO Remove
-          print "selected curves:", curves
+          logger.debug("selected curves: {}".format(curves))
           return ResetCurves(curves)
         parsers["resetCurves"] = parseResetCurves
 
