@@ -430,6 +430,7 @@ class Binding:
 
   def add(self, attrs, child, level = 0):
     logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
+    assert(child is not None)
     c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
     if c is not None:
       c[2].append(child)
@@ -2411,9 +2412,12 @@ def init_layout_config(settings):
       for modeName,modeData in cfg["modes"].items():
         mode = parseMode(modeData, state)
         modeSink.add(modeName, mode)
+    if "initialMode" in cfg:
+      modeSink.set_mode(cfg["initialMode"])
     state["sink"] = modeSink
     bindingSink = parseBinding(cfg, state)
     bindingSink.add(ED.any(), modeSink, 1)
+    return modeSink
   parsers["mode"] = parseMode
 
   def parseBinding(cfg, state):
@@ -2471,7 +2475,7 @@ def init_layout_config(settings):
 
         r = parsers[cfg["type"]](cfg, state)
         if "modifiers" in cfg:
-          modifiers = (split_input(m) for m in cfg["modifiers"])
+          modifiers = [split_input(m) for m in cfg["modifiers"]]
           r.append(("modifiers", modifiers)) 
         return r
         
@@ -2522,6 +2526,7 @@ def init_layout_config(settings):
     raise Exception("'{}' layout not found in config".format(layoutName))
   else:
     state = {"settings" : settings}
-    return parsers[cfg["type"]](cfg, state)
+    r = parsers[cfg["type"]](cfg, state)
+    return r
 
 layout_initializers["config"] = init_layout_config
