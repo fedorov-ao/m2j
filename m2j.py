@@ -1462,10 +1462,32 @@ class UdpJoystick:
 
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
 
+
+def make_il2_packet(v):
+  #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L919
+  #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f", d->h, -d->p, d->r);
+  d = (
+    (codes.ABS_RX, -90.0),
+    (codes.ABS_RY, 90.0),
+    (codes.ABS_RZ, 180.0)
+  )
+  values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
+  return "R/11\\{:f}\\{:f}\\{:f}".format(*values)
+
+
 def make_il2_6dof_packet(v):
   #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L938
   #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f\\%f\\%f\\%f", d->h, -d->p, d->r, -d->z/300, -d->x/1000, d->y/1000);
-  return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(90.0*v[codes.ABS_RX], 90.0*v[codes.ABS_RY], 180.0*v[codes.ABS_RZ], v[codes.ABS_X], v[codes.ABS_Y], v[codes.ABS_Z])
+  d = (
+    (codes.ABS_RX, -90.0),
+    (codes.ABS_RY, 90.0),
+    (codes.ABS_RZ, 180.0),
+    (codes.ABS_X, 1.0),
+    (codes.ABS_Y, 1.0),
+    (codes.ABS_Z, 1.0)
+  )
+  values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
+  return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
 
 
 class JoystickSnapManager:
@@ -2165,18 +2187,15 @@ def init_base_joystick_snaps(axes):
 def init_base_head_snaps(axes):
   snaps = AxisSnapManager()
   zero = (
-    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], 0.0), 
     (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 0.0),
   )
   snaps.set_snap("current", zero)
   fullForward = (
-    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], 0.0), 
-    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 1.0),
+    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], -1.0),
   )
   snaps.set_snap("ff", fullForward)
   fullBackward = (
-    (axes[codes.ABS_X], 0.0), (axes[codes.ABS_Y], 0.0), (axes[codes.ABS_Z], -1.0), 
-    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], -0.15), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], -1.0),
+    (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.15), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 1.0),
   )
   snaps.set_snap("fb", fullBackward)
   zoomOut = ((axes[codes.ABS_THROTTLE], -1.0),)
@@ -2218,7 +2237,6 @@ def init_base_head(curves, snaps):
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
-    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, "cpos"), 0)
     ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
     ss = add_scale_sink(ss, curves[1])
     headModeSink.add(1, ss)
