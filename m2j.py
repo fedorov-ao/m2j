@@ -1006,7 +1006,7 @@ class Point:
     self.center_ = center
 
 
-class ValueOpDeltaAxisCurve:
+class OutputBasedCurve:
   def move_by(self, x, timestamp):
     assert(self.axis_ is not None)
     assert(self.valueOp_ is not None)
@@ -1195,7 +1195,7 @@ def get_min_op(left, right):
   return min(left[0], right[0])
 
 
-class PosAxisCurve:
+class InputBasedCurve:
   def move_by(self, x, timestamp):
     if self.dirty_:
       self.reset()
@@ -1663,7 +1663,7 @@ def make_curve(cfg, state):
     }
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
-  def parseValuePointsCurve(cfg, state):
+  def parsePointsOutputBasedCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     axis = state["settings"]["axes"][outputName][axisId]
@@ -1671,7 +1671,7 @@ def make_curve(cfg, state):
     vpoName = cfg.get("vpo", None)
     vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
     deltaOp = lambda x,value : x*value
-    curve = ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
+    curve = OutputBasedCurve(deltaOp, vpo, axis)
 
     if "moving" in points:
       point = points["moving"]
@@ -1693,9 +1693,9 @@ def make_curve(cfg, state):
     axis.add_listener(curve)
     return curve
 
-  curveParsers["valuePoints"] = parseValuePointsCurve
+  curveParsers["pointsOut"] = parsePointsOutputBasedCurve
 
-  def parsePosAxisFixedCurve(cfg, state):
+  def parseFixedPointInputBasedCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     axis = state["settings"]["axes"][outputName][axisId]
@@ -1705,13 +1705,13 @@ def make_curve(cfg, state):
     interpolationFactor = cfg.get("interpolationFactor", 1.0)
     posLimits = cfg.get("posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
-    curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+    curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     axis.add_listener(curve)
     return curve
 
-  curveParsers["posAxisF"] = parsePosAxisFixedCurve
+  curveParsers["fpointIn"] = parseFixedPointInputBasedCurve
 
-  def parsePosAxisCurve(cfg, state):
+  def parsePointsInputBasedCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     axis = state["settings"]["axes"][outputName][axisId]
@@ -1723,7 +1723,7 @@ def make_curve(cfg, state):
     resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
     posLimits = cfg.get("posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
-    curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+    curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     def getValueOp(curve): 
       return curve.get_pos()
     centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
@@ -1734,7 +1734,7 @@ def make_curve(cfg, state):
     axis.add_listener(curve)
     return curve
 
-  curveParsers["posAxis"] = parsePosAxisCurve
+  curveParsers["pointsIn"] = parsePointsInputBasedCurve
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
@@ -1838,13 +1838,13 @@ def make_curve_makers():
         }
         return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
-      def parseValuePointsCurve(cfg, state):
+      def parsePointsOutputBasedCurve(cfg, state):
         axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
         vpoName = cfg.get("vpo", None)
         vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
         deltaOp = lambda x,value : x*value
-        curve = ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
+        curve = OutputBasedCurve(deltaOp, vpo, axis)
 
         if "moving" in points:
           point = points["moving"]
@@ -1866,9 +1866,9 @@ def make_curve_makers():
         axis.add_listener(curve)
         return curve
 
-      curveParsers["valuePoints"] = parseValuePointsCurve
+      curveParsers["pointsOut"] = parsePointsOutputBasedCurve
 
-      def parsePosAxisFixedCurve(cfg, state):
+      def parseFixedPointInputBasedCurve(cfg, state):
         axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
@@ -1876,13 +1876,13 @@ def make_curve_makers():
         interpolationFactor = cfg.get("interpolationFactor", 1.0)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
         interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
-        curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
         axis.add_listener(curve)
         return curve
 
-      curveParsers["posAxisF"] = parsePosAxisFixedCurve
+      curveParsers["fpointIn"] = parseFixedPointInputBasedCurve
 
-      def parsePosAxisCurve(cfg, state):
+      def parsePointsInputBasedCurve(cfg, state):
         axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
         points = parsePoints(cfg["points"], state)
         fp = points["fixed"]
@@ -1892,7 +1892,7 @@ def make_curve_makers():
         resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
         posLimits = cfg.get("posLimits", (-1.1, 1.1))
         interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
-        curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+        curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
         def getValueOp(curve): 
           return curve.get_pos()
         centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
@@ -1903,7 +1903,7 @@ def make_curve_makers():
         axis.add_listener(curve)
         return curve
 
-      curveParsers["posAxis"] = parsePosAxisCurve
+      curveParsers["pointsIn"] = parsePointsInputBasedCurve
 
       def parsePresetCurve(cfg, state):
         presets = state["settings"]["config"]["presets"]
