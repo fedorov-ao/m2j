@@ -251,6 +251,7 @@ def ResetCurves(curves):
   def op(event):
     for curve in curves:
       if curve is not None: 
+        logger.debug("Resetting curve: {}".format(curve))
         curve.reset()
   return op
 
@@ -417,11 +418,14 @@ class Binding:
           level = c[1]
       for attrName, attrValue in c[0]:
          if hasattr(event, attrName):
-            if not self.cmp_(attrName, getattr(event, attrName), attrValue):
+            eventValue = getattr(event, attrName)
+            if not self.cmp_(attrName, eventValue, attrValue):
+              logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c[0], attrName, eventValue, attrValue))
               break
          else:
           break
       else:
+        logger.debug("{}: {} matched".format(self, c[0]))
         if c[2] is not None: 
           #logger.debug("Processing event {}".format(str(event)))
           for cc in c[2]:
@@ -430,6 +434,7 @@ class Binding:
 
   def add(self, attrs, child, level = 0):
     logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
+    assert(child is not None)
     c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
     if c is not None:
       c[2].append(child)
@@ -508,6 +513,7 @@ class CmpWithModifiers2:
           if not r: break
     else:
       r = eventValue == attrValue
+    #print eventValue, attrValue, r
     return r
 
 
@@ -773,35 +779,53 @@ class SetMode:
   def __init__(self, modeSink, mode):
     self.modeSink, self.mode = modeSink, mode
 
+class MSMMSavePolicy:
+   NOOP = 0
+   SAVE = 1
+   CLEAR = 2
+   CLEAR_AND_SAVE = 3
+  
+
+def nameToMSMMSavePolicy(name):
+  d = { 
+    "noop" : MSMMSavePolicy.NOOP, 
+    "save" : MSMMSavePolicy.SAVE, 
+    "clear" : MSMMSavePolicy.CLEAR, 
+    "clearAndSave" : MSMMSavePolicy.CLEAR_AND_SAVE
+  }
+  return d[name]
+
 
 class ModeSinkModeManager:
   def save(self):
     self.mode_ = self.sink_.get_mode()
+
   def restore(self):
     if self.mode_ is not None:
       self.sink_.set_mode(self.mode_)
       self.mode_ = None
+
   def clear(self):
     self.mode_ = None
+
   def set(self, mode, save):
-    if save:
-      self.save()
+    self.save_(save)
     self.sink_.set_mode(mode)
-  def cycle(self, save):
-    if self.modes_ is None or len(self.modes_) == 0:
-      return
-    if save:
-      self.save()
+
+  def cycle(self, modes, save):
+    self.save_(save)
     m = self.sink_.get_mode()
-    if m in self.modes_:
-      i = self.modes_.index(m)+1
-      if i >= len(self.modes_): i = 0
-      m = self.modes_[i]
+    if m in modes:
+      i = modes.index(m)+1
+      if i >= len(modes): i = 0
+      m = modes[i]
     else:
-      m = self.modes_[0]
+      m = modes[0]
     self.sink_.set_mode(m)
-  def __init__(self, sink, modes=[]):
-    self.sink_, self.mode_, self.modes_ = sink, None, modes
+
+  def __init__(self, sink):
+    self.sink_, self.mode_ = sink, None
+
   def make_save(self):
     return lambda event : self.save()
   def make_restore(self):
@@ -810,8 +834,21 @@ class ModeSinkModeManager:
     return lambda event : self.clear()
   def make_set(self, mode, save):
     return lambda event : self.set(mode, save)
-  def make_cycle(self, save):
-    return lambda event : self.cycle(save)
+  def make_cycle(self, modes, save):
+    return lambda event : self.cycle(modes, save)
+
+  def save_(self, save):
+    if save == MSMMSavePolicy.NOOP:
+      pass
+    elif save == MSMMSavePolicy.SAVE:
+      self.save()
+    elif save == MSMMSavePolicy.CLEAR:
+      self.clear()
+    elif save == MSMMSavePolicy.CLEAR_AND_SAVE:
+      self.clear()
+      self.save()
+    else:
+      assert(False)
 
 
 class PowerApproximator:
@@ -1073,6 +1110,7 @@ class PointMovingCurve:
       raise
     finally:
       self.busy_ = False 
+    logger.debug("{}: point center:{}, value before move:{}, value after move:{}".format(self, center, value, self.getValueOp_(self.next_)))
     if center is not None and abs(value - center) > self.resetDistance_:
       logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
       self.point_.set_center(None)
@@ -1082,8 +1120,9 @@ class PointMovingCurve:
     self.s_, self.busy_, self.dirty_ = 0, False, False
     #Need to disable controlled point by setting point center to None before resetting next_ curve
     #Will produce inconsistent results otherwise
+    v = None
     if self.onReset_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
-      self.point_.set_center(None)
+      self.point_.set_center(v)
     self.next_.reset()
     if self.onReset_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
       v = self.getValueOp_(self.next_)
@@ -1440,6 +1479,9 @@ class AxisSnapManager:
       for p in snap:
         p[0].move(p[1], False)
 
+  def has_snap(self, i):
+    return i in self.snaps_
+
   def __init__(self):
     self.snaps_ = dict()
 
@@ -1557,6 +1599,177 @@ class MetricsJoystick:
   def __init__(self):
     self.data_ = dict()
 
+
+def make_curve(cfg, state):
+  def parseOp(cfg, state):
+    def make_symm_wrapper(wrapped, symm):
+      if symm == 1:
+        return lambda x : wrapped(abs(x))
+      elif symm == 2:
+        return lambda x : sign(x)*wrapped(abs(x))
+      else:
+        return wrapped
+
+    parsers = {}
+
+    def segment(cfg, state):
+      def make_op(data, symmetric):
+        approx = SegmentApproximator(data, 1.0, True, True)
+        return make_symm_wrapper(approx, symmetric)
+      return make_op(cfg["points"], cfg["symmetric"])
+
+    parsers["segment"] = segment
+
+    def poly(cfg, state):
+      def make_op(data, symmetric):
+        d = [(k,int(p)) for p,k in data.items()]
+        def op(x):
+          r = 0.0
+          for k,p in d:
+            r += k*x**p
+          return r
+        return make_symm_wrapper(op, symmetric)
+      return make_op(cfg["coeffs"], cfg["symmetric"])
+
+    parsers["poly"] = poly 
+    
+    def bezier(cfg, state):
+      def make_op(data, symmetric):
+        approx = BezierApproximator(data)
+        return make_symm_wrapper(approx, symmetric)
+      return make_op(cfg["points"], cfg["symmetric"])
+
+    parsers["bezier"] = bezier 
+
+    def sbezier(cfg, state):
+      def make_op(data, symmetric):
+        approx = SegmentedBezierApproximator(data)
+        return make_symm_wrapper(approx, symmetric)
+      return make_op(cfg["points"], cfg["symmetric"])
+
+    parsers["sbezier"] = sbezier 
+
+    return parsers[cfg["op"]](cfg, state)
+
+  def parsePoints(cfg, state):
+    pointParsers = {}
+
+    def parseFixedPoint(cfg, state):
+      p = Point(op=parseOp(cfg, state), center=cfg.get("center", 0.0))
+      return p
+
+    pointParsers["fixed"] = parseFixedPoint
+
+    def parseMovingPoint(cfg, state):
+      p = Point(op=parseOp(cfg, state), center=None)
+      return p
+
+    pointParsers["moving"] = parseMovingPoint
+
+    r = {}
+    for n,d in cfg.items():
+      state["point"] = n
+      r[n] = pointParsers[n](d, state)
+    return r
+
+  curveParsers = {}
+
+  def parseResetPolicy(cfg, state):
+    d = {
+      "setToCurrent" : PointMovingCurveResetPolicy.SET_TO_CURRENT,
+      "setToNone" : PointMovingCurveResetPolicy.SET_TO_NONE,
+      "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH
+    }
+    return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
+
+  def parseValuePointsCurve(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    axis = state["settings"]["axes"][outputName][axisId]
+    points = parsePoints(cfg["points"], state)
+    vpoName = cfg.get("vpo", None)
+    vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
+    deltaOp = lambda x,value : x*value
+    curve = ValueOpDeltaAxisCurve(deltaOp, vpo, axis)
+
+    if "moving" in points:
+      point = points["moving"]
+      pointCfg = cfg["points"]["moving"]
+      newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
+      resetDistance = pointCfg.get("resetDistance", float("inf"))
+      def make_center_op(newRatio):
+        oldRatio = 1.0 - newRatio 
+        def op(new,old):
+          return oldRatio*old+newRatio*new
+        return op
+      def getValueOp(curve): 
+        return curve.get_axis().get()
+      onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
+      onMove = parseResetPolicy(pointCfg.get("onMove", "setToNone"), state)
+      curve = PointMovingCurve(
+        next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance, onReset=onReset, onMove=onMove)
+
+    axis.add_listener(curve)
+    return curve
+
+  curveParsers["valuePoints"] = parseValuePointsCurve
+
+  def parsePosAxisFixedCurve(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    axis = state["settings"]["axes"][outputName][axisId]
+    points = parsePoints(cfg["points"], state)
+    fp = points["fixed"]
+    interpolationDistance = cfg.get("interpolationDistance", 0.3)
+    interpolationFactor = cfg.get("interpolationFactor", 1.0)
+    posLimits = cfg.get("posLimits", (-1.1, 1.1))
+    interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
+    curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+    axis.add_listener(curve)
+    return curve
+
+  curveParsers["posAxisF"] = parsePosAxisFixedCurve
+
+  def parsePosAxisCurve(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    axis = state["settings"]["axes"][outputName][axisId]
+    points = parsePoints(cfg["points"], state)
+    fp = points["fixed"]
+    mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
+    interpolationDistance = cfg.get("interpolationDistance", 0.3)
+    interpolationFactor = cfg.get("interpolationFactor", 1.0)
+    resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
+    posLimits = cfg.get("posLimits", (-1.1, 1.1))
+    interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
+    curve = PosAxisCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
+    def getValueOp(curve): 
+      return curve.get_pos()
+    centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
+    onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
+    onMove = parseResetPolicy(cfg.get("onMove", "setToNone"), state)
+    curve = PointMovingCurve(
+      next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
+    axis.add_listener(curve)
+    return curve
+
+  curveParsers["posAxis"] = parsePosAxisCurve
+
+  def parsePresetCurve(cfg, state):
+    presets = state["settings"]["config"]["presets"]
+    preset = presets[cfg["name"]]
+    curve = preset["curve"]
+    state["curve"] = curve
+    return curveParsers[curve](preset, state)
+
+  curveParsers["preset"] = parsePresetCurve
+
+  curve = cfg.get("curve", None)
+  if curve is None:
+    raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
+  state["curve"] = curve
+  return curveParsers[curve](cfg, state)
+          
 
 def make_curve_makers():
   curves = {}
@@ -2040,10 +2253,10 @@ def init_layout_base(settings):
   topModeSink.set_mode(0)
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
-  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  jmm = ModeSinkModeManager(joystickModeSink)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
   joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
   joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
@@ -2138,10 +2351,10 @@ def init_layout_base3(settings):
   topModeSink.set_mode(0)
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
-  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  jmm = ModeSinkModeManager(joystickModeSink)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
   joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
   joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
@@ -2238,10 +2451,10 @@ def init_layout_base4(settings):
 
   joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
 
-  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  jmm = ModeSinkModeManager(joystickModeSink)
+  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
+  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
   joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
   joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
   joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
@@ -2331,13 +2544,14 @@ def init_layout_descent(settings):
   joystickSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 0), 0)
 
   joystickModeSink = joystickSink.add(ED3.parse("any()"), ModeSink(), 1)
-  jmm = ModeSinkModeManager(joystickModeSink, [0,1])
-  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle(True), 0)
+  jmm = ModeSinkModeManager(joystickModeSink)
+  joystickSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], MSMMSavePolicy.CLEAR_AND_SAVE), 0)
   joystickSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle(False), 0)
-  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], MSMMSavePolicy.CLEAR), 0)
+  joystickSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_cycle([2,0], MSMMSavePolicy.CLEAR_AND_SAVE), 0)
   joystickSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
-  joystickSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickSink.add(ED3.parse("doubleclick(mouse.BTN_SIDE)"), jmm.make_cycle([2,0], MSMMSavePolicy.CLEAR), 0)
+  joystickSink.add(ED3.parse("init(1)"), jmm.make_set(0, MSMMSavePolicy.NOOP), 0)
   joystickSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if 0 in curves:
@@ -2394,3 +2608,261 @@ def init_layout_descent(settings):
   return joystickSink
 
 layout_initializers["descent"] = init_layout_descent
+
+
+#TODO Incomplete
+
+def get_event_type(i):
+  d = {"ABS" : codes.EV_ABS, "REL" : codes.EV_REL, "KEY" : codes.EV_KEY, "BTN" : codes.EV_KEY }
+  return d.get(i[:3], None)
+
+def init_layout_config(settings):
+  parsers = {}
+
+  def parseSens_(sink, cfg, state):
+    if "sens" in cfg:
+      sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_input(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
+      keyOp = lambda event : ((event.source, event.code), (None, event.code))
+      scaleSink = ScaleSink2(sens, keyOp)
+      scaleSink.set_next(sink)
+      return scaleSink
+    else:
+      return sink
+
+  def parseSens(cfg, state):
+    nextCfg = cfg["next"]
+    nextSink = parsers[nextCfg["type"]](nextCfg, state)
+    return parseSens_(nextSink, cfg, state)
+  parsers["sens"] = parseSens
+
+  def parseMode(cfg, state):
+    modeSink = ModeSink()
+    if "modes" in cfg:
+      for modeName,modeCfg in cfg["modes"].items():
+        child = parsers[modeCfg["type"]](modeCfg, state)
+        modeSink.add(modeName, child)
+    if "initialMode" in cfg:
+      modeSink.set_mode(cfg["initialMode"])
+    msmm = ModeSinkModeManager(modeSink)
+    state["msmm"] = msmm
+    bindingSink = parseBinding_(cfg, state)
+    bindingSink.add(ED.any(), modeSink, 1)
+    return parseSens_(bindingSink, cfg, state)
+  parsers["mode"] = parseMode
+
+  def parseState(cfg, state):
+    sink = StateSink()
+    if "initialState" in cfg:
+      sink.set_state(cfg["initialState"])
+    nextCfg = cfg["next"]
+    sink.set_next(parsers[nextCfg["type"]](nextCfg, state))
+    state["sink"] = sink
+    bindingSink = parseBinding_(cfg, state)
+    bindingSink.add(ED.any(), sink, 1)
+    return parseSens_(bindingSink, cfg, state)
+  parsers["state"] = parseState
+
+  def parseBinding_(cfg, state):
+    def parseBind(cfg, state):
+      parsers = {}
+
+      def parseInput(cfg, state):
+        parsers = {}
+
+        def parseKey_(cfg, state, value):
+          source, key = split_input(cfg["key"])
+          eventType = get_event_type(key)
+          key = codesDict[key]
+          r = [("type", eventType), ("code", key), ("value", value)]
+          if source is not None:
+            r.append(("source", source))
+          return r
+
+        def parsePress(cfg, state):
+          return parseKey_(cfg, state, 1) 
+        parsers["press"] = parsePress
+
+        def parseRelease(cfg, state):
+          return parseKey_(cfg, state, 0) 
+        parsers["release"] = parseRelease
+
+        def parseClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          r.append(("num_clicks", 1))
+          return r
+        parsers["click"] = parseClick
+
+        def parseDoubleClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          r.append(("num_clicks", 2))
+          return r
+        parsers["doubleclick"] = parseDoubleClick
+
+        def parseMultiClick(cfg, state):
+          r = parseKey_(cfg, state, 3) 
+          num = int(cfg["num"])
+          r.append(("num_clicks", num))
+          return r
+        parsers["multiclick"] = parseMultiClick
+
+        def parseMove(cfg, state):
+          source, axis = split_input(cfg["axis"])
+          eventType = get_event_type(axis)
+          axis = codesDict[axis]
+          r = [("type", eventType), ("code", axis)]
+          if source is not None:
+            r.append(("source", source))
+          return r
+        parsers["move"] = parseMove
+
+        def parseInit(cfg, state):
+          eventName = cfg["event"]
+          value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
+          assert(value is not None)
+          r = [("type", EV_BCAST), ("code", BC_INIT), ("value", value)]
+          return r
+        parsers["init"] = parseInit
+
+        r = parsers[cfg["type"]](cfg, state)
+        if "modifiers" in cfg:
+          modifiers = [split_input(m) for m in cfg["modifiers"]]
+          r.append(("modifiers", modifiers)) 
+        return r
+        
+      parsers["input"] = parseInput
+
+      def parseOutput(cfg, state):
+        parsers = {}
+
+        parsers["saveMode"] = lambda cfg, state : state["msmm"].make_save()
+        parsers["restoreMode"] = lambda cfg, state : state["msmm"].make_restore()
+        parsers["clearMode"] = lambda cfg, state : state["msmm"].make_clear()
+        parsers["setMode"] = lambda cfg, state : state["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop")))
+        parsers["cycleMode"] = lambda cfg, state : state["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop")))
+
+        def parseSetState(cfg, state):
+          s = cfg["state"]
+          return SetState(state["sink"], s)
+        parsers["setState"] = parseSetState
+
+        def parseMove(cfg, state):
+          fullAxisName = cfg["axis"]
+          outputName, axisName = split_input(fullAxisName)
+          state["output"], state["axis"] = outputName, codesDict[axisName]
+          curve = make_curve(cfg, state)
+          if "curves" not in state:
+            state["curves"] = {fullAxisName:curve}
+          else:
+            state["curves"][fullAxisName] = curve
+          return MoveCurve(curve)
+        parsers["move"] = parseMove
+
+        def parseSetAxis(cfg, state):
+          fullAxisName = cfg["axis"]
+          outputName, axisName = split_input(fullAxisName)
+          axisId = codesDict[axisName]
+          axis = state["settings"]["axes"][outputName][axisId]
+          value = float(cfg["value"])
+          r = MoveAxis(axis, value, False)
+          return r
+        parsers["setAxis"] = parseSetAxis
+
+        def parseSetAxes(cfg, state):
+          axesAndValues = []
+          allAxes = state["settings"]["axes"]
+          for fullAxisName,value in cfg["axesAndValues"].items():
+            outputName, axisName = split_input(fullAxisName)
+            axisId = codesDict[axisName]
+            axis = allAxes[outputName][axisId]
+            value = float(value)
+            axesAndValues.append([axis, value, False])
+          r = MoveAxes(axesAndValues)
+          return r
+        parsers["setAxes"] = parseSetAxes
+
+        def parseSetKeyState(cfg, state):
+          output, key = split_input(cfg["key"])
+          output = state["settings"]["outputs"][output]
+          key = codesDict[key]
+          state = int(cfg["state"])
+          return SetButtonState(output, key, state)
+        parsers["setKeyState"] = parseSetKeyState
+
+        def parseResetCurves(cfg, state):
+          logger.debug("collected curves: {}".format(state["curves"]))
+          allCurves = state.get("curves", None)
+          if allCurves is None:
+            raise Exception("No curves were initialized")
+          curves = []
+          for fullAxisName in cfg["axes"]:
+            curve = allCurves.get(fullAxisName, None)
+            if curve is None:
+              raise Exception("Curve for {} was not initialized".format(fullAxisName))
+            curves.append(curve)
+          logger.debug("selected curves: {}".format(curves))
+          return ResetCurves(curves)
+        parsers["resetCurves"] = parseResetCurves
+
+        def createSnap_(cfg, state):
+          if "snapManager" not in state:
+            state["snapManager"] = AxisSnapManager()
+          snapManager = state["snapManager"]
+          snapName = cfg["snap"]
+          if not snapManager.has_snap(snapName): 
+            snaps = state["settings"]["config"]["snaps"]
+            fullAxesNamesAndValues = snaps[snapName]
+            allAxes = settings["axes"]
+            snap = []
+            for fullAxisName,value in fullAxesNamesAndValues.items():
+              outputName, axisName = split_input(fullAxisName)
+              axisId = codesDict[axisName]
+              axis = allAxes[outputName][axisId]
+              snap.append((axis, value))
+            snapManager.set_snap(snapName, snap)
+
+        def parseUpdateSnap(cfg, state):
+          createSnap_(cfg, state)
+          snapName = cfg["snap"]
+          snapManager = state["snapManager"]
+          return UpdateSnap(snapManager, snapName)
+        parsers["updateSnap"] = parseUpdateSnap
+
+        def parseSnapTo(cfg, state):
+          createSnap_(cfg, state)
+          snapName = cfg["snap"]
+          snapManager = state["snapManager"]
+          return SnapTo(snapManager, snapName)
+        parsers["snapTo"] = parseSnapTo
+
+        return parsers[cfg["type"]](cfg, state)
+
+      parsers["output"] = parseOutput
+
+      return (parsers[i](cfg[i], state) for i in ("input", "output"))
+
+    cmpOp = CmpWithModifiers2()
+    bindingSink = Binding(cmpOp)
+    state["curves"] = {}
+    binds = cfg.get("binds", ())
+    logger.debug("binds: {}".format(binds))
+    for bind in binds:
+      i,o = parseBind(bind, state)
+      bindingSink.add(i, o, 0)
+    return bindingSink
+
+  def parseBinding(cfg, state):
+    return parseSens_(parseBinding_(cfg, state), cfg, state)
+  parsers["bind"] = parseBinding
+
+  config = settings["config"]
+  layoutName = config["configCurves"]
+  logger.info("Using '{}' layout from config".format(layoutName))
+  cfg = config["layouts"].get(layoutName, None)
+  if cfg is None:
+    raise Exception("'{}' layout not found in config".format(layoutName))
+  else:
+    state = {"settings" : settings}
+    r = parsers[cfg["type"]](cfg, state)
+    return r
+
+layout_initializers["config"] = init_layout_config
