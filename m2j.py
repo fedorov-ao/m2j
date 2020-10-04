@@ -399,7 +399,7 @@ class ScaleSink2:
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
-class Binding:
+class BindSink:
   def __call__(self, event):
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
@@ -2024,7 +2024,7 @@ def init_main_sink(settings, make_next):
     sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink(sens))
 
-  mainSink = scaleSink.set_next(Binding(cmpOp))
+  mainSink = scaleSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
   toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
@@ -2037,7 +2037,7 @@ def init_main_sink(settings, make_next):
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
 
-  grabSink = stateSink.set_next(Binding(cmpOp))
+  grabSink = stateSink.set_next(BindSink(cmpOp))
   grabbed = [settings["inputs"][g] for g in config.get("grabbed", ())]
   grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
   grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
@@ -2157,18 +2157,18 @@ def init_base_head_snaps(axes):
 
 def init_base_head(curves, snaps):
   cmpOp = CmpWithModifiers2()
-  headBindingSink = Binding(cmpOp)
+  headBindSink = BindSink(cmpOp)
   headModeSink = ModeSink()
-  headBindingSink.add(ED3.parse("any()"), headModeSink, 1)
-  headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
-  headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
-  headBindingSink.add(ED3.parse("init(0)"), UpdateSnap(snaps, "current"), 0)
-  headBindingSink.add(ED3.parse("init(1)"), SetMode(headModeSink, 0), 0)
+  headBindSink.add(ED3.parse("any()"), headModeSink, 1)
+  headBindSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
+  headBindSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
+  headBindSink.add(ED3.parse("init(0)"), UpdateSnap(snaps, "current"), 0)
+  headBindSink.add(ED3.parse("init(1)"), SetMode(headModeSink, 0), 0)
 
   if 0 in curves:
     logger.debug("Init mode 0")
     cs = curves[0]["curves"]["head"]
-    ss = Binding(cmpOp)
+    ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
@@ -2181,7 +2181,7 @@ def init_base_head(curves, snaps):
   if 1 in curves:
     logger.debug("Init mode 1")
     cs = curves[1]["curves"]["head"]
-    ss = Binding(cmpOp)
+    ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2191,7 +2191,7 @@ def init_base_head(curves, snaps):
     headModeSink.add(1, ss)
 
   headModeSink.set_mode(0)
-  return headBindingSink
+  return headBindSink
 
 
 def init_layout_base(settings): 
@@ -2208,25 +2208,25 @@ def init_layout_base(settings):
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
-  topBindingSink = Binding(cmpOp)
+  topBindSink = BindSink(cmpOp)
   topModeSink = ModeSink()
-  topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
-  topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
-  topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
+  topBindSink.add(ED3.parse("any()"), topModeSink, 1)
+  topBindSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
+  topBindSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
 
-  joystickBindingSink = Binding(cmpOp)
-  topModeSink.add(0, joystickBindingSink)
+  joystickBindSink = BindSink(cmpOp)
+  topModeSink.add(0, joystickBindSink)
   topModeSink.set_mode(0)
 
-  joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
+  joystickModeSink = joystickBindSink.add(ED3.parse("any()"), ModeSink(), 1)
   jmm = ModeSinkModeManager(joystickModeSink)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
@@ -2234,7 +2234,7 @@ def init_layout_base(settings):
       logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2249,7 +2249,7 @@ def init_layout_base(settings):
       logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RUDDER, None)), 0)
@@ -2263,7 +2263,7 @@ def init_layout_base(settings):
       logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
@@ -2274,20 +2274,20 @@ def init_layout_base(settings):
 
     joystickModeSink.set_mode(0)
 
-  headBindingSink = Binding(cmpOp)
-  topModeSink.add(1, headBindingSink)
+  headBindSink = BindSink(cmpOp)
+  topModeSink.add(1, headBindSink)
 
   headModeSink = ModeSink()
-  headBindingSink.add(ED3.parse("any()"), headModeSink, 1)
-  headBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
-  headBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
+  headBindSink.add(ED3.parse("any()"), headModeSink, 1)
+  headBindSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), SetMode(headModeSink, 1), 0)
+  headBindSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), SetMode(headModeSink, 0), 0)
 
   if "secondary" in curves:
     topModeSink.add(1, init_base_head(curves["secondary"], headSnaps))
 
   headModeSink.set_mode(0)
 
-  return topBindingSink
+  return topBindSink
 
 layout_initializers["base"] = init_layout_base
 
@@ -2306,25 +2306,25 @@ def init_layout_base3(settings):
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
-  topBindingSink = Binding(cmpOp)
+  topBindSink = BindSink(cmpOp)
   topModeSink = ModeSink()
-  topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
-  topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
-  topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
+  topBindSink.add(ED3.parse("any()"), topModeSink, 1)
+  topBindSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
+  topBindSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
 
-  joystickBindingSink = Binding(cmpOp)
-  topModeSink.add(0, joystickBindingSink)
+  joystickBindSink = BindSink(cmpOp)
+  topModeSink.add(0, joystickBindSink)
   topModeSink.set_mode(0)
 
-  joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
+  joystickModeSink = joystickBindSink.add(ED3.parse("any()"), ModeSink(), 1)
   jmm = ModeSinkModeManager(joystickModeSink)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
@@ -2332,7 +2332,7 @@ def init_layout_base3(settings):
       logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2352,7 +2352,7 @@ def init_layout_base3(settings):
       logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2371,7 +2371,7 @@ def init_layout_base3(settings):
       logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_RZ, None)), 0)
@@ -2386,7 +2386,7 @@ def init_layout_base3(settings):
   if "secondary" in curves:
     topModeSink.add(1, init_base_head(curves["secondary"], headSnaps))
 
-  return topBindingSink
+  return topBindSink
 
 layout_initializers["base3"] = init_layout_base3
 
@@ -2405,26 +2405,26 @@ def init_layout_base4(settings):
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
   headSnaps = init_base_head_snaps(settings["axes"]["head"])
 
-  topBindingSink = Binding(cmpOp)
+  topBindSink = BindSink(cmpOp)
   topModeSink = ModeSink()
-  topBindingSink.add(ED3.parse("any()"), topModeSink, 1)
-  topBindingSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
-  topBindingSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
+  topBindSink.add(ED3.parse("any()"), topModeSink, 1)
+  topBindSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetMode(topModeSink, 1), 0)
+  topBindSink.add(ED3.parse("release(mouse.BTN_RIGHT)"), SetMode(topModeSink, 0), 0)
 
-  joystickBindingSink = Binding(cmpOp)
-  topModeSink.add(0, joystickBindingSink)
+  joystickBindSink = BindSink(cmpOp)
+  topModeSink.add(0, joystickBindSink)
   topModeSink.set_mode(0)
 
-  joystickModeSink = joystickBindingSink.add(ED3.parse("any()"), ModeSink(), 1)
+  joystickModeSink = joystickBindSink.add(ED3.parse("any()"), ModeSink(), 1)
 
   jmm = ModeSinkModeManager(joystickModeSink)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
-  joystickBindingSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
-  joystickBindingSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
-  joystickBindingSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_EXTRA)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("doubleclick(mouse.BTN_EXTRA)"), jmm.make_cycle([1,0], False), 0)
+  joystickBindSink.add(ED3.parse("press(mouse.BTN_SIDE)"), jmm.make_set(2, True), 0)
+  joystickBindSink.add(ED3.parse("release(mouse.BTN_SIDE)"), jmm.make_restore(), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_set(0, False), 0)
+  joystickBindSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if "primary" in curves:
     cj = curves["primary"]
@@ -2432,7 +2432,7 @@ def init_layout_base4(settings):
       logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2447,7 +2447,7 @@ def init_layout_base4(settings):
       logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2462,7 +2462,7 @@ def init_layout_base4(settings):
       logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
-      ss = Binding(cmpOp)
+      ss = BindSink(cmpOp)
       ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
       ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
@@ -2483,7 +2483,7 @@ def init_layout_base4(settings):
   if "secondary" in curves:
     topModeSink.add(1, init_base_head(curves["secondary"], headSnaps))
 
-  return topBindingSink
+  return topBindSink
 
 layout_initializers["base4"] = init_layout_base4
 
@@ -2503,7 +2503,7 @@ def init_layout_descent(settings):
   curves = curveMaker(settings)["primary"]
   axes = settings["axes"]["joystick"]
 
-  joystickSink = Binding(cmpOp)
+  joystickSink = BindSink(cmpOp)
   joystickSink.add(ED3.parse("press(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 1), 0)
   joystickSink.add(ED3.parse("release(mouse.BTN_LEFT)"), SetButtonState(joystick, codes.BTN_0, 0), 0)
   joystickSink.add(ED3.parse("press(mouse.BTN_RIGHT)"), SetButtonState(joystick, codes.BTN_1, 1), 0)
@@ -2524,7 +2524,7 @@ def init_layout_descent(settings):
     logger.debug("Init mode 0")
     cs = curves[0]["curves"]["joystick"]
 
-    ss = Binding(cmpOp)
+    ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
@@ -2538,7 +2538,7 @@ def init_layout_descent(settings):
     logger.debug("Init mode 1")
     cs = curves[1]["curves"]["joystick"]
 
-    ss = Binding(cmpOp)
+    ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2552,7 +2552,7 @@ def init_layout_descent(settings):
     logger.debug("Init mode 2")
     cs = curves[2]["curves"]["joystick"]
 
-    ss = Binding(cmpOp)
+    ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)+"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
@@ -2806,7 +2806,7 @@ def init_layout_config(settings):
       return (parsers[i](cfg[i], state) for i in ("input", "output"))
 
     cmpOp = CmpWithModifiers2()
-    bindingSink = Binding(cmpOp)
+    bindingSink = BindSink(cmpOp)
     state["curves"] = {}
     binds = cfg.get("binds", ())
     logger.debug("binds: {}".format(binds))
