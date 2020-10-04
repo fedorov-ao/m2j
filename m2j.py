@@ -694,7 +694,7 @@ class ED3:
     return r
 
 
-def split_input(s, sep="."):
+def split_full_name(s, sep="."):
   i = s.find(sep)
   return (None, s) if i == -1 else (s[:i], s[i+1:])
 
@@ -1961,7 +1961,7 @@ def make_curve_makers():
       def parseSensGroup(cfg, state):
         r = {}
         for inputSourceAndAxisName,inputAxisData in cfg.items():
-          inputSourceName, inputAxisName = split_input(inputSourceAndAxisName, ".")
+          inputSourceName, inputAxisName = split_full_name(inputSourceAndAxisName, ".")
           inputAxis = nameToRelativeAxis[inputAxisName]
           r[(inputSourceName, inputAxis)] = float(inputAxisData)
         return r 
@@ -2176,7 +2176,7 @@ def init_base_head_snaps(axes):
 
 
 def make_move_curve(curves, s):
-  sourceName,axisName = split_input(s, ".")
+  sourceName,axisName = split_full_name(s, ".")
   axisId = codesDict[axisName]
   #TODO Error reporting
   sourceCurves = curves.get(sourceName, None)
@@ -2621,7 +2621,7 @@ def init_layout_config(settings):
 
   def parseSens_(sink, cfg, state):
     if "sens" in cfg:
-      sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_input(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
+      sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_full_name(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
       keyOp = lambda event : ((event.source, event.code), (None, event.code))
       scaleSink = ScaleSink2(sens, keyOp)
       scaleSink.set_next(sink)
@@ -2670,7 +2670,7 @@ def init_layout_config(settings):
         parsers = {}
 
         def parseKey_(cfg, state, value):
-          source, key = split_input(cfg["key"])
+          source, key = split_full_name(cfg["key"])
           eventType = get_event_type(key)
           key = codesDict[key]
           r = [("type", eventType), ("code", key), ("value", value)]
@@ -2706,7 +2706,7 @@ def init_layout_config(settings):
         parsers["multiclick"] = parseMultiClick
 
         def parseMove(cfg, state):
-          source, axis = split_input(cfg["axis"])
+          source, axis = split_full_name(cfg["axis"])
           eventType = get_event_type(axis)
           axis = codesDict[axis]
           r = [("type", eventType), ("code", axis)]
@@ -2725,7 +2725,7 @@ def init_layout_config(settings):
 
         r = parsers[cfg["type"]](cfg, state)
         if "modifiers" in cfg:
-          modifiers = [split_input(m) for m in cfg["modifiers"]]
+          modifiers = [split_full_name(m) for m in cfg["modifiers"]]
           r.append(("modifiers", modifiers)) 
         return r
         
@@ -2747,7 +2747,7 @@ def init_layout_config(settings):
 
         def parseMove(cfg, state):
           fullAxisName = cfg["axis"]
-          outputName, axisName = split_input(fullAxisName)
+          outputName, axisName = split_full_name(fullAxisName)
           state["output"], state["axis"] = outputName, codesDict[axisName]
           curve = make_curve(cfg, state)
           if "curves" not in state:
@@ -2759,7 +2759,7 @@ def init_layout_config(settings):
 
         def parseSetAxis(cfg, state):
           fullAxisName = cfg["axis"]
-          outputName, axisName = split_input(fullAxisName)
+          outputName, axisName = split_full_name(fullAxisName)
           axisId = codesDict[axisName]
           axis = state["settings"]["axes"][outputName][axisId]
           value = float(cfg["value"])
@@ -2771,7 +2771,7 @@ def init_layout_config(settings):
           axesAndValues = []
           allAxes = state["settings"]["axes"]
           for fullAxisName,value in cfg["axesAndValues"].items():
-            outputName, axisName = split_input(fullAxisName)
+            outputName, axisName = split_full_name(fullAxisName)
             axisId = codesDict[axisName]
             axis = allAxes[outputName][axisId]
             value = float(value)
@@ -2781,8 +2781,7 @@ def init_layout_config(settings):
         parsers["setAxes"] = parseSetAxes
 
         def parseSetKeyState(cfg, state):
-          output, key = split_input(cfg["key"])
-          output = state["settings"]["outputs"][output]
+          output, key = split_full_name(cfg["key"])
           key = codesDict[key]
           state = int(cfg["state"])
           return SetButtonState(output, key, state)
@@ -2814,7 +2813,7 @@ def init_layout_config(settings):
             allAxes = settings["axes"]
             snap = []
             for fullAxisName,value in fullAxesNamesAndValues.items():
-              outputName, axisName = split_input(fullAxisName)
+              outputName, axisName = split_full_name(fullAxisName)
               axisId = codesDict[axisName]
               axis = allAxes[outputName][axisId]
               snap.append((axis, value))
