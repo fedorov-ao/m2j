@@ -2067,26 +2067,6 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
-def init_mode_sink(binding, curves, resetOnMove=None, resetOnLeave=None, setOnLeave=None):
-  sink = Binding(CmpWithModifiers())
-  ms = sink.add(ED3.parse("any()"), StateSink(), 1)
-  sink.add(ED.init(1), SetState(ms, True), 0)
-  sink.add(ED.init(0), SetState(ms, False), 0)
-  ms.set_next(binding)
-  if resetOnMove is not None:
-    for k in resetOnMove:
-      binding.add(ED.move_to(k), ResetCurve(curves[k]))
-  #Resetting axes controlled in this mode when leaving mode. May not be needed in other cases.
-  #Resetting curves when leaving mode. May not be needed in other cases.
-  if resetOnLeave is not None:
-    for k in resetOnLeave:
-      sink.add(ED.init(0), ResetCurve(curves[k]), 2)
-  if setOnLeave is not None:
-    for p in setOnLeave:
-      sink.add(ED.init(0), SetCurveAxis(curves[p[0]], p[1]), 2)
-  return sink
-
-
 def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   logLevelName = settings["config"]["logLevel"].upper()
   nameToLevel = {
@@ -2175,22 +2155,6 @@ def init_base_head_snaps(axes):
   return snaps
 
 
-def make_move_curve(curves, s):
-  sourceName,axisName = split_full_name(s, ".")
-  axisId = codesDict[axisName]
-  #TODO Error reporting
-  sourceCurves = curves.get(sourceName, None)
-  curve = sourceCurves.get(axisId, None)
-  if curve is None:
-    logger.warning("Curve for {} is not specified in {}".format(axisName, sourceName))
-  return MoveCurve(curve)
-
-
-def bind_moves(sink, curves, data):
-  for evt,out in data:
-    sink.add(ED3.parse(evt), make_move_curve(curves, out))
-
-
 def init_base_head(curves, snaps):
   cmpOp = CmpWithModifiers2()
   headBindingSink = Binding(cmpOp)
@@ -2203,10 +2167,11 @@ def init_base_head(curves, snaps):
 
   if 0 in curves:
     logger.debug("Init mode 0")
-    csc = curves[0]["curves"]
-    cs = csc["head"]
+    cs = curves[0]["curves"]["head"]
     ss = Binding(cmpOp)
-    bind_moves(ss, csc, [("move(mouse.REL_X)", "head.ABS_RX"), ("move(mouse.REL_Y)", "head.ABS_RY"), ("move(mouse.REL_WHEEL)", "head.ABS_THROTTLE")])
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_RY, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_THROTTLE, None)), 0)
     ss.add(ED3.parse("click(mouse.BTN_MIDDLE)"), SnapTo(snaps, "zo"), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, "cdir"), 0)
     ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
@@ -2215,10 +2180,11 @@ def init_base_head(curves, snaps):
 
   if 1 in curves:
     logger.debug("Init mode 1")
-    csc = curves[1]["curves"]
-    cs = csc["head"]
+    cs = curves[1]["curves"]["head"]
     ss = Binding(cmpOp)
-    bind_moves(ss, csc, [("move(mouse.REL_X)", "head.ABS_X"), ("move(mouse.REL_Y)", "head.ABS_Y"), ("move(mouse.REL_WHEEL)", "head.ABS_Z")])
+    ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
+    ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
     ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, "cpos"), 0)
     ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
     ss = add_scale_sink(ss, curves[1])
