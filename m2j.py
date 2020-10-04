@@ -477,25 +477,6 @@ class CmpWithModifiers:
         r = eventValue is None
       elif eventValue is None:
         r = False
-      elif len(attrValue) != len(eventValue):
-        r = False
-      else:
-        r = True
-        for m in attrValue:
-          r = r and (m in eventValue)
-    else:
-      r = eventValue == attrValue
-    return r
-
-
-class CmpWithModifiers2:
-  def __call__(self, name, eventValue, attrValue):
-    r = True
-    if name == "modifiers":
-      if attrValue is None:
-        r = eventValue is None
-      elif eventValue is None:
-        r = False
       elif len(attrValue) == 0 and len(eventValue) == 0:
         r = True
       elif len(attrValue) != len(eventValue):
@@ -2009,7 +1990,7 @@ initState = False
 
 def init_main_sink(settings, make_next):
   logger.debug("init_main_sink()")
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
@@ -2156,7 +2137,7 @@ def init_base_head_snaps(axes):
 
 
 def init_base_head(curves, snaps):
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
   headBindSink = BindSink(cmpOp)
   headModeSink = ModeSink()
   headBindSink.add(ED3.parse("any()"), headModeSink, 1)
@@ -2195,7 +2176,7 @@ def init_base_head(curves, snaps):
 
 
 def init_layout_base(settings): 
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
@@ -2293,7 +2274,7 @@ layout_initializers["base"] = init_layout_base
 
 
 def init_layout_base3(settings):
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
@@ -2392,7 +2373,7 @@ layout_initializers["base3"] = init_layout_base3
 
 
 def init_layout_base4(settings):
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
     raise Exception("No curve set specified in settings")
@@ -2489,7 +2470,7 @@ layout_initializers["base4"] = init_layout_base4
 
 
 def init_layout_descent(settings):
-  cmpOp = CmpWithModifiers2()
+  cmpOp = CmpWithModifiers()
 
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
@@ -2805,7 +2786,7 @@ def init_layout_config(settings):
 
       return (parsers[i](cfg[i], state) for i in ("input", "output"))
 
-    cmpOp = CmpWithModifiers2()
+    cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
     state["curves"] = {}
     binds = cfg.get("binds", ())
