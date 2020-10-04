@@ -676,8 +676,21 @@ class ED3:
 
 
 def split_full_name(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', 'REL_X')
+  'REL_X' -> (None, 'REL_X')
+  """
   i = s.find(sep)
   return (None, s) if i == -1 else (s[:i], s[i+1:])
+
+
+def split_full_name_code(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', codes.REL_X)
+  'REL_X' -> (None, codes.REL_X)
+  """
+  r = split_full_name(s, sep)
+  return (r[0], codesDict[r[1]])
 
 
 class StateSink:
@@ -1942,9 +1955,8 @@ def make_curve_makers():
       def parseSensGroup(cfg, state):
         r = {}
         for inputSourceAndAxisName,inputAxisData in cfg.items():
-          inputSourceName, inputAxisName = split_full_name(inputSourceAndAxisName, ".")
-          inputAxis = nameToRelativeAxis[inputAxisName]
-          r[(inputSourceName, inputAxis)] = float(inputAxisData)
+          inputSourceAndAxisId = split_full_name_code(inputSourceAndAxisName, ".")
+          r[inputSourceAndAxisId] = float(inputAxisData)
         return r 
 
       groupParsers["sens"] = parseSensGroup
@@ -2002,8 +2014,8 @@ def init_main_sink(settings, make_next):
     if sensSet not in sens:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
-    sens = {nameToRelativeAxis[s[0]]:s[1] for s in sens.items()}
-  scaleSink = modifierSink.set_next(ScaleSink(sens))
+    sens = {split_full_name_code(s[0]):s[1] for s in sens.items()}
+  scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
   mainSink = scaleSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
