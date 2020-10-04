@@ -786,6 +786,16 @@ class MSMMSavePolicy:
    CLEAR_AND_SAVE = 3
   
 
+def nameToMSMMSavePolicy(name):
+  d = { 
+    "noop" : MSMMSavePolicy.NOOP, 
+    "save" : MSMMSavePolicy.SAVE, 
+    "clear" : MSMMSavePolicy.CLEAR, 
+    "clearAndSave" : MSMMSavePolicy.CLEAR_AND_SAVE
+  }
+  return d[name]
+
+
 class ModeSinkModeManager:
   def save(self):
     self.mode_ = self.sink_.get_mode()
@@ -2617,7 +2627,8 @@ def init_layout_config(settings):
         modeSink.add(modeName, child)
     if "initialMode" in cfg:
       modeSink.set_mode(cfg["initialMode"])
-    state["sink"] = modeSink
+    msmm = ModeSinkModeManager(modeSink)
+    state["msmm"] = msmm
     bindingSink = parseBinding(cfg, state)
     bindingSink.add(ED.any(), modeSink, 1)
     return bindingSink
@@ -2707,10 +2718,11 @@ def init_layout_config(settings):
       def parseOutput(cfg, state):
         parsers = {}
 
-        def parseSetMode(cfg, state):
-          mode = cfg["mode"]
-          return SetMode(state["sink"], mode)
-        parsers["setMode"] = parseSetMode
+        parsers["saveMode"] = lambda cfg, state : state["msmm"].make_save()
+        parsers["restoreMode"] = lambda cfg, state : state["msmm"].make_restore()
+        parsers["clearMode"] = lambda cfg, state : state["msmm"].make_clear()
+        parsers["setMode"] = lambda cfg, state : state["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop")))
+        parsers["cycleMode"] = lambda cfg, state : state["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop")))
 
         def parseSetState(cfg, state):
           s = cfg["state"]
