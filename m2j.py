@@ -2612,9 +2612,9 @@ def init_layout_config(settings):
   def parseMode(cfg, state):
     modeSink = ModeSink()
     if "modes" in cfg:
-      for modeName,modeData in cfg["modes"].items():
-        mode = parseMode(modeData, state)
-        modeSink.add(modeName, mode)
+      for modeName,modeCfg in cfg["modes"].items():
+        child = parsers[modeCfg["type"]](modeCfg, state)
+        modeSink.add(modeName, child)
     if "initialMode" in cfg:
       modeSink.set_mode(cfg["initialMode"])
     state["sink"] = modeSink
