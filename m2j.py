@@ -125,7 +125,8 @@ class InputEvent(Event):
 
   
 class EventSource:
-  def run_once(self):
+  def run_once(self, sleep=False):
+    t = time.time()
     events =[]
     event = None
     for d in self.devices_:
@@ -136,13 +137,12 @@ class EventSource:
     events.sort(key = lambda e : e.timestamp)
     for event in events:
       self.sink_(event)
+    t = time.time() - t
+    time.sleep(max(self.step_ - t, 0))
 
   def run_loop(self):
     while True:
-      t = time.time()
-      self.run_once()
-      t = time.time() - t
-      time.sleep(max(self.step_ - t, 0))
+      self.run_once(sleep=True)
 
   def __init__(self, devices, sink, step):
     self.devices_, self.sink_, self.step_ = devices, sink, step
@@ -1413,7 +1413,7 @@ class Opentrack:
 
   def send(self):
     if self.dirty_ == True:
-      self.dirty_ == False
+      self.dirty_ = False
       x, y, z = (self.v_[x] for x in self.axes_[0:3])
       yaw, pitch, roll = 180.0*self.v_[self.axes_[3]], 90.0*self.v_[self.axes_[4]], 90.0*self.v_[self.axes_[5]] 
       packet = struct.pack("dddddd", x, y, z, yaw, pitch, roll)
@@ -1426,6 +1426,46 @@ class Opentrack:
     self.v_ = {a:0.0 for a in self.axes_}
 
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
+
+
+class UdpJoystick:
+  """Generick joystick that sends axes positions over UDP. Don't forget to call send()!"""
+
+  def move_axis(self, axis, v, relative = True):
+    if axis not in self.axes_:
+      return
+    v = self.v_.get(axis, 0.0)+v if relative else v 
+    self.v_[axis] = clamp(v, *self.get_limits(axis))
+    self.dirty_ = True
+
+  def get_axis(self, axis):
+    return self.v_.get(axis, 0.0)
+
+  def get_limits(self, axis):
+    return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.axes_
+
+  def send(self):
+    if self.dirty_ == True:
+      self.dirty_ = False
+      packet = self.make_packet_(self.v_)
+      self.socket_.sendto(packet, (self.ip_, self.port_))
+
+  def __init__(self, ip, port, make_packet):
+    self.dirty_ = False
+    self.socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    self.ip_, self.port_ = ip, port
+    self.make_packet_ = make_packet
+    self.v_ = {a:0.0 for a in self.axes_}
+
+  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
+
+def make_il2_6dof_packet(v):
+  #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L938
+  #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f\\%f\\%f\\%f", d->h, -d->p, d->r, -d->z/300, -d->x/1000, d->y/1000);
+  return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(90.0*v[codes.ABS_RX], 90.0*v[codes.ABS_RY], 180.0*v[codes.ABS_RZ], v[codes.ABS_X], v[codes.ABS_Y], v[codes.ABS_Z])
 
 
 class JoystickSnapManager:

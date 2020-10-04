@@ -130,8 +130,11 @@ def run():
     if "joystick" in outputs: del outputs["joystick"]
     outputs["joystick"] = EvdevJoystick(axes, limit, buttons)
     if "head" in outputs: del outputs["head"]
-    outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), Opentrack("127.0.0.1", 5555)))
-
+    global opentrack
+    opentrack = Opentrack("127.0.0.1", 5555)
+    global il2Head
+    il2Head = UdpJoystick("127.0.0.1", 6543, make_il2_6dof_packet)
+    outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), opentrack, il2Head))
 
   def run2(settings):
     init_config2(settings)
@@ -150,7 +153,10 @@ def run():
     source = EventSource(settings["inputs"].values(), sink, step)
 
     try:
-      source.run_loop()
+      while True:
+        source.run_once(sleep=True)
+        opentrack.send()
+        il2Head.send()
     except ReloadException:
       return -1
     except KeyboardInterrupt:
