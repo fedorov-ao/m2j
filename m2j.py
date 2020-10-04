@@ -1026,7 +1026,7 @@ class OutputBasedCurve:
     value += self.deltaOp_(x, factor)
     value = clamp(value, *limits)
     delta = value - baseValue
-    self.move_axis_(delta, True)
+    self.move_axis_(value=value, relative=False)
     logger.debug("{}: value:{: .3f}, factor:{: .3f}, delta:{: .3f}".format(self, value, factor, delta))
     return delta
 
