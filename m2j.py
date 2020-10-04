@@ -2619,6 +2619,22 @@ def get_event_type(i):
 def init_layout_config(settings):
   parsers = {}
 
+  def parseSens_(sink, cfg, state):
+    if "sens" in cfg:
+      sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_input(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
+      keyOp = lambda event : ((event.source, event.code), (None, event.code))
+      scaleSink = ScaleSink2(sens, keyOp)
+      scaleSink.set_next(sink)
+      return scaleSink
+    else:
+      return sink
+
+  def parseSens(cfg, state):
+    nextCfg = cfg["next"]
+    nextSink = parsers[nextCfg["type"]](nextCfg, state)
+    return parseSens_(nextSink, cfg, state)
+  parsers["sens"] = parseSens
+
   def parseMode(cfg, state):
     modeSink = ModeSink()
     if "modes" in cfg:
@@ -2629,9 +2645,9 @@ def init_layout_config(settings):
       modeSink.set_mode(cfg["initialMode"])
     msmm = ModeSinkModeManager(modeSink)
     state["msmm"] = msmm
-    bindingSink = parseBinding(cfg, state)
+    bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), modeSink, 1)
-    return bindingSink
+    return parseSens_(bindingSink, cfg, state)
   parsers["mode"] = parseMode
 
   def parseState(cfg, state):
@@ -2641,12 +2657,12 @@ def init_layout_config(settings):
     nextCfg = cfg["next"]
     sink.set_next(parsers[nextCfg["type"]](nextCfg, state))
     state["sink"] = sink
-    bindingSink = parseBinding(cfg, state)
+    bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), sink, 1)
-    return bindingSink
+    return parseSens_(bindingSink, cfg, state)
   parsers["state"] = parseState
 
-  def parseBinding(cfg, state):
+  def parseBinding_(cfg, state):
     def parseBind(cfg, state):
       parsers = {}
 
@@ -2833,6 +2849,9 @@ def init_layout_config(settings):
       i,o = parseBind(bind, state)
       bindingSink.add(i, o, 0)
     return bindingSink
+
+  def parseBinding(cfg, state):
+    return parseSens_(parseBinding_(cfg, state), cfg, state)
   parsers["bind"] = parseBinding
 
   config = settings["config"]
