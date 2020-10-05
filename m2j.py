@@ -1208,6 +1208,10 @@ def get_min_op(left, right):
   return min(left[0], right[0])
 
 
+def multiply_op(left, right):
+  return left[0]*right[0]
+
+
 class InputBasedCurve:
   def move_by(self, x, timestamp):
     if self.dirty_:
@@ -1744,7 +1748,13 @@ def make_curve(cfg, state):
     axis = state["settings"]["axes"][outputName][axisId]
     points = parsePoints(cfg["points"], state)
     vpoName = cfg.get("vpo", None)
-    vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
+    ops = {
+      "min" : get_min_op,
+      "mul" : multiply_op,
+      "interpolate" : interpolate_op
+    }
+    op = ops.get(vpoName, interpolate_op)
+    vpo = ValuePointOp(points.values(), op)
     deltaOp = lambda x,value : x*value
     curve = OutputBasedCurve(deltaOp, vpo, axis)
 
