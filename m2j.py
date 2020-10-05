@@ -2942,7 +2942,7 @@ def init_layout_config(settings):
 
         r = parsers[cfg["type"]](cfg, state)
         if "modifiers" in cfg:
-          modifiers = [split_full_name(m) for m in cfg["modifiers"]]
+          modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
           r.append(("modifiers", modifiers)) 
         return r
         
