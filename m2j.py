@@ -1761,19 +1761,29 @@ def make_curve(cfg, state):
     if "moving" in points:
       point = points["moving"]
       pointCfg = cfg["points"]["moving"]
-      newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
-      resetDistance = pointCfg.get("resetDistance", float("inf"))
-      def make_center_op(newRatio):
-        oldRatio = 1.0 - newRatio 
-        def op(new,old):
-          return oldRatio*old+newRatio*new
-        return op
       def getValueOp(curve): 
         return curve.get_axis().get()
+      def make_center_op(newRatio, l):
+        oldRatio = 1.0 - newRatio 
+        def op(new,old):
+          v = oldRatio*old+newRatio*new
+          delta = v - new
+          r = new + sign(delta)*clamp(abs(delta), 0.0, l)
+          return r
+        return op
+      centerOp = None
+      if "centerOp" in pointCfg:
+        centerOpCfg = pointCfg["centerOp"]
+        newRatio = clamp(centerOpCfg.get("newValueRatio", 0.5), 0.0, 1.0)
+        centerOp = make_center_op(centerOpCfg.get("newValueRatio", 0.5), centerOpCfg.get("limit", float("inf")))
+      else:
+        newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
+        centerOp=make_center_op(newRatio, float("inf"))
+      resetDistance = pointCfg.get("resetDistance", float("inf"))
       onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
       onMove = parseResetPolicy(pointCfg.get("onMove", "setToNone"), state)
       curve = PointMovingCurve(
-        next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance, onReset=onReset, onMove=onMove)
+        next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
 
     axis.add_listener(curve)
     return curve
