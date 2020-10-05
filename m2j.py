@@ -2917,7 +2917,7 @@ def init_layout_config(settings):
 
         def parseMultiClick(cfg, state):
           r = parseKey_(cfg, state, 3) 
-          num = int(cfg["num"])
+          num = int(cfg["numClicks"])
           r.append(("num_clicks", num))
           return r
         parsers["multiclick"] = parseMultiClick
