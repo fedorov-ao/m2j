@@ -1482,9 +1482,9 @@ def make_il2_6dof_packet(v):
     (codes.ABS_RX, -90.0),
     (codes.ABS_RY, 90.0),
     (codes.ABS_RZ, 180.0),
-    (codes.ABS_X, 1.0),
-    (codes.ABS_Y, 1.0),
-    (codes.ABS_Z, 1.0)
+    (codes.ABS_Z, 1.0),
+    (codes.ABS_X, -1.0),
+    (codes.ABS_Y, -1.0)
   )
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
@@ -2198,7 +2198,7 @@ def init_base_head_snaps(axes):
     (axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.15), (axes[codes.ABS_RZ], 0.0), (axes[codes.ABS_THROTTLE], 1.0),
   )
   snaps.set_snap("fb", fullBackward)
-  zoomOut = ((axes[codes.ABS_THROTTLE], -1.0),)
+  zoomOut = ((axes[codes.ABS_THROTTLE], 1.0),)
   snaps.set_snap("zo", zoomOut)
   centerView = ((axes[codes.ABS_RX], 0.0), (axes[codes.ABS_RY], 0.0),)
   snaps.set_snap("cdir", centerView)
@@ -2237,6 +2237,7 @@ def init_base_head(curves, snaps):
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_Y)"), MoveCurve(cs.get(codes.ABS_Y, None)), 0)
     ss.add(ED3.parse("move(mouse.REL_WHEEL)"), MoveCurve(cs.get(codes.ABS_Z, None)), 0)
+    ss.add(ED3.parse("doubleclick(mouse.BTN_MIDDLE)"), SnapTo(snaps, "cpos"), 0)
     ss.add(ED3.parse("init(1)"), ResetCurves(cs.values()))
     ss = add_scale_sink(ss, curves[1])
     headModeSink.add(1, ss)
