@@ -130,10 +130,12 @@ def run():
     if "joystick" in outputs: del outputs["joystick"]
     outputs["joystick"] = EvdevJoystick(axes, limit, buttons)
     if "head" in outputs: del outputs["head"]
-    global opentrack
     opentrack = Opentrack("127.0.0.1", 5555)
-    global il2Head
+    if "updated" not in settings: settings["updated"] = []
+    updated = settings["updated"]
+    updated.append(lambda : opentrack.send())
     il2Head = UdpJoystick("127.0.0.1", 6543, make_il2_6dof_packet)
+    updated.append(lambda : il2Head.send())
     outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), opentrack, il2Head))
 
   def run2(settings):
@@ -152,11 +154,11 @@ def run():
     step = 0.01
     source = EventSource(settings["inputs"].values(), sink, step)
 
+    updated = settings.get("updated", [])
     try:
       while True:
         source.run_once(sleep=True)
-        opentrack.send()
-        il2Head.send()
+        for u in updated: u()
     except ReloadException:
       return -1
     except KeyboardInterrupt:
