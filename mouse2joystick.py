@@ -131,7 +131,7 @@ def run():
     outputs["joystick"] = EvdevJoystick(axes, limit, buttons)
     if "head" in outputs: del outputs["head"]
     opentrack = Opentrack("127.0.0.1", 5555)
-    if "updated" not in settings: settings["updated"] = []
+
     updated = settings["updated"]
     updated.append(lambda tick : opentrack.send())
     il2Head = UdpJoystick("127.0.0.1", 6543, make_il2_6dof_packet)
@@ -149,6 +149,7 @@ def run():
       raise Exception("Initialiser for '{}' not found".format(config["layout"]))
     else:
       logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
+    oldUpdated = [o for o in settings["updated"]]
     sink = init_main_sink(settings, initializer)
 
     step = 0.01
@@ -167,8 +168,10 @@ def run():
       return -1
     except KeyboardInterrupt:
       return 0
+    finally:
+      settings["updated"] = oldUpdated
 
-  settings = {"options" : {}, "configNames" : []}
+  settings = {"options" : {}, "configNames" : [], "updated" : []}
   options = {}
   settings["options"] = options
 
