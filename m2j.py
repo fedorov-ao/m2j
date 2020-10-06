@@ -1016,7 +1016,10 @@ class SecondOrderAxis:
     if self.next_ is None or self.v_ == 0.0:
       return 
     delta = self.deltaOp_(self.v_, tick)
+    valueBeforeMove = self.next_.get()
     self.next_.move(delta, relative=True)
+    if self.next_.get() == valueBeforeMove: 
+      self.v_ = 0.0
 
   def set_next(self, next):
     self.next_ = next
