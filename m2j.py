@@ -1157,25 +1157,40 @@ class PointMovingCurve:
 
 class ValuePointOp:
   def calc(self, value):
+    #left and right will reference data of selected points
+    #a point can be placed at center (or center can be None, then point is considiered inactive)
+    #a point can compute some result based on passed value
     left, right = None, None
+    #vp is the point being currently examined
     for vp in self.vps_:
-      p = (vp.calc(value), vp.get_center()) #p is (result, center)
+      #Examined point data in form of (result, center)
+      #It is possible to first select points based on their centers, 
+      #but since points might change their state (i.e. centers) while computing result in calc(), result is computed first for each point considered
+      #Computed result can also be None, which will mean that the point is inactive and should be skipped
+      r = vp.calc(value)
+      c = vp.get_center()
+      p = (r, c)
       logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
+      #Skipping inactive point
       if p[0] is None:
         continue
       delta = value - p[1]
       s = sign(delta)
       delta = abs(delta)
       logger.debug("{}: value: {}, s: {}".format(self, value, s))
-      if s == 1:
-        if left is None or delta < left[1]: 
-          left = (p[0], delta) #left and right are (result, delta)
-      elif s == -1:
-        if right is None or delta < right[1]: 
-          right = (p[0], delta)
+      pd = (p[0], delta) #pd in (result, delta)
+      if s == 1 and (left is None or delta < left[1]): 
+          left = pd
+      elif s == -1 and (right is None or delta < right[1]): 
+          right = pd
       else:
-        left = (p[0], delta)
-        right = (p[0], delta)
+        #if delta sign is 0, so the center of the point considered is exactly at value,
+        #first try to assign 
+        if left is None: left = pd
+        elif right is None: right = pd
+        else:
+          if left[1] < right[1]: right = pd
+          else: left = pd
 
     r = None
     if left is None and right is None:
