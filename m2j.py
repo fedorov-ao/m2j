@@ -1135,10 +1135,16 @@ class PointMovingCurve:
       raise
     finally:
       self.busy_ = False 
-    logger.debug("{}: point center:{}, value before move:{}, value after move:{}".format(self, center, value, self.getValueOp_(self.next_)))
-    if center is not None and abs(value - center) > self.resetDistance_:
-      logger.debug("{}: reset distance reached; new point center: {} (was: {})".format(self, None, center))
-      self.point_.set_center(None)
+    logger.debug(
+      "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
+    if center is not None:
+      resetDistanceReached = abs(value - center) > self.resetDistance_
+      cannotMove = r == 0.0
+      if resetDistanceReached or cannotMove:
+        self.point_.set_center(None)
+        logger.debug(
+          "{}: {}; new point center: {} (was: {})".format(
+            self, "reset distance reached" if resetDistanceReached else "cannot move", self.point_.get_center(), center))
     return r
 
   def reset(self):
