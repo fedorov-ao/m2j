@@ -1155,6 +1155,10 @@ class PointMovingCurve:
       self.point_.set_center(v)
       
 
+tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
+float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
+
+
 class ValuePointOp:
   def calc(self, value):
     #left and right will reference data of selected points
@@ -1199,8 +1203,6 @@ class ValuePointOp:
       r = self.interpolateOp_(left, right)
     else:
       r = (left if right is None else right)[0]
-    tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
-    float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
     logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
     return r
 
@@ -1210,6 +1212,35 @@ class ValuePointOp:
 
   def __init__(self, vps, interpolateOp):
     self.vps_, self.interpolateOp_ = vps, interpolateOp
+
+
+class SimpleValuePointOp:
+  def calc(self, value):
+    rc = []
+    for vp in self.vps_:
+      r = vp.calc(value)
+      if r is None: continue
+      c = vp.get_center()
+      if c is None: continue
+      rc.append((r,c))
+    result = None
+    l = len(rc)
+    if l == 0:
+      result = None
+    elif l == 1:
+      result = rc[0][0]
+    else:
+      rc = [(r,value-c) for r,c in rc]
+      result = self.interpolateOp_(*rc)
+    logger.debug("{}: rc: {}, result: {}".format(self, ["({: .3f} {: .3f})".format(*r) if r is not None else "None" for r in rc], float2str(result)))
+    return result
+
+  def reset(self):
+    for vp in self.vps_:
+      vp.reset()
+
+  def __init__(self, vps, interpolateOp):
+    self.vps_, self.interpolateOp_ = vps, interpolateOp 
 
 
 def interpolate_op(left, right):
@@ -1773,7 +1804,7 @@ def make_curve(cfg, state):
       "interpolate" : interpolate_op
     }
     op = ops.get(vpoName, interpolate_op)
-    vpo = ValuePointOp(points.values(), op)
+    vpo = SimpleValuePointOp(points.values(), op)
     deltaOp = lambda x,value : x*value
     curve = OutputBasedCurve(deltaOp, vpo, axis)
 
