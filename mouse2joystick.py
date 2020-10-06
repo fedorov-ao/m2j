@@ -133,9 +133,9 @@ def run():
     opentrack = Opentrack("127.0.0.1", 5555)
     if "updated" not in settings: settings["updated"] = []
     updated = settings["updated"]
-    updated.append(lambda : opentrack.send())
+    updated.append(lambda tick : opentrack.send())
     il2Head = UdpJoystick("127.0.0.1", 6543, make_il2_6dof_packet)
-    updated.append(lambda : il2Head.send())
+    updated.append(lambda tick : il2Head.send())
     outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), opentrack, il2Head))
 
   def run2(settings):
@@ -155,10 +155,14 @@ def run():
     source = EventSource(settings["inputs"].values(), sink, step)
 
     updated = settings.get("updated", [])
+    t = time.time()
     try:
       while True:
         source.run_once(sleep=True)
-        for u in updated: u()
+        tick = time.time() - t
+        t = time.time()
+        for u in updated: 
+          u(tick)
     except ReloadException:
       return -1
     except KeyboardInterrupt:

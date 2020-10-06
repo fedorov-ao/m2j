@@ -1001,6 +1001,30 @@ class ReportingAxis:
     self.next_, self.listeners_ = next, []
 
 
+class SecondOrderAxis:
+  def move(self, v, relative):
+    self.v_ = clamp(self.v_+v if relative is True else v, self.limits_[0], self.limits_[1])
+
+  def get(self):
+    return self.v_
+
+  def limits(self):
+    return self.limits_
+
+  def update(self, tick):
+    if self.next_ is None or self.v_ == 0.0:
+      return 
+    delta = self.deltaOp_(self.v_, tick)
+    self.next_.move(delta, relative=True)
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, deltaOp, limits):
+    self.next_, self.deltaOp_, self.limits_ = next, deltaOp, limits
+    self.v_ = 0.0
+
+  
 class Point:
   def calc(self, x):
     r = None if (x is None or self.center_ is None) else self.op_(x - self.center_)
@@ -2177,10 +2201,25 @@ def init_main_sink(settings, make_next):
   grabSink.add(ED.init(0), print_disabled, 0)
 
   #make_next() may need axes, so initializing them here
-  settings["axes"] = {}
+  #TODO Init only selected speed axes
+  allAxes = {}
+  settings["axes"] = allAxes
   for oName,o in settings["outputs"].items():
-    #TODO Get axes from output
-    settings["axes"][oName] = {axisId:ReportingAxis(JoystickAxis(o, axisId)) for axisId in o.get_supported_axes()}
+    if oName not in allAxes: allAxes[oName] = {}
+    soName = oName+"_s"
+    if soName not in allAxes: allAxes[soName] = {}
+    for axisId in o.get_supported_axes():
+      valueAxis = ReportingAxis(JoystickAxis(o, axisId))
+      allAxes[oName][axisId] = valueAxis
+      deltaOp = lambda v,tick : v*tick
+      limits = (-1.0, 1.0)
+      speedAxis = SecondOrderAxis(valueAxis, deltaOp, limits)
+      def make_update_op(speedAxis):
+        def op(tick):
+          speedAxis.update(tick)
+        return op
+      settings["updated"].append(make_update_op(speedAxis))
+      allAxes[soName][axisId] = ReportingAxis(speedAxis)
 
   try:
     grabSink.add(ED.any(), make_next(settings), 1)
@@ -3039,6 +3078,7 @@ def init_layout_config(settings):
           outputName, axisName = split_full_name(fullAxisName)
           state["output"], state["axis"] = outputName, codesDict[axisName]
           curve = make_curve(cfg, state)
+          #TODO Several curves can control a given axis
           if "curves" not in state:
             state["curves"] = {fullAxisName:curve}
           else:
