@@ -1033,18 +1033,20 @@ class OutputBasedCurve:
     if self.dirty_:
       self.reset()
       self.dirty_ = False
-    value, limits = self.axis_.get(), self.axis_.limits()
-    baseValue = value
     if x == 0:
       return 0.0
-    factor = self.valueOp_.calc(value)
-    if factor is None:
-      raise ArithmeticError("Cannot compute value, factor is None")
-    value += self.deltaOp_(x, factor)
-    value = clamp(value, *limits)
+    value = self.axis_.get()
+    baseValue = value
+    sensitivity = self.valueOp_.calc(baseValue)
+    if sensitivity is None:
+      raise ArithmeticError("Cannot compute value, sensitivity is None")
+    delta = self.deltaOp_(x, sensitivity)
+    value = clamp(value + delta, *self.axis_.limits())
     delta = value - baseValue
     self.move_axis_(value=value, relative=False)
-    logger.debug("{}: value:{: .3f}, factor:{: .3f}, x:{: .3f}, delta:{: .3f}".format(self, value, factor, x, delta))
+    logger.debug(
+      "{}: x:{: .3f}, base value:{: .3f}, sensitivity:{: .3f}, value delta:{: .3f}, new value:{: .3f}".format(self, x, baseValue, sensitivity, delta, value)
+    )
     return delta
 
   def reset(self):
@@ -1230,7 +1232,7 @@ class SimpleValuePointOp:
     elif l == 1:
       result = rc[0][0]
     else:
-      rc = [(r,value-c) for r,c in rc]
+      rc = [(r,abs(value-c)) for r,c in rc]
       result = self.interpolateOp_(*rc)
     logger.debug("{}: rc: {}, result: {}".format(self, ["({: .3f} {: .3f})".format(*r) if r is not None else "None" for r in rc], float2str(result)))
     return result
