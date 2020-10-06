@@ -137,8 +137,9 @@ class EventSource:
     events.sort(key = lambda e : e.timestamp)
     for event in events:
       self.sink_(event)
-    t = time.time() - t
-    time.sleep(max(self.step_ - t, 0))
+    if sleep:
+      t = time.time() - t
+      time.sleep(max(self.step_ - t, 0))
 
   def run_loop(self):
     while True:
