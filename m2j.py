@@ -1003,7 +1003,11 @@ class ReportingAxis:
 
 class Point:
   def calc(self, x):
-    return None if (x is None or self.center_ is None) else self.op_(x - self.center_)
+    r = None if (x is None or self.center_ is None) else self.op_(x - self.center_)
+    def prn(fmt, v):
+      return "None" if v is None else fmt.format(v)
+    logger.debug("{}: center:{}, x:{: .3f}, result:{}".format(self, prn("{: .3f}", self.center_), x, prn("{: .3f}", r)))
+    return r
 
   def get_center(self):
     return self.center_
@@ -1040,7 +1044,7 @@ class OutputBasedCurve:
     value = clamp(value, *limits)
     delta = value - baseValue
     self.move_axis_(value=value, relative=False)
-    logger.debug("{}: value:{: .3f}, factor:{: .3f}, delta:{: .3f}".format(self, value, factor, delta))
+    logger.debug("{}: value:{: .3f}, factor:{: .3f}, x:{: .3f}, delta:{: .3f}".format(self, value, factor, x, delta))
     return delta
 
   def reset(self):
