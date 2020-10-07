@@ -3212,8 +3212,20 @@ class DictParser:
     r = {}
     for key,data in cfg.items():
       value = self.parser_(data, state)
-      if value is not None:
-        r[key] = value
+      r[key] = value
+    return r
+
+  def __init__(self, parser):
+    self.parser_ = parser
+
+
+class ListParser:
+  def __call__(self, cfg, state):
+    assert(self.parser_ is not None)
+    r = []
+    for data in cfg:
+      value = self.parser_(data, state)
+      r.append(value)
     return r
 
   def __init__(self, parser):
