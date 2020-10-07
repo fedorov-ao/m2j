@@ -118,25 +118,20 @@ def print_devices():
   for d in devices:
     print "{} : {}; {}".format(d.name, [f for f,s in d.capabilities(verbose=True, absinfo=False).keys()], d.fn) 
 
+
+def parseEvdevJoystickOutput(cfg, state):
+  axes = [code2ecode(codesDict[axisName]) for axisName in cfg["axes"]]
+  buttons = [code2ecode(codesDict[buttonName]) for buttonName in cfg["buttons"]]
+  limit = int(cfg["limit"])
+  return EvdevJoystick(axes, limit, buttons)
+
+
+outputParser = OutputParser({"evdev":parseEvdevJoystickOutput}, outputParser)
+
   
 def run():
   def init_joysticks(settings):
-    axes = [codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER]
-    limit = 32767
-    buttons = [codes.BTN_0, codes.BTN_1]
-
-    if "outputs" not in settings: settings["outputs"] = {}
-    outputs = settings["outputs"]
-    if "joystick" in outputs: del outputs["joystick"]
-    outputs["joystick"] = EvdevJoystick(axes, limit, buttons)
-    if "head" in outputs: del outputs["head"]
-    opentrack = Opentrack("127.0.0.1", 5555)
-
-    updated = settings["updated"]
-    updated.append(lambda tick : opentrack.send())
-    il2Head = UdpJoystick("127.0.0.1", 6543, make_il2_6dof_packet)
-    updated.append(lambda tick : il2Head.send())
-    outputs["head"] = CompositeJoystick((EvdevJoystick(axes, limit), opentrack, il2Head))
+    settings["outputs"] = OutputsParser(outputParser).parse(settings["config"]["outputs"], settings)
 
   def run2(settings):
     init_config2(settings)

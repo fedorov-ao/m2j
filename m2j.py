@@ -3204,3 +3204,66 @@ def init_layout_config(settings):
     return r
 
 layout_initializers["config"] = init_layout_config
+
+
+class OutputsParser:
+  def parse(self, cfg, settings):
+    state = {"settings" : settings}
+    r = {}
+    for outputName,outputCfg in cfg.items():
+      state["name"] = outputName
+      assert(self.parser_ is not None)
+      output = self.parser_(outputCfg, state)
+      if output is not None:
+        r[outputName] = output
+    return r
+
+  def __init__(self, parser):
+    self.parser_ = parser
+
+
+class OutputParser:
+  def __call__(self, cfg, state):
+    if "parser" not in state: state["parser"] = self
+    outputType = cfg["type"]
+    output = None
+    if outputType in self.parsers_:
+      output = self.parsers_[outputType](cfg, state) 
+    elif self.fallback_ is not None:
+      output = self.fallback_(cfg, state)
+    return output
+
+  def __init__(self, parsers, fallback):
+    self.parsers_, self.fallback_ = parsers, fallback
+    
+
+def parseCompositeOutput(cfg, state):
+  childrenCfg = cfg["children"]
+  parser = state["parser"]
+  children = []
+  for childCfg in childrenCfg:
+    child = parser(childCfg, state)
+    if child is not None:
+      children.append(child)
+  return CompositeJoystick(children)
+
+
+def parseOpentrackOutput(cfg, state):
+  opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
+  updated = state["settings"]["updated"]
+  updated.append(lambda tick : opentrack.send())
+  return opentrack
+
+
+def parseUdpJoystickOutput(cfg, state):
+  packetMakers = {
+    "il2" : make_il2_packet,
+    "il2_6dof" : make_il2_6dof_packet 
+  }
+  j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
+  updated = state["settings"]["updated"]
+  updated.append(lambda tick : j.send())
+  return j
+
+
+outputParser = OutputParser({"composite":parseCompositeOutput, "opentrack":parseOpentrackOutput, "udpJoystick":parseUdpJoystickOutput}, None)
