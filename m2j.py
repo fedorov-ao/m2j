@@ -3088,11 +3088,11 @@ def init_layout_config(settings):
           outputName, axisName = split_full_name(fullAxisName)
           state["output"], state["axis"] = outputName, codesDict[axisName]
           curve = make_curve(cfg, state)
-          #TODO Several curves can control a given axis
           if "curves" not in state:
-            state["curves"] = {fullAxisName:curve}
-          else:
-            state["curves"][fullAxisName] = curve
+            state["curves"] = {}
+          if fullAxisName not in state["curves"]:
+            state["curves"][fullAxisName] = []
+          state["curves"][fullAxisName].append(curve)
           return MoveCurve(curve)
         parsers["move"] = parseMove
 
@@ -3131,14 +3131,14 @@ def init_layout_config(settings):
           allCurves = state.get("curves", None)
           if allCurves is None:
             raise Exception("No curves were initialized")
-          curves = []
+          curvesToReset = []
           for fullAxisName in cfg["axes"]:
-            curve = allCurves.get(fullAxisName, None)
-            if curve is None:
-              raise Exception("Curve for {} was not initialized".format(fullAxisName))
-            curves.append(curve)
+            curves = allCurves.get(fullAxisName, None)
+            if curves is None:
+              raise Exception("Curves for {} were not initialized".format(fullAxisName))
+            curvesToReset += curves
           logger.debug("selected curves: {}".format(curves))
-          return ResetCurves(curves)
+          return ResetCurves(curvesToReset)
         parsers["resetCurves"] = parseResetCurves
 
         def createSnap_(cfg, state):
