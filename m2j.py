@@ -3206,46 +3206,50 @@ def init_layout_config(settings):
 layout_initializers["config"] = init_layout_config
 
 
-class OutputsParser:
-  def parse(self, cfg, settings):
-    state = {"settings" : settings}
+class DictParser:
+  def __call__(self, cfg, state):
+    assert(self.parser_ is not None)
     r = {}
-    for outputName,outputCfg in cfg.items():
-      state["name"] = outputName
-      assert(self.parser_ is not None)
-      output = self.parser_(outputCfg, state)
-      if output is not None:
-        r[outputName] = output
+    for key,data in cfg.items():
+      value = self.parser_(data, state)
+      if value is not None:
+        r[key] = value
     return r
 
   def __init__(self, parser):
     self.parser_ = parser
 
 
-class OutputParser:
+class ValueParser:
   def __call__(self, cfg, state):
-    if "parser" not in state: state["parser"] = self
-    outputType = cfg["type"]
-    output = None
-    if outputType in self.parsers_:
-      output = self.parsers_[outputType](cfg, state) 
-    elif self.fallback_ is not None:
-      output = self.fallback_(cfg, state)
-    return output
+    key = self.keyOp_(cfg)
+    r = None
+    if key in self.parsers_:
+      r = self.parsers_[key](cfg, state) 
+    return r
 
-  def __init__(self, parsers, fallback):
-    self.parsers_, self.fallback_ = parsers, fallback
+  def add(self, key, parser):
+    self.parsers_[key] = parser
+
+  def get(self, key):
+    return self.parsers_.get(key, None)
+
+  def __init__(self, keyOp, parsers=None):
+    self.keyOp_ = keyOp
+    self.parsers_ = {} if parsers is None else parsers
     
 
-def parseCompositeOutput(cfg, state):
-  childrenCfg = cfg["children"]
-  parser = state["parser"]
-  children = []
-  for childCfg in childrenCfg:
-    child = parser(childCfg, state)
-    if child is not None:
-      children.append(child)
-  return CompositeJoystick(children)
+def parseCompositeOutput(parser):
+  parser = weakref.ref(parser)
+  def op(cfg, state):
+    childrenCfg = cfg["children"]
+    children = []
+    for childCfg in childrenCfg:
+      child = parser()(childCfg, state)
+      if child is not None:
+        children.append(child)
+    return CompositeJoystick(children)
+  return op
 
 
 def parseOpentrackOutput(cfg, state):
@@ -3266,4 +3270,9 @@ def parseUdpJoystickOutput(cfg, state):
   return j
 
 
-outputParser = OutputParser({"composite":parseCompositeOutput, "opentrack":parseOpentrackOutput, "udpJoystick":parseUdpJoystickOutput}, None)
+def make_output_parser():
+  outputParser = ValueParser(keyOp=lambda cfg : cfg["type"])
+  outputParser.add("composite", parseCompositeOutput(outputParser))
+  outputParser.add("opentrack", parseOpentrackOutput)
+  outputParser.add("udpJoystick", parseUdpJoystickOutput)
+  return outputParser

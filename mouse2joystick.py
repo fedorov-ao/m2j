@@ -125,13 +125,12 @@ def parseEvdevJoystickOutput(cfg, state):
   limit = int(cfg["limit"])
   return EvdevJoystick(axes, limit, buttons)
 
-
-outputParser = OutputParser({"evdev":parseEvdevJoystickOutput}, outputParser)
-
   
 def run():
   def init_joysticks(settings):
-    settings["outputs"] = OutputsParser(outputParser).parse(settings["config"]["outputs"], settings)
+    outputParser = make_output_parser()
+    outputParser.add("evdev", parseEvdevJoystickOutput)
+    settings["outputs"] = DictParser(outputParser)(settings["config"]["outputs"], {"settings" : settings})
 
   def run2(settings):
     init_config2(settings)
