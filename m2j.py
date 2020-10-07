@@ -3255,19 +3255,13 @@ def make_output_parser():
   def parseCompositeOutput(parser):
     parser = weakref.ref(parser)
     def op(cfg, state):
-      childrenCfg = cfg["children"]
-      children = []
-      for childCfg in childrenCfg:
-        child = parser()(childCfg, state)
-        if child is not None:
-          children.append(child)
+      children = ListParser(parser())(cfg["children"], state)
       return CompositeJoystick(children)
     return op
 
   def parseOpentrackOutput(cfg, state):
     opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
-    updated = state["settings"]["updated"]
-    updated.append(lambda tick : opentrack.send())
+    state["settings"]["updated"].append(lambda tick : opentrack.send())
     return opentrack
 
   def parseUdpJoystickOutput(cfg, state):
@@ -3276,8 +3270,7 @@ def make_output_parser():
       "il2_6dof" : make_il2_6dof_packet 
     }
     j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
-    updated = state["settings"]["updated"]
-    updated.append(lambda tick : j.send())
+    state["settings"]["updated"].append(lambda tick : j.send())
     return j
 
   outputParser = SelectParser(keyOp=lambda cfg : cfg["type"])
