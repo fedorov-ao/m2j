@@ -128,9 +128,10 @@ def parseEvdevJoystickOutput(cfg, state):
   
 def run():
   def init_joysticks(settings):
-    outputParser = make_output_parser()
+    nameParser = lambda key,state : key
+    outputParser = parsers["output"]
     outputParser.add("evdev", parseEvdevJoystickOutput)
-    settings["outputs"] = DictParser(outputParser)(settings["config"]["outputs"], {"settings" : settings})
+    settings["outputs"] = DictParser(keyParser=nameParser, valueParser=outputParser)(settings["config"]["outputs"], {"settings" : settings})
 
   def run2(settings):
     init_config2(settings)

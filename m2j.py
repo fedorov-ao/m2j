@@ -3206,19 +3206,6 @@ def init_layout_config(settings):
 layout_initializers["config"] = init_layout_config
 
 
-class DictParser:
-  def __call__(self, cfg, state):
-    assert(self.parser_ is not None)
-    r = {}
-    for key,data in cfg.items():
-      value = self.parser_(data, state)
-      r[key] = value
-    return r
-
-  def __init__(self, parser):
-    self.parser_ = parser
-
-
 class ListParser:
   def __call__(self, cfg, state):
     assert(self.parser_ is not None)
@@ -3232,7 +3219,20 @@ class ListParser:
     self.parser_ = parser
 
 
-class ValueParser:
+class DictParser:
+  def __call__(self, cfg, state):
+    assert(self.keyParser_ is not None)
+    assert(self.valueParser_ is not None)
+    r = {}
+    for key,value in cfg.items():
+      r[self.keyParser_(key, state)] = self.valueParser_(value, state)
+    return r
+
+  def __init__(self, keyParser, valueParser):
+    self.keyParser_, self.valueParser_ = keyParser, valueParser
+
+
+class SelectParser:
   def __call__(self, cfg, state):
     key = self.keyOp_(cfg)
     r = None
@@ -3249,42 +3249,44 @@ class ValueParser:
   def __init__(self, keyOp, parsers=None):
     self.keyOp_ = keyOp
     self.parsers_ = {} if parsers is None else parsers
-    
-
-def parseCompositeOutput(parser):
-  parser = weakref.ref(parser)
-  def op(cfg, state):
-    childrenCfg = cfg["children"]
-    children = []
-    for childCfg in childrenCfg:
-      child = parser()(childCfg, state)
-      if child is not None:
-        children.append(child)
-    return CompositeJoystick(children)
-  return op
-
-
-def parseOpentrackOutput(cfg, state):
-  opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
-  updated = state["settings"]["updated"]
-  updated.append(lambda tick : opentrack.send())
-  return opentrack
-
-
-def parseUdpJoystickOutput(cfg, state):
-  packetMakers = {
-    "il2" : make_il2_packet,
-    "il2_6dof" : make_il2_6dof_packet 
-  }
-  j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
-  updated = state["settings"]["updated"]
-  updated.append(lambda tick : j.send())
-  return j
 
 
 def make_output_parser():
-  outputParser = ValueParser(keyOp=lambda cfg : cfg["type"])
+  def parseCompositeOutput(parser):
+    parser = weakref.ref(parser)
+    def op(cfg, state):
+      childrenCfg = cfg["children"]
+      children = []
+      for childCfg in childrenCfg:
+        child = parser()(childCfg, state)
+        if child is not None:
+          children.append(child)
+      return CompositeJoystick(children)
+    return op
+
+  def parseOpentrackOutput(cfg, state):
+    opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
+    updated = state["settings"]["updated"]
+    updated.append(lambda tick : opentrack.send())
+    return opentrack
+
+  def parseUdpJoystickOutput(cfg, state):
+    packetMakers = {
+      "il2" : make_il2_packet,
+      "il2_6dof" : make_il2_6dof_packet 
+    }
+    j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
+    updated = state["settings"]["updated"]
+    updated.append(lambda tick : j.send())
+    return j
+
+  outputParser = SelectParser(keyOp=lambda cfg : cfg["type"])
   outputParser.add("composite", parseCompositeOutput(outputParser))
   outputParser.add("opentrack", parseOpentrackOutput)
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
+
   return outputParser
+
+
+parsers = {}
+parsers["output"] = make_output_parser()
