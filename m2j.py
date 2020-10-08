@@ -136,7 +136,7 @@ class EventSource:
         event = d.read_one()
     events.sort(key = lambda e : e.timestamp)
     for event in events:
-      logger.debug("{}: Sending event: {}".format(self, event))
+      #logger.debug("{}: Sending event: {}".format(self, event))
       self.sink_(event)
     if sleep:
       t = time.time() - t
@@ -253,7 +253,7 @@ def ResetCurves(curves):
   def op(event):
     for curve in curves:
       if curve is not None: 
-        logger.debug("Resetting curve: {}".format(curve))
+        #logger.debug("Resetting curve: {}".format(curve))
         curve.reset()
   return op
 
@@ -275,7 +275,7 @@ def MoveAxes(axesAndValues):
 def SetButtonState(joystick, button, state):
   def op(event):
     joystick.set_button_state(button, state) 
-    logger.debug(button, state)
+    #logger.debug(button, state)
   return op
 
 
@@ -297,7 +297,7 @@ class ClickSink:
   #returns number of clicks
   def update_keys(self, event):
     if event.type == codes.EV_KEY:
-      logger.debug("{} {}".format(event.code, event.value))
+      #logger.debug("{} {}".format(event.code, event.value))
       if event.code in self.keys_:
         prevValue, prevTimestamp, prevNumClicks = self.keys_[event.code]
         dt = event.timestamp - prevTimestamp
@@ -340,7 +340,7 @@ class ModifierSink:
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
       event.modifiers = self.m_ 
 
-    logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
+    #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
     self.next_(event)
 
   def set_next(self, next):
@@ -386,7 +386,7 @@ class ScaleSink2:
 
 class BindSink:
   def __call__(self, event):
-    logger.debug("{}: processing {})".format(self, event))
+    ##logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
       self.dirty_ = False
@@ -406,20 +406,20 @@ class BindSink:
          if hasattr(event, attrName):
             eventValue = getattr(event, attrName)
             if not self.cmp_(attrName, eventValue, attrValue):
-              logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c[0], attrName, eventValue, attrValue))
+              #logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c[0], attrName, eventValue, attrValue))
               break
          else:
           break
       else:
-        logger.debug("{}: {} matched".format(self, c[0]))
+        #logger.debug("{}: {} matched".format(self, c[0]))
         if c[2] is not None: 
-          #logger.debug("Processing event {}".format(str(event)))
+          ##logger.debug("Processing event {}".format(str(event)))
           for cc in c[2]:
-            #logger.debug("Sending event {} to {}".format(str(event), cc))
+            ##logger.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
 
   def add(self, attrs, child, level = 0):
-    logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
+    #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
     assert(child is not None)
     c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
     if c is not None:
@@ -657,7 +657,7 @@ class ED3:
           modifiers.append((source, codesDict[inpt]))
     if modifiers is not None:
       r.append(("modifiers", modifiers))
-    logger.debug("ED3.parse(): {} -> {}".format(s, r)) 
+    #logger.debug("ED3.parse(): {} -> {}".format(s, r)) 
     return r
 
 
@@ -681,12 +681,12 @@ def split_full_name_code(s, sep="."):
 
 class StateSink:
  def __call__(self, event):
-   logger.debug("{}: passing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+   #logger.debug("{}: passing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if (self.state_ == True) and (self.next_ is not None):
      self.next_(event)
 
  def set_state(self, state):
-   logger.debug("{}: setting state to {}".format(self, state))
+   #logger.debug("{}: setting state to {}".format(self, state))
    self.state_ = state
    if self.next_:
      self.next_(Event(EV_BCAST, BC_INIT, 1 if state == True else 0, time.time()))
@@ -716,9 +716,9 @@ class ModeSink:
       return child(event)
 
   def set_mode(self, mode):
-    logger.debug("{}: Setting mode: {}".format(self, mode))
+    #logger.debug("{}: Setting mode: {}".format(self, mode))
     if mode not in self.children_:
-      logger.debug("{}: No such mode: {}".format(self, mode))
+      #logger.debug("{}: No such mode: {}".format(self, mode))
       return False
     self.set_active_child_state_(False)
     self.mode_ = mode
@@ -728,7 +728,7 @@ class ModeSink:
     return self.mode_
 
   def add(self, mode, child):
-    logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
+    #logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
     self.children_[mode] = child
     return child
 
@@ -736,7 +736,7 @@ class ModeSink:
     if self.mode_ in self.children_:
       child = self.children_.get(self.mode_, None)
       if child is not None:
-        logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
+        #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(EV_BCAST, BC_INIT, 1 if state == True else 0, time.time()))
     
   def __init__(self):
@@ -906,9 +906,9 @@ class BezierApproximator:
     x = clamp(x, l, r)
     t = (x - l) / (r - l)
     points = [p for p in self.points_]
-    logger.debug("{}: points: {}, t: {}".format(self, points, t))
+    #logger.debug("{}: points: {}, t: {}".format(self, points, t))
     r = calc_bezier(points, t)[1]
-    logger.debug("{}: result: {: .3f}".format(self, r))
+    #logger.debug("{}: result: {: .3f}".format(self, r))
     return r
 
   def __init__(self, points):
@@ -934,9 +934,9 @@ class SegmentedBezierApproximator:
     if "l" in rightPoints : points.append(rightPoints["l"])
     points.append(rightPoints["c"])
 
-    logger.debug("{}: points: {}".format(self, points))
+    #logger.debug("{}: points: {}".format(self, points))
     r = calc_bezier(points, t)[1]
-    logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, r))
+    #logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, r))
     return r
 
   def __init__(self, points):
@@ -989,7 +989,7 @@ class ReportingAxis:
 
 class SecondOrderAxis:
   def move(self, v, relative):
-    logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
+    #logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
     self.v_ = clamp(self.v_+v if relative is True else v, self.limits_[0], self.limits_[1])
 
   def get(self):
@@ -1020,7 +1020,7 @@ class Point:
     r = None if (x is None or self.center_ is None) else self.op_(x - self.center_)
     def prn(fmt, v):
       return "None" if v is None else fmt.format(v)
-    logger.debug("{}: center:{}, x:{: .3f}, result:{}".format(self, prn("{: .3f}", self.center_), x, prn("{: .3f}", r)))
+    #logger.debug("{}: center:{}, x:{: .3f}, result:{}".format(self, prn("{: .3f}", self.center_), x, prn("{: .3f}", r)))
     return r
 
   def get_center(self):
@@ -1058,13 +1058,11 @@ class OutputBasedCurve:
     value = clamp(value + delta, *self.axis_.limits())
     delta = value - baseValue
     self.move_axis_(value=value, relative=False)
-    logger.debug(
-      "{}: x:{: .3f}, base value:{: .3f}, sensitivity:{: .3f}, value delta:{: .3f}, new value:{: .3f}".format(self, x, baseValue, sensitivity, delta, value)
-    )
+    #logger.debug( "{}: x:{: .3f}, base value:{: .3f}, sensitivity:{: .3f}, value delta:{: .3f}, new value:{: .3f}".format(self, x, baseValue, sensitivity, delta, value))
     return delta
 
   def reset(self):
-    logger.debug("{}: resetting".format(self))
+    #logger.debug("{}: resetting".format(self))
     self.s_, self.busy_, self.dirty_  = 0, False, False
     assert(self.valueOp_ is not None)
     self.valueOp_.reset()
@@ -1106,14 +1104,14 @@ class PointMovingCurve:
     if self.dirty_:
       self.after_move_axis_()
       self.dirty_ = False
-      logger.debug("{}: someone has moved axis, new point center: {}".format(self, self.point_.get_center()))
+      #logger.debug("{}: someone has moved axis, new point center: {}".format(self, self.point_.get_center()))
     #Setting new point center if x movement direction has changed
     s = sign(x)
     center, value = self.point_.get_center(), self.getValueOp_(self.next_)
     if s != 0:
       if self.s_ != 0 and self.s_ != s:
         c = value if center is None else self.centerOp_(value, center)
-        logger.debug("{}: sign has changed; new point center: {} (was: {})".format(self, c, center))
+        #logger.debug("{}: sign has changed; new point center: {} (was: {})".format(self, c, center))
         self.point_.set_center(c)
       self.s_ = s
     r = None
@@ -1124,16 +1122,13 @@ class PointMovingCurve:
       raise
     finally:
       self.busy_ = False 
-    logger.debug(
-      "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
+    #logger.debug( "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
     if center is not None:
       resetDistanceReached = abs(value - center) > self.resetDistance_
       cannotMove = r == 0.0
       if resetDistanceReached or cannotMove:
         self.point_.set_center(None)
-        logger.debug(
-          "{}: {}; new point center: {} (was: {})".format(
-            self, "reset distance reached" if resetDistanceReached else "cannot move", self.point_.get_center(), center))
+        #logger.debug( "{}: {}; new point center: {} (was: {})".format( self, "reset distance reached" if resetDistanceReached else "cannot move", self.point_.get_center(), center))
     return r
 
   def reset(self):
@@ -1147,15 +1142,15 @@ class PointMovingCurve:
     if self.onReset_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
       v = self.getValueOp_(self.next_)
       self.point_.set_center(v)
-    logger.debug("{}: direct reset, new point center: {}".format(self, v))
+    #logger.debug("{}: direct reset, new point center: {}".format(self, v))
 
   def get_axis(self):
     return self.next_.get_axis()
 
   def on_move_axis(self, axis, old, new):
-    logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
+    #logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
     if self.busy_ or self.dirty_: 
-      logger.debug("{}: on_move_axis(): {}{}".format(self, "busy " if self.busy_ else "", "dirty" if self.dirty_ else ""))
+      #logger.debug("{}: on_move_axis(): {}{}".format(self, "busy " if self.busy_ else "", "dirty" if self.dirty_ else ""))
       return
     self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
@@ -1196,14 +1191,14 @@ class ValuePointOp:
       r = vp.calc(value)
       c = vp.get_center()
       p = (r, c)
-      logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
+      #logger.debug("{}: vp: {}, p: {}".format(self, vp, p))
       #Skipping inactive point
       if p[0] is None:
         continue
       delta = value - p[1]
       s = sign(delta)
       delta = abs(delta)
-      logger.debug("{}: value: {}, s: {}".format(self, value, s))
+      #logger.debug("{}: value: {}, s: {}".format(self, value, s))
       pd = (p[0], delta) #pd in (result, delta)
       if s == 1 and (left is None or delta < left[1]): 
           left = pd
@@ -1225,7 +1220,7 @@ class ValuePointOp:
       r = self.interpolateOp_(left, right)
     else:
       r = (left if right is None else right)[0]
-    logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
+    #logger.debug("{}: left: {}, right: {}, result: {}".format(self, tuple2str(left), tuple2str(right), float2str(r)))
     return r
 
   def reset(self):
@@ -1254,7 +1249,7 @@ class SimpleValuePointOp:
     else:
       rc = [(r,abs(value-c)) for r,c in rc]
       result = self.interpolateOp_(*rc)
-    logger.debug("{}: rc: {}, result: {}".format(self, ["({: .3f} {: .3f})".format(*r) if r is not None else "None" for r in rc], float2str(result)))
+    #logger.debug("{}: rc: {}, result: {}".format(self, ["({: .3f} {: .3f})".format(*r) if r is not None else "None" for r in rc], float2str(result)))
     return result
 
   def reset(self):
@@ -1297,7 +1292,7 @@ class InputBasedCurve:
     self.move_axis_(value, relative=False)
 
   def reset(self):
-    logger.debug("{}: resetting".format(self))
+    #logger.debug("{}: resetting".format(self))
     self.op_.reset()
     #TODO Check that it does not break something
     self.pos_ = self.op_.calc_pos(self.axis_.get())
@@ -1343,7 +1338,7 @@ class IterativeCenterOp:
       self.point_.set_center(middle)
       value = self.op_.calc_value(pos)
       if abs(currentValue - value) < self.eps_:
-        logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
+        #logger.debug("{}: old mp center: {: .3f}; new mp center: {: .3f}; value: {: .3f}; iterations: {}".format(self, center, middle, value, c+1))
         return middle
       elif currentValue < value:
         e = middle
@@ -1363,9 +1358,9 @@ class FMPosInterpolateOp:
     if self.mp_ is None:
       return self.fp_.calc(pos)
     fixedValueAtPos, movingValueAtPos = self.fp_.calc(pos), self.mp_.calc(pos)
-    logger.debug("{}: pos:{: .3f}, moving value at pos:{}, moving center:{}".format(self, pos, movingValueAtPos, self.mp_.get_center()))
+    #logger.debug("{}: pos:{: .3f}, moving value at pos:{}, moving center:{}".format(self, pos, movingValueAtPos, self.mp_.get_center()))
     if movingValueAtPos is None:
-      logger.debug("{}: movingValueAtPos is None, f:{}".format(self, fixedValueAtPos))
+      #logger.debug("{}: movingValueAtPos is None, f:{}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     movingCenter = self.mp_.get_center()
     assert(movingCenter is not None) #since movingValueAtPos is not None, movingCenter cannot be None
@@ -1377,15 +1372,15 @@ class FMPosInterpolateOp:
       interpolationDistance = min(interpolationDistance, abs(deltaFC))
     deltaPos = abs(deltaPos)
     if deltaPos == 0.0 or deltaPos > interpolationDistance:
-      logger.debug("{}: {}, f:{: .3f}".format(self, "deltaPos == 0.0" if deltaPos == 0.0 else "deltaPos > interpolationDistance" if deltaPos > interpolationDistance else "unknown", fixedValueAtPos))
+      #logger.debug("{}: {}, f:{: .3f}".format(self, "deltaPos == 0.0" if deltaPos == 0.0 else "deltaPos > interpolationDistance" if deltaPos > interpolationDistance else "unknown", fixedValueAtPos))
       return fixedValueAtPos
     fixedSlope, movingSlope = abs(fixedValueAtPos-fixedValueAtMovingCenter)/deltaPos, abs(movingValueAtPos-fixedValueAtMovingCenter)/deltaPos
     if fixedSlope < movingSlope:
-      logger.debug("{}: fixedSlope < movingSlope, f:{: .3f}".format(self, fixedValueAtPos))
+      #logger.debug("{}: fixedSlope < movingSlope, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     distanceFraction = (deltaPos / interpolationDistance)**self.factor_
     value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
-    logger.debug("{}: pos:{: .3f}, f:{: .3f}, m:{: .3f}, interpolated:{: .3f}".format(self, pos, fixedValueAtPos, movingValueAtPos, value))
+    #logger.debug("{}: pos:{: .3f}, f:{: .3f}, m:{: .3f}, interpolated:{: .3f}".format(self, pos, fixedValueAtPos, movingValueAtPos, value))
     return value
 
   def calc_pos(self, value):
@@ -1394,20 +1389,20 @@ class FMPosInterpolateOp:
     for c in xrange(100):
       m = 0.5*b + 0.5*e
       v = self.calc_value(m)
-      logger.debug("{}: target:{: .3f}, v:{: .3f}, b:{: .3f}, m:{: .3f}, e:{: .3f}".format(self, value, v, b, m, e))
+      #logger.debug("{}: target:{: .3f}, v:{: .3f}, b:{: .3f}, m:{: .3f}, e:{: .3f}".format(self, value, v, b, m, e))
       if abs(v - value) < self.eps_: break
       elif v < value: b = m
       else: e = m
-    logger.debug("{}: value:{: .3f}, result:{: .3f}".format(self, value, m))
+    #logger.debug("{}: value:{: .3f}, result:{: .3f}".format(self, value, m))
     return m
 
   def reset(self):
     #TODO Temp
     if False:
-      logger.debug("{}: mp center: {}".format(self, self.mp_.get_center()))
+      #logger.debug("{}: mp center: {}".format(self, self.mp_.get_center()))
       p = self.posLimits_[0]
       while p < self.posLimits_[1]:
-        logger.debug("{}: p:{: .3f} v:{: .3f}".format(self, p, self.calc_value(p)))
+        #logger.debug("{}: p:{: .3f} v:{: .3f}".format(self, p, self.calc_value(p)))
         p += 0.1
 
   def __init__(self, fp, mp, interpolationDistance, factor, posLimits, eps):
@@ -1469,10 +1464,10 @@ class SwallowDevices:
   def set_mode_(self, mode):
     for d in self.devices_:
       try:
-        logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
+        #logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
         d.swallow(mode)
       except IOError as e:
-        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+        #logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
         continue
 
 
@@ -1581,13 +1576,13 @@ class JoystickSnapManager:
     self.snaps_[i] = [[p[0], p[1]] for p in l]
 
   def update_snap(self, i):
-    logger.debug("update_snap({})".format(i))
+    #logger.debug("update_snap({})".format(i))
     snap = self.snaps_[i]
     for j in xrange(len(snap)):
       snap[j][1] = self.joystick_.get_axis(snap[j][0])
        
   def snap_to(self, i):
-    logger.debug("snap_to({})".format(i))
+    #logger.debug("snap_to({})".format(i))
     snap = self.snaps_[i]
     for p in snap:
       self.joystick_.move_axis(p[0], p[1], self.relative_)
@@ -1602,7 +1597,7 @@ class AxisSnapManager:
     self.snaps_[i] = [[p[0], p[1]] for p in l]
 
   def update_snap(self, i):
-    logger.debug("{}: updating snap {}".format(self, i))
+    #logger.debug("{}: updating snap {}".format(self, i))
     snap = self.snaps_.get(i, None)
     if snap is None:
       logger.debug("{}: no snap {}".format(self, i))
@@ -1611,7 +1606,7 @@ class AxisSnapManager:
         p[1] = p[0].get()
        
   def snap_to(self, i):
-    logger.debug("{}: snapping to {}".format(self, i))
+    #logger.debug("{}: snapping to {}".format(self, i))
     snap = self.snaps_.get(i, None)
     if snap is None:
       logger.debug("{}: no snap {}".format(self, i))
@@ -2200,7 +2195,7 @@ curveMakers = make_curve_makers()
 initState = False
 
 def init_main_sink(settings, make_next):
-  logger.debug("init_main_sink()")
+  #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
   config = settings["config"]
 
@@ -2412,7 +2407,7 @@ def init_base_head(curves, snaps):
   headBindSink.add(ED3.parse("init(1)"), SetMode(headModeSink, 0), 0)
 
   if 0 in curves:
-    logger.debug("Init mode 0")
+    #logger.debug("Init mode 0")
     cs = curves[0]["curves"]["head"]
     ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_RX, None)), 0)
@@ -2425,7 +2420,7 @@ def init_base_head(curves, snaps):
     headModeSink.add(0, ss)
 
   if 1 in curves:
-    logger.debug("Init mode 1")
+    #logger.debug("Init mode 1")
     cs = curves[1]["curves"]["head"]
     ss = BindSink(cmpOp)
     ss.add(ED3.parse("move(mouse.REL_X)"), MoveCurve(cs.get(codes.ABS_X, None)), 0)
@@ -2477,7 +2472,7 @@ def init_layout_base(settings):
   if "primary" in curves:
     cj = curves["primary"]
     if 0 in cj:
-      logger.debug("Init mode 0")
+      #logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2492,7 +2487,7 @@ def init_layout_base(settings):
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
-      logger.debug("Init mode 1")
+      #logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2506,7 +2501,7 @@ def init_layout_base(settings):
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
-      logger.debug("Init mode 2")
+      #logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2575,7 +2570,7 @@ def init_layout_base3(settings):
   if "primary" in curves:
     cj = curves["primary"]
     if 0 in cj:
-      logger.debug("Init mode 0")
+      #logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2595,7 +2590,7 @@ def init_layout_base3(settings):
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
-      logger.debug("Init mode 1")
+      #logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2614,7 +2609,7 @@ def init_layout_base3(settings):
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
-      logger.debug("Init mode 2")
+      #logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2675,7 +2670,7 @@ def init_layout_base4(settings):
   if "primary" in curves:
     cj = curves["primary"]
     if 0 in cj:
-      logger.debug("Init mode 0")
+      #logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2690,7 +2685,7 @@ def init_layout_base4(settings):
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
-      logger.debug("Init mode 1")
+      #logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2705,7 +2700,7 @@ def init_layout_base4(settings):
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
-      logger.debug("Init mode 2")
+      #logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2772,7 +2767,7 @@ def init_layout_base41(settings):
   if "primary" in curves:
     cj = curves["primary"]
     if 0 in cj:
-      logger.debug("Init mode 0")
+      #logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2787,7 +2782,7 @@ def init_layout_base41(settings):
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
-      logger.debug("Init mode 1")
+      #logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2804,7 +2799,7 @@ def init_layout_base41(settings):
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
-      logger.debug("Init mode 2")
+      #logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2871,7 +2866,7 @@ def init_layout_base42(settings):
   if "primary" in curves:
     cj = curves["primary"]
     if 0 in cj:
-      logger.debug("Init mode 0")
+      #logger.debug("Init mode 0")
       cs = cj[0]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2886,7 +2881,7 @@ def init_layout_base42(settings):
       joystickModeSink.add(0, ss)
 
     if 1 in cj:
-      logger.debug("Init mode 1")
+      #logger.debug("Init mode 1")
       cs = cj[1]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2901,7 +2896,7 @@ def init_layout_base42(settings):
       joystickModeSink.add(1, ss)
 
     if 2 in cj:
-      logger.debug("Init mode 2")
+      #logger.debug("Init mode 2")
       cs = cj[2]["curves"]["joystick"]
 
       ss = BindSink(cmpOp)
@@ -2965,7 +2960,7 @@ def init_layout_descent(settings):
   joystickSink.add(ED3.parse("init(1)"), jmm.make_clear(), 0)
 
   if 0 in curves:
-    logger.debug("Init mode 0")
+    #logger.debug("Init mode 0")
     cs = curves[0]["curves"]["joystick"]
 
     ss = BindSink(cmpOp)
@@ -2979,7 +2974,7 @@ def init_layout_descent(settings):
     joystickModeSink.add(0, ss)
 
   if 1 in curves:
-    logger.debug("Init mode 1")
+    #logger.debug("Init mode 1")
     cs = curves[1]["curves"]["joystick"]
 
     ss = BindSink(cmpOp)
@@ -2993,7 +2988,7 @@ def init_layout_descent(settings):
     joystickModeSink.add(1, ss)
 
   if 2 in curves:
-    logger.debug("Init mode 2")
+    #logger.debug("Init mode 2")
     cs = curves[2]["curves"]["joystick"]
 
     ss = BindSink(cmpOp)
@@ -3038,7 +3033,7 @@ def init_layout_config(settings):
         oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
         event.modifiers = modifiers
         try:
-          logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
+          #logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
           modifierSink(event)
           if event.type == EV_BCAST and event.code == BC_INIT and event.value == 0:
             modifierSink.clear()
@@ -3239,7 +3234,7 @@ def init_layout_config(settings):
         parsers["setKeyState"] = parseSetKeyState
 
         def parseResetCurves(cfg, state):
-          logger.debug("collected curves: {}".format(state["curves"]))
+          #logger.debug("collected curves: {}".format(state["curves"]))
           allCurves = state.get("curves", None)
           if allCurves is None:
             raise Exception("No curves were initialized")
@@ -3249,7 +3244,7 @@ def init_layout_config(settings):
             if curves is None:
               raise Exception("Curves for {} were not initialized".format(fullAxisName))
             curvesToReset += curves
-          logger.debug("selected curves: {}".format(curves))
+          #logger.debug("selected curves: {}".format(curves))
           return ResetCurves(curvesToReset)
         parsers["resetCurves"] = parseResetCurves
 
@@ -3294,7 +3289,7 @@ def init_layout_config(settings):
     bindingSink = BindSink(cmpOp)
     state["curves"] = {}
     binds = cfg.get("binds", ())
-    logger.debug("binds: {}".format(binds))
+    #logger.debug("binds: {}".format(binds))
     for bind in binds:
       i,o = parseBind(bind, state)
       bindingSink.add(i, o, 0)
@@ -3310,7 +3305,7 @@ def init_layout_config(settings):
     presetCfg = presets[presetName]
     presetSink = parsers[presetCfg["type"]](presetCfg, state)
     def presetWrapper(event):
-      logger.debug("presetWrapper(): passing event {} to {}".format(event, presetSink))
+      #logger.debug("presetWrapper(): passing event {} to {}".format(event, presetSink))
       return presetSink(event)
     return presetWrapper
   parsers["preset"] = parsePreset
