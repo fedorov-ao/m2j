@@ -346,6 +346,9 @@ class ModifierSink:
     self.next_ = next
     return next
 
+  def clear(self):
+    self.m_ = []
+
   def __init__(self, next = None, modifiers = None):
     self.m_, self.next_, self.modifiers_ = [], next, modifiers
 
@@ -3036,6 +3039,8 @@ def init_layout_config(settings):
         try:
           logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
           modifierSink(event)
+          if event.type == EV_BCAST and event.code == BC_INIT and event.value == 0:
+            modifierSink.clear()
         except:
           raise
         finally:
