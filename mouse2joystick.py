@@ -156,6 +156,14 @@ def run():
     except ConfigError as e:
       logger.error("Cannot initialize: {}".format(e))
 
+  def unswallow_inputs(settings):
+    for i in settings["inputs"].values():
+      try:
+        i.swallow(False)
+      except IOError as e:
+        logger.debug("got IOError ({}), but that was expected".format(e))
+        continue
+
   def run2(settings):
     oldUpdated = [o for o in settings["updated"]]
     init_source(settings)
@@ -205,6 +213,7 @@ def run():
         r = run2(settings)
       except ReloadException:
         logger.info("Reloading")
+        unswallow_inputs(settings)
 
   except KeyboardInterrupt:
     logger.info("Exiting")
