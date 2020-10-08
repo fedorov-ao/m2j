@@ -339,7 +339,8 @@ class ModifierSink:
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
       event.modifiers = self.m_ 
-      self.next_(event)
+
+    self.next_(event)
 
   def set_next(self, next):
     self.next_ = next
