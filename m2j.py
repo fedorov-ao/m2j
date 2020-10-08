@@ -2978,6 +2978,30 @@ def get_event_type(i):
 def init_layout_config(settings):
   parsers = {}
 
+  def parseModifiers_(sink, cfg, state):
+    if "modifiers" in cfg:
+      modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+      modifierSink = ModifierSink(next=sink, modifiers=modifiers)
+      #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
+      def wrapper(event):
+        oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
+        event.modifiers = modifiers
+        try:
+          modifierSink(event)
+        except:
+          raise
+        finally:
+          if oldModifiers is not None: event.modifiers = oldModifiers
+      return wrapper
+    else:
+      return sink
+
+  def parseModifiers(cfg, state):
+    nextCfg = cfg["next"]
+    nextSink = parsers[nextCfg["type"]](nextCfg, state)
+    return parseModifiers_(nextSink, cfg, state)
+  parsers["modifiers"] = parseModifiers
+
   def parseSens_(sink, cfg, state):
     if "sens" in cfg:
       sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_full_name(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
@@ -2994,6 +3018,11 @@ def init_layout_config(settings):
     return parseSens_(nextSink, cfg, state)
   parsers["sens"] = parseSens
 
+  def parseExtra_(sink, cfg, state):
+    for f in (parseSens_, parseModifiers_):
+      sink = f(sink, cfg, state)
+    return sink
+
   def parseMode(cfg, state):
     modeSink = ModeSink()
     if "modes" in cfg:
@@ -3006,7 +3035,7 @@ def init_layout_config(settings):
     state["msmm"] = msmm
     bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), modeSink, 1)
-    return parseSens_(bindingSink, cfg, state)
+    return parseExtra_(bindingSink, cfg, state)
   parsers["mode"] = parseMode
 
   def parseState(cfg, state):
@@ -3018,7 +3047,7 @@ def init_layout_config(settings):
     state["sink"] = sink
     bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), sink, 1)
-    return parseSens_(bindingSink, cfg, state)
+    return parseExtra_(bindingSink, cfg, state)
   parsers["state"] = parseState
 
   def parseBinding_(cfg, state):
@@ -3210,7 +3239,7 @@ def init_layout_config(settings):
     return bindingSink
 
   def parseBinding(cfg, state):
-    return parseSens_(parseBinding_(cfg, state), cfg, state)
+    return parseExtra_(parseBinding_(cfg, state), cfg, state)
   parsers["bind"] = parseBinding
 
   config = settings["config"]
