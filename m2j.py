@@ -2233,7 +2233,7 @@ def init_main_sink(settings, make_next):
 def init_log_initial(level=logging.INFO, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(message)s"):
   root = logging.getLogger()
   root.setLevel(level)
-  handler.setLevel(level)
+  handler.setLevel(logging.NOTSET)
   handler.setFormatter(logging.Formatter(fmt))
   root.addHandler(handler)
 
