@@ -1453,15 +1453,23 @@ class DeviceGrabberSink:
 
 class SwallowDevices:
   def __call__(self, event):
-    for d in self.devices_:
-      try:
-        d.swallow(self.mode_)
-      except IOError as e:
-        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
-        continue
+    self.set_mode_(self.mode_)
 
   def __init__(self, devices, mode):
     self.mode_, self.devices_ = mode, devices
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
+
+  def set_mode_(self, mode):
+    for d in self.devices_:
+      try:
+        logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
+        d.swallow(mode)
+      except IOError as e:
+        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+        continue
 
 
 class Opentrack:
@@ -2221,8 +2229,8 @@ def init_main_sink(settings, make_next):
   try:
     grabSink.add(ED.any(), make_next(settings), 1)
     global initState
-    logger.info("Initialization successfull")
     stateSink.set_state(initState)
+    logger.info("Initialization successfull")
   except Exception as e:
     logger.error("Failed to initialize ({}: {})".format(type(e), e))
     traceback.print_tb(sys.exc_info()[2])
