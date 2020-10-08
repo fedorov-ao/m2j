@@ -2281,6 +2281,8 @@ def init_config(configFilesNames):
         merge_dicts(cfg, json.load(f))
     except ValueError as e:
       raise ConfigError(configName, e)
+    except IOError as e:
+      raise ConfigError(configName, e)
   return cfg
                               
 

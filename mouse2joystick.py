@@ -210,10 +210,10 @@ def run():
     logger.info("Exiting")
     return 0
   except ConfigError as e:
-    logger.error("Cannot initialize: {}".format(e))
+    logger.error("Config error: {}".format(e))
     return 1
   except Exception as e:
-    logger.error(e)
+    logger.error("Exception: {} ({})".format(type(e), e))
     return 1
 
 
