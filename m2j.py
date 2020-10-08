@@ -265,11 +265,10 @@ def MoveAxis(axis, value, relative=False):
 
 
 def MoveAxes(axesAndValues):
-  def op(event):
+  def moveAxesOp(event):
     for axis,value,relative in axesAndValues:
-      if axis is not None: 
-        axis.move(value, relative) 
-  return op
+      axis.move(value, relative) 
+  return moveAxesOp
 
 
 def SetButtonState(joystick, button, state):
@@ -339,7 +338,9 @@ class ModifierSink:
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
       event.modifiers = self.m_ 
-      self.next_(event)
+
+    logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
+    self.next_(event)
 
   def set_next(self, next):
     self.next_ = next
@@ -381,6 +382,7 @@ class ScaleSink2:
 
 class BindSink:
   def __call__(self, event):
+    logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
       self.dirty_ = False
@@ -675,7 +677,7 @@ def split_full_name_code(s, sep="."):
 
 class StateSink:
  def __call__(self, event):
-   logger.debug("{}: got event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+   logger.debug("{}: passing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if (self.state_ == True) and (self.next_ is not None):
      self.next_(event)
 
@@ -983,6 +985,7 @@ class ReportingAxis:
 
 class SecondOrderAxis:
   def move(self, v, relative):
+    logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
     self.v_ = clamp(self.v_+v if relative is True else v, self.limits_[0], self.limits_[1])
 
   def get(self):
@@ -2947,16 +2950,17 @@ def init_layout_config(settings):
       modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
       modifierSink = ModifierSink(next=sink, modifiers=modifiers)
       #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
-      def wrapper(event):
+      def parseModifiersWrapper(event):
         oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
         event.modifiers = modifiers
         try:
+          logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
           modifierSink(event)
         except:
           raise
         finally:
           if oldModifiers is not None: event.modifiers = oldModifiers
-      return wrapper
+      return parseModifiersWrapper
     else:
       return sink
 
@@ -3219,7 +3223,10 @@ def init_layout_config(settings):
     presetName = cfg["name"]
     presetCfg = presets[presetName]
     presetSink = parsers[presetCfg["type"]](presetCfg, state)
-    return parseExtra_(presetSink, cfg, state)
+    def presetWrapper(event):
+      logger.debug("presetWrapper(): passing event {} to {}".format(event, presetSink))
+      return presetSink(event)
+    return presetWrapper
   parsers["preset"] = parsePreset
 
   config = settings["config"]
