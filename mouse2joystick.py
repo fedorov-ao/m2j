@@ -67,6 +67,7 @@ class EvdevJoystick:
       return
     v = clamp(v, -1.0, 1.0)
     self.coords[axis] = v
+    logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
     self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.limit))
     self.js.syn()
 
@@ -91,7 +92,9 @@ def translate_evdev_event(evdevEvent, source):
 class EvdevDevice:
   def read_one(self):
     assert(self.dev_)
-    return translate_evdev_event(self.dev_.read_one(), self.source_)
+    event = translate_evdev_event(self.dev_.read_one(), self.source_)
+    logger.debug("{}: read event: {}".format(self, event))
+    return event
 
   def swallow(self, s):
     if s:
