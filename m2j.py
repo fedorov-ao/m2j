@@ -2259,6 +2259,7 @@ def init_config2(settings):
 
 def add_scale_sink(sink, cfg):
   if "sens" in cfg:
+    #FIXME Have to convert cfg["sens"]
     sensSink = ScaleSink2(cfg["sens"], lambda event : ((event.source, event.code), (None, event.code)))
     sensSink.set_next(sink)
     return sensSink 
@@ -2967,11 +2968,20 @@ def init_layout_config(settings):
 
   def parseSens_(sink, cfg, state):
     if "sens" in cfg:
-      sens = {(inputName[0], codesDict[inputName[1]]):value for inputName,value in ((split_full_name(fullAxisName), value)  for fullAxisName,value in cfg["sens"].items())}
+      sens = {split_full_name_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
       keyOp = lambda event : ((event.source, event.code), (None, event.code))
       scaleSink = ScaleSink2(sens, keyOp)
       scaleSink.set_next(sink)
-      return scaleSink
+      def wrapper(event):
+        oldValue = event.value
+        try:
+          scaleSink(event)
+          print oldValue, event.value
+        except:
+          raise
+        finally:
+          event.value = oldValue
+      return wrapper
     else:
       return sink
 
