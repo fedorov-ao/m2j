@@ -328,11 +328,14 @@ class ClickSink:
 class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
-      if event.code in self.modifiers_:
-        if event.value == 1 and event.code not in self.m_:
-          self.m_.append(event.code)
-        elif event.value == 0 and event.code in self.m_:
-          self.m_.remove(event.code)
+      p = (event.source, event.code)
+      if self.modifiers_ is not None: 
+        for m in self.modifiers_:
+          if p == m or (m[0] is None and p[1] == m[1]):
+            if event.value == 1 and p not in self.m_:
+              self.m_.append(p)
+            elif event.value == 0 and p in self.m_:
+              self.m_.remove(p)
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
       event.modifiers = self.m_ 
@@ -343,31 +346,7 @@ class ModifierSink:
     return next
 
   def __init__(self, next = None, modifiers = None):
-    defmod = (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
-    self.m_, self.next_, self.modifiers_ = [], next, defmod if modifiers is None else modifiers
-
-
-class ModifierSink2:
-  def __call__(self, event):
-    if event.type == codes.EV_KEY:
-      p = (event.source, event.code)
-      if p in self.modifiers_:
-        if event.value == 1 and p not in self.m_:
-          self.m_.append(p)
-        elif event.value == 0 and p in self.m_:
-          self.m_.remove(p)
-
-    if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
-      event.modifiers = self.m_ 
-      self.next_(event)
-
-  def set_next(self, next):
-    self.next_ = next
-    return next
-
-  def __init__(self, next = None, source = None, modifiers = None):
-    defMod = [codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT]
-    self.m_, self.next_, self.modifiers_ = [], next, [(source,m) for m in defMod] if modifiers is None else modifiers
+    self.m_, self.next_, self.modifiers_ = [], next, modifiers
 
 
 class ScaleSink:
@@ -2211,7 +2190,12 @@ def init_main_sink(settings, make_next):
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
-  modifierSink = clickSink.set_next(ModifierSink2(source="keyboard"))
+  defaultModifiers = [ (None, m) for m in 
+    (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
+  ]
+  modifiers = config.get("modifiers", None)
+  modifiers = [split_full_name_code(m) for m in modifiers] if modifiers is not None else defaultModifiers
+  modifierSink = clickSink.set_next(ModifierSink(modifiers=modifiers))
 
   sens = config.get("sens", None)
   if sens is not None:
