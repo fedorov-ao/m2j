@@ -2259,7 +2259,7 @@ def init_config2(settings):
 
 def add_scale_sink(sink, cfg):
   if "sens" in cfg:
-    #FIXME Have to convert cfg["sens"]
+    #cfg["sens"] is already in form {(e.source, e.code) : value}
     sensSink = ScaleSink2(cfg["sens"], lambda event : ((event.source, event.code), (None, event.code)))
     sensSink.set_next(sink)
     return sensSink 
@@ -2976,7 +2976,6 @@ def init_layout_config(settings):
         oldValue = event.value
         try:
           scaleSink(event)
-          print oldValue, event.value
         except:
           raise
         finally:
