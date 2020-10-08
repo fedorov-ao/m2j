@@ -3214,6 +3214,14 @@ def init_layout_config(settings):
     return parseExtra_(parseBinding_(cfg, state), cfg, state)
   parsers["bind"] = parseBinding
 
+  def parsePreset(cfg, state):
+    presets = state["settings"]["config"]["presets"]
+    presetName = cfg["name"]
+    presetCfg = presets[presetName]
+    presetSink = parsers[presetCfg["type"]](presetCfg, state)
+    return parseExtra_(presetSink, cfg, state)
+  parsers["preset"] = parsePreset
+
   config = settings["config"]
   layoutName = config["configCurves"]
   logger.info("Using '{}' layout from config".format(layoutName))
