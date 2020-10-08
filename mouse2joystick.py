@@ -127,29 +127,41 @@ def parseEvdevJoystickOutput(cfg, state):
 
   
 def run():
-  def init_joysticks(settings):
+  def init_outputs(settings):
     nameParser = lambda key,state : key
     outputParser = parsers["output"]
     outputParser.add("evdev", parseEvdevJoystickOutput)
     settings["outputs"] = DictParser(keyParser=nameParser, valueParser=outputParser)(settings["config"]["outputs"], {"settings" : settings})
 
+  def init_source(settings):
+    try:
+      init_config2(settings)
+      config = settings["config"]
+
+      settings["inputs"] = find_devices(config["inputs"])
+
+      initializer = layout_initializers.get(config["layout"], None)
+      if not initializer:
+        raise Exception("Initialiser for '{}' not found".format(config["layout"]))
+      else:
+        logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
+
+      sink = init_main_sink(settings, initializer)
+      updated = settings.get("updated", [])
+
+      step = 0.01
+      settings["source"] = EventSource(settings["inputs"].values(), sink, step)
+    except Exception as e:
+      logger.error("Cannot initialize: {}".format(e))
+    except ConfigError as e:
+      logger.error("Cannot initialize: {}".format(e))
+
   def run2(settings):
-    init_config2(settings)
-    config = settings["config"]
-
-    settings["inputs"] = find_devices(config["inputs"])
-
-    initializer = layout_initializers.get(config["layout"], None)
-    if not initializer:
-      raise Exception("Initialiser for '{}' not found".format(config["layout"]))
-    else:
-      logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
     oldUpdated = [o for o in settings["updated"]]
-    sink = init_main_sink(settings, initializer)
-
-    step = 0.01
-    source = EventSource(settings["inputs"].values(), sink, step)
-
+    init_source(settings)
+    source = settings.get("source", None)
+    if source is None:
+      raise Exception("Have no valid working state")
     updated = settings.get("updated", [])
     t = time.time()
     try:
@@ -159,44 +171,50 @@ def run():
         t = time.time()
         for u in updated: 
           u(tick)
-    except ReloadException:
-      return -1
-    except KeyboardInterrupt:
-      return 0
     finally:
       settings["updated"] = oldUpdated
 
-  settings = {"options" : {}, "configNames" : [], "updated" : []}
-  options = {}
-  settings["options"] = options
+  init_log_initial()
+  try:
+    settings = {"options" : {}, "configNames" : [], "updated" : []}
+    options = {}
+    settings["options"] = options
 
-  opts, args = getopt.getopt(sys.argv[1:], "pl:c:f:o:n:", ["print", "layout=", "curves=", "configCurves=", "logLevel=", "config="])
-  for o, a in opts:
-    if o in ("-p", "--print"):
-      print_devices()
-      return 0
-    if o in ("-l", "--layout"):
-      options["layout"] = a
-    elif o in ("-c", "--curves"):
-      options["curves"] = a
-    elif o in ("-f", "--configCurves"):
-      options["configCurves"] = a
-    elif o in ("-o", "--logLevel"):
-      options["logLevel"] = a
-    elif o in ("-n", "--config"):
-      settings["configNames"].append(a)
+    opts, args = getopt.getopt(sys.argv[1:], "pl:c:f:o:n:", ["print", "layout=", "curves=", "configCurves=", "logLevel=", "config="])
+    for o, a in opts:
+      if o in ("-p", "--print"):
+        print_devices()
+        return 0
+      if o in ("-l", "--layout"):
+        options["layout"] = a
+      elif o in ("-c", "--curves"):
+        options["curves"] = a
+      elif o in ("-f", "--configCurves"):
+        options["configCurves"] = a
+      elif o in ("-o", "--logLevel"):
+        options["logLevel"] = a
+      elif o in ("-n", "--config"):
+        settings["configNames"].append(a)
 
-  init_config2(settings)
-  init_log(settings)
-  init_joysticks(settings)
+    init_config2(settings)
+    set_log_level(settings)
+    init_outputs(settings)
 
-  while (True):
-    r = run2(settings)
-    if r == -1: 
-      logger.info("Reloading")
-    else:
-      logger.info("Exiting with code {}".format(r))
-      return r
+    while (True):
+      try:
+        r = run2(settings)
+      except ReloadException:
+        logger.info("Reloading")
+
+  except KeyboardInterrupt:
+    logger.info("Exiting")
+    return 0
+  except ConfigError as e:
+    logger.error("Config error: {}".format(e))
+    return 1
+  except Exception as e:
+    logger.error("Exception: {} ({})".format(type(e), e))
+    return 1
 
 
 def print_tech_data():
@@ -221,8 +239,6 @@ if __name__ == "__main__":
   try:
     exit(run())
   except Exception as e:
-    print("Exception: {} ({})".format(type(e), e))
+    print("Uncaught exception: {} ({})".format(type(e), e))
     print(traceback.print_tb(sys.exc_info()[2]))
     exit(2)
-  except KeyboardInterrupt:
-    exit(0)

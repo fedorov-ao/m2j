@@ -1453,15 +1453,23 @@ class DeviceGrabberSink:
 
 class SwallowDevices:
   def __call__(self, event):
-    for d in self.devices_:
-      try:
-        d.swallow(self.mode_)
-      except IOError as e:
-        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
-        continue
+    self.set_mode_(self.mode_)
 
   def __init__(self, devices, mode):
     self.mode_, self.devices_ = mode, devices
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
+
+  def set_mode_(self, mode):
+    for d in self.devices_:
+      try:
+        logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
+        d.swallow(mode)
+      except IOError as e:
+        logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+        continue
 
 
 class Opentrack:
@@ -2258,8 +2266,8 @@ def init_main_sink(settings, make_next):
   try:
     grabSink.add(ED.any(), make_next(settings), 1)
     global initState
-    logger.info("Initialization successfull")
     stateSink.set_state(initState)
+    logger.info("Initialization successfull")
   except Exception as e:
     logger.error("Failed to initialize ({}: {})".format(type(e), e))
     traceback.print_tb(sys.exc_info()[2])
@@ -2267,6 +2275,27 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
+def init_log_initial(level=logging.INFO, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(message)s"):
+  root = logging.getLogger()
+  root.setLevel(level)
+  handler.setLevel(logging.NOTSET)
+  handler.setFormatter(logging.Formatter(fmt))
+  root.addHandler(handler)
+
+
+def set_log_level(settings):
+  levelName = settings["config"]["logLevel"].upper()
+  nameToLevel = {
+    logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
+  }
+
+  print("Setting log level to {}".format(levelName))
+  level = nameToLevel.get(levelName, logging.NOTSET)
+  root = logging.getLogger()
+  root.setLevel(level)
+
+
+#TODO Remove?
 def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   logLevelName = settings["config"]["logLevel"].upper()
   nameToLevel = {
@@ -2282,19 +2311,33 @@ def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   root.addHandler(handler)
 
 
+class ConfigError:
+  def __init__(self, configName, e):
+    self.configName_, self.e_ = configName, e
+  def __str__(self):
+    return "Cannot parse config file {} ({})".format(self.configName_, self.e_)
+
+
 def init_config(configFilesNames):
   cfg = {}
   for configName in configFilesNames:
-    with open(configName, "r") as f:
-      merge_dicts(cfg, json.load(f))
+    try:
+      with open(configName, "r") as f:
+        merge_dicts(cfg, json.load(f))
+    except ValueError as e:
+      raise ConfigError(configName, e)
+    except IOError as e:
+      raise ConfigError(configName, e)
   return cfg
                               
 
 def init_config2(settings):
+  config = settings["options"]
   if "configNames" in settings:
-    settings["config"] = {}
-    merge_dicts(settings["config"], init_config(settings["configNames"]))
-    merge_dicts(settings["config"], settings["options"])
+    externalConfig = init_config(settings["configNames"])
+    merge_dicts(externalConfig, config)
+    config = externalConfig
+  settings["config"] = config
 
 
 def add_scale_sink(sink, cfg):
