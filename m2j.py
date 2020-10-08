@@ -136,6 +136,7 @@ class EventSource:
         event = d.read_one()
     events.sort(key = lambda e : e.timestamp)
     for event in events:
+      logger.debug("{}: Sending event: {}".format(self, event))
       self.sink_(event)
     if sleep:
       t = time.time() - t
