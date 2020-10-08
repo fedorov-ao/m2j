@@ -2230,6 +2230,27 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
+def init_log_initial(level=logging.INFO, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(message)s"):
+  root = logging.getLogger()
+  root.setLevel(level)
+  handler.setLevel(level)
+  handler.setFormatter(logging.Formatter(fmt))
+  root.addHandler(handler)
+
+
+def set_log_level(settings):
+  levelName = settings["config"]["logLevel"].upper()
+  nameToLevel = {
+    logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
+  }
+
+  print("Setting log level to {}".format(levelName))
+  level = nameToLevel.get(levelName, logging.NOTSET)
+  root = logging.getLogger()
+  root.setLevel(level)
+
+
+#TODO Remove?
 def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   logLevelName = settings["config"]["logLevel"].upper()
   nameToLevel = {
@@ -2245,19 +2266,31 @@ def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
   root.addHandler(handler)
 
 
+class ConfigError:
+  def __init__(self, configName, e):
+    self.configName_, self.e_ = configName, e
+  def __str__(self):
+    return "Cannot parse config file {} ({})".format(self.configName_, self.e_)
+
+
 def init_config(configFilesNames):
   cfg = {}
   for configName in configFilesNames:
-    with open(configName, "r") as f:
-      merge_dicts(cfg, json.load(f))
+    try:
+      with open(configName, "r") as f:
+        merge_dicts(cfg, json.load(f))
+    except ValueError as e:
+      raise ConfigError(configName, e)
   return cfg
                               
 
 def init_config2(settings):
+  config = settings["options"]
   if "configNames" in settings:
-    settings["config"] = {}
-    merge_dicts(settings["config"], init_config(settings["configNames"]))
-    merge_dicts(settings["config"], settings["options"])
+    externalConfig = init_config(settings["configNames"])
+    merge_dicts(externalConfig, config)
+    config = externalConfig
+  settings["config"] = config
 
 
 def add_scale_sink(sink, cfg):
