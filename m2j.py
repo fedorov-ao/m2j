@@ -395,7 +395,7 @@ class ScaleSink2:
 
 class BindSink:
   def __call__(self, event):
-    ##logger.debug("{}: processing {})".format(self, event))
+    #logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
       self.dirty_ = False
@@ -422,9 +422,9 @@ class BindSink:
       else:
         #logger.debug("{}: {} matched".format(self, c[0]))
         if c[2] is not None: 
-          ##logger.debug("Processing event {}".format(str(event)))
+          #logger.debug("Processing event {}".format(str(event)))
           for cc in c[2]:
-            ##logger.debug("Sending event {} to {}".format(str(event), cc))
+            #logger.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
     return processed
 
@@ -490,7 +490,6 @@ class CmpWithModifiers:
           if not r: break
     else:
       r = eventValue == attrValue
-    #print eventValue, attrValue, r
     return r
 
 
