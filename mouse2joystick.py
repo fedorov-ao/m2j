@@ -216,6 +216,14 @@ def run():
         r = run2(settings)
       except ReloadException:
         logger.info("Reloading")
+      except KeyboardInterrupt:
+        raise
+      except Exception as e:
+        logger.error("Exception while running: {} ({})".format(type(e), e))
+        for l in traceback.format_exc().splitlines()[-11:]:
+          logger.error(l)
+        continue
+      finally:
         unswallow_inputs(settings)
 
   except KeyboardInterrupt:
@@ -223,9 +231,6 @@ def run():
     return 0
   except ConfigError as e:
     logger.error("Config error: {}".format(e))
-    return 1
-  except Exception as e:
-    logger.error("Exception: {} ({})".format(type(e), e))
     return 1
 
 
@@ -251,6 +256,7 @@ if __name__ == "__main__":
   try:
     exit(run())
   except Exception as e:
-    print("Uncaught exception: {} ({})".format(type(e), e))
-    print(traceback.print_tb(sys.exc_info()[2]))
+    print "Uncaught exception: {} ({})".format(type(e), e)
+    for l in traceback.format_exc().splitlines()[-11:]:
+      print l
     exit(2)

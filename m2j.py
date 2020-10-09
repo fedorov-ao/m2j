@@ -176,12 +176,7 @@ class MoveJoystickAxis:
 class MoveCurve:
   def __call__(self, event):
     if self.curve_ is not None and event.type in (codes.EV_REL,):  
-      try:
-        self.curve_.move_by(event.value, event.timestamp)
-      except Exception as e:
-        logger.error("{}: exception in curve ({})".format(self, e))
-        traceback.print_tb(sys.exc_info()[2])
-        return False
+      self.curve_.move_by(event.value, event.timestamp)
       return True
     else:
       return False
@@ -2306,14 +2301,10 @@ def init_main_sink(settings, make_next):
       settings["updated"].append(make_update_op(speedAxis))
       allAxes[soName][axisId] = ReportingAxis(speedAxis)
 
-  try:
-    grabSink.add(ED.any(), make_next(settings), 1)
-    if "initState" not in settings: settings["initState"] = False
-    stateSink.set_state(settings["initState"])
-    logger.info("Initialization successfull")
-  except Exception as e:
-    logger.error("Failed to initialize ({}: {})".format(type(e), e))
-    traceback.print_tb(sys.exc_info()[2])
+  grabSink.add(ED.any(), make_next(settings), 1)
+  if "initState" not in settings: settings["initState"] = False
+  stateSink.set_state(settings["initState"])
+  logger.info("Initialization successfull")
       
   return clickSink
 
