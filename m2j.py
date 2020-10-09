@@ -200,28 +200,32 @@ class SetJoystickAxis:
   
   def __call__(self, event):
     self.js_.move_axis(self.axis_, self.value_, False) 
+    return True
 
 
 def SetJoystickAxes(joystick, axesAndValues):
   def op(event):
     for axis, value in axesAndValues:
       joystick.move_axis(axis, value, False) 
+    return True
   return op
 
 
 def SetCurveAxis(curve, value):
   def op(event):
     curve.get_axis().move(value, False) 
+    return True
   def noneOp(event):
-    pass
+    return False
   return op if curve is not None else noneOp
 
 
 def SetCurveAxis2(curve, value, relative=False, reset=False):
   def op(event):
     curve.move_axis(value, relative, reset)
+    return True
   def noneOp(event):
-    pass
+    return False
   return op if curve is not None else noneOp
 
 
@@ -230,6 +234,7 @@ def SetCurvesAxes(*curvesAndValues):
     for curve, value in curvesAndValues:
       if curve is not None: 
         curve.get_axis().move(value, False) 
+    return True
   return op
 
 
@@ -238,14 +243,16 @@ def SetCurvesAxes2(curvesData):
     for curve, value, relative, reset in curvesData:
       if curve is not None: 
         curve.move_axis(value, relative, reset) 
+    return True
   return op
   
   
 def ResetCurve(curve):
   def op(event):
     curve.reset()
+    return True
   def noneOp(event):
-    pass
+    return False
   return op if curve is not None else noneOp
 
 
@@ -255,6 +262,7 @@ def ResetCurves(curves):
       if curve is not None: 
         #logger.debug("Resetting curve: {}".format(curve))
         curve.reset()
+    return True
   return op
 
 
@@ -262,6 +270,7 @@ def MoveAxis(axis, value, relative=False):
   def op(event):
     if axis is not None:
       axis.move(value, relative)
+    return True
   return op 
 
 
@@ -341,7 +350,7 @@ class ModifierSink:
       event.modifiers = self.m_ 
 
     #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
-    self.next_(event)
+    return self.next_(event)
 
   def set_next(self, next):
     self.next_ = next
@@ -392,14 +401,14 @@ class BindSink:
       self.dirty_ = False
 
     if len(self.children_) == 0:
-      return
+      return False
 
     assert(self.cmp_)
     level, processed = self.children_[0][1], False
     for c in self.children_:
       if c[1] > level:
         if processed == True:
-          return
+          return True
         else:
           level = c[1]
       for attrName, attrValue in c[0]:
@@ -417,6 +426,7 @@ class BindSink:
           for cc in c[2]:
             ##logger.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
+    return processed
 
   def add(self, attrs, child, level = 0):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
@@ -706,6 +716,7 @@ class StateSink:
 def SetState(stateSink, state):
   def op(event):
     stateSink.set_state(state)
+    return True
   return op
     
     
@@ -714,6 +725,8 @@ class ModeSink:
     child = self.children_.get(self.mode_, None)
     if child is not None:
       return child(event)
+    else:
+      return False
 
   def set_mode(self, mode):
     #logger.debug("{}: Setting mode: {}".format(self, mode))
@@ -749,6 +762,8 @@ class CycleMode:
     if self.i >= len(self.modes):
       self.i = 0
     self.modeSink.set_mode(self.modes[self.i])
+    return True
+
   def __init__(self, modeSink, modes):
     self.i, self.modeSink, self.modes = 0, modeSink, modes
 
@@ -756,6 +771,8 @@ class CycleMode:
 class SetMode:
   def __call__(self, event):
     self.modeSink.set_mode(self.mode)
+    return True
+    
   def __init__(self, modeSink, mode):
     self.modeSink, self.mode = modeSink, mode
 
@@ -807,15 +824,30 @@ class ModeSinkModeManager:
     self.sink_, self.mode_ = sink, None
 
   def make_save(self):
-    return lambda event : self.save()
+    def op(event):
+      self.save()
+      return True
+    return op
   def make_restore(self):
-    return lambda event : self.restore()
+    def op(event):
+      self.restore()
+      return True
+    return op
   def make_clear(self):
-    return lambda event : self.clear()
+    def op(event):
+      self.clear()
+      return True
+    return op
   def make_set(self, mode, save):
-    return lambda event : self.set(mode, save)
+    def op(event):
+      self.set(mode, save)
+      return True
+    return op
   def make_cycle(self, modes, save):
-    return lambda event : self.cycle(modes, save)
+    def op(event):
+      self.cycle(modes, save)
+      return True
+    return op
 
   def save_(self, save):
     if save == MSMMSavePolicy.NOOP:
@@ -1432,6 +1464,7 @@ class ToggleSink:
   def __call__(self, event):
     self.sink_.set_state(not self.sink_.get_state())
     return True
+
   def __init__(self, sink):
     self.sink_ = sink
 
@@ -1453,6 +1486,7 @@ class DeviceGrabberSink:
 class SwallowDevices:
   def __call__(self, event):
     self.set_mode_(self.mode_)
+    return True
 
   def __init__(self, devices, mode):
     self.mode_, self.devices_ = mode, devices
@@ -1577,15 +1611,25 @@ class JoystickSnapManager:
 
   def update_snap(self, i):
     #logger.debug("update_snap({})".format(i))
-    snap = self.snaps_[i]
-    for j in xrange(len(snap)):
-      snap[j][1] = self.joystick_.get_axis(snap[j][0])
+    snap = self.snaps_.get(i, None)
+    if snap is None:
+      logger.debug("{}: no snap {}".format(self, i))
+      return False
+    else:
+      for j in xrange(len(snap)):
+        snap[j][1] = self.joystick_.get_axis(snap[j][0])
+      return True
        
   def snap_to(self, i):
     #logger.debug("snap_to({})".format(i))
-    snap = self.snaps_[i]
-    for p in snap:
-      self.joystick_.move_axis(p[0], p[1], self.relative_)
+    snap = self.snaps_.get(i, None)
+    if snap is None:
+      logger.debug("{}: no snap {}".format(self, i))
+      return False
+    else:
+      for p in snap:
+        self.joystick_.move_axis(p[0], p[1], self.relative_)
+      return True
 
   def __init__(self, joystick, relative):
     self.snaps_, self.joystick_, self.relative_ = dict(), joystick, relative
@@ -1601,18 +1645,22 @@ class AxisSnapManager:
     snap = self.snaps_.get(i, None)
     if snap is None:
       logger.debug("{}: no snap {}".format(self, i))
+      return False
     else:
       for p in snap:
         p[1] = p[0].get()
+      return True
        
   def snap_to(self, i):
     #logger.debug("{}: snapping to {}".format(self, i))
     snap = self.snaps_.get(i, None)
     if snap is None:
       logger.debug("{}: no snap {}".format(self, i))
+      return False
     else:
       for p in snap:
         p[0].move(p[1], False)
+      return True
 
   def has_snap(self, i):
     return i in self.snaps_
@@ -1622,13 +1670,13 @@ class AxisSnapManager:
 
 
 def SnapTo(snapManager, snap):
-  def op(e):
+  def op(event):
     return snapManager.snap_to(snap)
   return op
 
 
 def UpdateSnap(snapManager, snap):
-  def op(e):
+  def op(event):
     return snapManager.update_snap(snap)
   return op
 
