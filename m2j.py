@@ -1595,9 +1595,9 @@ def make_il2_6dof_packet(v):
     (codes.ABS_RX, -90.0),
     (codes.ABS_RY, 90.0),
     (codes.ABS_RZ, 180.0),
-    (codes.ABS_Z, 1.0),
-    (codes.ABS_X, -1.0),
-    (codes.ABS_Y, -1.0)
+    (codes.ABS_Z, 0.2),
+    (codes.ABS_X, -0.1),
+    (codes.ABS_Y, -0.1)
   )
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
@@ -1727,6 +1727,43 @@ class NodeJoystick(object):
   def __init__(self, next=None):
     self.next_ = next
 
+
+class ElasticJoystic:
+  def move_axis(self, axis, value, relative):
+    if self.next_ is not None:
+      self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
+
+  def get_axis(self, axis):
+    return self.v_[axis]
+
+  def get_limits(self, axis):
+    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+
+  def get_supported_axes(self):
+    return self.next_.get_supported_axes() if self.next_ else ()
+
+  def set_button_state(self, button, state):
+    self.next_.set_button_state(button, state)
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def update(self, tick):
+    if self.next_ is None: return
+    for axisId,value in self.v_.items():
+      current = self.next_.get_axis(axisId)
+      delta = value - current
+      if delta != 0.0:
+        if axisId in self.speed_:  
+          value = current + sign(delta)*min(abs(delta), self.speed_[axisId]*tick)
+        self.next_.move_axis(axisId, value, False)
+
+  def __init__(self, next, speed):
+    assert(next is not None)
+    self.next_, self.speed_ = next, speed
+    self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
+  
 
 class NotifyingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
@@ -3381,6 +3418,16 @@ class SelectParser:
 
 
 def make_output_parser():
+  def parseElasicOutput(parser):
+    p = weakref.ref(parser)
+    def op(cfg, state):
+      speeds = {codesDict[axisName]:value for axisName,value in cfg["speeds"].items()}
+      next = p()(cfg["next"], state)
+      j = ElasticJoystic(next, speeds)
+      state["settings"]["updated"].append(lambda tick : j.update(tick))
+      return j
+    return op
+    
   def parseCompositeOutput(parser):
     parser = weakref.ref(parser)
     def op(cfg, state):
@@ -3403,6 +3450,7 @@ def make_output_parser():
     return j
 
   outputParser = SelectParser(keyOp=lambda cfg : cfg["type"])
+  outputParser.add("elastic", parseElasicOutput(outputParser))
   outputParser.add("composite", parseCompositeOutput(outputParser))
   outputParser.add("opentrack", parseOpentrackOutput)
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
