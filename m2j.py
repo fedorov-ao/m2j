@@ -2239,8 +2239,6 @@ def make_curve_makers():
 
 curveMakers = make_curve_makers()
 
-initState = False
-
 def init_main_sink(settings, make_next):
   #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
@@ -2270,8 +2268,7 @@ def init_main_sink(settings, make_next):
   mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
 
   def rld(e):
-    global initState
-    initState = stateSink.get_state()
+    settings["initState"] = stateSink.get_state()
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
@@ -2311,8 +2308,8 @@ def init_main_sink(settings, make_next):
 
   try:
     grabSink.add(ED.any(), make_next(settings), 1)
-    global initState
-    stateSink.set_state(initState)
+    if "initState" not in settings: settings["initState"] = False
+    stateSink.set_state(settings["initState"])
     logger.info("Initialization successfull")
   except Exception as e:
     logger.error("Failed to initialize ({}: {})".format(type(e), e))
