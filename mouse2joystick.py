@@ -156,8 +156,12 @@ def run():
       settings["source"] = EventSource(settings["inputs"].values(), sink, step)
     except Exception as e:
       logger.error("Cannot initialize: {}".format(e))
+      for l in traceback.format_exc().splitlines()[-11:]:
+        logger.error(l)
     except ConfigError as e:
-      logger.error("Cannot initialize: {}".format(e))
+      logger.error("Cannot initialize due to config error: {}".format(e))
+      for l in traceback.format_exc().splitlines()[-11:]:
+        logger.error(l)
 
   def unswallow_inputs(settings):
     for i in settings["inputs"].values():
@@ -218,11 +222,6 @@ def run():
         logger.info("Reloading")
       except KeyboardInterrupt:
         raise
-      except Exception as e:
-        logger.error("Exception while running: {} ({})".format(type(e), e))
-        for l in traceback.format_exc().splitlines()[-11:]:
-          logger.error(l)
-        continue
       finally:
         unswallow_inputs(settings)
 

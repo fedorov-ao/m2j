@@ -2346,6 +2346,8 @@ def init_config(configFilesNames):
     try:
       with open(configName, "r") as f:
         merge_dicts(cfg, json.load(f))
+    except KeyError as e:
+      raise ConfigError(configName, e)
     except ValueError as e:
       raise ConfigError(configName, e)
     except IOError as e:
@@ -3340,9 +3342,16 @@ def init_layout_config(settings):
   if cfg is None:
     raise Exception("'{}' layout not found in config".format(layoutName))
   else:
-    state = {"settings" : settings}
-    r = parsers[cfg["type"]](cfg, state)
-    return r
+    try:
+      state = {"settings" : settings}
+      r = parsers[cfg["type"]](cfg, state)
+      return r
+    except KeyError as e:
+      logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, e))
+      raise
+    except Exception as e:
+      logger.error("Error while initializing config layout '{}': {}".format(layoutName, e))
+      raise
 
 layout_initializers["config"] = init_layout_config
 
