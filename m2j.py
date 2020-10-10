@@ -61,6 +61,28 @@ nameToRelativeAxis = {"x":codes.REL_X, "y":codes.REL_Y, "z":codes.ABS_Z, "wheel"
 relativeAxisToName = {p[1]:p[0] for p in nameToRelativeAxis.items()}
 
 
+def name2code(name):
+  return codesDict[name]
+
+
+def split_full_name(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', 'REL_X')
+  'REL_X' -> (None, 'REL_X')
+  """
+  i = s.find(sep)
+  return (None, s) if i == -1 else (s[:i], s[i+1:])
+
+
+def split_full_name_code(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', codes.REL_X)
+  'REL_X' -> (None, codes.REL_X)
+  """
+  r = split_full_name(s, sep)
+  return (r[0], name2code(r[1]))
+
+
 class ReloadException(Exception):
   pass
 
@@ -633,7 +655,7 @@ class ED3:
         else:
           if source != "":
             r.append(("source", source))
-          r.append(("code", codesDict[inpt]))
+          r.append(("code", name2code(inpt)))
           if action == "press":
             r += [("type", codes.EV_KEY), ("value", 1)]
           elif action == "release":
@@ -658,29 +680,11 @@ class ED3:
             source, inpt = m2.group(1), m2.group(2)
           else:
             inpt = t
-          modifiers.append((source, codesDict[inpt]))
+          modifiers.append((source, name2code(inpt)))
     if modifiers is not None:
       r.append(("modifiers", modifiers))
     #logger.debug("ED3.parse(): {} -> {}".format(s, r)) 
     return r
-
-
-def split_full_name(s, sep="."):
-  """
-  'mouse.REL_X' -> ('mouse', 'REL_X')
-  'REL_X' -> (None, 'REL_X')
-  """
-  i = s.find(sep)
-  return (None, s) if i == -1 else (s[:i], s[i+1:])
-
-
-def split_full_name_code(s, sep="."):
-  """
-  'mouse.REL_X' -> ('mouse', codes.REL_X)
-  'REL_X' -> (None, codes.REL_X)
-  """
-  r = split_full_name(s, sep)
-  return (r[0], codesDict[r[1]])
 
 
 class StateSink:
@@ -3136,7 +3140,7 @@ def init_layout_config(settings):
         def parseKey_(cfg, state, value):
           source, key = split_full_name(cfg["key"])
           eventType = get_event_type(key)
-          key = codesDict[key]
+          key = name2code(key)
           r = [("type", eventType), ("code", key), ("value", value)]
           if source is not None:
             r.append(("source", source))
@@ -3172,7 +3176,7 @@ def init_layout_config(settings):
         def parseMove(cfg, state):
           source, axis = split_full_name(cfg["axis"])
           eventType = get_event_type(axis)
-          axis = codesDict[axis]
+          axis = name2code(axis)
           r = [("type", eventType), ("code", axis)]
           if source is not None:
             r.append(("source", source))
@@ -3212,7 +3216,7 @@ def init_layout_config(settings):
         def parseMove(cfg, state):
           fullAxisName = cfg["axis"]
           outputName, axisName = split_full_name(fullAxisName)
-          state["output"], state["axis"] = outputName, codesDict[axisName]
+          state["output"], state["axis"] = outputName, name2code(axisName)
           curve = make_curve(cfg, state)
           if "curves" not in state:
             state["curves"] = {}
@@ -3225,7 +3229,7 @@ def init_layout_config(settings):
         def parseSetAxis(cfg, state):
           fullAxisName = cfg["axis"]
           outputName, axisName = split_full_name(fullAxisName)
-          axisId = codesDict[axisName]
+          axisId = name2code(axisName)
           axis = state["settings"]["axes"][outputName][axisId]
           value = float(cfg["value"])
           r = MoveAxis(axis, value, False)
@@ -3237,7 +3241,7 @@ def init_layout_config(settings):
           allAxes = state["settings"]["axes"]
           for fullAxisName,value in cfg["axesAndValues"].items():
             outputName, axisName = split_full_name(fullAxisName)
-            axisId = codesDict[axisName]
+            axisId = name2code(axisName)
             axis = allAxes[outputName][axisId]
             value = float(value)
             axesAndValues.append([axis, value, False])
@@ -3247,7 +3251,7 @@ def init_layout_config(settings):
 
         def parseSetKeyState(cfg, state):
           output, key = split_full_name(cfg["key"])
-          key = codesDict[key]
+          key = name2code(key)
           state = int(cfg["state"])
           return SetButtonState(output, key, state)
         parsers["setKeyState"] = parseSetKeyState
@@ -3279,7 +3283,7 @@ def init_layout_config(settings):
             snap = []
             for fullAxisName,value in fullAxesNamesAndValues.items():
               outputName, axisName = split_full_name(fullAxisName)
-              axisId = codesDict[axisName]
+              axisId = name2code(axisName)
               axis = allAxes[outputName][axisId]
               snap.append((axis, value))
             snapManager.set_snap(snapName, snap)
@@ -3392,7 +3396,7 @@ def make_output_parser():
   def parseElasicOutput(parser):
     p = weakref.ref(parser)
     def op(cfg, state):
-      speeds = {codesDict[axisName]:value for axisName,value in cfg["speeds"].items()}
+      speeds = {name2code(axisName):value for axisName,value in cfg["speeds"].items()}
       next = p()(cfg["next"], state)
       j = ElasticJoystic(next, speeds)
       state["settings"]["updated"].append(lambda tick : j.update(tick))

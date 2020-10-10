@@ -123,8 +123,8 @@ def print_devices():
 
 
 def parseEvdevJoystickOutput(cfg, state):
-  axes = [code2ecode(codesDict[axisName]) for axisName in cfg["axes"]]
-  buttons = [code2ecode(codesDict[buttonName]) for buttonName in cfg["buttons"]]
+  axes = [code2ecode(name2code(axisName)) for axisName in cfg["axes"]]
+  buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
   limit = int(cfg["limit"])
   return EvdevJoystick(axes, limit, buttons)
 
