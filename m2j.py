@@ -3307,8 +3307,20 @@ def init_layout_config(settings):
         return parsers[cfg["type"]](cfg, state)
 
       parsers["output"] = parseOutput
+      
+      parsers["inputs"] = lambda cfg, state : [parsers["input"](c, state) for c in cfg]
+      parsers["outputs"] = lambda cfg, state : [parsers["output"](c, state) for c in cfg]
 
-      return (parsers[i](cfg[i], state) for i in ("input", "output"))
+      def get_group(n1, n2):
+        return [parsers[n1](cfg[n1], state)] if n1 in cfg else parsers[n2](cfg[n2], state) if n2 in cfg else None
+
+      inputs, outputs = get_group("input", "inputs"), get_group("output", "outputs")
+      if inputs is None:
+        raise Exception("No inputs")
+      if outputs is None:
+        raise Exception("No outputs")
+
+      return ((i,o) for i in inputs for o in outputs)
 
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
@@ -3316,8 +3328,8 @@ def init_layout_config(settings):
     binds = cfg.get("binds", ())
     #logger.debug("binds: {}".format(binds))
     for bind in binds:
-      i,o = parseBind(bind, state)
-      bindingSink.add(i, o, 0)
+      for i,o in parseBind(bind, state):
+        bindingSink.add(i, o, 0)
     return bindingSink
 
   def parseBinding(cfg, state):
