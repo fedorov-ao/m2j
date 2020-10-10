@@ -2329,22 +2329,6 @@ def set_log_level(settings):
   root.setLevel(level)
 
 
-#TODO Remove?
-def init_log(settings, handler=logging.StreamHandler(sys.stdout)):
-  logLevelName = settings["config"]["logLevel"].upper()
-  nameToLevel = {
-    logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
-  }
-
-  print("Setting log level to {}".format(logLevelName))
-  logLevel = nameToLevel.get(logLevelName, logging.NOTSET)
-  root = logging.getLogger()
-  root.setLevel(logLevel)
-  handler.setLevel(logLevel)
-  handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
-  root.addHandler(handler)
-
-
 class ConfigError:
   def __init__(self, configName, e):
     self.configName_, self.e_ = configName, e
