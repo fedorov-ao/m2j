@@ -162,6 +162,8 @@ def run():
       logger.error("Cannot initialize due to config error: {}".format(e))
       for l in traceback.format_exc().splitlines()[-11:]:
         logger.error(l)
+    except ParseError as e:
+      logger.error("Cannot initialize due to config parsing error: got {} at {}".format(e.e, e.path))
 
   def unswallow_inputs(settings):
     for i in settings["inputs"].values():

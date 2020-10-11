@@ -2066,8 +2066,18 @@ def make_curve_makers():
     if sets is None:
       raise Exception("'{}' curves not found in config".format(configCurves))
     else:
-      state = {"settings" : settings}
-      r = parseSets(sets, state)
+      try:
+        def make_path(state):
+          r = str(state.get("curves", ""))
+          for n in ("set", "mode", "group", "output", "axis"):
+            r += "." + str(state.get(n, ""))
+          return r
+        state = {"settings" : settings, "curves" : configCurves}
+        r = parseSets(sets, state)
+      except Exception as e:
+        path = make_path(state)
+        logger.debug("Error while parsing {}: {}".format(path, e))
+        raise ParseError(path, e)
     return r
 
   curves["config"] = make_config_curves
@@ -2173,9 +2183,16 @@ def set_log_level(settings):
 
 class ConfigError:
   def __init__(self, configName, e):
-    self.configName_, self.e_ = configName, e
+    self.configName, self.e = configName, e
   def __str__(self):
-    return "Cannot parse config file {} ({})".format(self.configName_, self.e_)
+    return "Cannot read config file {} ({})".format(self.configName, self.e)
+
+
+class ParseError:
+  def __init__(self, path, e):
+    self.path, self.e = path, e
+  def __str__(self):
+    return "Cannot parse {} ({})".format(self.path, self.e)
 
 
 def init_config(configFilesNames):
