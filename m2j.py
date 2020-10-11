@@ -2009,174 +2009,17 @@ def make_curve_makers():
   curves = {}
 
   def make_config_curves(settings):
-    def parseOp(cfg, state):
-      def make_symm_wrapper(wrapped, symm):
-        if symm == 1:
-          return lambda x : wrapped(abs(x))
-        elif symm == 2:
-          return lambda x : sign(x)*wrapped(abs(x))
-        else:
-          return wrapped
-
-      parsers = {}
-
-      def segment(cfg, state):
-        def make_op(data, symmetric):
-          approx = SegmentApproximator(data, 1.0, True, True)
-          return make_symm_wrapper(approx, symmetric)
-        return make_op(cfg["points"], cfg["symmetric"])
-
-      parsers["segment"] = segment
-
-      def poly(cfg, state):
-        def make_op(data, symmetric):
-          d = [(k,int(p)) for p,k in data.items()]
-          def op(x):
-            r = 0.0
-            for k,p in d:
-              r += k*x**p
-            return r
-          return make_symm_wrapper(op, symmetric)
-        return make_op(cfg["coeffs"], cfg["symmetric"])
-
-      parsers["poly"] = poly 
-      
-      def bezier(cfg, state):
-        def make_op(data, symmetric):
-          approx = BezierApproximator(data)
-          return make_symm_wrapper(approx, symmetric)
-        return make_op(cfg["points"], cfg["symmetric"])
-
-      parsers["bezier"] = bezier 
-
-      def sbezier(cfg, state):
-        def make_op(data, symmetric):
-          approx = SegmentedBezierApproximator(data)
-          return make_symm_wrapper(approx, symmetric)
-        return make_op(cfg["points"], cfg["symmetric"])
-
-      parsers["sbezier"] = sbezier 
-
-      return parsers[cfg["op"]](cfg, state)
-
-    def parsePoints(cfg, state):
-      pointParsers = {}
-
-      def parseFixedPoint(cfg, state):
-        p = Point(op=parseOp(cfg, state), center=cfg.get("center", 0.0))
-        return p
-
-      pointParsers["fixed"] = parseFixedPoint
-
-      def parseMovingPoint(cfg, state):
-        p = Point(op=parseOp(cfg, state), center=None)
-        return p
-
-      pointParsers["moving"] = parseMovingPoint
-
-      r = {}
-      for n,d in cfg.items():
-        state["point"] = n
-        r[n] = pointParsers[n](d, state)
-      return r
-
     def parseAxis(cfg, state):
-      curveParsers = {}
-
-      def parseResetPolicy(cfg, state):
-        d = {
-          "setToCurrent" : PointMovingCurveResetPolicy.SET_TO_CURRENT,
-          "setToNone" : PointMovingCurveResetPolicy.SET_TO_NONE,
-          "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH
-        }
-        return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
-
-      def parsePointsOutputBasedCurve(cfg, state):
-        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
-        points = parsePoints(cfg["points"], state)
-        vpoName = cfg.get("vpo", None)
-        vpo = ValuePointOp(points.values(), get_min_op) if vpoName == "min" else ValuePointOp(points.values(), interpolate_op)
-        deltaOp = lambda x,value : x*value
-        curve = OutputBasedCurve(deltaOp, vpo, axis)
-
-        if "moving" in points:
-          point = points["moving"]
-          pointCfg = cfg["points"]["moving"]
-          newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
-          resetDistance = pointCfg.get("resetDistance", float("inf"))
-          def make_center_op(newRatio):
-            oldRatio = 1.0 - newRatio 
-            def op(new,old):
-              return oldRatio*old+newRatio*new
-            return op
-          def getValueOp(curve): 
-            return curve.get_axis().get()
-          onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
-          onMove = parseResetPolicy(pointCfg.get("onMove", "setToNone"), state)
-          curve = PointMovingCurve(
-            next=curve, point=point, getValueOp=getValueOp, centerOp=make_center_op(newRatio), resetDistance=resetDistance, onReset=onReset, onMove=onMove)
-
-        axis.add_listener(curve)
-        return curve
-
-      curveParsers["pointsOut"] = parsePointsOutputBasedCurve
-
-      def parseFixedPointInputBasedCurve(cfg, state):
-        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
-        points = parsePoints(cfg["points"], state)
-        fp = points["fixed"]
-        interpolationDistance = cfg.get("interpolationDistance", 0.3)
-        interpolationFactor = cfg.get("interpolationFactor", 1.0)
-        posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
-        curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
-        axis.add_listener(curve)
-        return curve
-
-      curveParsers["fpointIn"] = parseFixedPointInputBasedCurve
-
-      def parsePointsInputBasedCurve(cfg, state):
-        axis = state["settings"]["axes"][state["output"]][nameToAxis[state["axis"]]]
-        points = parsePoints(cfg["points"], state)
-        fp = points["fixed"]
-        mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
-        interpolationDistance = cfg.get("interpolationDistance", 0.3)
-        interpolationFactor = cfg.get("interpolationFactor", 1.0)
-        resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
-        posLimits = cfg.get("posLimits", (-1.1, 1.1))
-        interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
-        curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
-        def getValueOp(curve): 
-          return curve.get_pos()
-        centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
-        onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
-        onMove = parseResetPolicy(cfg.get("onMove", "setToNone"), state)
-        curve = PointMovingCurve(
-          next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
-        axis.add_listener(curve)
-        return curve
-
-      curveParsers["pointsIn"] = parsePointsInputBasedCurve
-
-      def parsePresetCurve(cfg, state):
-        presets = state["settings"]["config"]["presets"]
-        preset = presets[cfg["name"]]
-        curve = preset["curve"]
-        state["curve"] = curve
-        return curveParsers[curve](preset, state)
-
-      curveParsers["preset"] = parsePresetCurve
-
       curve = cfg.get("curve", None)
       if curve is None:
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
-      return curveParsers[curve](cfg, state)
+      return make_curve(cfg, state)
           
     def parseAxes(cfg, state):
       r = {}
       for axisName,axisData in cfg.items():
-        state["axis"] = axisName
+        state["axis"] = nameToAxis[axisName]
         r[nameToAxis[axisName]] = parseAxis(axisData, state)
       return r
 
@@ -3038,9 +2881,6 @@ def init_layout_descent(settings):
   return joystickSink
 
 layout_initializers["descent"] = init_layout_descent
-
-
-#TODO Incomplete
 
 def get_event_type(i):
   d = {"ABS" : codes.EV_ABS, "REL" : codes.EV_REL, "KEY" : codes.EV_KEY, "BTN" : codes.EV_KEY }
