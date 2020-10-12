@@ -1602,9 +1602,9 @@ def make_il2_6dof_packet(v):
     (codes.ABS_RX, -90.0),
     (codes.ABS_RY, 90.0),
     (codes.ABS_RZ, 180.0),
-    (codes.ABS_Z, 1.0),
-    (codes.ABS_X, -1.0),
-    (codes.ABS_Y, -1.0)
+    (codes.ABS_Z, 0.5),
+    (codes.ABS_X, -0.5),
+    (codes.ABS_Y, -0.5)
   )
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
