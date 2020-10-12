@@ -1432,6 +1432,23 @@ class FMPosInterpolateOp:
     self.fp_, self.mp_, self.interpolationDistance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, interpolationDistance, factor, posLimits, eps
 
     
+class DeltaLinkingCurve:
+  def move_by(self, x, timestamp):
+    v = self.controllingAxis_.get()
+    delta = v - self.v_
+    self.v_ = v
+    self.controlledAxis_.move(self.op_(delta), relative=True)
+
+  def reset(self):
+    self.v_ = self.controllingAxis_.get()
+
+  def on_move_axis(self, axis, old, new):
+    pass
+
+  def __init__(self, controllingAxis, controlledAxis, op):
+    self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
+
+
 class DemaFilter:
   def process(self, v):
     if self.needInit_:
@@ -1983,6 +2000,21 @@ def make_curve(cfg, state):
     return curve
 
   curveParsers["pointsIn"] = parsePointsInputBasedCurve
+
+  def parseDeltaLinkingCurve(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    def make_op(k, p, b):
+      return lambda delta : k*sign(delta)*abs(delta)**p + b
+    op = make_op(cfg.get("k", 1.0), cfg.get("p", 1.0), cfg.get("b", 0.0))
+    controllingAxisFullName = cfg["controlling"]
+    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
+    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, op)
+    return curve
+
+  curveParsers["deltaLink"] = parseDeltaLinkingCurve
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
