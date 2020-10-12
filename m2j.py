@@ -786,15 +786,14 @@ def nameToMSMMSavePolicy(name):
 
 class ModeSinkModeManager:
   def save(self):
-    self.mode_ = self.sink_.get_mode()
+    self.mode_.append(self.sink_.get_mode())
 
   def restore(self):
-    if self.mode_ is not None:
-      self.sink_.set_mode(self.mode_)
-      self.mode_ = None
+    if len(self.mode_):
+      self.sink_.set_mode(self.mode_.pop())
 
   def clear(self):
-    self.mode_ = None
+    self.mode_ = []
 
   def set(self, mode, save):
     self.save_(save)
@@ -812,7 +811,7 @@ class ModeSinkModeManager:
     self.sink_.set_mode(m)
 
   def __init__(self, sink):
-    self.sink_, self.mode_ = sink, None
+    self.sink_, self.mode_ = sink, []
 
   def make_save(self):
     def op(event):
