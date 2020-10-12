@@ -3187,7 +3187,8 @@ def init_layout_config(settings):
           return SnapTo(snapManager, snapName)
         parsers["snapTo"] = parseSnapTo
 
-        return parsers[cfg["type"]](cfg, state)
+        parser = parsers.get(cfg["type"], None)
+        return parser(cfg, state) if parser is not None else parseSelfTyped(cfg, state)
 
       parsers["output"] = parseOutput
       
@@ -3230,6 +3231,10 @@ def init_layout_config(settings):
     return presetWrapper
   parsers["preset"] = parsePreset
 
+  def parseSelfTyped(cfg, state):
+    r = parsers[cfg["type"]](cfg, state)
+    return r
+
   config = settings["config"]
   layoutName = config["configCurves"]
   logger.info("Using '{}' layout from config".format(layoutName))
@@ -3239,7 +3244,7 @@ def init_layout_config(settings):
   else:
     try:
       state = {"settings" : settings}
-      r = parsers[cfg["type"]](cfg, state)
+      r = parseSelfTyped(cfg, state)
       return r
     except KeyError as e:
       logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, e))
