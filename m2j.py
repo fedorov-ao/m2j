@@ -3231,6 +3231,15 @@ def init_layout_config(settings):
     return presetWrapper
   parsers["preset"] = parsePreset
 
+  def parseLayout(cfg, state):
+    layouts = state["settings"]["config"]["layouts"]
+    layoutName = cfg["name"]
+    layoutCfg = layouts[layoutName]
+    layoutType = layoutCfg["type"]
+    layoutSink = parsers[layoutType](layoutCfg, state)
+    return layoutSink
+  parsers["layout"] = parseLayout
+
   def parseSelfTyped(cfg, state):
     r = parsers[cfg["type"]](cfg, state)
     return r
