@@ -43,6 +43,10 @@ def merge_dicts(destination, source):
       # get node or create one
       node = destination.setdefault(key, {})
       merge_dicts(node, value)
+    elif isinstance(value, list):
+      node = destination.get(key, [])
+      node += value
+      destination[key] = node
     else:
       destination[key] = value
   return destination
@@ -2943,6 +2947,17 @@ def get_event_type(i):
 def init_layout_config(settings):
   parsers = {}
 
+  def parseBases_(cfg, state):
+    bases = cfg.get("bases", None)
+    if bases is not None:
+      layouts, full = state["settings"]["config"]["layouts"], {}
+      for b in bases:
+        merge_dicts(full, layouts[b])
+      merge_dicts(full, cfg)
+      return full
+    else:
+      return cfg
+
   def parseModifiers_(sink, cfg, state):
     if "modifiers" in cfg:
       modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
@@ -3232,9 +3247,11 @@ def init_layout_config(settings):
   parsers["bind"] = parseBinding
 
   def parsePreset(cfg, state):
+    cfg = parseBases_(cfg, state)
     presets = state["settings"]["config"]["presets"]
     presetName = cfg["name"]
     presetCfg = presets[presetName]
+    presetCfg = parseBases_(presetCfg, state)
     presetSink = parsers[presetCfg["type"]](presetCfg, state)
     def presetWrapper(event):
       #logger.debug("presetWrapper(): passing event {} to {}".format(event, presetSink))
@@ -3246,12 +3263,14 @@ def init_layout_config(settings):
     layouts = state["settings"]["config"]["layouts"]
     layoutName = cfg["name"]
     layoutCfg = layouts[layoutName]
+    layoutCfg = parseBases_(layoutCfg, state)
     layoutType = layoutCfg["type"]
     layoutSink = parsers[layoutType](layoutCfg, state)
     return layoutSink
   parsers["layout"] = parseLayout
 
   def parseSelfTyped(cfg, state):
+    cfg = parseBases_(cfg, state)
     r = parsers[cfg["type"]](cfg, state)
     return r
 
