@@ -2231,7 +2231,9 @@ def init_config(configFilesNames):
   for configName in configFilesNames:
     try:
       with open(configName, "r") as f:
-        merge_dicts(cfg, json.load(f))
+        temp = json.load(f)
+        merge_dicts(cfg, init_config(temp.get("configs", [])))
+        merge_dicts(cfg, temp)
     except KeyError as e:
       raise ConfigError(configName, e)
     except ValueError as e:
