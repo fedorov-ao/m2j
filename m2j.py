@@ -2231,9 +2231,18 @@ def init_config(configFilesNames):
   for configName in configFilesNames:
     try:
       with open(configName, "r") as f:
-        temp = json.load(f)
-        merge_dicts(cfg, init_config(temp.get("configs", [])))
-        merge_dicts(cfg, temp)
+        current = json.load(f)
+        configs = current.get("configs", None)
+        if configs is not None:
+          parent = init_config(configs)
+          temp = parent.get("configs", []) + current.get("configs", [])
+          merge_dicts(current, parent)
+          if len(temp):
+            current["configs"] = temp
+        temp = current.get("configs", []) + cfg.get("configs", [])
+        merge_dicts(cfg, current)
+        if len(temp):
+          cfg["configs"] = temp
     except KeyError as e:
       raise ConfigError(configName, e)
     except ValueError as e:
