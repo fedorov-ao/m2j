@@ -152,7 +152,9 @@ def run():
       sink = init_main_sink(settings, initializer)
       updated = settings.get("updated", [])
 
-      step = 0.01
+      refreshRate = config.get("refreshRate", 100.0)
+      logger.info("Refresh rate is {} times per second".format(refreshRate))
+      step = 1.0 / refreshRate
       settings["source"] = EventSource(settings["inputs"].values(), sink, step)
     except Exception as e:
       logger.error("Cannot initialize: {}".format(e))
