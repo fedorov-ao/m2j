@@ -3246,32 +3246,22 @@ def init_layout_config(settings):
     return parseExtra_(parseBinding_(cfg, state), cfg, state)
   parsers["bind"] = parseBinding
 
-  def parsePreset(cfg, state):
-    cfg = parseBases_(cfg, state)
-    presets = state["settings"]["config"]["presets"]
-    presetName = cfg["name"]
-    presetCfg = presets[presetName]
-    presetCfg = parseBases_(presetCfg, state)
-    presetSink = parsers[presetCfg["type"]](presetCfg, state)
-    def presetWrapper(event):
-      #logger.debug("presetWrapper(): passing event {} to {}".format(event, presetSink))
-      return presetSink(event)
-    return presetWrapper
-  parsers["preset"] = parsePreset
+  def parseExternal_(groupName):
+    def parseExternalOp(cfg, state):
+      group = state["settings"]["config"][groupName]
+      name = cfg["name"]
+      cfg = group[name]
+      sink = parseSelfTyped(cfg, state)
+      return sink
+    return parseExternalOp
 
-  def parseLayout(cfg, state):
-    layouts = state["settings"]["config"]["layouts"]
-    layoutName = cfg["name"]
-    layoutCfg = layouts[layoutName]
-    layoutCfg = parseBases_(layoutCfg, state)
-    layoutType = layoutCfg["type"]
-    layoutSink = parsers[layoutType](layoutCfg, state)
-    return layoutSink
-  parsers["layout"] = parseLayout
+  parsers["preset"] = parseExternal_("presets")
+  parsers["layout"] = parseExternal_("layouts")
 
   def parseSelfTyped(cfg, state):
     cfg = parseBases_(cfg, state)
-    r = parsers[cfg["type"]](cfg, state)
+    typeName = cfg["type"]
+    r = parsers[typeName](cfg, state)
     return r
 
   config = settings["config"]
