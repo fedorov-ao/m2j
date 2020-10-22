@@ -2239,14 +2239,8 @@ def init_config(configFilesNames):
         configs = current.get("configs", None)
         if configs is not None:
           parent = init_config(configs)
-          temp = parent.get("configs", []) + current.get("configs", [])
           merge_dicts(current, parent)
-          if len(temp):
-            current["configs"] = temp
-        temp = current.get("configs", []) + cfg.get("configs", [])
         merge_dicts(cfg, current)
-        if len(temp):
-          cfg["configs"] = temp
     except KeyError as e:
       raise ConfigError(configName, e)
     except ValueError as e:
