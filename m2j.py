@@ -1448,10 +1448,6 @@ class DeltaLinkingCurve:
     v = self.controllingAxis_.get()
     d = v - self.v_
     self.v_ = v
-    s = sign(d)
-    if s != self.s_:
-      #self.tcd_ = 0.0
-      self.s_ = s
     cd = self.op_(d)
     if abs(self.tcd_ + cd) < self.radius_:
       self.tcd_ += cd
@@ -1461,15 +1457,16 @@ class DeltaLinkingCurve:
 
   def reset(self):
     self.v_ = self.controllingAxis_.get()
-    self.s_, self.tcd_ = 0, 0.0
+    self.tcd_, self.busy_ = 0.0, False
 
   def on_move_axis(self, axis, old, new):
     if not self.busy_ and axis == self.controlledAxis_:
-      self.tcd_ = 0.0
+      tcd = self.tcd_ + (new - old)
+      self.tcd_ = clamp(tcd, -self.radius_, self.radius_)
 
   def __init__(self, controllingAxis, controlledAxis, op, radius = float("inf")):
     self.controllingAxis_, self.controlledAxis_, self.op_, self.radius_ = controllingAxis, controlledAxis, op, radius
-    self.v_, self.s_, self.tcd_, self.busy_ = 0.0, 0, 0.0, False
+    self.v_, self.tcd_, self.busy_ = 0.0, 0.0, False
 
 
 class DemaFilter:
