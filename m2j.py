@@ -1456,7 +1456,8 @@ class DeltaLinkingCurve:
     v = self.controllingAxis_.get()
     d = v - self.v_
     self.v_ = v
-    cd = self.op_(d)
+    sens = self.sensOp_(self.tcd_)
+    cd = self.deltaOp_(d, sens)
     if abs(self.tcd_ + cd) < self.radius_:
       self.tcd_ += cd
       self.busy_ = True
@@ -1472,8 +1473,8 @@ class DeltaLinkingCurve:
       tcd = self.tcd_ + (new - old)
       self.tcd_ = clamp(tcd, -self.radius_, self.radius_)
 
-  def __init__(self, controllingAxis, controlledAxis, op, radius = float("inf")):
-    self.controllingAxis_, self.controlledAxis_, self.op_, self.radius_ = controllingAxis, controlledAxis, op, radius
+  def __init__(self, controllingAxis, controlledAxis, sensOp, deltaOp, radius = float("inf")):
+    self.controllingAxis_, self.controlledAxis_, self.sensOp_, self.deltaOp_, self.radius_ = controllingAxis, controlledAxis, sensOp, deltaOp, radius
     self.v_, self.tcd_, self.busy_ = 0.0, 0.0, False
 
 
@@ -2038,14 +2039,13 @@ def make_curve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
-    def make_op(k, p, b):
-      return lambda delta : k*sign(delta)*abs(delta)**p + b
-    op = make_op(cfg.get("k", 1.0), cfg.get("p", 1.0), cfg.get("b", 0.0))
+    sensOp = SegmentApproximator(cfg["sens"]["points"], 1.0, True, True)
+    deltaOp = lambda delta, sens : delta*sens
     controllingAxisFullName = cfg["controlling"]
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
     radius = cfg.get("radius", float("inf"))
-    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, op, radius)
+    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
     return curve
