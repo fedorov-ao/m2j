@@ -1446,18 +1446,27 @@ class FMPosInterpolateOp:
 class DeltaLinkingCurve:
   def move_by(self, x, timestamp):
     v = self.controllingAxis_.get()
-    delta = v - self.v_
+    d = v - self.v_
     self.v_ = v
-    self.controlledAxis_.move(self.op_(delta), relative=True)
+    s = sign(d)
+    if s != self.s_:
+      self.tcd_ = 0.0
+      self.s_ = s
+    cd = self.op_(d)
+    self.tcd_ += abs(cd)
+    if self.tcd_ < self.radius_:
+      self.controlledAxis_.move(cd, relative=True)
 
   def reset(self):
     self.v_ = self.controllingAxis_.get()
+    self.s_, self.tcd_ = 0, 0.0
 
   def on_move_axis(self, axis, old, new):
     pass
 
-  def __init__(self, controllingAxis, controlledAxis, op):
-    self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
+  def __init__(self, controllingAxis, controlledAxis, op, radius = float("inf")):
+    self.controllingAxis_, self.controlledAxis_, self.op_, self.radius_ = controllingAxis, controlledAxis, op, radius
+    self.v_, self.s_, self.tcd_ = 0.0, 0, 0.0
 
 
 class DemaFilter:
@@ -2027,7 +2036,8 @@ def make_curve(cfg, state):
     controllingAxisFullName = cfg["controlling"]
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
-    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, op)
+    radius = cfg.get("radius", float("inf"))
+    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, op, radius)
     return curve
 
   curveParsers["deltaLink"] = parseDeltaLinkingCurve
