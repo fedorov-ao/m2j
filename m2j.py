@@ -865,6 +865,14 @@ class PowerApproximator:
     self.k, self.n = k, n
 
 
+class ConstantApproximator:
+  def __call__(self, v):
+    return self.value_
+
+  def __init__(self, value):
+    self.value_ = value
+
+
 class PolynomialApproximator:
   def __call__(self, v):
     v += self.off_
@@ -1844,6 +1852,11 @@ def make_curve(cfg, state):
         return wrapped
 
     parsers = {}
+
+    def constant(cfg, state):
+      return ConstantApproximator(cfg["value"])
+
+    parsers["constant"] = constant
 
     def segment(cfg, state):
       def make_op(data, symmetric):
