@@ -1444,7 +1444,15 @@ class FMPosInterpolateOp:
 
     
 class DeltaLinkingCurve:
+  """Links controlled and and controlling axes.
+     Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
+     Can specify radius - controlled axis value is not changed if total controlled axis value delta will exceed this radius.
+     Subscribe to controlled axis when initializing: if controlled axis is moved externally, total delta is adjusted.
+  """
   def move_by(self, x, timestamp):
+    #Even if x and timestamp are not used, controlled axis is moved in move_by() and not it on_move_axis(), 
+    #because move_by() is called only when the mode this curve is part of is enabled, 
+    #and on_move_axis() is called regardless of modes
     v = self.controllingAxis_.get()
     d = v - self.v_
     self.v_ = v
