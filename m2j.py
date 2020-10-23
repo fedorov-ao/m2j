@@ -1450,23 +1450,26 @@ class DeltaLinkingCurve:
     self.v_ = v
     s = sign(d)
     if s != self.s_:
-      self.tcd_ = 0.0
+      #self.tcd_ = 0.0
       self.s_ = s
     cd = self.op_(d)
-    self.tcd_ += abs(cd)
-    if self.tcd_ < self.radius_:
+    if abs(self.tcd_ + cd) < self.radius_:
+      self.tcd_ += cd
+      self.busy_ = True
       self.controlledAxis_.move(cd, relative=True)
+      self.busy_ = False
 
   def reset(self):
     self.v_ = self.controllingAxis_.get()
     self.s_, self.tcd_ = 0, 0.0
 
   def on_move_axis(self, axis, old, new):
-    pass
+    if not self.busy_ and axis == self.controlledAxis_:
+      self.tcd_ = 0.0
 
   def __init__(self, controllingAxis, controlledAxis, op, radius = float("inf")):
     self.controllingAxis_, self.controlledAxis_, self.op_, self.radius_ = controllingAxis, controlledAxis, op, radius
-    self.v_, self.s_, self.tcd_ = 0.0, 0, 0.0
+    self.v_, self.s_, self.tcd_, self.busy_ = 0.0, 0, 0.0, False
 
 
 class DemaFilter:
@@ -2038,6 +2041,8 @@ def make_curve(cfg, state):
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
     radius = cfg.get("radius", float("inf"))
     curve = DeltaLinkingCurve(controllingAxis, controlledAxis, op, radius)
+    controlledAxis.add_listener(curve)
+    controllingAxis.add_listener(curve)
     return curve
 
   curveParsers["deltaLink"] = parseDeltaLinkingCurve
