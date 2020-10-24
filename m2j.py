@@ -1481,9 +1481,7 @@ class DeltaLinkingCurve:
 class LinkingCurve:
   def move_by(self, x, timestamp):
     def r():
-      self.sd_ = 0.0
-      self.td_ = 0.0
-      self.s_ = s
+      self.sd_, self.td_, self.s_ = 0.0, 0.0, s
       self.cv_ = self.controlledAxis_.get()
 
     v = self.controllingAxis_.get()
@@ -1492,22 +1490,18 @@ class LinkingCurve:
     s = sign(d)
 
     if self.s_ != s:
-      if self.td_ < self.radius_:
+      self.sd_ += abs(d)
+      if self.sd_ > self.threshold_:
         r()
-      else:
-        self.sd_ += abs(d)
-        if self.sd_ > self.threshold_:
-          r()
-        else:
-          return
     elif self.sd_ != 0.0:
       self.sd_ = 0.0
 
-    self.td_ += abs(d)
-    if self.td_ < self.radius_:
-      cd = self.op_(self.td_)
+    self.td_ += d
+    atd = abs(self.td_)
+    if atd < self.radius_:
+      cd = self.op_(atd)
       self.busy_= True
-      self.controlledAxis_.move(self.s_*cd + self.cv_, relative=False)
+      self.controlledAxis_.move(sign(self.td_)*cd + self.cv_, relative=False)
       self.busy_= False
 
   def reset(self):
