@@ -1478,6 +1478,52 @@ class DeltaLinkingCurve:
     self.v_, self.tcd_, self.busy_ = 0.0, 0.0, False
 
 
+class LinkingCurve:
+  def move_by(self, x, timestamp):
+    def r():
+      self.sd_ = 0.0
+      self.td_ = 0.0
+      self.s_ = s
+      self.cv_ = self.controlledAxis_.get()
+
+    v = self.controllingAxis_.get()
+    d = v - self.v_
+    self.v_ = v
+    s = sign(d)
+
+    if self.s_ != s:
+      if self.td_ < self.radius_:
+        r()
+      else:
+        self.sd_ += abs(d)
+        if self.sd_ > self.threshold_:
+          r()
+        else:
+          return
+    elif self.sd_ != 0.0:
+      self.sd_ = 0.0
+
+    self.td_ += abs(d)
+    if self.td_ < self.radius_:
+      cd = self.op_(self.td_)
+      self.busy_= True
+      self.controlledAxis_.move(self.s_*cd + self.cv_, relative=False)
+      self.busy_= False
+
+  def reset(self):
+    self.v_ = self.controllingAxis_.get()
+    self.cv_ = self.controlledAxis_.get()
+    self.s_, self.td_, self.sd_ = 0, 0.0, 0.0
+
+  def on_move_axis(self, axis, old, new):
+    if not self.busy_ and axis == self.controlledAxis_:
+      self.cv_ += new - old
+
+  def __init__(self, controllingAxis, controlledAxis, op, radius = float("inf"), threshold = 0.0):
+    self.controllingAxis_, self.controlledAxis_, self.op_, self.radius_, self.threshold_ = controllingAxis, controlledAxis, op, radius, threshold
+    self.v_, self.s_, self.td_, self.sd_, self.cv_, self.busy_  = 0.0, 0, 0.0, 0.0, 0.0, False
+
+
 class DemaFilter:
   def process(self, v):
     if self.needInit_:
@@ -2051,6 +2097,23 @@ def make_curve(cfg, state):
     return curve
 
   curveParsers["deltaLink"] = parseDeltaLinkingCurve
+
+  def parseLinkingCurve(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    op = SegmentApproximator(cfg["sens"]["points"], 1.0, True, True)
+    controllingAxisFullName = cfg["controlling"]
+    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
+    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    radius = cfg.get("radius", float("inf"))
+    threshold = cfg.get("threshold", 0.0)
+    curve = LinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
+    controlledAxis.add_listener(curve)
+    controllingAxis.add_listener(curve)
+    return curve
+
+  curveParsers["link"] = parseLinkingCurve
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
