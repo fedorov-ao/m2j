@@ -1926,7 +1926,7 @@ def make_curve(cfg, state):
       def make_op(data, symmetric):
         approx = SegmentApproximator(data, 1.0, True, True)
         return make_symm_wrapper(approx, symmetric)
-      return make_op(cfg["points"], cfg["symmetric"])
+      return make_op(cfg["points"], cfg.get("symmetric", 0))
 
     parsers["segment"] = segment
 
@@ -1939,7 +1939,7 @@ def make_curve(cfg, state):
             r += k*x**p
           return r
         return make_symm_wrapper(op, symmetric)
-      return make_op(cfg["coeffs"], cfg["symmetric"])
+      return make_op(cfg["coeffs"], cfg.get("symmetric", 0))
 
     parsers["poly"] = poly 
     
@@ -1947,7 +1947,7 @@ def make_curve(cfg, state):
       def make_op(data, symmetric):
         approx = BezierApproximator(data)
         return make_symm_wrapper(approx, symmetric)
-      return make_op(cfg["points"], cfg["symmetric"])
+      return make_op(cfg["points"], cfg.get("symmetric", 0))
 
     parsers["bezier"] = bezier 
 
@@ -1955,7 +1955,7 @@ def make_curve(cfg, state):
       def make_op(data, symmetric):
         approx = SegmentedBezierApproximator(data)
         return make_symm_wrapper(approx, symmetric)
-      return make_op(cfg["points"], cfg["symmetric"])
+      return make_op(cfg["points"], cfg.get("symmetric", 0))
 
     parsers["sbezier"] = sbezier 
 
@@ -2085,7 +2085,7 @@ def make_curve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
-    sensOp = SegmentApproximator(cfg["sens"]["points"], 1.0, True, True)
+    sensOp = parseOp(cfg, state)
     deltaOp = lambda delta, sens : delta*sens
     controllingAxisFullName = cfg["controlling"]
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
@@ -2102,7 +2102,7 @@ def make_curve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
-    op = SegmentApproximator(cfg["sens"]["points"], 1.0, True, True)
+    op = parseOp(cfg, state)
     controllingAxisFullName = cfg["controlling"]
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
