@@ -1655,6 +1655,21 @@ class UdpJoystick:
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
 
 
+#TODO Needs verifying
+def make_opentrack_packet(v):
+  d = (
+    (codes.ABS_X, 1.0),
+    (codes.ABS_Y, -1.0),
+    (codes.ABS_Z, 1.0),
+    (codes.ABS_RX, 180.0),
+    (codes.ABS_RY, -90.0),
+    (codes.ABS_RZ, 90.0)
+  )
+  values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
+  packet = struct.pack("<dddddd", *values)
+  return packet
+
+
 def make_il2_packet(v):
   #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L919
   #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f", d->h, -d->p, d->r);
@@ -3442,7 +3457,8 @@ def make_output_parser():
   def parseUdpJoystickOutput(cfg, state):
     packetMakers = {
       "il2" : make_il2_packet,
-      "il2_6dof" : make_il2_6dof_packet 
+      "il2_6dof" : make_il2_6dof_packet,
+      "opentrack" : make_opentrack_packet
     }
     j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
     state["settings"]["updated"].append(lambda tick : j.send())
