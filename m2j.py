@@ -144,8 +144,7 @@ class InputEvent(Event):
 
   
 class EventSource:
-  def run_once(self, sleep=False):
-    t = time.time()
+  def run_once(self):
     events =[]
     event = None
     for d in self.devices_:
@@ -157,20 +156,28 @@ class EventSource:
     for event in events:
       #logger.debug("{}: Sending event: {}".format(self, event))
       self.sink_(event)
-    if sleep:
-      t = time.time() - t
-      time.sleep(max(self.step_ - t, 0))
 
-  def run_loop(self):
-    while True:
-      self.run_once(sleep=True)
-
-  def __init__(self, devices, sink, step):
-    self.devices_, self.sink_, self.step_ = devices, sink, step
+  def __init__(self, devices, sink):
+    self.devices_, self.sink_ = devices, sink
     logger.debug("{} created".format(self))
 
   def __del__(self):
     logger.debug("{} destroyed".format(self))
+
+
+class Loop:
+  def run(self):
+    t = time.time()
+    while (True):
+      ct = time.time()
+      dt = ct - t
+      t = ct
+      for c in self.callbacks_:
+        c(dt)
+      time.sleep(max(self.step_ - (time.time() - ct), 0))
+
+  def __init__(self, callbacks, step):
+    self.callbacks_, self.step_ = callbacks, step
 
 
 class MoveJoystickAxis:

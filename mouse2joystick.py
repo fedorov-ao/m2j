@@ -106,7 +106,7 @@ class EvdevDevice:
     self.dev_, self.source_ = dev, source
 
 
-def find_devices(names):
+def init_inputs(names):
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   r = {}
   for s,n in names.items():
@@ -141,7 +141,7 @@ def run():
       init_config2(settings)
       config = settings["config"]
 
-      settings["inputs"] = find_devices(config["inputs"])
+      settings["inputs"] = init_inputs(config["inputs"])
 
       initializer = layout_initializers.get(config["layout"], None)
       if not initializer:
@@ -152,10 +152,7 @@ def run():
       sink = init_main_sink(settings, initializer)
       updated = settings.get("updated", [])
 
-      refreshRate = config.get("refreshRate", 100.0)
-      logger.info("Refresh rate is {} times per second".format(refreshRate))
-      step = 1.0 / refreshRate
-      settings["source"] = EventSource(settings["inputs"].values(), sink, step)
+      settings["source"] = EventSource(settings["inputs"].values(), sink)
     except Exception as e:
       logger.error("Cannot initialize: {}".format(e))
       for l in traceback.format_exc().splitlines()[-11:]:
@@ -182,14 +179,18 @@ def run():
     if source is None:
       raise Exception("Have no valid working state")
     updated = settings.get("updated", [])
-    t = time.time()
+    refreshRate = settings["config"].get("refreshRate", 100.0)
+    logger.info("Refresh rate is {} times per second".format(refreshRate))
+    step = 1.0 / refreshRate
+    def run_source(tick):
+      source.run_once()
+    def run_updated(tick):
+      for u in updated: 
+        u(tick)
+    callbacks = [run_source, run_updated]
+    loop = Loop(callbacks, step)
     try:
-      while True:
-        source.run_once(sleep=True)
-        tick = time.time() - t
-        t = time.time()
-        for u in updated: 
-          u(tick)
+      loop.run()
     finally:
       settings["updated"] = oldUpdated
 
