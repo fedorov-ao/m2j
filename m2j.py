@@ -1528,6 +1528,27 @@ class LinkingCurve:
     self.v_, self.s_, self.td_, self.sd_, self.cv_, self.busy_  = 0.0, 0, 0.0, 0.0, 0.0, False
 
 
+class LinkingCurve2:
+  def move_by(self, x, timestamp):
+    v = self.controllingAxis_.get()
+    cv = self.op_(v)
+    self.busy_= True
+    self.controlledAxis_.move(cv + self.offset_, relative=False)
+    self.busy_= False
+
+  def reset(self):
+    self.offset_ = 0.0
+    self.move_by(0,0)
+
+  def on_move_axis(self, axis, old, new):
+    if not self.busy_ and axis == self.controlledAxis_:
+      self.offset_ += new - old
+
+  def __init__(self, controllingAxis, controlledAxis, op):
+    self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
+    self.offset_, self.busy_  = 0.0, False
+
+
 class DemaFilter:
   def process(self, v):
     if self.needInit_:
@@ -2134,6 +2155,21 @@ def make_curve(cfg, state):
     return curve
 
   curveParsers["link"] = parseLinkingCurve
+
+  def parseLinkingCurve2(cfg, state):
+    axisId = state["axis"]
+    outputName = state["output"]
+    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    op = parseOp(cfg, state)
+    controllingAxisFullName = cfg["controlling"]
+    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
+    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    curve = LinkingCurve2(controllingAxis, controlledAxis, op)
+    controlledAxis.add_listener(curve)
+    controllingAxis.add_listener(curve)
+    return curve
+
+  curveParsers["link2"] = parseLinkingCurve2
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
