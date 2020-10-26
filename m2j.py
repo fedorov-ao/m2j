@@ -1494,16 +1494,17 @@ class LinkingCurve:
     v = self.controllingAxis_.get()
     d = v - self.v_
     self.v_ = v
-    s = sign(d)
 
-    if self.s_ == 0:
-      self.s_ = s
-    elif self.s_ != s:
-      self.sd_ += abs(d)
-      if self.sd_ > self.threshold_:
-        r(s)
-    elif self.sd_ != 0.0:
-      self.sd_ = 0.0
+    if self.threshold_ is not None:
+      s = sign(d)
+      if self.s_ == 0:
+        self.s_ = s
+      elif self.s_ != s:
+        self.sd_ += abs(d)
+        if self.sd_ > self.threshold_:
+          r(s)
+      elif self.sd_ != 0.0:
+        self.sd_ = 0.0
 
     self.td_ += d
     atd = abs(self.td_)
@@ -2126,6 +2127,7 @@ def make_curve(cfg, state):
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
     radius = cfg.get("radius", float("inf"))
     threshold = cfg.get("threshold", 0.0)
+    threshold = None if threshold == "none" else float(threshold)
     curve = LinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
