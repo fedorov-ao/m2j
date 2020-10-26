@@ -1450,7 +1450,7 @@ class FMPosInterpolateOp:
     self.fp_, self.mp_, self.interpolationDistance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, interpolationDistance, factor, posLimits, eps
 
     
-class DeltaLinkingCurve:
+class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
      Can specify radius - controlled axis value is not changed if total controlled axis value delta will exceed this radius.
@@ -1485,7 +1485,7 @@ class DeltaLinkingCurve:
     self.v_, self.tcd_, self.busy_ = 0.0, 0.0, False
 
 
-class LinkingCurve:
+class InputDeltaLinkingCurve:
   def move_by(self, x, timestamp):
     def r(s):
       self.sd_, self.td_, self.s_ = 0.0, 0.0, s
@@ -1528,7 +1528,7 @@ class LinkingCurve:
     self.v_, self.s_, self.td_, self.sd_, self.cv_, self.busy_  = 0.0, 0, 0.0, 0.0, 0.0, False
 
 
-class LinkingCurve2:
+class InputLinkingCurve:
   def move_by(self, x, timestamp):
     v = self.controllingAxis_.get()
     cv = self.op_(v)
@@ -1538,7 +1538,6 @@ class LinkingCurve2:
 
   def reset(self):
     self.offset_ = 0.0
-    self.move_by(0,0)
 
   def on_move_axis(self, axis, old, new):
     if not self.busy_ and axis == self.controlledAxis_:
@@ -2121,7 +2120,7 @@ def make_curve(cfg, state):
 
   curveParsers["pointsIn"] = parsePointsInputBasedCurve
 
-  def parseDeltaLinkingCurve(cfg, state):
+  def parseOutputDeltaLinkingCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
@@ -2131,14 +2130,14 @@ def make_curve(cfg, state):
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
     radius = cfg.get("radius", float("inf"))
-    curve = DeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
+    curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
     return curve
 
-  curveParsers["deltaLink"] = parseDeltaLinkingCurve
+  curveParsers["outDeltaLink"] = parseOutputDeltaLinkingCurve
 
-  def parseLinkingCurve(cfg, state):
+  def parseInputDeltaLinkingCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
@@ -2149,14 +2148,14 @@ def make_curve(cfg, state):
     radius = cfg.get("radius", float("inf"))
     threshold = cfg.get("threshold", 0.0)
     threshold = None if threshold == "none" else float(threshold)
-    curve = LinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
+    curve = InputDeltaLinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
     return curve
 
-  curveParsers["link"] = parseLinkingCurve
+  curveParsers["inDeltaLink"] = parseInputDeltaLinkingCurve
 
-  def parseLinkingCurve2(cfg, state):
+  def parseInputLinkingCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
     controlledAxis = state["settings"]["axes"][outputName][axisId]
@@ -2164,12 +2163,12 @@ def make_curve(cfg, state):
     controllingAxisFullName = cfg["controlling"]
     controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
     controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
-    curve = LinkingCurve2(controllingAxis, controlledAxis, op)
+    curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
     return curve
 
-  curveParsers["link2"] = parseLinkingCurve2
+  curveParsers["inLink"] = parseInputLinkingCurve
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
