@@ -1537,7 +1537,7 @@ class InputLinkingCurve:
     self.busy_= False
 
   def reset(self):
-    self.offset_ = 0.0
+    self.offset_ = self.controlledAxis_.get() - self.op_(self.controllingAxis_.get())
 
   def on_move_axis(self, axis, old, new):
     if not self.busy_ and axis == self.controlledAxis_:
