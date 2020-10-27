@@ -132,9 +132,11 @@ def parseEvdevJoystickOutput(cfg, state):
 def run():
   def init_outputs(settings):
     nameParser = lambda key,state : key
-    outputParser = parsers["output"]
-    outputParser.add("evdev", parseEvdevJoystickOutput)
-    settings["outputs"] = DictParser(keyParser=nameParser, valueParser=outputParser)(settings["config"]["outputs"], {"settings" : settings})
+    parser = settings["parser"]
+    outputParser = parser.get("output")
+    cfg = settings["config"]["outputs"]
+    state = {"settings" : settings, "parser" : parser}
+    settings["outputs"] = parse_dict(cfg, state=state, kp=nameParser, vp=outputParser)
 
   def init_source(settings):
     try:
@@ -215,6 +217,10 @@ def run():
         options["logLevel"] = a
       elif o in ("-n", "--config"):
         settings["configNames"].append(a)
+
+    parser = init_parser()
+    settings["parser"] = parser
+    parser.get("output").add("evdev", parseEvdevJoystickOutput)
 
     init_config2(settings)
     set_log_level(settings)

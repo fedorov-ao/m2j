@@ -3430,35 +3430,23 @@ def init_layout_config(settings):
 layout_initializers["config"] = init_layout_config
 
 
-class ListParser:
-  def __call__(self, cfg, state):
-    assert(self.parser_ is not None)
-    r = []
-    for data in cfg:
-      value = self.parser_(data, state)
-      r.append(value)
-    return r
-
-  def __init__(self, parser):
-    self.parser_ = parser
+def parse_list(cfg, state, vp):
+  r = []
+  for data in cfg:
+    value = vp(data, state)
+    r.append(value)
+  return r
 
 
-class DictParser:
-  def __call__(self, cfg, state):
-    assert(self.keyParser_ is not None)
-    assert(self.valueParser_ is not None)
-    r = {}
-    for key,value in cfg.items():
-      r[self.keyParser_(key, state)] = self.valueParser_(value, state)
-    return r
-
-  def __init__(self, keyParser, valueParser):
-    self.keyParser_, self.valueParser_ = keyParser, valueParser
+def parse_dict(cfg, state, kp, vp):
+  r = {}
+  for key,value in cfg.items():
+    r[kp(key, state)] = vp(value, state)
+  return r
 
 
 class SelectParser:
-  def __call__(self, cfg, state):
-    key = self.keyOp_(cfg)
+  def __call__(self, key, cfg, state):
     r = None
     if key in self.parsers_:
       r = self.parsers_[key](cfg, state) 
@@ -3470,28 +3458,39 @@ class SelectParser:
   def get(self, key):
     return self.parsers_.get(key, None)
 
-  def __init__(self, keyOp, parsers=None):
-    self.keyOp_ = keyOp
+  def __init__(self, parsers=None):
     self.parsers_ = {} if parsers is None else parsers
 
 
+class IntrusiveSelectParser:
+  """FreePie does not handle inheritance well, so this class is implemented via composition."""
+  def __call__(self, cfg, state):
+    key = self.keyOp_(cfg)
+    return self.p_(key, cfg, state)
+
+  def add(self, key, parser):
+    self.p_.add(key, parser)
+
+  def get(self, key):
+    return self.p_.get(key)
+
+  def __init__(self, keyOp, parsers=None):
+    self.keyOp_ = keyOp
+    self.p_ = SelectParser(parsers)
+
+
 def make_output_parser():
-  def parseElasicOutput(parser):
-    p = weakref.ref(parser)
-    def op(cfg, state):
-      speeds = {name2code(axisName):value for axisName,value in cfg["speeds"].items()}
-      next = p()(cfg["next"], state)
-      j = ElasticJoystic(next, speeds)
-      state["settings"]["updated"].append(lambda tick : j.update(tick))
-      return j
-    return op
+  def parseElasicOutput(cfg, state):
+    speeds = {name2code(axisName):value for axisName,value in cfg["speeds"].items()}
+    next = state["parser"]("output", cfg["next"], state)
+    j = ElasticJoystic(next, speeds)
+    state["settings"]["updated"].append(lambda tick : j.update(tick))
+    return j
     
-  def parseCompositeOutput(parser):
-    parser = weakref.ref(parser)
-    def op(cfg, state):
-      children = ListParser(parser())(cfg["children"], state)
-      return CompositeJoystick(children)
-    return op
+  def parseCompositeOutput(cfg, state):
+    parser = state["parser"].get("output") 
+    children = parse_list(cfg["children"], state, parser)
+    return CompositeJoystick(children)
 
   def parseOpentrackOutput(cfg, state):
     opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
@@ -3508,14 +3507,16 @@ def make_output_parser():
     state["settings"]["updated"].append(lambda tick : j.send())
     return j
 
-  outputParser = SelectParser(keyOp=lambda cfg : cfg["type"])
-  outputParser.add("elastic", parseElasicOutput(outputParser))
-  outputParser.add("composite", parseCompositeOutput(outputParser))
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  outputParser.add("elastic", parseElasicOutput)
+  outputParser.add("composite", parseCompositeOutput)
   outputParser.add("opentrack", parseOpentrackOutput)
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
   return outputParser
 
 
-parsers = {}
-parsers["output"] = make_output_parser()
+def init_parser():
+  parser = SelectParser()
+  parser.add("output", make_output_parser())
+  return parser
