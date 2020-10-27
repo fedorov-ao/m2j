@@ -3126,7 +3126,7 @@ def init_layout_config(settings):
 
   def parseModifiers(cfg, state):
     nextCfg = cfg["next"]
-    nextSink = parsers[nextCfg["type"]](nextCfg, state)
+    nextSink = parseSelfTyped(nextCfg, state)
     return parseModifiers_(nextSink, cfg, state)
   parsers["modifiers"] = parseModifiers
 
@@ -3150,7 +3150,7 @@ def init_layout_config(settings):
 
   def parseSens(cfg, state):
     nextCfg = cfg["next"]
-    nextSink = parsers[nextCfg["type"]](nextCfg, state)
+    nextSink = parseSelfTyped(nextCfg, state)
     return parseSens_(nextSink, cfg, state)
   parsers["sens"] = parseSens
 
@@ -3179,7 +3179,7 @@ def init_layout_config(settings):
     if "initialState" in cfg:
       sink.set_state(cfg["initialState"])
     nextCfg = cfg["next"]
-    sink.set_next(parsers[nextCfg["type"]](nextCfg, state))
+    sink.set_next(parseSelfTyped(nextCfg, state))
     state["sink"] = sink
     bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), sink, 1)
