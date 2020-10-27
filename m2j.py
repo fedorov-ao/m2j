@@ -1509,9 +1509,9 @@ class InputDeltaLinkingCurve:
     self.td_ += d
     atd = abs(self.td_)
     if atd < self.radius_:
-      cd = self.op_(atd)
+      cd = self.op_(self.td_)
       self.busy_= True
-      self.controlledAxis_.move(sign(self.td_)*cd + self.cv_, relative=False)
+      self.controlledAxis_.move(cd + self.cv_, relative=False)
       self.busy_= False
 
   def reset(self):
