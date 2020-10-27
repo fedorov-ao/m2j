@@ -3479,23 +3479,349 @@ class IntrusiveSelectParser:
     self.p_ = SelectParser(parsers)
 
 
-def make_output_parser():
+def make_parser():
+  parser = SelectParser()
+
+  def parseBases_(cfg, state):
+    """Merges all base config definitions if they are specified."""
+    bases = cfg.get("bases", None)
+    if bases is not None:
+      layouts, full = state["settings"]["config"]["layouts"], {}
+      for b in bases:
+        merge_dicts(full, layouts[b])
+      merge_dicts(full, cfg)
+      return full
+    else:
+      return cfg
+
+  sinkParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  parser.add("sink", sinkParser)
+
+  def parseModifiers_(sink, cfg, state):
+    """Adds modifier sink if 'modifiers' property is present."""
+    if "modifiers" in cfg:
+      modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+      modifierSink = ModifierSink(next=sink, modifiers=modifiers)
+      #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
+      def parseModifiersWrapper(event):
+        oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
+        event.modifiers = modifiers
+        try:
+          #logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
+          modifierSink(event)
+          if event.type == EV_BCAST and event.code == BC_INIT and event.value == 0:
+            modifierSink.clear()
+        except:
+          raise
+        finally:
+          if oldModifiers is not None: event.modifiers = oldModifiers
+      return parseModifiersWrapper
+    else:
+      return sink
+
+  def parseModifiers(cfg, state):
+    """Creates modifiers sink."""
+    nextCfg = cfg["next"]
+    nextSink = state["parser"]("sink", nextCfg, state)
+    return parseModifiers_(nextSink, cfg, state)
+  sinkParser.add("modifiers", parseModifiers)
+
+  def parseSens_(sink, cfg, state):
+    """Adds modifier sink if 'modifiers' property is present."""
+    if "sens" in cfg:
+      sens = {split_full_name_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
+      keyOp = lambda event : ((event.source, event.code), (None, event.code))
+      scaleSink = ScaleSink2(sens, keyOp)
+      scaleSink.set_next(sink)
+      def wrapper(event):
+        oldValue = event.value
+        try:
+          scaleSink(event)
+        except:
+          raise
+        finally:
+          event.value = oldValue
+      return wrapper
+    else:
+      return sink
+
+  def parseSens(cfg, state):
+    """Creates sens sink."""
+    nextCfg = cfg["next"]
+    nextSink = state["parser"]("sink", nextCfg, state)
+    return parseSens_(nextSink, cfg, state)
+  sinkParser.add("sens", parseSens)
+
+  def parseExtra_(sink, cfg, state):
+    for f in (parseSens_, parseModifiers_):
+      sink = f(sink, cfg, state)
+    return sink
+
+  def parseMode(cfg, state):
+    """Creates mode sink."""
+    modeSink = ModeSink()
+    if "modes" in cfg:
+      for modeName,modeCfg in cfg["modes"].items():
+        child = state["parser"]("sink", modeCfg, state)
+        modeSink.add(modeName, child)
+    if "initialMode" in cfg:
+      modeSink.set_mode(cfg["initialMode"])
+    msmm = ModeSinkModeManager(modeSink)
+    state["msmm"] = msmm
+    bindingSink = parseBinding_(cfg, state)
+    bindingSink.add(ED.any(), modeSink, 1)
+    return parseExtra_(bindingSink, cfg, state)
+  sinkParser.add("mode", parseMode)
+
+  def parseState(cfg, state):
+    """Creates state sink."""
+    sink = StateSink()
+    if "initialState" in cfg:
+      sink.set_state(cfg["initialState"])
+    nextCfg = cfg["next"]
+    sink.set_next(state["parser"]("sink", nextCfg, state))
+    state["sink"] = sink
+    bindingSink = parseBinding_(cfg, state)
+    bindingSink.add(ED.any(), sink, 1)
+    return parseExtra_(bindingSink, cfg, state)
+  sinkParser.add("state", parseState)
+
+  sinkParser.add("saveMode", lambda cfg, state : state["msmm"].make_save())
+  sinkParser.add("restoreMode", lambda cfg, state : state["msmm"].make_restore())
+  sinkParser.add("clearMode", lambda cfg, state : state["msmm"].make_clear())
+  sinkParser.add("setMode", lambda cfg, state : state["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+  sinkParser.add("cycleMode", lambda cfg, state : state["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+
+  def parseSetState(cfg, state):
+    s = cfg["state"]
+    return SetState(state["sink"], s)
+  sinkParser.add("setState", parseSetState)
+
+  def parseMove(cfg, state):
+    fullAxisName = cfg["axis"]
+    outputName, axisName = split_full_name(fullAxisName)
+    state["output"], state["axis"] = outputName, name2code(axisName)
+    curve = make_curve(cfg, state)
+    if "curves" not in state:
+      state["curves"] = {}
+    if fullAxisName not in state["curves"]:
+      state["curves"][fullAxisName] = []
+    state["curves"][fullAxisName].append(curve)
+    return MoveCurve(curve)
+  sinkParser.add("move", parseMove)
+
+  def parseSetAxis(cfg, state):
+    fullAxisName = cfg["axis"]
+    outputName, axisName = split_full_name(fullAxisName)
+    axisId = name2code(axisName)
+    axis = state["settings"]["axes"][outputName][axisId]
+    value = float(cfg["value"])
+    r = MoveAxis(axis, value, False)
+    return r
+  sinkParser.add("setAxis", parseSetAxis)
+
+  def parseSetAxes(cfg, state):
+    axesAndValues = []
+    allAxes = state["settings"]["axes"]
+    for fullAxisName,value in cfg["axesAndValues"].items():
+      outputName, axisName = split_full_name(fullAxisName)
+      axisId = name2code(axisName)
+      axis = allAxes[outputName][axisId]
+      value = float(value)
+      axesAndValues.append([axis, value, False])
+    r = MoveAxes(axesAndValues)
+    return r
+  sinkParser.add("setAxes", parseSetAxes)
+
+  def parseSetKeyState(cfg, state):
+    output, key = split_full_name(cfg["key"])
+    key = name2code(key)
+    state = int(cfg["state"])
+    return SetButtonState(output, key, state)
+  sinkParser.add("setKeyState", parseSetKeyState)
+
+  def parseResetCurves(cfg, state):
+    #logger.debug("collected curves: {}".format(state["curves"]))
+    allCurves = state.get("curves", None)
+    if allCurves is None:
+      raise Exception("No curves were initialized")
+    curvesToReset = []
+    for fullAxisName in cfg["axes"]:
+      curves = allCurves.get(fullAxisName, None)
+      if curves is None:
+        raise Exception("Curves for {} were not initialized".format(fullAxisName))
+      curvesToReset += curves
+    #logger.debug("selected curves: {}".format(curves))
+    return ResetCurves(curvesToReset)
+  sinkParser.add("resetCurves", parseResetCurves)
+
+  def createSnap_(cfg, state):
+    if "snapManager" not in state:
+      state["snapManager"] = AxisSnapManager()
+    snapManager = state["snapManager"]
+    snapName = cfg["snap"]
+    if not snapManager.has_snap(snapName): 
+      snaps = state["settings"]["config"]["snaps"]
+      fullAxesNamesAndValues = snaps[snapName]
+      allAxes = settings["axes"]
+      snap = []
+      for fullAxisName,value in fullAxesNamesAndValues.items():
+        outputName, axisName = split_full_name(fullAxisName)
+        axisId = name2code(axisName)
+        axis = allAxes[outputName][axisId]
+        snap.append((axis, value))
+      snapManager.set_snap(snapName, snap)
+
+  def parseUpdateSnap(cfg, state):
+    createSnap_(cfg, state)
+    snapName = cfg["snap"]
+    snapManager = state["snapManager"]
+    return UpdateSnap(snapManager, snapName)
+  sinkParser.add("updateSnap", parseUpdateSnap)
+
+  def parseSnapTo(cfg, state):
+    createSnap_(cfg, state)
+    snapName = cfg["snap"]
+    snapManager = state["snapManager"]
+    return SnapTo(snapManager, snapName)
+  sinkParser.add("snapTo", parseSnapTo)
+
+  edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  parser.add("ed", edParser)
+
+  def parseEdModifiers_(r, cfg):
+    """Helper"""
+    if "modifiers" in cfg:
+      modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+      r.append(("modifiers", modifiers)) 
+    return r
+
+  def parseKey_(cfg, state, value):
+    """Helper"""
+    source, key = split_full_name(cfg["key"])
+    eventType = get_event_type(key)
+    key = name2code(key)
+    r = [("type", eventType), ("code", key), ("value", value)]
+    if source is not None:
+      r.append(("source", source))
+    return r
+
+  def parsePress(cfg, state):
+    return parseEdModifiers_(parseKey_(cfg, state, 1), cfg)
+  edParser.add("press", parsePress)
+
+  def parseRelease(cfg, state):
+    return parseEdModifiers_(parseKey_(cfg, state, 0), cfg)
+  edParser.add("release", parseRelease)
+
+  def parseClick(cfg, state):
+    r = parseKey_(cfg, state, 3) 
+    r.append(("num_clicks", 1))
+    r = parseEdModifiers_(r, cfg)
+    return r
+  edParser.add("click", parseClick)
+
+  def parseDoubleClick(cfg, state):
+    r = parseKey_(cfg, state, 3) 
+    r.append(("num_clicks", 2))
+    r = parseEdModifiers_(r, cfg)
+    return r
+  edParser.add("doubleclick", parseDoubleClick)
+
+  def parseMultiClick(cfg, state):
+    r = parseKey_(cfg, state, 3) 
+    num = int(cfg["numClicks"])
+    r.append(("num_clicks", num))
+    r = parseEdModifiers_(r, cfg)
+    return r
+  edParser.add("multiclick", parseMultiClick)
+
+  def parseMove(cfg, state):
+    source, axis = split_full_name(cfg["axis"])
+    eventType = get_event_type(axis)
+    axis = name2code(axis)
+    r = [("type", eventType), ("code", axis)]
+    if source is not None:
+      r.append(("source", source))
+    r = parseEdModifiers_(r, cfg)
+    return r
+  edParser.add("move", parseMove)
+
+  def parseInit(cfg, state):
+    eventName = cfg["event"]
+    value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
+    assert(value is not None)
+    r = [("type", EV_BCAST), ("code", BC_INIT), ("value", value)]
+    return r
+  edParser.add("init", parseInit)
+        
+  def parseBinding_(cfg, state):
+    def parseInputsOutputs(cfg, state):
+      def parseGroup(n1, n2, cn, cfg, state):
+        r = None 
+        if n2 in cfg:
+          inputs = [parser(cn, c, state) for c in cfg[n2]]
+        elif n1 in cfg:
+          inputs = [parser(cn, cfg[n1], state)]
+        return r
+
+      inputs, outputs = parseGroup("input", "inputs", "ed", cfg, state), get_group("output", "outputs", "sink", cfg, state)
+
+      if inputs is None:
+        raise Exception("No inputs")
+      if outputs is None:
+        raise Exception("No outputs")
+
+      return ((i,o) for i in inputs for o in outputs)
+
+    cmpOp = CmpWithModifiers()
+    bindingSink = BindSink(cmpOp)
+    state["curves"] = {}
+    binds = cfg.get("binds", ())
+    #logger.debug("binds: {}".format(binds))
+    for bind in binds:
+      for i,o in parseBind(bind, state):
+        bindingSink.add(i, o, 0)
+    return bindingSink
+
+  def parseBinding(cfg, state):
+    return parseExtra_(parseBinding_(cfg, state), cfg, state)
+  sinkParser.add("bind", parseBinding)
+
+  def parseExternal_(groupName):
+    def parseExternalOp(cfg, state):
+      group = state["settings"]["config"][groupName]
+      name = cfg["name"]
+      cfg = group[name]
+      sink = state["parser"](name, cfg, state)
+      return sink
+    return parseExternalOp
+
+  parser.add("preset", parseExternal_("presets"))
+  parser.add("layout", parseExternal_("layouts"))
+
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  parser.add("output", outputParser)
+
   def parseElasicOutput(cfg, state):
     speeds = {name2code(axisName):value for axisName,value in cfg["speeds"].items()}
     next = state["parser"]("output", cfg["next"], state)
     j = ElasticJoystic(next, speeds)
     state["settings"]["updated"].append(lambda tick : j.update(tick))
     return j
+  outputParser.add("elastic", parseElasicOutput)
     
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output") 
     children = parse_list(cfg["children"], state, parser)
     return CompositeJoystick(children)
+  outputParser.add("composite", parseCompositeOutput)
 
   def parseOpentrackOutput(cfg, state):
     opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
     state["settings"]["updated"].append(lambda tick : opentrack.send())
     return opentrack
+  outputParser.add("opentrack", parseOpentrackOutput)
 
   def parseUdpJoystickOutput(cfg, state):
     packetMakers = {
@@ -3506,17 +3832,6 @@ def make_output_parser():
     j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
     state["settings"]["updated"].append(lambda tick : j.send())
     return j
-
-  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
-  outputParser.add("elastic", parseElasicOutput)
-  outputParser.add("composite", parseCompositeOutput)
-  outputParser.add("opentrack", parseOpentrackOutput)
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
-  return outputParser
-
-
-def init_parser():
-  parser = SelectParser()
-  parser.add("output", make_output_parser())
   return parser

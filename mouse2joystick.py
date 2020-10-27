@@ -218,7 +218,7 @@ def run():
       elif o in ("-n", "--config"):
         settings["configNames"].append(a)
 
-    parser = init_parser()
+    parser = make_parser()
     settings["parser"] = parser
     parser.get("output").add("evdev", parseEvdevJoystickOutput)
 
