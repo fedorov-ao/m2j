@@ -3163,7 +3163,7 @@ def init_layout_config(settings):
     modeSink = ModeSink()
     if "modes" in cfg:
       for modeName,modeCfg in cfg["modes"].items():
-        child = parsers[modeCfg["type"]](modeCfg, state)
+        child = parseSelfTyped(modeCfg, state)
         modeSink.add(modeName, child)
     if "initialMode" in cfg:
       modeSink.set_mode(cfg["initialMode"])
