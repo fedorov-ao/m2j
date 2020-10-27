@@ -3417,8 +3417,10 @@ def init_layout_config(settings):
     raise Exception("'{}' layout not found in config".format(layoutName))
   else:
     try:
-      state = {"settings" : settings}
-      r = parseSelfTyped(cfg, state)
+      parser = settings["parser"]
+      state = {"settings" : settings, "parser" : parser}
+      #r = parseSelfTyped(cfg, state)
+      r = parser("sink", cfg, state)
       return r
     except KeyError as e:
       logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, e))
@@ -3447,9 +3449,7 @@ def parse_dict(cfg, state, kp, vp):
 
 class SelectParser:
   def __call__(self, key, cfg, state):
-    r = None
-    if key in self.parsers_:
-      r = self.parsers_[key](cfg, state) 
+    r = self.parsers_[key](cfg, state) 
     return r
 
   def add(self, key, parser):
@@ -3482,17 +3482,18 @@ class IntrusiveSelectParser:
 def make_parser():
   parser = SelectParser()
 
-  def parseBases_(cfg, state):
-    """Merges all base config definitions if they are specified."""
-    bases = cfg.get("bases", None)
-    if bases is not None:
-      layouts, full = state["settings"]["config"]["layouts"], {}
-      for b in bases:
-        merge_dicts(full, layouts[b])
-      merge_dicts(full, cfg)
-      return full
-    else:
-      return cfg
+  def parseBases_(wrapped):
+    def parseBasesOp(cfg, state):
+      """Merges all base config definitions if they are specified."""
+      bases = cfg.get("bases", None)
+      if bases is not None:
+        layouts, full = state["settings"]["config"]["layouts"], {}
+        for b in bases:
+          merge_dicts(full, layouts[b])
+        merge_dicts(full, cfg)
+        cfg = full
+      return wrapped(cfg, state)
+    return parseBasesOp
 
   sinkParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("sink", sinkParser)
@@ -3524,7 +3525,7 @@ def make_parser():
     nextCfg = cfg["next"]
     nextSink = state["parser"]("sink", nextCfg, state)
     return parseModifiers_(nextSink, cfg, state)
-  sinkParser.add("modifiers", parseModifiers)
+  sinkParser.add("modifiers", parseBases_(parseModifiers))
 
   def parseSens_(sink, cfg, state):
     """Adds modifier sink if 'modifiers' property is present."""
@@ -3550,7 +3551,7 @@ def make_parser():
     nextCfg = cfg["next"]
     nextSink = state["parser"]("sink", nextCfg, state)
     return parseSens_(nextSink, cfg, state)
-  sinkParser.add("sens", parseSens)
+  sinkParser.add("sens", parseBases_(parseSens))
 
   def parseExtra_(sink, cfg, state):
     for f in (parseSens_, parseModifiers_):
@@ -3571,7 +3572,7 @@ def make_parser():
     bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), modeSink, 1)
     return parseExtra_(bindingSink, cfg, state)
-  sinkParser.add("mode", parseMode)
+  sinkParser.add("mode", parseBases_(parseMode))
 
   def parseState(cfg, state):
     """Creates state sink."""
@@ -3584,7 +3585,7 @@ def make_parser():
     bindingSink = parseBinding_(cfg, state)
     bindingSink.add(ED.any(), sink, 1)
     return parseExtra_(bindingSink, cfg, state)
-  sinkParser.add("state", parseState)
+  sinkParser.add("state", parseBases_(parseState))
 
   sinkParser.add("saveMode", lambda cfg, state : state["msmm"].make_save())
   sinkParser.add("restoreMode", lambda cfg, state : state["msmm"].make_restore())
@@ -3663,6 +3664,7 @@ def make_parser():
     if not snapManager.has_snap(snapName): 
       snaps = state["settings"]["config"]["snaps"]
       fullAxesNamesAndValues = snaps[snapName]
+      settings = state["settings"]
       allAxes = settings["axes"]
       snap = []
       for fullAxisName,value in fullAxesNamesAndValues.items():
@@ -3760,12 +3762,12 @@ def make_parser():
       def parseGroup(n1, n2, cn, cfg, state):
         r = None 
         if n2 in cfg:
-          inputs = [parser(cn, c, state) for c in cfg[n2]]
+          r = [parser(cn, c, state) for c in cfg[n2]]
         elif n1 in cfg:
-          inputs = [parser(cn, cfg[n1], state)]
+          r = [parser(cn, cfg[n1], state)]
         return r
 
-      inputs, outputs = parseGroup("input", "inputs", "ed", cfg, state), get_group("output", "outputs", "sink", cfg, state)
+      inputs, outputs = parseGroup("input", "inputs", "ed", cfg, state), parseGroup("output", "outputs", "sink", cfg, state)
 
       if inputs is None:
         raise Exception("No inputs")
@@ -3780,25 +3782,25 @@ def make_parser():
     binds = cfg.get("binds", ())
     #logger.debug("binds: {}".format(binds))
     for bind in binds:
-      for i,o in parseBind(bind, state):
+      for i,o in parseInputsOutputs(bind, state):
         bindingSink.add(i, o, 0)
     return bindingSink
 
   def parseBinding(cfg, state):
     return parseExtra_(parseBinding_(cfg, state), cfg, state)
-  sinkParser.add("bind", parseBinding)
+  sinkParser.add("bind", parseBases_(parseBinding))
 
   def parseExternal_(groupName):
     def parseExternalOp(cfg, state):
       group = state["settings"]["config"][groupName]
       name = cfg["name"]
       cfg = group[name]
-      sink = state["parser"](name, cfg, state)
+      sink = state["parser"]("sink", cfg, state)
       return sink
     return parseExternalOp
 
-  parser.add("preset", parseExternal_("presets"))
-  parser.add("layout", parseExternal_("layouts"))
+  parser.add("preset", parseBases_(parseExternal_("presets")))
+  sinkParser.add("layout", parseBases_(parseExternal_("layouts")))
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
