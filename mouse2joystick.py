@@ -147,7 +147,7 @@ def run():
 
       initializer = layout_initializers.get(config["layout"], None)
       if not initializer:
-        raise Exception("Initialiser for '{}' not found".format(config["layout"]))
+        raise ParseError("", "Initialiser for '{}' not found".format(config["layout"]))
       else:
         logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
 
@@ -155,16 +155,15 @@ def run():
       updated = settings.get("updated", [])
 
       settings["source"] = EventSource(settings["inputs"].values(), sink)
-    except Exception as e:
-      logger.error("Cannot initialize: {}".format(e))
-      for l in traceback.format_exc().splitlines()[-11:]:
-        logger.error(l)
-    except ConfigError as e:
-      logger.error("Cannot initialize due to config error: {}".format(e))
-      for l in traceback.format_exc().splitlines()[-11:]:
-        logger.error(l)
+
     except ParseError as e:
-      logger.error("Cannot initialize due to config parsing error: got {} at {}".format(e.e, e.path))
+      logger.error(e)
+    except ConfigError as e:
+      logger.error(e)
+    except Exception as e:
+      logger.error(l)
+      for l in traceback.format_exc().splitlines()[-11:]:
+        logger.error(l)
 
   def unswallow_inputs(settings):
     for i in settings["inputs"].values():
@@ -174,15 +173,14 @@ def run():
         logger.debug("got IOError ({}), but that was expected".format(e))
         continue
 
-  def run2(settings):
+  def init_and_run(settings):
     oldUpdated = [o for o in settings["updated"]]
     init_source(settings)
     source = settings.get("source", None)
     if source is None:
-      raise Exception("Have no valid working state")
+      raise Exception("No valid state")
     updated = settings.get("updated", [])
     refreshRate = settings["config"].get("refreshRate", 100.0)
-    logger.info("Refresh rate is {} times per second".format(refreshRate))
     step = 1.0 / refreshRate
     def run_source(tick):
       source.run_once()
@@ -228,11 +226,9 @@ def run():
 
     while (True):
       try:
-        r = run2(settings)
+        r = init_and_run(settings)
       except ReloadException:
         logger.info("Reloading")
-      except KeyboardInterrupt:
-        raise
       finally:
         unswallow_inputs(settings)
 
@@ -240,7 +236,7 @@ def run():
     logger.info("Exiting")
     return 0
   except ConfigError as e:
-    logger.error("Config error: {}".format(e))
+    logger.error(e)
     return 1
 
 
