@@ -251,14 +251,17 @@ class PPJoystick:
       v += self.v_[axis]
     v = clamp(v, -1.0, 1.0)
     self.v_[axis] = v
-    
+
     self.ppj_.setAxis(w2n_axis(axis), v*self.scales_[axis])
-    
+
   def get_axis(self, axis):
     return self.v_[axis]
 
   def get_limits(self, axis):
     return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.v_.keys()
 
   def set_button_state(self, button, state):
     self.ppj_.setButton(w2n_key(button), state)
@@ -269,16 +272,15 @@ class PPJoystick:
     self.v_ = dict()
     for a in self.scales_.keys():
       self.v_[a] = 0.0  
-  
+
 if starting:
   reload(m2j)
-  global g_es
-  global g_inputs
   global logger
 
-  settings = {}
-  settings["options"] = {"layout" : "base", "curves" : "config", "configCurveLayoutName" : "base", "logLevel" : "INFO" }
+  settings = {"options" : {}, "configNames" : [], "updated" : []}
+  settings["options"] = {"layout" : "config", "curves" : "config", "configCurves" : "base8_cfg", "logLevel" : "DEBUG" }
   settings["configNames"] = ["curves.cfg", "m2j_freepie.cfg"]
+  settings["parser"] = make_parser()
 
   init_config2(settings)
 
@@ -287,7 +289,8 @@ if starting:
       diagnostics.debug(s.strip("\n"))
     def flush(self):
       pass
-  init_log(settings, logging.StreamHandler(DiagnosticsStream()))
+  init_log_initial(handler=logging.StreamHandler(DiagnosticsStream()))
+  set_log_level(settings)
   logger = logging.getLogger(__name__)
 
   mouseAxisDevice = PollingAxisDevice(
@@ -313,22 +316,38 @@ if starting:
     0, 
     {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 999.0, codes.ABS_RY : 999.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,}
   )
-  head = Opentrack("127.0.0.1", 5555)
+  headJoystick = PPJoystick(
+    1, 
+    {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 999.0, codes.ABS_RY : 999.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,}
+  )
+  headOpentrack = Opentrack("127.0.0.1", 5555)
+  settings["updated"].append(lambda tick : headOpentrack.send())
+  head = CompositeJoystick([headJoystick, headOpentrack])
   settings["outputs"] = {"joystick" : joystick, "head" : head}
 
-  initializer = layout_initializers.get(settings["layout"], None)
+  config = settings["config"]
+  layoutName, curvesName = config["layout"], config["curves"]
+  initializer = layout_initializers.get(layoutName, None)
   if not initializer:
-    raise Exception("Initialiser for '{}' not found".format(config["layout"]))
+    raise Exception("Initialiser for '{}' not found".format(layoutName))
   else:
-    logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
+    logger.info("Initializing for '{}' layout, using '{}' curves".format(layoutName, curvesName))
   sink = init_main_sink(settings, initializer)
 
-  g_es = EventSource(settings["inputs"].values(), sink, 0.01)
-  assert(g_es)
-  g_inputs = settings["inputs"].values()
-  assert(g_inputs)
+  inputs = settings["inputs"].values()
+  def run_inputs(tick):
+    for i in inputs:
+      i.update()
+  source = EventSource(inputs, sink)
+  def run_source(tick):
+    source.run_once()
+  updated = settings["updated"]
+  def run_updated(tick):
+    for u in updated: 
+      u(tick)
+      
+  callbacks = [run_inputs, run_source, run_updated]
+  global g_loop
+  g_loop = Loop(callbacks, 0.0)  
   
-for d in g_inputs:
-  d.update()
-  
-g_es.run_once()
+g_loop.run_once()

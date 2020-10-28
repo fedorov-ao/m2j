@@ -166,18 +166,24 @@ class EventSource:
 
 
 class Loop:
+  def run_once(self):
+    if self.t_ == None:
+      self.t_ = time.time()
+    ct = time.time()
+    dt = ct - self.t_
+    self.t_ = ct
+    for c in self.callbacks_:
+      c(dt)
+    time.sleep(max(self.step_ - (time.time() - ct), 0))
+      
   def run(self):
-    t = time.time()
+    self.t_ = time.time()
     while (True):
-      ct = time.time()
-      dt = ct - t
-      t = ct
-      for c in self.callbacks_:
-        c(dt)
-      time.sleep(max(self.step_ - (time.time() - ct), 0))
+      self.run_once()
 
   def __init__(self, callbacks, step):
     self.callbacks_, self.step_ = callbacks, step
+    self.t_ = None
 
 
 class MoveJoystickAxis:
@@ -1645,7 +1651,7 @@ class Opentrack:
     self.ip_, self.port_ = ip, port
     self.v_ = {a:0.0 for a in self.axes_}
 
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
+  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
 
 
 class UdpJoystick:
@@ -2861,7 +2867,7 @@ def init_layout_config(settings):
       r = parser("sink", cfg, state)
       return r
     except KeyError as e:
-      logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, e))
+      logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, str(e)))
       raise
     except Exception as e:
       logger.error("Error while initializing config layout '{}': {}".format(layoutName, e))
@@ -2887,6 +2893,9 @@ def parse_dict(cfg, state, kp, vp):
 
 class SelectParser:
   def __call__(self, key, cfg, state):
+    if key not in self.parsers_:
+      logger.error("Key {} not found, available keys are: {}".format(key, self.parsers_.keys()))
+      raise KeyError(key)
     r = self.parsers_[key](cfg, state) 
     return r
 
@@ -2904,6 +2913,7 @@ class IntrusiveSelectParser:
   """FreePie does not handle inheritance well, so this class is implemented via composition."""
   def __call__(self, cfg, state):
     key = self.keyOp_(cfg)
+    logger.debug(cfg)
     return self.p_(key, cfg, state)
 
   def add(self, key, parser):
@@ -3000,7 +3010,11 @@ def make_parser():
   def parsePointsOutputBasedCurve(cfg, state):
     axisId = state["axis"]
     outputName = state["output"]
-    axis = state["settings"]["axes"][outputName][axisId]
+    allAxes = state["settings"]["axes"]
+    assert(outputName in allAxes)
+    outputAxes = allAxes[outputName]
+    assert(axisId in outputAxes)
+    axis = outputAxes[axisId]
     points = parsePoints(cfg["points"], state)
     vpoName = cfg.get("vpo", None)
     ops = {
