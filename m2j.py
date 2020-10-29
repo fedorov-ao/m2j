@@ -2131,14 +2131,14 @@ def set_log_level(settings):
   root.setLevel(level)
 
 
-class ConfigError:
+class ConfigReadError(RuntimeError):
   def __init__(self, configName, e):
     self.configName, self.e = configName, e
   def __str__(self):
     return "Cannot read config file {} ({})".format(self.configName, self.e)
 
 
-class ParseError:
+class ParseError(RuntimeError):
   def __init__(self, path, e):
     self.path, self.e = path, e
   def __str__(self):
@@ -2156,12 +2156,8 @@ def init_config(configFilesNames):
           parent = init_config(configs)
           merge_dicts(current, parent)
         merge_dicts(cfg, current)
-    except KeyError as e:
-      raise ConfigError(configName, e)
-    except ValueError as e:
-      raise ConfigError(configName, e)
-    except IOError as e:
-      raise ConfigError(configName, e)
+    except (KeyError, ValueError, IOError) as e:
+      raise ConfigReadError(configName, e)
   return cfg
                               
 
@@ -2894,10 +2890,15 @@ def parse_dict(cfg, state, kp, vp):
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
-      logger.error("Key {} not found, available keys are: {}".format(key, self.parsers_.keys()))
-      raise KeyError(key)
-    r = self.parsers_[key](cfg, state) 
-    return r
+      raise RuntimeError("Parser for '{}' not found, available parsers are: {}".format(key, self.parsers_.keys()))
+    else:
+      parser = self.parsers_[key]
+      try:
+        r = parser(cfg, state) 
+        return r
+      except Exception as e:
+        logger.debug("{}, so cannot parse {}".format(e, cfg))
+        raise
 
   def add(self, key, parser):
     self.parsers_[key] = parser
@@ -3427,12 +3428,12 @@ def make_parser():
       parser = state["settings"]["parser"]
 
       inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
-      if inputs is None:
-        raise RuntimeError("No inputs were constructed (encountered when parsing '{}')".format(cfg))
+      if len(inputs) == 0:
+        logger.warning("No inputs were constructed (encountered when parsing '{}')".format(cfg))
 
       outputs = parseGroup("output", "outputs", parser.get("sink"), cfg, state)
-      if outputs is None:
-        raise RuntimeError("No outputs were constructed (encountered when parsing '{}')".format(cfg))
+      if len(outputs) == 0:
+        logger.warning("No outputs were constructed (encountered when parsing '{}')".format(cfg))
 
       return ((i,o) for i in inputs for o in outputs)
 

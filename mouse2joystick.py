@@ -156,10 +156,6 @@ def run():
 
       settings["source"] = EventSource(settings["inputs"].values(), sink)
 
-    except ParseError as e:
-      logger.error(e)
-    except ConfigError as e:
-      logger.error(e)
     except Exception as e:
       logger.error(e)
       for l in traceback.format_exc().splitlines()[-11:]:
@@ -233,9 +229,9 @@ def run():
         unswallow_inputs(settings)
 
   except KeyboardInterrupt:
-    logger.info("Exiting")
+    logger.info("Exiting normally")
     return 0
-  except ConfigError as e:
+  except ConfigReadError as e:
     logger.error(e)
     return 1
 
