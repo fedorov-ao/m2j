@@ -3007,14 +3007,20 @@ def make_parser():
     }
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
-  def parsePointsOutputBasedCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
+  def getAxis(fullAxisName, state):
+    outputName, axisName = split_full_name(fullAxisName)
     allAxes = state["settings"]["axes"]
-    assert(outputName in allAxes)
+    if outputName not in allAxes:
+      raise RuntimeError("No axes were initialized for '{}'".format(outputName, fullAxisName))
     outputAxes = allAxes[outputName]
-    assert(axisId in outputAxes)
+    axisId = name2code(axisName)
+    if axisId not in outputAxes:
+      raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
     axis = outputAxes[axisId]
+    return axis
+
+  def parsePointsOutputBasedCurve(cfg, state):
+    axis = getAxis(state["axis"], state)
     points = parsePoints(cfg["points"], state)
     vpoName = cfg.get("vpo", None)
     ops = {
@@ -3059,9 +3065,7 @@ def make_parser():
   curveParser.add("pointsOut", parsePointsOutputBasedCurve)
 
   def parseFixedPointInputBasedCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
-    axis = state["settings"]["axes"][outputName][axisId]
+    axis = getAxis(state["axis"], state)
     points = parsePoints(cfg["points"], state)
     fp = points["fixed"]
     interpolationDistance = cfg.get("interpolationDistance", 0.3)
@@ -3074,9 +3078,7 @@ def make_parser():
   curveParser.add("fpointIn", parseFixedPointInputBasedCurve)
 
   def parsePointsInputBasedCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
-    axis = state["settings"]["axes"][outputName][axisId]
+    axis = getAxis(state["axis"], state)
     points = parsePoints(cfg["points"], state)
     fp = points["fixed"]
     mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
@@ -3098,14 +3100,10 @@ def make_parser():
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
 
   def parseOutputDeltaLinkingCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
-    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    controlledAxis = getAxis(state["axis"], state)
     sensOp = state["parser"]("op", cfg, state)
     deltaOp = lambda delta, sens : delta*sens
-    controllingAxisFullName = cfg["controlling"]
-    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
-    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    controllingAxis = getAxis(cfg["controlling"], state)
     radius = cfg.get("radius", float("inf"))
     curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
@@ -3114,13 +3112,9 @@ def make_parser():
   curveParser.add("outDeltaLink", parseOutputDeltaLinkingCurve)
 
   def parseInputDeltaLinkingCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
-    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    controlledAxis = getAxis(state["axis"], state)
     op = state["parser"]("op", cfg, state)
-    controllingAxisFullName = cfg["controlling"]
-    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
-    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    controllingAxis = getAxis(cfg["controlling"], state)
     radius = cfg.get("radius", float("inf"))
     threshold = cfg.get("threshold", 0.0)
     threshold = None if threshold == "none" else float(threshold)
@@ -3131,13 +3125,9 @@ def make_parser():
   curveParser.add("inDeltaLink", parseInputDeltaLinkingCurve)
 
   def parseInputLinkingCurve(cfg, state):
-    axisId = state["axis"]
-    outputName = state["output"]
-    controlledAxis = state["settings"]["axes"][outputName][axisId]
+    controlledAxis = getAxis(state["axis"], state)
     op = state["parser"]("op", cfg, state)
-    controllingAxisFullName = cfg["controlling"]
-    controllingOutputName, controllingAxisId = split_full_name_code(controllingAxisFullName)
-    controllingAxis = state["settings"]["axes"][controllingOutputName][controllingAxisId]
+    controllingAxis = getAxis(cfg["controlling"], state)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
@@ -3269,8 +3259,7 @@ def make_parser():
 
   def parseMove(cfg, state):
     fullAxisName = cfg["axis"]
-    outputName, axisName = split_full_name(fullAxisName)
-    state["output"], state["axis"] = outputName, name2code(axisName)
+    state["axis"] = fullAxisName
     curve = state["parser"]("curve", cfg, state)
     if "curves" not in state:
       state["curves"] = {}
@@ -3281,10 +3270,7 @@ def make_parser():
   sinkParser.add("move", parseMove)
 
   def parseSetAxis(cfg, state):
-    fullAxisName = cfg["axis"]
-    outputName, axisName = split_full_name(fullAxisName)
-    axisId = name2code(axisName)
-    axis = state["settings"]["axes"][outputName][axisId]
+    axis = getAxis(cfg["axis"], state)
     value = float(cfg["value"])
     r = MoveAxis(axis, value, False)
     return r
@@ -3294,9 +3280,7 @@ def make_parser():
     axesAndValues = []
     allAxes = state["settings"]["axes"]
     for fullAxisName,value in cfg["axesAndValues"].items():
-      outputName, axisName = split_full_name(fullAxisName)
-      axisId = name2code(axisName)
-      axis = allAxes[outputName][axisId]
+      axis = getAxis(fullAxisName, state)
       value = float(value)
       axesAndValues.append([axis, value, False])
     r = MoveAxes(axesAndValues)
@@ -3314,13 +3298,14 @@ def make_parser():
     #logger.debug("collected curves: {}".format(state["curves"]))
     allCurves = state.get("curves", None)
     if allCurves is None:
-      raise Exception("No curves were initialized")
+      raise Exception("No curves were initialized for any axis")
     curvesToReset = []
     for fullAxisName in cfg["axes"]:
       curves = allCurves.get(fullAxisName, None)
       if curves is None:
-        raise Exception("Curves for {} were not initialized".format(fullAxisName))
-      curvesToReset += curves
+        logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, cfg))
+      else:
+        curvesToReset += curves
     #logger.debug("selected curves: {}".format(curves))
     return ResetCurves(curvesToReset)
   sinkParser.add("resetCurves", parseResetCurves)
@@ -3428,20 +3413,26 @@ def make_parser():
         
   def parseBinding_(cfg, state):
     def parseInputsOutputs(cfg, state):
-      def parseGroup(n1, n2, cn, cfg, state):
-        r = None 
-        if n2 in cfg:
-          r = [parser(cn, c, state) for c in cfg[n2]]
-        elif n1 in cfg:
-          r = [parser(cn, cfg[n1], state)]
+      def parseGroup(n1, n2, parser, cfg, state):
+        cfgs = cfg[n2] if n2 in cfg else (cfg[n1],) if n1 in cfg else ()
+        r = []
+        for c in cfgs:
+          try:
+            r.append(parser(c, state))
+          except RuntimeError as e:
+            logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, c))
+            continue
         return r
 
-      inputs, outputs = parseGroup("input", "inputs", "ed", cfg, state), parseGroup("output", "outputs", "sink", cfg, state)
+      parser = state["settings"]["parser"]
 
+      inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
       if inputs is None:
-        raise Exception("No inputs")
+        raise RuntimeError("No inputs were constructed (encountered when parsing '{}')".format(cfg))
+
+      outputs = parseGroup("output", "outputs", parser.get("sink"), cfg, state)
       if outputs is None:
-        raise Exception("No outputs")
+        raise RuntimeError("No outputs were constructed (encountered when parsing '{}')".format(cfg))
 
       return ((i,o) for i in inputs for o in outputs)
 

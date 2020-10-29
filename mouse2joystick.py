@@ -161,7 +161,7 @@ def run():
     except ConfigError as e:
       logger.error(e)
     except Exception as e:
-      logger.error(l)
+      logger.error(e)
       for l in traceback.format_exc().splitlines()[-11:]:
         logger.error(l)
 
