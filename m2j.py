@@ -482,7 +482,6 @@ class CalibratingSink:
 
   def reset(self):
     self.sens_ = {}
-    self.mode_ = 0
     logger.info("Calibration reset")
 
   def __init__(self):
@@ -500,20 +499,25 @@ class CalibratingSink:
 
   def gather_data_(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
-      key = (event.type, event.source, event.code)
-      d = self.sens_.get(key, None)
+      k = (event.type, event.source, event.code)
+      d = self.sens_.get(k, None)
       if d is None:
         class Data:
           pass
         d = Data()
         d.curr, d.min, d.max = 0.0, 0.0, 0.0
-        self.sens_[key] = d
+        self.sens_[k] = d
       if event.type == codes.EV_REL:
         d.curr += event.value
       elif event.type == codes.EV_ABS:
         d.curr = event.value
       if d.curr < d.min: d.min = d.curr
       elif d.curr > d.max: d.max = d.curr
+    s = ""
+    for k,d in self.sens_.items():
+      s += "{}: ({:+.3f}, {:+.3f}, {:+.3f}); ".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.curr, d.max)
+    if len(s):
+      logger.info(s[:-2])
     return self.next_(event) if self.next_ is not None else False
 
   def calibrate_(self):
@@ -523,7 +527,7 @@ class CalibratingSink:
       s = 2.0 / delta
       self.sens_[k] = s
       #logger.debug("{}: min:{}, max:{}, delta:{}".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.max, delta))
-      logger.info("Sensitivity for {} is now {}".format(join_full_name_tc(k[1], k[0], k[2]), s))
+      logger.info("Sensitivity for {} is now {:+.3f}".format(join_full_name_tc(k[1], k[0], k[2]), s))
 
 
 class BindSink:
