@@ -68,7 +68,7 @@ def name2type(name):
     "BCT" : codes.EV_BCT,
   }
   prefix = name[:3]
-  return p2t.get(prefix, -1)
+  return p2t.get(prefix, None)
 
 
 def type2names(type):
@@ -81,13 +81,16 @@ def type2names(type):
   return t2ps.get(type, ())
 
 
-#TODO Optimize
+typeCode2Name = {
+  t : { 
+    c : n for n,c in codesDict.items() if name2type(n) == t
+  } 
+  for t in set((name2type(n) for n in codesDict.keys())) if t is not None
+}
+
+
 def typecode2name(type, code):
-  for n,c in codesDict.items():
-    if c == code and n[:3] in type2names(type):
-      return n
-  else:
-    return ""
+  return typeCode2Name.get(type, {}).get(code, "")
 
 
 def split_full_name(s, sep="."):
