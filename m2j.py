@@ -62,6 +62,35 @@ def name2code(name):
   return codesDict[name]
 
 
+def name2type(name):
+  p2t = {
+    "REL" : codes.EV_REL,
+    "ABS" : codes.EV_ABS,
+    "BTN" : codes.EV_KEY,
+    "KEY" : codes.EV_KEY,
+  }
+  prefix = name[:3]
+  return p2t.get(prefix, -1)
+
+
+def type2names(type):
+  t2ps = {
+    codes.EV_REL : ("REL",),
+    codes.EV_ABS : ("ABS",),
+    codes.EV_KEY : ("BTN", "KEY",),
+  }
+  return t2ps.get(type, ())
+
+
+#TODO Optimize
+def typecode2name(type, code):
+  for n,c in codesDict.items():
+    if c == code and n[:3] in type2names(type):
+      return n
+  else:
+    return ""
+
+
 def split_full_name(s, sep="."):
   """
   'mouse.REL_X' -> ('mouse', 'REL_X')
@@ -78,6 +107,10 @@ def split_full_name_code(s, sep="."):
   """
   r = split_full_name(s, sep)
   return (r[0], name2code(r[1]))
+
+
+def join_full_name_tc(source, type, code, sep="."):
+  return sep.join((source, typecode2name(type, code)))
 
 
 class ReloadException(Exception):
@@ -487,11 +520,11 @@ class CalibratingSink:
   def calibrate_(self):
     for k,d in self.sens_.items():
       delta = d.max - d.min
-      if delta == 0.0: delta = 1.0
+      if delta == 0.0: delta = 2.0
       s = 2.0 / delta
       self.sens_[k] = s
-      logger.info("{}.{}: min:{}, max:{}, delta:{}".format(k[1], k[2], d.min, d.max, delta))
-      logger.info("Sensitivity for {}.{} is now {}".format(k[1], k[2], s))
+      #logger.debug("{}: min:{}, max:{}, delta:{}".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.max, delta))
+      logger.info("Sensitivity for {} is now {}".format(join_full_name_tc(k[1], k[0], k[2]), s))
 
 
 class BindSink:
