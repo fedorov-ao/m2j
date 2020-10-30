@@ -85,29 +85,36 @@ class ReloadException(Exception):
 
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
+    value = self.get_axis(axis) + v if relative else v
+    limits = self.get_limits(axis)
+    value = clamp(value, *limits)
     for c in self.children_:
-      c.move_axis(axis, v, relative)
+      if axis in c.get_supported_axes():
+        c.move_axis(axis, value, relative=False)
 
-  #TODO Come up with something better
   def get_axis(self, axis):
-    if len(self.children_):
-      return self.children_[0].get_axis(axis)
+    for c in self.children_:
+      if axis in c.get_supported_axes():
+        return c.get_axis(axis)
     else:
       return 0.0
 
-  #TODO Come up with something better
   def get_limits(self, axis):
-    if len(self.children_):
-      return self.children_[0].get_limits(axis)
-    else:
-      return (0.0, 0.0)
+    l = [-float("inf"), float("inf")]
+    for c in self.children_:
+      if axis in c.get_supported_axes():
+        cl = list(c.get_limits(axis))
+        if cl[0] > cl[1] : cl[0], cl[1] = cl[1], cl[0]
+        l[0], l[1] = max(l[0], cl[0]), min(l[1], cl[1])
+        if l[0] >= l[1]: 
+          return [0.0, 0.0]
+    return l
 
-  #TODO Come up with something better
   def get_supported_axes(self):
-    if len(self.children_):
-      return self.children_[0].get_supported_axes()
-    else:
-      return []
+    axes = set()
+    for c in self.children_:
+      axes.update(set(c.get_supported_axes()))
+    return list(axes)
 
   def __init__(self, children):
     self.children_ = children
