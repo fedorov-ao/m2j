@@ -427,6 +427,73 @@ class ScaleSink2:
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
+class CalibratingSink:
+  def __call__(self, event):
+    if self.mode_ == 0:
+      return self.process_event_(event)
+    elif self.mode_ == 1:
+      return self.gather_data_(event) 
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def toggle(self):
+    if self.mode_ == 0:
+      logger.info("Calibration started")
+      self.sens_ = {}
+      self.mode_ = 1
+    elif self.mode_ == 1:
+      self.calibrate_()
+      self.mode_ = 0
+      logger.info("Calibration finished")
+
+  def reset(self):
+    self.sens_ = {}
+    self.mode_ = 0
+    logger.info("Calibration reset")
+
+  def __init__(self):
+    self.next_, self.sens_, self.mode_ = None, None, 0
+
+  def process_event_(self, event):
+    if self.next_ is not None:
+      if event.type in (codes.EV_REL, codes.EV_ABS):
+        if self.sens_ is not None:
+          sens = self.sens_.get((event.type, event.source, event.code), 1.0)
+          event.value *= sens
+      return self.next_(event)
+    else:
+      return False
+
+  def gather_data_(self, event):
+    if event.type in (codes.EV_REL, codes.EV_ABS):
+      key = (event.type, event.source, event.code)
+      d = self.sens_.get(key, None)
+      if d is None:
+        class Data:
+          pass
+        d = Data()
+        d.curr, d.min, d.max = 0.0, 0.0, 0.0
+        self.sens_[key] = d
+      if event.type == codes.EV_REL:
+        d.curr += event.value
+      elif event.type == codes.EV_ABS:
+        d.curr = event.value
+      if d.curr < d.min: d.min = d.curr
+      elif d.curr > d.max: d.max = d.curr
+    return self.next_(event) if self.next_ is not None else False
+
+  def calibrate_(self):
+    for k,d in self.sens_.items():
+      delta = d.max - d.min
+      if delta == 0.0: delta = 1.0
+      s = 2.0 / delta
+      self.sens_[k] = s
+      logger.info("{}.{}: min:{}, max:{}, delta:{}".format(k[1], k[2], d.min, d.max, delta))
+      logger.info("Sensitivity for {}.{} is now {}".format(k[1], k[2], s))
+
+
 class BindSink:
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
@@ -2064,18 +2131,30 @@ def init_main_sink(settings, make_next):
     sens = sens[sensSet]
     sens = {split_full_name_code(s[0]):s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
+  
+  calibratingSink = scaleSink.set_next(CalibratingSink())
 
-  mainSink = scaleSink.set_next(BindSink(cmpOp))
+  mainSink = calibratingSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
   toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
-  mainSink.add(ED.doubleclick(toggleKey), ToggleSink(stateSink), 0)
+  mainSink.add(ED.doubleclick(toggleKey, []), ToggleSink(stateSink), 0)
 
   def rld(e):
     settings["initState"] = stateSink.get_state()
     raise ReloadException()
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
+
+  def toggle_calibration(e):
+    calibratingSink.toggle() 
+  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTCTRL)]), toggle_calibration, 0)
+  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTCTRL)]), toggle_calibration, 0)
+
+  def reset_calibration(e):
+    calibratingSink.reset() 
+  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTALT)]), reset_calibration, 0)
+  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTALT)]), reset_calibration, 0)
 
   grabSink = stateSink.set_next(BindSink(cmpOp))
   grabbed = [settings["inputs"][g] for g in config.get("grabbed", ())]
