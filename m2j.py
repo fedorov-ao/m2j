@@ -2233,8 +2233,8 @@ def init_main_sink(settings, make_next):
   mainSink = sensSetSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
-  #FIXME Convert to code!
-  toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
+  toggleKey = config.get("toggleKey", None)
+  toggleKey = codes.KEY_SCROLLLOCK if toggleKey is None else split_full_name_code(toggleKey)[1]
   mainSink.add(ED.doubleclick(toggleKey, []), ToggleSink(stateSink), 0)
 
   def rld(e):
