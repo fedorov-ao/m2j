@@ -431,7 +431,7 @@ class ModifierSink:
       event.modifiers = self.m_ 
 
     #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
-    return self.next_(event)
+    return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
     self.next_ = next
@@ -3459,8 +3459,7 @@ def make_parser():
     fullAxisName = cfg["axis"]
     state["axis"] = fullAxisName
     curve = state["parser"]("curve", cfg, state)
-    if "curves" not in state:
-      state["curves"] = {}
+    assert("curves" in state)
     if fullAxisName not in state["curves"]:
       state["curves"][fullAxisName] = []
     state["curves"][fullAxisName].append(curve)
@@ -3495,8 +3494,7 @@ def make_parser():
   def parseResetCurves(cfg, state):
     #logger.debug("collected curves: {}".format(state["curves"]))
     allCurves = state.get("curves", None)
-    if allCurves is None:
-      raise Exception("No curves were initialized for any axis")
+    assert(allCurves is not None)
     curvesToReset = []
     for fullAxisName in cfg["axes"]:
       curves = allCurves.get(fullAxisName, None)
@@ -3636,13 +3634,18 @@ def make_parser():
 
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
-    state["curves"] = {}
     binds = cfg.get("binds", ())
     #logger.debug("binds: {}".format(binds))
-    for bind in binds:
-      for i,o in parseInputsOutputs(bind, state):
-        bindingSink.add(i, o, 0)
-    return bindingSink
+    oldCurves = state.get("curves", None)
+    state["curves"] = {}
+    try:
+      for bind in binds:
+        for i,o in parseInputsOutputs(bind, state):
+          bindingSink.add(i, o, 0)
+      return bindingSink
+    finally:
+      if oldCurves is not None:
+        state["curves"] = oldCurves
 
   def parseBinding(cfg, state):
     return parseExtra_(parseBinding_(cfg, state), cfg, state)
