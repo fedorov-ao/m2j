@@ -1199,7 +1199,7 @@ class ReportingAxis:
     self.next_, self.listeners_ = next, []
 
 
-class SecondOrderAxis:
+class RateSettingAxis:
   def move(self, v, relative):
     #logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
     self.v_ = clamp(self.v_+v if relative is True else v, self.limits_[0], self.limits_[1])
@@ -2021,7 +2021,7 @@ class NodeJoystick(object):
     self.next_ = next
 
 
-class ElasticJoystic:
+class RateLimititngJoystick:
   def move_axis(self, axis, value, relative):
     if self.next_ is not None:
       self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
@@ -2048,13 +2048,13 @@ class ElasticJoystic:
       current = self.next_.get_axis(axisId)
       delta = value - current
       if delta != 0.0:
-        if axisId in self.speed_:  
-          value = current + sign(delta)*min(abs(delta), self.speed_[axisId]*tick)
+        if axisId in self.rates_:  
+          value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
         self.next_.move_axis(axisId, value, False)
 
-  def __init__(self, next, speed):
+  def __init__(self, next, rates):
     assert(next is not None)
-    self.next_, self.speed_ = next, speed
+    self.next_, self.rates_ = next, rates
     self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
   
 
@@ -2292,7 +2292,7 @@ def init_main_sink(settings, make_next):
       allAxes[oName][axisId] = valueAxis
       deltaOp = lambda v,tick : v*tick
       limits = (-1.0, 1.0)
-      speedAxis = SecondOrderAxis(valueAxis, deltaOp, limits)
+      speedAxis = RateSettingAxis(valueAxis, deltaOp, limits)
       def make_update_op(speedAxis):
         def op(tick):
           speedAxis.update(tick)
@@ -3666,13 +3666,13 @@ def make_parser():
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
 
-  def parseElasicOutput(cfg, state):
-    speeds = {name2code(axisName):value for axisName,value in cfg["speeds"].items()}
+  def parseRateLimitOutput(cfg, state):
+    rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
     next = state["parser"]("output", cfg["next"], state)
-    j = ElasticJoystic(next, speeds)
+    j = RateLimititngJoystick(next, rates)
     state["settings"]["updated"].append(lambda tick : j.update(tick))
     return j
-  outputParser.add("elastic", parseElasicOutput)
+  outputParser.add("rateLimit", parseRateLimitOutput)
     
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output") 
