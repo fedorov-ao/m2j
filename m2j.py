@@ -111,8 +111,20 @@ def split_full_name_code(s, sep="."):
   return (r[0], name2code(r[1]))
 
 
+def split_full_name_tc(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X)
+  'REL_X' -> (None, codes.EV_REL, codes.REL_X)
+  """
+  r = split_full_name(s, sep)
+  return (r[0], name2type(r[1]), name2code(r[1]))
+
+
 def join_full_name_tc(source, type, code, sep="."):
-  return sep.join((source, typecode2name(type, code)))
+  tcn = typecode2name(type, code)
+  if source is not None:
+    tcn = sep.join(source, tcn)
+  return tcn
 
 
 class ReloadException(Exception):
@@ -462,6 +474,46 @@ class ScaleSink2:
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
+class SensSetSink:
+  def __call__(self, event):
+    if event.type in (codes.EV_REL, codes.EV_ABS):
+      if self.currentSet_ is not None:
+        keys = self.keyOp_(event)
+        event.value *= self.currentSet_.get(keys[0], self.currentSet_.get(keys[1], 1.0))
+    return self.next_(event) if self.next_ is not None else False
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def set_next_set(self):
+    if self.sensSets_ is None or len(self.sensSets_) == 0:
+      logger.warning("No sensitivity sets")
+      return
+    l = len(self.sensSets_)
+    idx = self.sensSets_.index(self.currentSet_)
+    idx = 0 if idx == -1 else min(idx+1, l-1)
+    self.currentSet_ = self.sensSets_[idx]
+    self.print_set_()
+
+  def set_prev_set(self):
+    if self.sensSets_ is None or len(self.sensSets_) == 0:
+      logger.warning("No sensitivity sets")
+      return
+    l = len(self.sensSets_)
+    idx = self.sensSets_.index(self.currentSet_)
+    idx = 0 if idx == -1 else max(idx-1, 0)
+    self.currentSet_ = self.sensSets_[idx]
+    self.print_set_()
+
+  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code))):
+    self.next_, self.sensSets_, self.keyOp_ = None, sensSets, keyOp
+    self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[0]
+
+  def print_set_(self):
+    logger.info("Setting sensitivity set: {}".format({join_full_name_tc(*k):v for k,v in self.currentSet_.items()}))
+
+
 class CalibratingSink:
   def __call__(self, event):
     if self.mode_ == 0:
@@ -535,7 +587,7 @@ class CalibratingSink:
 
 class BindSink:
   def __call__(self, event):
-    #logger.debug("{}: processing {})".format(self, event))
+    logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
       self.dirty_ = False
@@ -2173,9 +2225,15 @@ def init_main_sink(settings, make_next):
   
   calibratingSink = scaleSink.set_next(CalibratingSink())
 
-  mainSink = calibratingSink.set_next(BindSink(cmpOp))
+  sensSets = config.get("sensSets", None)
+  if sensSets is not None:
+    sensSets = [{split_full_name_tc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
+  sensSetSink = calibratingSink.set_next(SensSetSink(sensSets))
+
+  mainSink = sensSetSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
+  #FIXME Convert to code!
   toggleKey = config.get("toggleKey", codes.KEY_SCROLLLOCK)
   mainSink.add(ED.doubleclick(toggleKey, []), ToggleSink(stateSink), 0)
 
@@ -2194,6 +2252,20 @@ def init_main_sink(settings, make_next):
     calibratingSink.reset() 
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTALT)]), reset_calibration, 0)
   mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTALT)]), reset_calibration, 0)
+
+  def set_sens_set(e):
+    if e.value > 0:
+      sensSetSink.set_next_set()
+    else: 
+      sensSetSink.set_prev_set()
+  sensSetsAxis = config.get("sensSetsAxis", None)
+  if sensSetsAxis is not None:
+    sensSetsAxis = split_full_name_code(sensSetsAxis)[1]
+  sensSetsMod = config.get("sensSetsMod", None)
+  if sensSetsMod is not None:
+    sensSetsMod = [split_full_name_code(sensSetsMod)]
+  if sensSetsAxis is not None:
+    mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
 
   grabSink = stateSink.set_next(BindSink(cmpOp))
   grabbed = [settings["inputs"][g] for g in config.get("grabbed", ())]
