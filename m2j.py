@@ -3254,7 +3254,7 @@ def make_parser():
         centerOp=make_center_op(newRatio, float("inf"))
       resetDistance = pointCfg.get("resetDistance", float("inf"))
       onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
-      onMove = parseResetPolicy(pointCfg.get("onMove", "setToNone"), state)
+      onMove = parseResetPolicy(pointCfg.get("onMove", "setToCurrent"), state)
       curve = PointMovingCurve(
         next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
 
@@ -3290,7 +3290,7 @@ def make_parser():
       return curve.get_pos()
     centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
     onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
-    onMove = parseResetPolicy(cfg.get("onMove", "setToNone"), state)
+    onMove = parseResetPolicy(cfg.get("onMove", "setToCurrent"), state)
     curve = PointMovingCurve(
       next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
     axis.add_listener(curve)
