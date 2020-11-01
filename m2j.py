@@ -3470,7 +3470,7 @@ def make_parser():
   scParser.add("state", parseState)
 
   #TODO rename "type" to "action" and update configs
-  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"] if "type" in cfg else cfg["action"])
   parser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
