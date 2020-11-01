@@ -3087,7 +3087,7 @@ def parse_dict(cfg, state, kp, vp):
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
-      raise RuntimeError("Parser for '{}' not found, available parsers are: {}".format(key, self.parsers_.keys()))
+      raise KeyError("Parser for '{}' not found, available parsers are: {}".format(key, self.parsers_.keys()))
     else:
       parser = self.parsers_[key]
       try:
@@ -3100,8 +3100,11 @@ class SelectParser:
   def add(self, key, parser):
     self.parsers_[key] = parser
 
-  def get(self, key):
-    return self.parsers_.get(key, None)
+  def get(self, key, dfault=None):
+    return self.parsers_.get(key, dfault)
+
+  def has(self, key):
+    return key in self.parsers_
 
   def __init__(self, parsers=None):
     self.parsers_ = {} if parsers is None else parsers
@@ -3117,8 +3120,11 @@ class IntrusiveSelectParser:
   def add(self, key, parser):
     self.p_.add(key, parser)
 
-  def get(self, key):
-    return self.p_.get(key)
+  def get(self, key, dfault=None):
+    return self.p_.get(key, dfault)
+
+  def has(self, key):
+    return self.p_.has(key)
 
   def __init__(self, keyOp, parsers=None):
     self.keyOp_ = keyOp
@@ -3380,10 +3386,13 @@ def make_parser():
     def add(next, sink):
       if next is not None:
         sink.add(ED.any(), next, 1)
+    def parse_particular(name, cfg, state):
+      return state["parser"](name, cfg, state) if name in cfg or cfg.get("type", "") == name else None
     try:
       #TODO Refactor
-      if cfg.get("type", "") == "layout":
-        return state["parser"]("layout", cfg, state)
+      for name in ("layout", "preset"):
+        s = parse_particular("layout", cfg, state)
+        if s is not None: return s 
       else:
         parse_component("modes", None)
         parse_component("state", set_next)
@@ -3460,7 +3469,7 @@ def make_parser():
     return sink
   scParser.add("state", parseState)
 
-  #TODO rename to "action" and update configs
+  #TODO rename "type" to "action" and update configs
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("action", actionParser)
 
@@ -3641,12 +3650,18 @@ def make_parser():
         return r
 
       parser = state["settings"]["parser"]
+      def actionParser(cfg, state):
+        try:
+          return parser.get("action")(cfg, state)
+        except KeyError:
+          logger.debug("Action parser could not parse '{}', so trying sink parser")
+          return parser.get("sink")(cfg, state)
 
       inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
       if len(inputs) == 0:
         logger.warning("No inputs were constructed (encountered when parsing '{}')".format(cfg))
 
-      outputs = parseGroup("output", "outputs", parser.get("action"), cfg, state)
+      outputs = parseGroup("output", "outputs", actionParser, cfg, state)
       if len(outputs) == 0:
         logger.warning("No outputs were constructed (encountered when parsing '{}')".format(cfg))
 
@@ -3655,7 +3670,7 @@ def make_parser():
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
     binds = cfg.get("binds", ())
-    logger.debug("binds: {}".format(binds))
+    #logger.debug("binds: {}".format(binds))
     oldCurves = state.get("curves", None)
     state["curves"] = {}
     try:
@@ -3669,17 +3684,17 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  def parseExternal_(groupName):
+  def parseExternal_(propName, groupName):
     def parseExternalOp(cfg, state):
       group = state["settings"]["config"][groupName]
-      name = cfg["name"]
+      name = cfg.get(propName, cfg["name"])
       cfg = group[name]
       sink = state["parser"]("sink", cfg, state)
       return sink
     return parseExternalOp
 
-  parser.add("preset", parseBases_(parseExternal_("presets")))
-  parser.add("layout", parseBases_(parseExternal_("layouts")))
+  parser.add("preset", parseBases_(parseExternal_("preset", "presets")))
+  parser.add("layout", parseBases_(parseExternal_("layout", "layouts")))
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
