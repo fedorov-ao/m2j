@@ -3687,7 +3687,8 @@ def make_parser():
   def parseExternal_(propName, groupName):
     def parseExternalOp(cfg, state):
       group = state["settings"]["config"][groupName]
-      name = cfg.get(propName, cfg["name"])
+      name = cfg.get(propName, None)
+      if name is None: name = cfg["name"]
       cfg = group[name]
       sink = state["parser"]("sink", cfg, state)
       return sink
