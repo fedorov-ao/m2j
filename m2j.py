@@ -587,7 +587,7 @@ class CalibratingSink:
 
 class BindSink:
   def __call__(self, event):
-    logger.debug("{}: processing {})".format(self, event))
+    #logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c[1])
       self.dirty_ = False
@@ -3094,7 +3094,7 @@ class SelectParser:
         r = parser(cfg, state) 
         return r
       except Exception as e:
-        logger.debug("{}, so cannot parse {}".format(e, cfg))
+        logger.debug("Got exception: {}, so cannot parse {}".format(e, cfg))
         raise
 
   def add(self, key, parser):
@@ -3111,7 +3111,7 @@ class IntrusiveSelectParser:
   """FreePie does not handle inheritance well, so this class is implemented via composition."""
   def __call__(self, cfg, state):
     key = self.keyOp_(cfg)
-    logger.debug(cfg)
+    #logger.debug(cfg)
     return self.p_(key, cfg, state)
 
   def add(self, key, parser):
@@ -3352,108 +3352,128 @@ def make_parser():
       return wrapped(cfg, state)
     return parseBasesOp
 
-  sinkParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
-  parser.add("sink", sinkParser)
+  def parseSink(cfg, state):
+    """Assembles sink components in certain order."""
+    parser = state["parser"].get("sc")
+    oldComponents = None
+    oldComponents = state.get("components", None)
+    state["components"] = {}
+    sink = [None]
+    def parse_component(name, op=None):
+      if name in cfg:
+        t = parser(name, cfg, state)
+        state["components"][name] = t
+        if op is not None:
+          op(sink[0], t)
+        sink[0] = t
+    def make_action_wrapper(nextSink, actionSink):
+      def op(event):
+        assert(actionSink is not None)
+        r = actionSink(event)
+        if not r and nextSink is not None:
+          r = nextSink(event)
+        return r
+      return op
+    def set_next(next, sink):
+      if next is not None:
+        sink.set_next(next) 
+    def add(next, sink):
+      if next is not None:
+        sink.add(ED.any(), next, 1)
+    try:
+      #TODO Refactor
+      if cfg.get("type", "") == "layout":
+        return state["parser"]("layout", cfg, state)
+      else:
+        parse_component("modes", None)
+        parse_component("state", set_next)
+        parse_component("binds", add)
+        #TODO rename to "action" and update configs
+        #parse_component("type", make_action_wrapper)
+        parse_component("sens", set_next)
+        parse_component("modifiers", set_next)
+        return sink[0]
+    finally:
+      if oldComponents is not None:
+        state["components"] = oldComponents
+  parser.add("sink", parseBases_(parseSink))
 
-  def parseModifiers_(sink, cfg, state):
-    """Adds modifier sink if 'modifiers' property is present."""
-    if "modifiers" in cfg:
-      modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
-      modifierSink = ModifierSink(next=sink, modifiers=modifiers)
-      #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
-      def parseModifiersWrapper(event):
+  scParser = SelectParser()
+  parser.add("sc", scParser)
+
+  def parseModifiers(cfg, state):
+    modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+    modifierSink = ModifierSink(next=None, modifiers=modifiers)
+    #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
+    class Wrapper:
+      def __call__(self, event):
         oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
         event.modifiers = modifiers
         try:
           #logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
-          modifierSink(event)
+          self.sink_(event)
           if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
-            modifierSink.clear()
-        except:
-          raise
+            self.sink_.clear()
         finally:
           if oldModifiers is not None: event.modifiers = oldModifiers
-      return parseModifiersWrapper
-    else:
-      return sink
-
-  def parseModifiers(cfg, state):
-    """Creates modifiers sink."""
-    nextCfg = cfg["next"]
-    nextSink = state["parser"]("sink", nextCfg, state)
-    return parseModifiers_(nextSink, cfg, state)
-  sinkParser.add("modifiers", parseBases_(parseModifiers))
-
-  def parseSens_(sink, cfg, state):
-    """Adds modifier sink if 'modifiers' property is present."""
-    if "sens" in cfg:
-      sens = {split_full_name_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
-      keyOp = lambda event : ((event.source, event.code), (None, event.code))
-      scaleSink = ScaleSink2(sens, keyOp)
-      scaleSink.set_next(sink)
-      def wrapper(event):
-        oldValue = event.value
-        try:
-          scaleSink(event)
-        except:
-          raise
-        finally:
-          event.value = oldValue
-      return wrapper
-    else:
-      return sink
+      def set_next(self, next):
+        self.sink_.set_next(next)
+      def __init__(self, sink):
+        self.sink_ = sink
+    return Wrapper(modifierSink)
+  scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    """Creates sens sink."""
-    nextCfg = cfg["next"]
-    nextSink = state["parser"]("sink", nextCfg, state)
-    return parseSens_(nextSink, cfg, state)
-  sinkParser.add("sens", parseBases_(parseSens))
-
-  def parseExtra_(sink, cfg, state):
-    for f in (parseSens_, parseModifiers_):
-      sink = f(sink, cfg, state)
-    return sink
+    sens = {split_full_name_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
+    keyOp = lambda event : ((event.source, event.code), (None, event.code))
+    scaleSink = ScaleSink2(sens, keyOp)
+    class Wrapper:
+      def __call__(self, event):
+        oldValue = event.value
+        try:
+          self.sink_(event)
+        finally:
+          event.value = oldValue
+      def set_next(self, next):
+        self.sink_.set_next(next)
+      def __init__(self, sink):
+        self.sink_ = sink
+    return Wrapper(scaleSink)
+  scParser.add("sens", parseSens)
 
   def parseMode(cfg, state):
-    """Creates mode sink."""
     modeSink = ModeSink()
-    if "modes" in cfg:
-      for modeName,modeCfg in cfg["modes"].items():
-        child = state["parser"]("sink", modeCfg, state)
-        modeSink.add(modeName, child)
+    for modeName,modeCfg in cfg["modes"].items():
+      child = state["parser"]("sink", modeCfg, state)
+      modeSink.add(modeName, child)
     if "initialMode" in cfg:
       modeSink.set_mode(cfg["initialMode"])
     msmm = ModeSinkModeManager(modeSink)
-    state["msmm"] = msmm
-    bindingSink = parseBinding_(cfg, state)
-    bindingSink.add(ED.any(), modeSink, 1)
-    return parseExtra_(bindingSink, cfg, state)
-  sinkParser.add("mode", parseBases_(parseMode))
+    state["components"]["msmm"] = msmm
+    return modeSink
+  scParser.add("modes", parseBases_(parseMode))
 
   def parseState(cfg, state):
-    """Creates state sink."""
     sink = StateSink()
     if "initialState" in cfg:
       sink.set_state(cfg["initialState"])
-    nextCfg = cfg["next"]
-    sink.set_next(state["parser"]("sink", nextCfg, state))
-    state["sink"] = sink
-    bindingSink = parseBinding_(cfg, state)
-    bindingSink.add(ED.any(), sink, 1)
-    return parseExtra_(bindingSink, cfg, state)
-  sinkParser.add("state", parseBases_(parseState))
+    return sink
+  scParser.add("state", parseState)
 
-  sinkParser.add("saveMode", lambda cfg, state : state["msmm"].make_save())
-  sinkParser.add("restoreMode", lambda cfg, state : state["msmm"].make_restore())
-  sinkParser.add("clearMode", lambda cfg, state : state["msmm"].make_clear())
-  sinkParser.add("setMode", lambda cfg, state : state["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
-  sinkParser.add("cycleMode", lambda cfg, state : state["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+  #TODO rename to "action" and update configs
+  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  parser.add("action", actionParser)
+
+  actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
+  actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
+  actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
+  actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
 
   def parseSetState(cfg, state):
     s = cfg["state"]
     return SetState(state["sink"], s)
-  sinkParser.add("setState", parseSetState)
+  actionParser.add("setState", parseSetState)
 
   def parseMove(cfg, state):
     fullAxisName = cfg["axis"]
@@ -3464,14 +3484,14 @@ def make_parser():
       state["curves"][fullAxisName] = []
     state["curves"][fullAxisName].append(curve)
     return MoveCurve(curve)
-  sinkParser.add("move", parseMove)
+  actionParser.add("move", parseMove)
 
   def parseSetAxis(cfg, state):
     axis = getAxis(cfg["axis"], state)
     value = float(cfg["value"])
     r = MoveAxis(axis, value, False)
     return r
-  sinkParser.add("setAxis", parseSetAxis)
+  actionParser.add("setAxis", parseSetAxis)
 
   def parseSetAxes(cfg, state):
     axesAndValues = []
@@ -3482,14 +3502,14 @@ def make_parser():
       axesAndValues.append([axis, value, False])
     r = MoveAxes(axesAndValues)
     return r
-  sinkParser.add("setAxes", parseSetAxes)
+  actionParser.add("setAxes", parseSetAxes)
 
   def parseSetKeyState(cfg, state):
     output, key = split_full_name(cfg["key"])
     key = name2code(key)
     state = int(cfg["state"])
     return SetButtonState(output, key, state)
-  sinkParser.add("setKeyState", parseSetKeyState)
+  actionParser.add("setKeyState", parseSetKeyState)
 
   def parseResetCurves(cfg, state):
     #logger.debug("collected curves: {}".format(state["curves"]))
@@ -3504,7 +3524,7 @@ def make_parser():
         curvesToReset += curves
     #logger.debug("selected curves: {}".format(curves))
     return ResetCurves(curvesToReset)
-  sinkParser.add("resetCurves", parseResetCurves)
+  actionParser.add("resetCurves", parseResetCurves)
 
   def createSnap_(cfg, state):
     if "snapManager" not in state:
@@ -3529,14 +3549,14 @@ def make_parser():
     snapName = cfg["snap"]
     snapManager = state["snapManager"]
     return UpdateSnap(snapManager, snapName)
-  sinkParser.add("updateSnap", parseUpdateSnap)
+  actionParser.add("updateSnap", parseUpdateSnap)
 
   def parseSnapTo(cfg, state):
     createSnap_(cfg, state)
     snapName = cfg["snap"]
     snapManager = state["snapManager"]
     return SnapTo(snapManager, snapName)
-  sinkParser.add("snapTo", parseSnapTo)
+  actionParser.add("snapTo", parseSnapTo)
 
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("ed", edParser)
@@ -3607,7 +3627,7 @@ def make_parser():
     return r
   edParser.add("init", parseInit)
         
-  def parseBinding_(cfg, state):
+  def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
         cfgs = cfg[n2] if n2 in cfg else (cfg[n1],) if n1 in cfg else ()
@@ -3626,7 +3646,7 @@ def make_parser():
       if len(inputs) == 0:
         logger.warning("No inputs were constructed (encountered when parsing '{}')".format(cfg))
 
-      outputs = parseGroup("output", "outputs", parser.get("sink"), cfg, state)
+      outputs = parseGroup("output", "outputs", parser.get("action"), cfg, state)
       if len(outputs) == 0:
         logger.warning("No outputs were constructed (encountered when parsing '{}')".format(cfg))
 
@@ -3635,7 +3655,7 @@ def make_parser():
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
     binds = cfg.get("binds", ())
-    #logger.debug("binds: {}".format(binds))
+    logger.debug("binds: {}".format(binds))
     oldCurves = state.get("curves", None)
     state["curves"] = {}
     try:
@@ -3647,9 +3667,7 @@ def make_parser():
       if oldCurves is not None:
         state["curves"] = oldCurves
 
-  def parseBinding(cfg, state):
-    return parseExtra_(parseBinding_(cfg, state), cfg, state)
-  sinkParser.add("bind", parseBases_(parseBinding))
+  scParser.add("binds", parseBinds)
 
   def parseExternal_(groupName):
     def parseExternalOp(cfg, state):
@@ -3661,7 +3679,7 @@ def make_parser():
     return parseExternalOp
 
   parser.add("preset", parseBases_(parseExternal_("presets")))
-  sinkParser.add("layout", parseBases_(parseExternal_("layouts")))
+  parser.add("layout", parseBases_(parseExternal_("layouts")))
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
