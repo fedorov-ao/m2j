@@ -2284,9 +2284,9 @@ def init_main_sink(settings, make_next):
   allAxes = {}
   settings["axes"] = allAxes
   for oName,o in settings["outputs"].items():
-    if oName not in allAxes: allAxes[oName] = {}
+    allAxes.setdefault(oName, {})
     soName = oName+"_s"
-    if soName not in allAxes: allAxes[soName] = {}
+    allAxes.setdefault(soName, {})
     for axisId in o.get_supported_axes():
       valueAxis = ReportingAxis(JoystickAxis(o, axisId))
       allAxes[oName][axisId] = valueAxis
@@ -2301,7 +2301,7 @@ def init_main_sink(settings, make_next):
       allAxes[soName][axisId] = ReportingAxis(speedAxis)
 
   grabSink.add(ED.any(), make_next(settings), 1)
-  if "initState" not in settings: settings["initState"] = False
+  settings.setdefault("initState", False)
   stateSink.set_state(settings["initState"])
   logger.info("Initialization successfull")
       
@@ -3489,9 +3489,8 @@ def make_parser():
     state["axis"] = fullAxisName
     curve = state["parser"]("curve", cfg, state)
     assert("curves" in state)
-    if fullAxisName not in state["curves"]:
-      state["curves"][fullAxisName] = []
-    state["curves"][fullAxisName].append(curve)
+    axisCurves = state["curves"].setdefault(fullAxisName, [])
+    axisCurves.append(curve)
     return MoveCurve(curve)
   actionParser.add("move", parseMove)
 
@@ -3536,8 +3535,7 @@ def make_parser():
   actionParser.add("resetCurves", parseResetCurves)
 
   def createSnap_(cfg, state):
-    if "snapManager" not in state:
-      state["snapManager"] = AxisSnapManager()
+    state.setdefault("snapManager", AxisSnapManager())
     snapManager = state["snapManager"]
     snapName = cfg["snap"]
     if not snapManager.has_snap(snapName): 
