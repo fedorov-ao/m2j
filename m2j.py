@@ -2040,6 +2040,8 @@ class RateLimititngJoystick:
 
   def set_next(self, next):
     self.next_ = next
+    if self.next_ is not None:
+      self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
     return next
 
   def update(self, tick):
@@ -2053,10 +2055,41 @@ class RateLimititngJoystick:
         self.next_.move_axis(axisId, value, False)
 
   def __init__(self, next, rates):
+    self.next_, self.rates_ = next, rates
+    self.set_next(next)
+  
+
+class RateSettingJoystick:
+  def move_axis(self, axis, value, relative):
+    if self.next_ is not None:
+      self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
+
+  def get_axis(self, axis):
+    return self.v_[axis]
+
+  def get_limits(self, axis):
+    return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.next_.get_supported_axes() if self.next_ else ()
+
+  def set_next(self, next):
+    self.next_ = next
+    if self.next_ is not None:
+      self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
+    return next
+
+  def update(self, tick):
+    if self.next_ is None: 
+      return
+    for axisId,value in self.v_.items():
+      self.next_.move_axis(axisId, self.rates_[axisId]*value*tick, relative=True)
+
+  def __init__(self, next, rates):
     assert(next is not None)
     self.next_, self.rates_ = next, rates
-    self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
-  
+    self.set_next(next)
+
 
 class NotifyingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
@@ -3724,6 +3757,14 @@ def make_parser():
     return j
   outputParser.add("rateLimit", parseRateLimitOutput)
     
+  def parseRateSettingOutput(cfg, state):
+    rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
+    next = state["parser"]("output", cfg["next"], state)
+    j = RateSettingJoystick(next, rates)
+    state["settings"]["updated"].append(lambda tick : j.update(tick))
+    return j
+  outputParser.add("rateSet", parseRateSettingOutput)
+
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output") 
     children = parse_list(cfg["children"], state, parser)
