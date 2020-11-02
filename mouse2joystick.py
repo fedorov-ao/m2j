@@ -31,14 +31,15 @@ def ecode2code(code):
 
 
 class EvdevJoystick:
-  def __init__(self, axes, limit, buttons=None):
+  def __init__(self, axes, limit, buttons=None, name=None, phys=None):
     axesData = []
     for a in axes:
       axesData.append((a, AbsInfo(value=0, min=-limit, max=limit, fuzz=0, flat=0, resolution=0)))
     cap = { ecodes.EV_ABS : axesData }
     if buttons: cap[ecodes.EV_KEY] = buttons
     self.js = None
-    self.js = UInput(cap, name='virtual-joystick', version=0x3)
+    if name is None: name='virtual-joystick'
+    self.js = UInput(cap, name=name, version=0x3, phys=phys)
 
     self.coords = {}
     for a in axes:
@@ -67,7 +68,7 @@ class EvdevJoystick:
       return
     v = clamp(v, -1.0, 1.0)
     self.coords[axis] = v
-    #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
+    logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
     self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.limit))
     self.js.syn()
 
@@ -126,7 +127,7 @@ def parseEvdevJoystickOutput(cfg, state):
   axes = [code2ecode(name2code(axisName)) for axisName in cfg["axes"]]
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
   limit = int(cfg["limit"])
-  return EvdevJoystick(axes, limit, buttons)
+  return EvdevJoystick(axes, limit, buttons, cfg.get("name", ""), cfg.get("phys", ""))
 
   
 def run():
@@ -134,11 +135,12 @@ def run():
     nameParser = lambda key,state : key
     parser = settings["parser"]
     outputParser = parser.get("output")
+    orderOp = lambda i : i[1].get("seq", 100000)
     cfg = settings["config"]["outputs"]
     state = {"settings" : settings, "parser" : parser}
     outputs = {}
     settings["outputs"] = outputs
-    parse_dict_live(outputs, cfg, state=state, kp=nameParser, vp=outputParser, update=False)
+    parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
   def init_source(settings):
     try:

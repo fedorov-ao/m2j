@@ -2076,14 +2076,18 @@ class RateSettingJoystick:
   def set_next(self, next):
     self.next_ = next
     if self.next_ is not None:
-      self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
+      self.v_ = {axisId:0.0 for axisId in self.next_.get_supported_axes()}
     return next
 
   def update(self, tick):
     if self.next_ is None: 
       return
     for axisId,value in self.v_.items():
-      self.next_.move_axis(axisId, self.rates_[axisId]*value*tick, relative=True)
+      rate = self.rates_.get(axisId, 0.0)
+      if rate == 0.0: 
+        continue
+      v = rate*value*tick
+      self.next_.move_axis(axisId, v, relative=True)
 
   def __init__(self, next, rates):
     assert(next is not None)
@@ -2313,25 +2317,13 @@ def init_main_sink(settings, make_next):
   grabSink.add(ED.init(0), print_disabled, 0)
 
   #make_next() may need axes, so initializing them here
-  #TODO Init only selected speed axes
   allAxes = {}
   settings["axes"] = allAxes
   for oName,o in settings["outputs"].items():
     allAxes.setdefault(oName, {})
-    soName = oName+"_s"
-    allAxes.setdefault(soName, {})
     for axisId in o.get_supported_axes():
       valueAxis = ReportingAxis(JoystickAxis(o, axisId))
       allAxes[oName][axisId] = valueAxis
-      deltaOp = lambda v,tick : v*tick
-      limits = (-1.0, 1.0)
-      speedAxis = RateSettingAxis(valueAxis, deltaOp, limits)
-      def make_update_op(speedAxis):
-        def op(tick):
-          speedAxis.update(tick)
-        return op
-      settings["updated"].append(make_update_op(speedAxis))
-      allAxes[soName][axisId] = ReportingAxis(speedAxis)
 
   grabSink.add(ED.any(), make_next(settings), 1)
   settings.setdefault("initState", False)
@@ -3119,6 +3111,17 @@ def parse_dict(cfg, state, kp, vp):
 
 def parse_dict_live(d, cfg, state, kp, vp, update):
   for key,value in cfg.items():
+    k = kp(key, state)
+    if k in d and not update:
+      continue 
+    d[k] = vp(value, state)
+  return d
+
+
+def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update):
+  items = cfg.items()
+  items.sort(key=op)
+  for key,value in items:
     k = kp(key, state)
     if k in d and not update:
       continue 
