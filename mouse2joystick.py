@@ -136,7 +136,9 @@ def run():
     outputParser = parser.get("output")
     cfg = settings["config"]["outputs"]
     state = {"settings" : settings, "parser" : parser}
-    settings["outputs"] = parse_dict(cfg, state=state, kp=nameParser, vp=outputParser)
+    outputs = {}
+    settings["outputs"] = outputs
+    parse_dict_live(outputs, cfg, state=state, kp=nameParser, vp=outputParser, update=False)
 
   def init_source(settings):
     try:

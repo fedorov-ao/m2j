@@ -3084,6 +3084,15 @@ def parse_dict(cfg, state, kp, vp):
   return r
 
 
+def parse_dict_live(d, cfg, state, kp, vp, update):
+  for key,value in cfg.items():
+    k = kp(key, state)
+    if k in d and not update:
+      continue 
+    d[k] = vp(value, state)
+  return d
+
+
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
@@ -3697,6 +3706,15 @@ def make_parser():
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
+
+  def parseExternalOutput(cfg, state):
+    settings, name = state["settings"], cfg["name"]
+    j = settings["outputs"].get(name, None)
+    if j is None:
+      j = state["parser"]("output", settings["config"]["outputs"][name], state)
+      settings["outputs"][name] = j
+    return j
+  outputParser.add("external", parseExternalOutput)
 
   def parseRateLimitOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
