@@ -878,8 +878,9 @@ class StateSink:
    return self.state_
 
  def set_next(self, next):
-    self.next_ = next
-    return next
+   #logger.debug("{}: setting next to {}".format(self, next))
+   self.next_ = next
+   return next
 
  def __init__(self):
    self.next_ = None
@@ -893,6 +894,14 @@ def SetState(stateSink, state):
   return op
     
     
+def ToggleState(stateSink):
+  def op(event):
+    stateSink.set_state(not stateSink.get_state())
+    #logger.debug("{} state is {}".format(stateSink, stateSink.get_state()))
+    return True
+  return op
+
+
 class ModeSink:
   def __call__(self, event):
     child = self.children_.get(self.mode_, None)
@@ -3509,8 +3518,12 @@ def make_parser():
 
   def parseState(cfg, state):
     sink = StateSink()
-    if "initialState" in cfg:
-      sink.set_state(cfg["initialState"])
+    stateCfg = cfg["state"]
+    if "initialState" in stateCfg:
+      sink.set_state(stateCfg["initialState"])
+    if "next" in stateCfg:
+      next = state["parser"]("sink", stateCfg["next"], state)
+      sink.set_next(next)
     return sink
   scParser.add("state", parseState)
 
@@ -3526,8 +3539,14 @@ def make_parser():
 
   def parseSetState(cfg, state):
     s = cfg["state"]
-    return SetState(state["sink"], s)
+    #logger.debug("Components: {}".format(state["components"]))
+    return SetState(state["components"]["state"], s)
   actionParser.add("setState", parseSetState)
+
+  def parseToggleState(cfg, state):
+    #logger.debug("Components: {}".format(state["components"]))
+    return ToggleState(state["components"]["state"])
+  actionParser.add("toggleState", parseToggleState)
 
   def parseMove(cfg, state):
     fullAxisName = cfg["axis"]
@@ -3630,6 +3649,10 @@ def make_parser():
       r.append(("source", source))
     return r
 
+  def parseAny(cfg, state):
+    return parseEdModifiers_([], cfg)
+  edParser.add("any", parseAny)
+
   def parsePress(cfg, state):
     return parseEdModifiers_(parseKey_(cfg, state, 1), cfg)
   edParser.add("press", parsePress)
@@ -3697,7 +3720,7 @@ def make_parser():
         try:
           return parser.get("action")(cfg, state)
         except KeyError:
-          logger.debug("Action parser could not parse '{}', so trying sink parser")
+          logger.debug("Action parser could not parse '{}', so trying sink parser".format(cfg))
           return parser.get("sink")(cfg, state)
 
       inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
