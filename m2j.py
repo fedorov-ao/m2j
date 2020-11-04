@@ -864,7 +864,7 @@ class ED3:
 
 class StateSink:
  def __call__(self, event):
-   #logger.debug("{}: passing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+   #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if (self.state_ == True) and (self.next_ is not None):
      self.next_(event)
 
@@ -3422,10 +3422,11 @@ def make_parser():
     def parse_component(name, op=None):
       if name in cfg:
         t = parser(name, cfg, state)
-        state["components"][name] = t
-        if op is not None:
-          op(sink[0], t)
-        sink[0] = t
+        if t is not None:
+          state["components"][name] = t
+          if op is not None:
+            op(sink[0], t)
+          sink[0] = t
     def make_action_wrapper(nextSink, actionSink):
       def op(event):
         assert(actionSink is not None)
@@ -3437,6 +3438,10 @@ def make_parser():
     def set_next(next, sink):
       if next is not None:
         sink.set_next(next) 
+    def set_next2(next, sink):
+      if "modes" in cfg and "next" in cfg:
+        raise RuntimeError("'next' and 'modes' properties are mutually exclusive")
+      set_next(next, sink)
     def add(next, sink):
       if next is not None:
         sink.add(ED.any(), next, 1)
@@ -3448,8 +3453,9 @@ def make_parser():
         s = parse_particular("layout", cfg, state)
         if s is not None: return s 
       else:
+        parse_component("next", None)
         parse_component("modes", None)
-        parse_component("state", set_next)
+        parse_component("state", set_next2)
         parse_component("binds", add)
         #TODO rename to "action" and update configs
         #parse_component("type", make_action_wrapper)
@@ -3526,6 +3532,10 @@ def make_parser():
       sink.set_next(next)
     return sink
   scParser.add("state", parseState)
+
+  def parseNext(cfg, state):
+    return state["parser"]("sink", cfg["next"], state)
+  scParser.add("next", parseNext)
 
   #TODO rename "type" to "action" and update configs
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"] if "type" in cfg else cfg["action"])
