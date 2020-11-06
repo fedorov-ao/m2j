@@ -31,10 +31,12 @@ def ecode2code(code):
 
 
 class EvdevJoystick:
-  def __init__(self, axes, limit, buttons=None, name=None, phys=None):
+  nativeLimit_ = 32767
+
+  def __init__(self, limits, buttons=None, name=None, phys=None):
     axesData = []
-    for a in axes:
-      axesData.append((a, AbsInfo(value=0, min=-limit, max=limit, fuzz=0, flat=0, resolution=0)))
+    for a,l in limits.items():
+      axesData.append((a, AbsInfo(value=0, min=-self.nativeLimit_, max=self.nativeLimit_, fuzz=0, flat=0, resolution=0)))
     cap = { ecodes.EV_ABS : axesData }
     if buttons: cap[ecodes.EV_KEY] = buttons
     self.js = None
@@ -42,10 +44,10 @@ class EvdevJoystick:
     self.js = UInput(cap, name=name, version=0x3, phys=phys)
 
     self.coords = {}
-    for a in axes:
-      self.coords[a] = 0.0
+    for a,l in limits.items():
+      self.coords[a] = (l[1] + l[0])/2
 
-    self.limit = limit
+    self.limits = limits
 
     logger.debug("{} created".format(self))
 
@@ -66,17 +68,17 @@ class EvdevJoystick:
   def move_axis_to(self, axis, v):
     if axis not in self.coords:
       return
-    v = clamp(v, -1.0, 1.0)
+    v = clamp(v, *self.limits.get(axis, (0.0, 0.0)))
     self.coords[axis] = v
-    logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
-    self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.limit))
+    #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
+    self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.nativeLimit_))
     self.js.syn()
 
   def get_axis(self, axis):
     return self.coords.get(axis, 0.0)
 
   def get_limits(self, axis):
-    return (-1.0, 1.0)
+    return self.limits[axis]
 
   def get_supported_axes(self):
     return self.coords.keys()
@@ -124,10 +126,9 @@ def print_devices():
 
 
 def parseEvdevJoystickOutput(cfg, state):
-  axes = [code2ecode(name2code(axisName)) for axisName in cfg["axes"]]
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
-  limit = int(cfg["limit"])
-  return EvdevJoystick(axes, limit, buttons, cfg.get("name", ""), cfg.get("phys", ""))
+  limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
+  return EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
 
   
 def run():

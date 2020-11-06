@@ -1842,7 +1842,12 @@ class UdpJoystick:
     return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
-    return (-1.0, 1.0)
+    return self.limits_.get(axis, (0.0, 0.0))
+
+  def set_limits(self, axis, limits):
+    self.limits_[axis] = limits
+    self.v_[axis] = clamp(self.v_.get(axis, 0.0), *limits)
+    self.dirty_ = True
 
   def get_supported_axes(self):
     return self.axes_
@@ -1858,7 +1863,12 @@ class UdpJoystick:
     self.socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     self.ip_, self.port_ = ip, port
     self.make_packet_ = make_packet
-    self.v_ = {a:0.0 for a in self.axes_}
+    self.limits_ = {}
+    self.v_ = {}
+    for a in self.axes_:
+      v = 0.0
+      self.v_[a] = v
+      self.move_axis(a, v, False)
 
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
 
@@ -1894,12 +1904,12 @@ def make_il2_6dof_packet(v):
   #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L938
   #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f\\%f\\%f\\%f", d->h, -d->p, d->r, -d->z/300, -d->x/1000, d->y/1000);
   d = (
-    (codes.ABS_RX, -90.0),
-    (codes.ABS_RY, 90.0),
-    (codes.ABS_RZ, 180.0),
-    (codes.ABS_Z, 0.5),
-    (codes.ABS_X, -0.5),
-    (codes.ABS_Y, -0.5)
+    (codes.ABS_RX, -1.0),
+    (codes.ABS_RY, 1.0),
+    (codes.ABS_RZ, 1.0),
+    (codes.ABS_Z, 1.0),
+    (codes.ABS_X, -1.0),
+    (codes.ABS_Y, -1.0)
   )
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   return "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
@@ -3820,6 +3830,8 @@ def make_parser():
       "opentrack" : make_opentrack_packet
     }
     j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
+    for a,l in cfg.get("limits", {}).items():
+      j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
