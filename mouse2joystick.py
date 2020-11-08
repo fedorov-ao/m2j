@@ -70,8 +70,10 @@ class EvdevJoystick:
       return
     v = clamp(v, *self.limits.get(axis, (0.0, 0.0)))
     self.coords[axis] = v
+    maxAbsLimit = max((abs(l) for l in self.limits[axis]))
+    v = int(v * self.nativeLimit_ / maxAbsLimit)
     #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
-    self.js.write(ecodes.EV_ABS, code2ecode(axis), int(v*self.nativeLimit_))
+    self.js.write(ecodes.EV_ABS, code2ecode(axis), v)
     self.js.syn()
 
   def get_axis(self, axis):
