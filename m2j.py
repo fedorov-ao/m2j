@@ -3451,10 +3451,6 @@ def make_parser():
     def set_next(next, sink):
       if next is not None:
         sink.set_next(next) 
-    def set_next2(next, sink):
-      if "modes" in cfg and "next" in cfg:
-        raise RuntimeError("'next' and 'modes' properties are mutually exclusive")
-      set_next(next, sink)
     def add(next, sink):
       if next is not None:
         sink.add(ED.any(), next, 1)
@@ -3466,14 +3462,18 @@ def make_parser():
         s = parse_particular("layout", cfg, state)
         if s is not None: return s 
       else:
+        if "modes" in cfg and "next" in cfg:
+          raise RuntimeError("'next' and 'modes' properties are mutually exclusive")
         parse_component("next", None)
         parse_component("modes", None)
-        parse_component("state", set_next2)
+        parse_component("state", set_next)
         parse_component("binds", add)
         #TODO rename to "action" and update configs
         #parse_component("type", make_action_wrapper)
         parse_component("sens", set_next)
         parse_component("modifiers", set_next)
+        if sink[0] is None:
+          logger.debug("Could not make sink out of '{}'".format(cfg))
         return sink[0]
     finally:
       if oldComponents is not None:
@@ -3547,7 +3547,12 @@ def make_parser():
   scParser.add("state", parseState)
 
   def parseNext(cfg, state):
-    return state["parser"]("sink", cfg["next"], state)
+    parser = state["parser"]
+    r = parser("sink", cfg["next"], state)
+    if r is None:
+      logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
+      r = parser("action", cfg["next"], state)
+    return r
   scParser.add("next", parseNext)
 
   #TODO rename "type" to "action" and update configs
