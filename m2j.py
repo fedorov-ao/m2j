@@ -1383,7 +1383,8 @@ class PointMovingCurve:
     self.s_, self.busy_, self.dirty_ = 0, False, False
 
   def after_move_axis_(self):
-    self.s_, self.busy_, self.dirty_ = 0, False, False
+    #self.s_, self.busy_, self.dirty_ = 0, False, False
+    self.busy_, self.dirty_ = False, False
     if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
       self.point_.set_center(None)
     if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
