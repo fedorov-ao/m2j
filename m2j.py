@@ -1339,8 +1339,6 @@ class PointMovingCurve:
     try:
       self.busy_ = True
       r = self.next_.move_by(x, timestamp)
-    except:
-      raise
     finally:
       self.busy_ = False 
     #logger.debug( "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
@@ -3407,8 +3405,12 @@ def make_parser():
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
-    presetName = cfg["name"]
-    presetCfg = presets[presetName]
+    presetName = cfg.get("name", None)
+    if presetName is None:
+      raise RuntimeError("Preset name was not specified")
+    presetCfg = presets.get(presetName, None)
+    if presetCfg is None:
+      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     return state["parser"]("curve", presetCfg, state)
   curveParser.add("preset", parsePresetCurve)
 
@@ -3734,13 +3736,17 @@ def make_parser():
     def parseInputsOutputs(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
         cfgs = cfg[n2] if n2 in cfg else (cfg[n1],) if n1 in cfg else ()
-        r = []
+        r, t = [], None
         for c in cfgs:
           try:
-            r.append(parser(c, state))
+            t = parser(c, state)
           except RuntimeError as e:
             logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, c))
             continue
+          if t is None:
+            logger.warning("Could not parse {} '{}')".format(n1, c))
+            continue
+          r.append(t)
         return r
 
       parser = state["settings"]["parser"]
