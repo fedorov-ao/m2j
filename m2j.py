@@ -1318,6 +1318,7 @@ class PointMovingCurveResetPolicy:
   DONT_TOUCH = 0
   SET_TO_NONE = 1
   SET_TO_CURRENT = 2
+  ADJUST = 3
 
 
 class PointMovingCurve:
@@ -1351,7 +1352,7 @@ class PointMovingCurve:
     return r
 
   def reset(self):
-    self.s_, self.busy_, self.dirty_ = 0, False, False
+    self.s_, self.busy_, self.dirty_, self.delta_ = 0, False, False, 0.0
     #Need to disable controlled point by setting point center to None before resetting next_ curve
     #Will produce inconsistent results otherwise
     v = None
@@ -1372,6 +1373,7 @@ class PointMovingCurve:
       #logger.debug("{}: on_move_axis(): {}{}".format(self, "busy " if self.busy_ else "", "dirty" if self.dirty_ else ""))
       return
     self.dirty_ = True
+    self.delta_ += new - old
     self.next_.on_move_axis(axis, old, new)
 
   def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
@@ -1380,16 +1382,22 @@ class PointMovingCurve:
     assert(getValueOp is not None)
     assert(centerOp is not None)
     self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_, self.onReset_, self.onMove_ = next, point, getValueOp, centerOp, resetDistance, onReset, onMove
-    self.s_, self.busy_, self.dirty_ = 0, False, False
+    self.s_, self.busy_, self.dirty_, self.delta_ = 0, False, False, 0.0
 
   def after_move_axis_(self):
     #self.s_, self.busy_, self.dirty_ = 0, False, False
     self.busy_, self.dirty_ = False, False
-    if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
-      self.point_.set_center(None)
-    if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
-      v = self.getValueOp_(self.next_)
-      self.point_.set_center(v)
+    if self.onMove_ == PointMovingCurveResetPolicy.ADJUST:
+      c = self.point_.get_center()
+      if c is not None:
+        self.point_.set_center(c + self.delta_)
+        self.delta_ = 0.0
+    else:
+      if self.onMove_ in (PointMovingCurveResetPolicy.SET_TO_NONE, PointMovingCurveResetPolicy.SET_TO_CURRENT):
+        self.point_.set_center(None)
+      if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
+        v = self.getValueOp_(self.next_)
+        self.point_.set_center(v)
       
 
 tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
@@ -3273,7 +3281,8 @@ def make_parser():
     d = {
       "setToCurrent" : PointMovingCurveResetPolicy.SET_TO_CURRENT,
       "setToNone" : PointMovingCurveResetPolicy.SET_TO_NONE,
-      "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH
+      "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH,
+      "adjust" : PointMovingCurveResetPolicy.ADJUST 
     }
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
