@@ -2303,6 +2303,12 @@ def init_main_sink(settings, make_next):
   toggleKey = codes.KEY_SCROLLLOCK if toggleKey is None else split_full_name_code(toggleKey)[1]
   mainSink.add(ED.doubleclick(toggleKey, []), ToggleSink(stateSink), 0)
 
+  offKey = config.get("offKey", None)
+  if offKey is not None:
+    offKey = split_full_name_code(offKey)[1]
+    mainSink.add(ED.press(offKey, []), ToggleSink(stateSink), 0)
+    mainSink.add(ED.release(offKey, []), ToggleSink(stateSink), 0)
+
   def rld(e):
     settings["initState"] = stateSink.get_state()
     raise ReloadException()
