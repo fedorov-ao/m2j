@@ -2053,16 +2053,17 @@ class RateLimititngJoystick:
       self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
 
   def get_axis(self, axis):
-    return self.v_[axis]
+    return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+    return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
 
   def get_supported_axes(self):
-    return self.next_.get_supported_axes() if self.next_ else ()
+    return self.next_.get_supported_axes() if self.next_ is not None else ()
 
   def set_button_state(self, button, state):
-    self.next_.set_button_state(button, state)
+    if self.next_ is not None:
+      self.next_.set_button_state(button, state)
 
   def set_next(self, next):
     self.next_ = next
@@ -2071,14 +2072,14 @@ class RateLimititngJoystick:
     return next
 
   def update(self, tick):
-    if self.next_ is None: return
-    for axisId,value in self.v_.items():
-      current = self.next_.get_axis(axisId)
-      delta = value - current
-      if delta != 0.0:
-        if axisId in self.rates_:  
-          value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
-        self.next_.move_axis(axisId, value, False)
+    if self.next_ is not None:
+      for axisId,value in self.v_.items():
+        current = self.next_.get_axis(axisId)
+        delta = value - current
+        if delta != 0.0:
+          if axisId in self.rates_:  
+            value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
+          self.next_.move_axis(axisId, value, False)
 
   def __init__(self, next, rates):
     self.next_, self.rates_ = next, rates
