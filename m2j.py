@@ -2299,31 +2299,44 @@ def init_main_sink(settings, make_next):
   mainSink = sensSetSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
+  state = None
+  edParser = settings["parser"].get("ed")
   toggleKey = config.get("toggleKey", None)
-  toggleKey = codes.KEY_SCROLLLOCK if toggleKey is None else split_full_name_code(toggleKey)[1]
-  mainSink.add(ED.doubleclick(toggleKey, []), ToggleSink(stateSink), 0)
+  if toggleKey is not None:
+    toggleKey = edParser(toggleKey, state)
+    mainSink.add(toggleKey, ToggleSink(stateSink), 0)
+
+  onKey = config.get("onKey", None)
+  if onKey is not None:
+    onKey = edParser(onKey, state)
+    mainSink.add(onKey, lambda event : stateSink.set_state(True), 0)
 
   offKey = config.get("offKey", None)
   if offKey is not None:
-    offKey = split_full_name_code(offKey)[1]
-    mainSink.add(ED.press(offKey, []), ToggleSink(stateSink), 0)
-    mainSink.add(ED.release(offKey, []), ToggleSink(stateSink), 0)
+    offKey = edParser(offKey, state)
+    mainSink.add(offKey, lambda event : stateSink.set_state(False), 0)
 
-  def rld(e):
-    settings["initState"] = stateSink.get_state()
-    raise ReloadException()
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTSHIFT)]), rld, 0)
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTSHIFT)]), rld, 0)
+  reloadKey = config.get("reloadKey", None)
+  if reloadKey is not None:
+    def rld(e):
+      settings["initState"] = stateSink.get_state()
+      raise ReloadException()
+    reloadKey = edParser(reloadKey, state)
+    mainSink.add(reloadKey, rld, 0)
 
-  def toggle_calibration(e):
-    calibratingSink.toggle() 
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTCTRL)]), toggle_calibration, 0)
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTCTRL)]), toggle_calibration, 0)
+  toggleCalibrationKey = config.get("toggleCalibrationKey", None)
+  if toggleCalibrationKey is not None:
+    def toggle_calibration(e):
+      calibratingSink.toggle() 
+    toggleCalibrationKey = edParser(toggleCalibrationKey, state)
+    mainSink.add(toggleCalibrationKey, toggle_calibration, 0)
 
-  def reset_calibration(e):
-    calibratingSink.reset() 
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_RIGHTALT)]), reset_calibration, 0)
-  mainSink.add(ED.click(toggleKey, [(None, codes.KEY_LEFTALT)]), reset_calibration, 0)
+  resetCalibrationKey = config.get("resetCalibrationKey", None)
+  if resetCalibrationKey is not None:
+    def reset_calibration(e):
+      calibratingSink.reset() 
+    resetCalibrationKey = edParser(resetCalibrationKey, state)
+    mainSink.add(resetCalibrationKey, reset_calibration, 0)
 
   def set_sens_set(e):
     if e.value > 0:
