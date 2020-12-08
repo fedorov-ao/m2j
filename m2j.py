@@ -2300,22 +2300,37 @@ def init_main_sink(settings, make_next):
   mainSink = sensSetSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
+  class Toggler:
+    def make_toggle(self):
+      def op(event):
+        self.sink_.set_state(not self.sink_.get_state())
+        self.s_ = not self.s_
+      return op
+    def make_set_state(self, state):
+      def op(event):
+        if self.s_:
+          self.sink_.set_state(state)
+      return op
+    def __init__(self, sink):
+      self.sink_, self.s_ = sink, False
+
   state = None
+  toggler = Toggler(stateSink)
   edParser = settings["parser"].get("ed")
   toggleKey = config.get("toggleKey", None)
   if toggleKey is not None:
     toggleKey = edParser(toggleKey, state)
-    mainSink.add(toggleKey, ToggleSink(stateSink), 0)
+    mainSink.add(toggleKey, toggler.make_toggle(), 0)
 
   onKey = config.get("onKey", None)
   if onKey is not None:
     onKey = edParser(onKey, state)
-    mainSink.add(onKey, lambda event : stateSink.set_state(True), 0)
+    mainSink.add(onKey, toggler.make_set_state(True), 0)
 
   offKey = config.get("offKey", None)
   if offKey is not None:
     offKey = edParser(offKey, state)
-    mainSink.add(offKey, lambda event : stateSink.set_state(False), 0)
+    mainSink.add(offKey, toggler.make_set_state(False), 0)
 
   reloadKey = config.get("reloadKey", None)
   if reloadKey is not None:
@@ -2377,6 +2392,7 @@ def init_main_sink(settings, make_next):
   grabSink.add(ED.any(), make_next(settings), 1)
   settings.setdefault("initState", False)
   stateSink.set_state(settings["initState"])
+  toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
       
   return clickSink
