@@ -1330,12 +1330,13 @@ class PointMovingCurve:
     #Setting new point center if x movement direction has changed
     s = sign(x)
     center, value = self.point_.get_center(), self.getValueOp_(self.next_)
+    if self.ts_ == None: self.ts_ = timestamp
     if s != 0:
-      if self.s_ != 0 and self.s_ != s:
+      if (self.s_ != 0 and self.s_ != s) or ((timestamp - self.ts_) > self.resetTime_):
         c = value if center is None else self.centerOp_(value, center)
-        #logger.debug("{}: sign has changed; new point center: {} (was: {})".format(self, c, center))
+        #logger.debug("{}: new point center: {} (was: {})".format(self, c, center))
         self.point_.set_center(c)
-      self.s_ = s
+      self.s_, self.ts_ = s, timestamp
     r = None
     try:
       self.busy_ = True
@@ -1352,7 +1353,7 @@ class PointMovingCurve:
     return r
 
   def reset(self):
-    self.s_, self.busy_, self.dirty_, self.delta_ = 0, False, False, 0.0
+    self.s_, self.ts_, self.busy_, self.dirty_, self.delta_ = 0, None, False, False, 0.0
     #Need to disable controlled point by setting point center to None before resetting next_ curve
     #Will produce inconsistent results otherwise
     v = None
@@ -1376,13 +1377,14 @@ class PointMovingCurve:
     self.delta_ += new - old
     self.next_.on_move_axis(axis, old, new)
 
-  def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH):
+  def __init__(self, next, point, getValueOp, centerOp=lambda new,old : 0.5*old+0.5*new, resetDistance=float("inf"), onReset=PointMovingCurveResetPolicy.DONT_TOUCH, onMove=PointMovingCurveResetPolicy.DONT_TOUCH, resetTime = float("inf")):
     assert(next is not None)
     assert(point is not None)
     assert(getValueOp is not None)
     assert(centerOp is not None)
     self.next_, self.point_, self.getValueOp_, self.centerOp_, self.resetDistance_, self.onReset_, self.onMove_ = next, point, getValueOp, centerOp, resetDistance, onReset, onMove
-    self.s_, self.busy_, self.dirty_, self.delta_ = 0, False, False, 0.0
+    self.resetTime_ = resetTime
+    self.s_, self.ts_, self.busy_, self.dirty_, self.delta_ = 0, None, False, False, 0.0
 
   def after_move_axis_(self):
     #self.s_, self.busy_, self.dirty_ = 0, False, False
@@ -3370,10 +3372,12 @@ def make_parser():
         newRatio = clamp(pointCfg.get("newValueRatio", 0.5), 0.0, 1.0)
         centerOp=make_center_op(newRatio, float("inf"))
       resetDistance = pointCfg.get("resetDistance", float("inf"))
+      resetTime = pointCfg.get("resetTime", float("inf"))
       onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
       onMove = parseResetPolicy(pointCfg.get("onMove", "setToCurrent"), state)
       curve = PointMovingCurve(
-        next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
+        next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, 
+        onReset=onReset, onMove=onMove, resetTime=resetTime)
 
     axis.add_listener(curve)
     return curve
@@ -3400,6 +3404,7 @@ def make_parser():
     interpolationDistance = cfg.get("interpolationDistance", 0.3)
     interpolationFactor = cfg.get("interpolationFactor", 1.0)
     resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
+    resetTime = float("inf") if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetTime", float("inf"))
     posLimits = cfg.get("posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
@@ -3409,7 +3414,8 @@ def make_parser():
     onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
     onMove = parseResetPolicy(cfg.get("onMove", "setToCurrent"), state)
     curve = PointMovingCurve(
-      next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, onReset=onReset, onMove=onMove)
+      next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, 
+      onReset=onReset, onMove=onMove, resetTime=resetTime)
     axis.add_listener(curve)
     return curve
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
