@@ -1275,7 +1275,7 @@ class OutputBasedCurve:
     sensitivity = self.valueOp_.calc(baseValue)
     if sensitivity is None:
       raise ArithmeticError("Cannot compute value, sensitivity is None")
-    delta = self.deltaOp_(x, sensitivity)
+    delta = self.deltaOp_.calc(x, timestamp, sensitivity)
     value = clamp(value + delta, *self.axis_.limits())
     delta = value - baseValue
     self.move_axis_(value=value, relative=False)
@@ -1287,7 +1287,8 @@ class OutputBasedCurve:
     self.s_, self.busy_, self.dirty_  = 0, False, False
     assert(self.valueOp_ is not None)
     self.valueOp_.reset()
-    #TODO Should also call self.deltaOp_?
+    assert(self.deltaOp_ is not None)
+    self.deltaOp_.reset()
 
   def get_axis(self):
     return self.axis_
@@ -3347,7 +3348,12 @@ def make_parser():
     }
     op = ops.get(vpoName, interpolate_op)
     vpo = SimpleValuePointOp(points.values(), op)
-    deltaOp = lambda x,value : x*value
+    class DeltaOp:
+      def calc(self, x, timestamp, sensitivity):
+        return x * sensitivity 
+      def reset(self):
+        pass
+    deltaOp = DeltaOp()
     curve = OutputBasedCurve(deltaOp, vpo, axis)
 
     if "moving" in points:
