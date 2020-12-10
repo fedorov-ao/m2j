@@ -3461,6 +3461,35 @@ def make_parser():
     return curve
   curveParser.add("inLink", parseInputLinkingCurve)
 
+  def parseCombinedCurve(cfg, state):
+    axis = getAxis(state["axis"], state)
+    class ApproxOp:
+      def calc(self, value):
+        return self.approx_(value)
+      def reset(self):
+        pass
+      def __init__(self, approx):
+        self.approx_ = approx   
+    sensOp = ApproxOp(state["parser"]("op", cfg["fixed"], state))
+    class CombinedOp:
+      def calc(self, x, timestamp, sensitivity):
+        s = sign(x)
+        if self.s_ != s or self.timestamp_ is None or (timestamp - self.timestamp_) > self.resetTime_:
+          self.s_ = s
+          self.distance_ = 0.0
+        self.timestamp_ = timestamp
+        self.distance_ += x
+        return self.approx_(self.distance_) * sensitivity
+      def reset(self):
+        self.s_, self.timestamp_, self.distance_ = 0, None, 0.0
+      def __init__(self, approx, resetTime):
+        self.approx_, self.resetTime_ = approx, resetTime
+        self.reset()
+    deltaOp = CombinedOp(state["parser"]("op", cfg["moving"], state), cfg["moving"].get("resetTime", float("inf")))
+    curve = OutputBasedCurve(deltaOp, sensOp, axis)
+    return curve
+  curveParser.add("combined", parseCombinedCurve)
+
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
     presetName = cfg.get("name", None)
