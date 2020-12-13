@@ -3474,18 +3474,24 @@ def make_parser():
     class CombinedOp:
       def calc(self, x, timestamp, sensitivity):
         s = sign(x)
-        if self.s_ != s or self.timestamp_ is None or (timestamp - self.timestamp_) > self.resetTime_:
+        if self.s_ != s or self.timestamp_ is None:
           self.s_ = s
+          self.timestamp_ = timestamp
           self.distance_ = 0.0
-        self.timestamp_ = timestamp
+        assert(self.resetTime_ > 0.0)
+        dt = timestamp - self.timestamp_
+        if dt > self.holdTime_:
+          self.distance_ *= max(0.0, 1.0 - (dt - self.holdTime_) / self.resetTime_)
         self.distance_ += x
+        self.timestamp_ = timestamp
         return self.approx_(self.distance_) * sensitivity
       def reset(self):
         self.s_, self.timestamp_, self.distance_ = 0, None, 0.0
-      def __init__(self, approx, resetTime):
-        self.approx_, self.resetTime_ = approx, resetTime
+      def __init__(self, approx, resetTime, holdTime):
+        self.approx_, self.resetTime_, self.holdTime_ = approx, resetTime, holdTime
         self.reset()
-    deltaOp = CombinedOp(state["parser"]("op", cfg["moving"], state), cfg["moving"].get("resetTime", float("inf")))
+    movingCfg = cfg["moving"]
+    deltaOp = CombinedOp(state["parser"]("op", movingCfg, state), movingCfg.get("resetTime", float("inf")), movingCfg.get("holdTime", 0.0))
     curve = OutputBasedCurve(deltaOp, sensOp, axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
