@@ -1275,7 +1275,7 @@ class OutputBasedCurve:
     sensitivity = self.valueOp_.calc(baseValue)
     if sensitivity is None:
       raise ArithmeticError("Cannot compute value, sensitivity is None")
-    delta = self.deltaOp_.calc(x, timestamp, sensitivity)
+    delta = sensitivity * self.deltaOp_.calc(x, timestamp)
     value = clamp(value + delta, *self.axis_.limits())
     delta = value - baseValue
     self.move_axis_(value=value, relative=False)
@@ -3349,8 +3349,8 @@ def make_parser():
     op = ops.get(vpoName, interpolate_op)
     vpo = SimpleValuePointOp(points.values(), op)
     class DeltaOp:
-      def calc(self, x, timestamp, sensitivity):
-        return x * sensitivity 
+      def calc(self, x, timestamp):
+        return x 
       def reset(self):
         pass
     deltaOp = DeltaOp()
@@ -3472,7 +3472,7 @@ def make_parser():
         self.approx_ = approx   
     sensOp = ApproxOp(state["parser"]("op", cfg["fixed"], state))
     class CombinedOp:
-      def calc(self, x, timestamp, sensitivity):
+      def calc(self, x, timestamp):
         s = sign(x)
         if self.s_ != s or self.timestamp_ is None:
           self.s_ = s
@@ -3484,7 +3484,7 @@ def make_parser():
           self.distance_ *= max(0.0, 1.0 - (dt - self.holdTime_) / self.resetTime_)
         self.distance_ += x
         self.timestamp_ = timestamp
-        return self.approx_(self.distance_) * sensitivity
+        return self.approx_(self.distance_)
       def reset(self):
         self.s_, self.timestamp_, self.distance_ = 0, None, 0.0
       def __init__(self, approx, resetTime, holdTime):
