@@ -3470,7 +3470,6 @@ def make_parser():
         pass
       def __init__(self, approx):
         self.approx_ = approx   
-    sensOp = ApproxOp(state["parser"]("op", cfg["fixed"], state))
     class CombinedOp:
       def calc(self, x, timestamp):
         s = sign(x)
@@ -3490,8 +3489,54 @@ def make_parser():
       def __init__(self, approx, resetTime, holdTime):
         self.approx_, self.resetTime_, self.holdTime_ = approx, resetTime, holdTime
         self.reset()
+    class DistanceOp:
+      def calc(self, x, timestamp):
+        if self.timestamp_ is None:
+          self.timestamp_ = timestamp
+        dt = timestamp - self.timestamp_
+        self.timestamp_ = timestamp
+        for op in self.ops_:
+          self.distance_ *= op.calc(x, dt)
+        self.distance_ += x
+        return self.approx_(self.distance_)
+      def reset(self):
+        self.timestamp_, self.distance_ = None, 0.0
+        for op in self.ops_:
+          op.reset()
+      def add_op(self, op):
+        self.ops_.append(op)
+      def __init__(self, approx, ops=None):
+        self.approx_ = approx
+        self.ops_ = [] if ops is None else ops
+        self.reset()
+    class SignOp:
+      def calc(self, x, dt):
+        r = 1.0
+        s = sign(x)
+        if self.s_ != 0 and s != self.s_:
+          r = 0.0 
+        self.s_ = s
+        return r
+      def reset(self):
+        self.s_ = 0
+      def __init__(self):
+        self.s_ = 0
+    class DeltaTimeOp:
+      def calc(self, x, dt):
+        assert(self.resetTime_ > 0.0)
+        r = 1.0
+        if dt > self.holdTime_:
+          r = max(0.0, 1.0 - (dt - self.holdTime_) / self.resetTime_)
+        return r
+      def reset(self):
+        pass
+      def __init__(self, resetTime, holdTime):
+        self.resetTime_, self.holdTime_ = resetTime, holdTime
     movingCfg = cfg["moving"]
-    deltaOp = CombinedOp(state["parser"]("op", movingCfg, state), movingCfg.get("resetTime", float("inf")), movingCfg.get("holdTime", 0.0))
+    signOp = SignOp()
+    dtOp = DeltaTimeOp(movingCfg.get("resetTime", float("inf")), movingCfg.get("holdTime", 0.0))
+    deltaOp = DistanceOp(state["parser"]("op", movingCfg, state), [signOp, dtOp])
+    sensOp = ApproxOp(state["parser"]("op", cfg["fixed"], state))
     curve = OutputBasedCurve(deltaOp, sensOp, axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
