@@ -2003,6 +2003,29 @@ def UpdateSnap(snapManager, snap):
   return op
 
 
+class SnapTracker:
+  def inc(self, snap):
+    if snap not in self.snaps_:
+      self.snaps_[snap] = 0
+    if self.snaps_[snap] == 0:
+      self.sm_.update_snap(snap)
+    self.snaps_[snap] += 1
+
+  def dec(self, snap):
+    if snap not in self.snaps_:
+      self.snaps_[snap] = 0
+    if self.snaps_[snap] == 1:
+      self.sm_.snap_to(snap)
+    if self.snaps_[snap] >= 1:
+      self.snaps_[snap] -= 1
+
+  def reset(self, snap):
+    self.snaps_[snap] = 0
+
+  def __init__(self, sm):
+    self.snaps_, self.sm_ = dict(), sm
+
+
 class MappingJoystick:
   """Forwards calls to contained joysticks with axis mapping"""
 
@@ -3769,6 +3792,7 @@ def make_parser():
   def createSnap_(cfg, state):
     state.setdefault("snapManager", AxisSnapManager())
     snapManager = state["snapManager"]
+    state.setdefault("snapTracker", SnapTracker(snapManager))
     snapName = cfg["snap"]
     if not snapManager.has_snap(snapName): 
       snaps = state["settings"]["config"]["snaps"]
@@ -3796,6 +3820,27 @@ def make_parser():
     snapManager = state["snapManager"]
     return SnapTo(snapManager, snapName)
   actionParser.add("snapTo", parseSnapTo)
+
+  def parseIncSnapCount(cfg, state):
+    createSnap_(cfg, state)
+    snapName = cfg["snap"]
+    snapTracker = state["snapTracker"]
+    return lambda e : snapTracker.inc(snapName)
+  actionParser.add("incSnapCount", parseIncSnapCount)
+
+  def parseDecSnapCount(cfg, state):
+    createSnap_(cfg, state)
+    snapName = cfg["snap"]
+    snapTracker = state["snapTracker"]
+    return lambda e : snapTracker.dec(snapName)
+  actionParser.add("decSnapCount", parseDecSnapCount)
+
+  def parseResetSnapCount(cfg, state):
+    createSnap_(cfg, state)
+    snapName = cfg["snap"]
+    snapTracker = state["snapTracker"]
+    return lambda e : snapTracker.reset(snapName)
+  actionParser.add("resetSnapCount", parseResetSnapCount)
 
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("ed", edParser)
