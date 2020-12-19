@@ -3767,6 +3767,17 @@ def make_parser():
     return r
   actionParser.add("setAxes", parseSetAxes)
 
+  def parseSetAxesRel(cfg, state):
+    axesAndValues = []
+    allAxes = state["settings"]["axes"]
+    for fullAxisName,value in cfg["axesAndValues"].items():
+      axis = getAxis(fullAxisName, state)
+      value = float(value)
+      axesAndValues.append([axis, value, True])
+    r = MoveAxes(axesAndValues)
+    return r
+  actionParser.add("setAxesRel", parseSetAxesRel)
+
   def parseSetKeyState(cfg, state):
     output, key = split_full_name(cfg["key"])
     key = name2code(key)
