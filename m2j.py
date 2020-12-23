@@ -2222,7 +2222,7 @@ class RelativeHeadMovementJoystick:
         if axis == codes.ABS_X: 
           x0, y0, z0 = cRoll*cYaw - sRoll*sPitch*sYaw, -sRoll*cYaw - cRoll*sPitch*sYaw, -cPitch*sYaw
           x, y, z = (v*value for v in (x0, y0, z0))
-          print "value:{:.3f}, relative:{:.3f}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x0:{:.3f}, y0:{:.3f}, z0:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(value, relative, yawD, pitchD, rollD, x0, y0, z0, x, y, z)
+          print "value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x0:{:.3f}, y0:{:.3f}, z0:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(value, relative, yawD, pitchD, rollD, x0, y0, z0, x, y, z)
           for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
             self.next_.move_axis(axis, v, relative) 
       else:
