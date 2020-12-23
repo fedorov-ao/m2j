@@ -2208,6 +2208,46 @@ class MetricsJoystick:
   axisToName = {p[1]:p[0] for p in {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}.items()}
 
 
+class RelativeHeadMovementJoystick:
+  def move_axis(self, axis, value, relative):
+    if self.next_ is not None:
+      if axis in (codes.ABS_X,):
+        yawD, pitchD, rollD = (a for a in (self.next_.get_axis(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+        yawR, pitchR, rollR = (math.radians(a) for a in (yawD, pitchD, rollD))
+        #print yaw, pitch, roll
+        sYaw, sPitch, sRoll = (math.sin(a) for a in (yawR, pitchR, rollR))
+        #print sYaw, sPitch, sRoll
+        cYaw, cPitch, cRoll = (math.cos(a) for a in (yawR, pitchR, rollR))
+        #print cYaw, cPitch, cRoll
+        if axis == codes.ABS_X: 
+          x0, y0, z0 = cRoll*cYaw - sRoll*sPitch*sYaw, -sRoll*cYaw - cRoll*sPitch*sYaw, -cPitch*sYaw
+          x, y, z = (v*value for v in (x0, y0, z0))
+          print "value:{:.3f}, relative:{:.3f}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x0:{:.3f}, y0:{:.3f}, z0:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(value, relative, yawD, pitchD, rollD, x0, y0, z0, x, y, z)
+          for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
+            self.next_.move_axis(axis, v, relative) 
+      else:
+        self.next_.move_axis(axis, value, relative) 
+        
+  def get_axis(self, axis):
+    return self.next_.get_axis(axis) if self.next_ else 0
+
+  def get_limits(self, axis):
+    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+
+  def get_supported_axes(self):
+    return self.next_.get_supported_axes() if self.next_ else ()
+
+  def set_button_state(self, button, state):
+    self.next_.set_button_state(button, state)
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def __init__(self, next=None):
+    self.next_ = next
+
+
 def make_curve_makers():
   curves = {}
 
@@ -4019,6 +4059,12 @@ def make_parser():
     state["settings"]["updated"].append(lambda tick : j.update(tick))
     return j
   outputParser.add("rateSet", parseRateSettingOutput)
+
+  def parseRelativeOutput(cfg, state):
+    next = state["parser"]("output", cfg["next"], state)
+    j = RelativeHeadMovementJoystick(next)
+    return j
+  outputParser.add("relative", parseRelativeOutput)
 
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output") 
