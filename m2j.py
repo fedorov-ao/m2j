@@ -2210,26 +2210,39 @@ class MetricsJoystick:
 
 class RelativeHeadMovementJoystick:
   def move_axis(self, axis, value, relative):
+    self.v_[axis] = self.v_.get(axis, 0.0)+value if relative == True else value
     if self.next_ is not None:
-      if axis in (codes.ABS_X,):
-        yawD, pitchD, rollD = (a for a in (self.next_.get_axis(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+      if axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z,):
+        yawD, pitchD, rollD = (a for a in (self.v_.get(axis, 0.0) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
         yawR, pitchR, rollR = (math.radians(a) for a in (yawD, pitchD, rollD))
         #print yaw, pitch, roll
-        sYaw, sPitch, sRoll = (math.sin(a) for a in (yawR, pitchR, rollR))
+        sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (yawR, pitchR, rollR))
         #print sYaw, sPitch, sRoll
-        cYaw, cPitch, cRoll = (math.cos(a) for a in (yawR, pitchR, rollR))
+        cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (yawR, pitchR, rollR))
         #print cYaw, cPitch, cRoll
-        if axis == codes.ABS_X: 
-          x0, y0, z0 = cRoll*cYaw - sRoll*sPitch*sYaw, -sRoll*cYaw - cRoll*sPitch*sYaw, -cPitch*sYaw
-          x, y, z = (v*value for v in (x0, y0, z0))
-          print "value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x0:{:.3f}, y0:{:.3f}, z0:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(value, relative, yawD, pitchD, rollD, x0, y0, z0, x, y, z)
-          for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
-            self.next_.move_axis(axis, v, relative) 
+        m00 = cosRoll*cosYaw - sinRoll*sinPitch*sinYaw
+        m01 = sinRoll*cosPitch
+        m02 = cosRoll*sinYaw + sinRoll*sinPitch*cosYaw
+        m10 = -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw
+        m11 = cosRoll*cosPitch
+        m12 = -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw
+        m20 = -cosPitch*sinYaw
+        m21 = -sinPitch
+        m22 = cosPitch*cosYaw
+
+        lx, ly, lz = (self.v_.get(axis, 0.0) for axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z,))
+        x = lx*m00 + ly*m01 + lz*m02
+        y = lx*m10 + ly*m11 + lz*m12
+        z = lx*m20 + ly*m21 + lz*m22
+        #print "axis:{}, value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(axis, value, relative, yawD, pitchD, rollD, x, y, z)
+        for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
+          self.next_.move_axis(axis, v, False) 
       else:
+        #print "axis:{}, value:{:.3f}, relative:{}".format(axis, value, relative)
         self.next_.move_axis(axis, value, relative) 
         
   def get_axis(self, axis):
-    return self.next_.get_axis(axis) if self.next_ else 0
+    return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
     return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
@@ -2246,6 +2259,7 @@ class RelativeHeadMovementJoystick:
 
   def __init__(self, next=None):
     self.next_ = next
+    self.v_ = dict()
 
 
 def make_curve_makers():
