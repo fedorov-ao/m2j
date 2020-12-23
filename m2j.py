@@ -1278,7 +1278,7 @@ class OutputBasedCurve:
     delta = sensitivity * self.deltaOp_.calc(x, timestamp)
     value = clamp(value + delta, *self.axis_.limits())
     delta = value - baseValue
-    self.move_axis_(value=value, relative=False)
+    self.move_axis_(value=delta, relative=True)
     #logger.debug( "{}: x:{: .3f}, base value:{: .3f}, sensitivity:{: .3f}, value delta:{: .3f}, new value:{: .3f}".format(self, x, baseValue, sensitivity, delta, value))
     return delta
 
@@ -2105,7 +2105,8 @@ class RateLimititngJoystick:
         if delta != 0.0:
           if axisId in self.rates_:  
             value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
-          self.next_.move_axis(axisId, value, False)
+            delta = value - current
+          self.next_.move_axis(axisId, delta, True)
 
   def __init__(self, next, rates):
     self.next_, self.rates_ = next, rates
@@ -2210,12 +2211,9 @@ class MetricsJoystick:
 
 class RelativeHeadMovementJoystick:
   def move_axis(self, axis, value, relative):
-    v = self.v_.get(axis, 0.0)+value if relative == True else value
-    limits = self.limits_.get(axis, (-float("inf"), float("inf")))
-    self.v_[axis] = clamp(v, *limits)
     if self.next_ is not None:
-      if axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z,):
-        dYaw, dPitch, dRoll = (a for a in (self.v_.get(axis, 0.0) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+      if relative == True and axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
+        dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
         rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
         sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
         cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
@@ -2229,42 +2227,38 @@ class RelativeHeadMovementJoystick:
         m21 = -sinPitch
         m22 = cosPitch*cosYaw
 
-        lx, ly, lz = (self.v_.get(axis, 0.0) for axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z,))
-        x = lx*m00 + ly*m01 + lz*m02
-        y = lx*m10 + ly*m11 + lz*m12
-        z = lx*m20 + ly*m21 + lz*m22
-        #logger.debug("axis:{}, value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(axis, value, relative, yawD, pitchD, rollD, x, y, z))
+        x, y, z = 0.0, 0.0, 0.0
+        if axis == codes.ABS_X:
+          x, y, z = (value*c for c in (m00, m10, m20))
+        elif axis == codes.ABS_Y:
+          x, y, z = (value*c for c in (m01, m11, m21))
+        elif axis == codes.ABS_Z:
+          x, y, z = (value*c for c in (m02, m12, m22))
         for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
-          self.next_.move_axis(axis, v, False) 
+          limits, current = self.next_.get_limits(axis), self.next_.get_axis(axis)
+          v = clamp(v+current, *limits) - current
+          self.next_.move_axis(axis, v, True) 
       else:
-        #logger.debug("axis:{}, value:{:.3f}, relative:{}".format(axis, value, relative))
         self.next_.move_axis(axis, value, relative) 
         
   def get_axis(self, axis):
-    return self.v_.get(axis, 0.0)
-
-  def set_limits(self, axis, limits):
-    self.limits_[axis] = limits
-    if axis in self.v_:
-      self.move_axis(axis, self.v_[axis], False)
+    return self.next_.get_axis(axis) if self.next_ is not None else 0.0 
 
   def get_limits(self, axis):
-    return self.limits_.get(axis, (-float("inf"), float("inf")))
+    return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
 
   def get_supported_axes(self):
-    return self.next_.get_supported_axes() if self.next_ else ()
+    return self.next_.get_supported_axes() if self.next_ is not None else ()
 
   def set_button_state(self, button, state):
-    self.next_.set_button_state(button, state)
+    self.next_.set_button_state(button, state) if self.next_ is not None else None
 
   def set_next(self, next):
     self.next_ = next
     return next
 
-  def __init__(self, next=None, limits=None):
+  def __init__(self, next=None):
     self.next_ = next
-    self.limits_ = dict() if limits is None else limits
-    self.v_ = dict()
 
 
 def make_curve_makers():
@@ -4081,8 +4075,7 @@ def make_parser():
 
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", cfg["next"], state)
-    limits = cfg.get("limits", None)
-    j = RelativeHeadMovementJoystick(next, limits)
+    j = RelativeHeadMovementJoystick(next)
     return j
   outputParser.add("relative", parseRelativeOutput)
 
