@@ -2210,16 +2210,15 @@ class MetricsJoystick:
 
 class RelativeHeadMovementJoystick:
   def move_axis(self, axis, value, relative):
-    self.v_[axis] = self.v_.get(axis, 0.0)+value if relative == True else value
+    v = self.v_.get(axis, 0.0)+value if relative == True else value
+    limits = self.limits_.get(axis, (-float("inf"), float("inf")))
+    self.v_[axis] = clamp(v, *limits)
     if self.next_ is not None:
       if axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z,):
-        yawD, pitchD, rollD = (a for a in (self.v_.get(axis, 0.0) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
-        yawR, pitchR, rollR = (math.radians(a) for a in (yawD, pitchD, rollD))
-        #print yaw, pitch, roll
-        sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (yawR, pitchR, rollR))
-        #print sYaw, sPitch, sRoll
-        cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (yawR, pitchR, rollR))
-        #print cYaw, cPitch, cRoll
+        dYaw, dPitch, dRoll = (a for a in (self.v_.get(axis, 0.0) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+        rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
+        sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
+        cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
         m00 = cosRoll*cosYaw - sinRoll*sinPitch*sinYaw
         m01 = sinRoll*cosPitch
         m02 = cosRoll*sinYaw + sinRoll*sinPitch*cosYaw
@@ -2234,18 +2233,23 @@ class RelativeHeadMovementJoystick:
         x = lx*m00 + ly*m01 + lz*m02
         y = lx*m10 + ly*m11 + lz*m12
         z = lx*m20 + ly*m21 + lz*m22
-        #print "axis:{}, value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(axis, value, relative, yawD, pitchD, rollD, x, y, z)
+        #logger.debug("axis:{}, value:{:.3f}, relative:{}, yaw:{:.3f}, pitch:{:.3f}, roll:{:.3f}, x:{:.3f}, y:{:.3f}, z:{:.3f}".format(axis, value, relative, yawD, pitchD, rollD, x, y, z))
         for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
           self.next_.move_axis(axis, v, False) 
       else:
-        #print "axis:{}, value:{:.3f}, relative:{}".format(axis, value, relative)
+        #logger.debug("axis:{}, value:{:.3f}, relative:{}".format(axis, value, relative))
         self.next_.move_axis(axis, value, relative) 
         
   def get_axis(self, axis):
     return self.v_.get(axis, 0.0)
 
+  def set_limits(self, axis, limits):
+    self.limits_[axis] = limits
+    if axis in self.v_:
+      self.move_axis(axis, self.v_[axis], False)
+
   def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+    return self.limits_.get(axis, (-float("inf"), float("inf")))
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ else ()
@@ -2257,8 +2261,9 @@ class RelativeHeadMovementJoystick:
     self.next_ = next
     return next
 
-  def __init__(self, next=None):
+  def __init__(self, next=None, limits=None):
     self.next_ = next
+    self.limits_ = dict() if limits is None else limits
     self.v_ = dict()
 
 
@@ -4076,7 +4081,8 @@ def make_parser():
 
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", cfg["next"], state)
-    j = RelativeHeadMovementJoystick(next)
+    limits = cfg.get("limits", None)
+    j = RelativeHeadMovementJoystick(next, limits)
     return j
   outputParser.add("relative", parseRelativeOutput)
 
