@@ -2217,23 +2217,24 @@ class RelativeHeadMovementJoystick:
         rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
         sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
         cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
-        m00 = cosRoll*cosYaw - sinRoll*sinPitch*sinYaw
-        m01 = sinRoll*cosPitch
-        m02 = cosRoll*sinYaw + sinRoll*sinPitch*cosYaw
-        m10 = -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw
-        m11 = cosRoll*cosPitch
-        m12 = -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw
-        m20 = -cosPitch*sinYaw
-        m21 = -sinPitch
-        m22 = cosPitch*cosYaw
 
         x, y, z = 0.0, 0.0, 0.0
         if axis == codes.ABS_X:
+          m00 = cosRoll*cosYaw - sinRoll*sinPitch*sinYaw
+          m10 = -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw
+          m20 = -cosPitch*sinYaw
           x, y, z = (value*c for c in (m00, m10, m20))
         elif axis == codes.ABS_Y:
+          m01 = sinRoll*cosPitch
+          m11 = cosRoll*cosPitch
+          m21 = -sinPitch
           x, y, z = (value*c for c in (m01, m11, m21))
         elif axis == codes.ABS_Z:
+          m02 = cosRoll*sinYaw + sinRoll*sinPitch*cosYaw
+          m12 = -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw
+          m22 = cosPitch*cosYaw
           x, y, z = (value*c for c in (m02, m12, m22))
+
         for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
           limits, current = self.next_.get_limits(axis), self.next_.get_axis(axis)
           v = clamp(v+current, *limits) - current
