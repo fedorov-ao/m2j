@@ -254,7 +254,7 @@ class PPJoystick:
 
     self.ppj_.setAxis(w2n_axis(axis), v*self.scales_[axis])
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.v_[axis]
 
   def get_limits(self, axis):

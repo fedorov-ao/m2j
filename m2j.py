@@ -132,17 +132,17 @@ class ReloadException(Exception):
 
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
-    value = self.get_axis(axis) + v if relative else v
+    value = self.get_axis_value(axis) + v if relative else v
     limits = self.get_limits(axis)
     value = clamp(value, *limits)
     for c in self.children_:
       if axis in c.get_supported_axes():
         c.move_axis(axis, value, relative=False)
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     for c in self.children_:
       if axis in c.get_supported_axes():
-        return c.get_axis(axis)
+        return c.get_axis_value(axis)
     else:
       return 0.0
 
@@ -1171,7 +1171,7 @@ class JoystickAxis:
 
   def get(self):
     assert(self.j_)
-    return self.j_.get_axis(self.a_)
+    return self.j_.get_axis_value(self.a_)
 
   def limits(self):
     assert(self.j_)
@@ -1812,7 +1812,7 @@ class Opentrack:
     self.v_[axis] = clamp(v, *self.get_limits(axis))
     self.dirty_ = True
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
@@ -1848,7 +1848,7 @@ class UdpJoystick:
     self.v_[axis] = clamp(v, *self.get_limits(axis))
     self.dirty_ = True
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
@@ -1941,7 +1941,7 @@ class JoystickSnapManager:
       return False
     else:
       for j in xrange(len(snap)):
-        snap[j][1] = self.joystick_.get_axis(snap[j][0])
+        snap[j][1] = self.joystick_.get_axis_value(snap[j][0])
       return True
        
   def snap_to(self, i):
@@ -2035,9 +2035,9 @@ class MappingJoystick:
     d = self.data_[axis]
     d[0].move_axis(d[1], value, relative)
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     d = self.data_[axis]
-    return d[0].get_axis(d[1])
+    return d[0].get_axis_value(d[1])
 
   def get_limits(self, axis):
     d = self.data_[axis]
@@ -2058,8 +2058,8 @@ class NodeJoystick(object):
     if self.next_ is not None:
       self.next_.move_axis(axis, value, relative)
 
-  def get_axis(self, axis):
-    return self.next_.get_axis(axis) if self.next_ else 0
+  def get_axis_value(self, axis):
+    return self.next_.get_axis_value(axis) if self.next_ else 0
 
   def get_limits(self, axis):
     return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
@@ -2080,7 +2080,7 @@ class RateLimititngJoystick:
     if self.next_ is not None:
       self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
@@ -2096,13 +2096,13 @@ class RateLimititngJoystick:
   def set_next(self, next):
     self.next_ = next
     if self.next_ is not None:
-      self.v_ = {axisId:self.next_.get_axis(axisId) for axisId in self.next_.get_supported_axes()}
+      self.v_ = {axisId:self.next_.get_axis_value(axisId) for axisId in self.next_.get_supported_axes()}
     return next
 
   def update(self, tick):
     if self.next_ is not None:
       for axisId,value in self.v_.items():
-        current = self.next_.get_axis(axisId)
+        current = self.next_.get_axis_value(axisId)
         delta = value - current
         if delta != 0.0:
           if axisId in self.rates_:  
@@ -2120,7 +2120,7 @@ class RateSettingJoystick:
     if self.next_ is not None:
       self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.v_[axis]
 
   def get_limits(self, axis):
@@ -2178,7 +2178,7 @@ class MetricsJoystick:
     else:
       self.data_[axis][0] = value
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.data_.get(axis, 0.0)[0]
 
   def get_limits(self, axis):
@@ -2215,7 +2215,7 @@ class RelativeHeadMovementJoystick:
   def move_axis(self, axis, value, relative):
     if self.next_ is not None:
       if relative == True and axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
-        dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+        dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
         rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
         sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
         cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
@@ -2238,14 +2238,14 @@ class RelativeHeadMovementJoystick:
           x, y, z = (value*c for c in (m02, m12, m22))
 
         for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
-          limits, current = self.next_.get_limits(axis), self.next_.get_axis(axis)
+          limits, current = self.next_.get_limits(axis), self.next_.get_axis_value(axis)
           v = clamp(v+current, *limits) - current
           self.next_.move_axis(axis, v, True) 
       else:
         self.next_.move_axis(axis, value, relative) 
         
-  def get_axis(self, axis):
-    return self.next_.get_axis(axis) if self.next_ is not None else 0.0 
+  def get_axis_value(self, axis):
+    return self.next_.get_axis_value(axis) if self.next_ is not None else 0.0 
 
   def get_limits(self, axis):
     return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)

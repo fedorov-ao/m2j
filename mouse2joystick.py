@@ -63,7 +63,7 @@ class EvdevJoystick:
       self.move_axis_to(axis, v)
 
   def move_axis_by(self, axis, v):
-    self.move_axis_to(axis, self.get_axis(axis)+v)
+    self.move_axis_to(axis, self.get_axis_value(axis)+v)
 
   def move_axis_to(self, axis, v):
     if axis not in self.coords:
@@ -76,7 +76,7 @@ class EvdevJoystick:
     self.js.write(ecodes.EV_ABS, code2ecode(axis), v)
     self.js.syn()
 
-  def get_axis(self, axis):
+  def get_axis_value(self, axis):
     return self.coords.get(axis, 0.0)
 
   def get_limits(self, axis):
