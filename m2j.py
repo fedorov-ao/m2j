@@ -911,7 +911,7 @@ class ModeSink:
       return False
 
   def set_mode(self, mode):
-    #logger.debug("{}: Setting mode: {}".format(self, mode))
+    logger.info("{}: Setting mode: {}".format(self, mode))
     if mode not in self.children_:
       #logger.debug("{}: No such mode: {}".format(self, mode))
       return False
