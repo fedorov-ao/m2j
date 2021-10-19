@@ -4010,6 +4010,18 @@ def make_parser():
     bindingSink = BindSink(cmpOp)
     binds = cfg.get("binds", ())
     #logger.debug("binds: {}".format(binds))
+    #sorting binds so actions that reset curves are initialized after these curves were actually initialized
+    def bindsKey(b):
+      def checkOutput(o):
+        return 10 if o.get("action", o.get("type", None)) in ("resetCurve", "resetCurves") else 0
+      r = 0
+      if "output" in b:
+        r = checkOutput(b["output"])
+      elif "outputs" in b:
+        for o in b["outputs"]:
+          r = max(r, checkOutput(o))
+      return r
+    binds.sort(key=bindsKey)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
     try:
