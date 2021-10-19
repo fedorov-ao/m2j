@@ -3564,7 +3564,7 @@ def make_parser():
         dt = timestamp - self.timestamp_
         self.timestamp_ = timestamp
         for op in self.ops_:
-          self.distance_ *= op.calc(x, dt)
+          self.distance_ = op.calc(self.distance_, x, dt)
         self.distance_ += x
         return self.approx_(self.distance_)
       def reset(self):
@@ -3578,34 +3578,34 @@ def make_parser():
         self.ops_ = [] if ops is None else ops
         self.reset()
     class SignOp:
-      def calc(self, x, dt):
+      def calc(self, distance, x, dt):
         r = 1.0
         s = sign(x)
         if self.s_ != 0 and s != self.s_:
           r = 0.0 
         self.s_ = s
-        return r
+        return r * distance
       def reset(self):
         self.s_ = 0
       def __init__(self):
         self.s_ = 0
     class DeltaTimeOp:
-      def calc(self, x, dt):
+      def calc(self, distance, x, dt):
         assert(self.resetTime_ > 0.0)
         r = 1.0
         if dt > self.holdTime_:
           r = max(0.0, 1.0 - (dt - self.holdTime_) / self.resetTime_)
-        return r
+        return r * distance
       def reset(self):
         pass
       def __init__(self, resetTime, holdTime):
         self.resetTime_, self.holdTime_ = resetTime, holdTime
     movingCfg = cfg["moving"]
     signOp = SignOp()
-    dtOp = DeltaTimeOp(movingCfg.get("resetTime", float("inf")), movingCfg.get("holdTime", 0.0))
-    deltaOp = CombineOp(combine=lambda x,s : x*s, op=DistanceOp(state["parser"]("op", movingCfg, state), [signOp, dtOp]))
-    sensOp = ApproxOp(state["parser"]("op", cfg["fixed"], state))
-    curve = OutputBasedCurve(deltaOp, sensOp, axis)
+    dtOp = DeltaTimeOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaOp = CombineOp(combine=lambda x,s : x*s, op=DistanceOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
+    curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
 
