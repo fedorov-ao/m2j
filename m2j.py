@@ -1281,6 +1281,7 @@ class OutputBasedCurve:
     delta = value - baseValue
     self.move_axis_(value=delta, relative=True)
     #logger.debug( "{}: x:{: .3f}, base value:{: .3f}, sensitivity:{: .3f}, value delta:{: .3f}, new value:{: .3f}".format(self, x, baseValue, sensitivity, delta, value))
+    #logger.debug("{}: x:{: .3f}, t:{}, dv:{: .3f}".format(self, x, timestamp, delta))
     return delta
 
   def reset(self):
