@@ -913,11 +913,12 @@ class ModeSink:
   def set_mode(self, mode):
     logger.info("{}: Setting mode: {}".format(self.name_, mode))
     if mode not in self.children_:
-      #logger.debug("{}: No such mode: {}".format(self, mode))
+      logger.warning("{}: No such mode: {}".format(self.name_, mode))
       return False
     self.set_active_child_state_(False)
     self.mode_ = mode
     self.set_active_child_state_(True)
+    return True
 
   def get_mode(self):
     return self.mode_
@@ -3627,6 +3628,7 @@ def make_parser():
       if bases is not None:
         layouts, full = state["settings"]["config"]["layouts"], {}
         for b in bases:
+          logger.debug("parsing base : {}".format(b))
           merge_dicts(full, layouts[b])
         merge_dicts(full, cfg)
         cfg = full
@@ -3737,7 +3739,8 @@ def make_parser():
       child = state["parser"]("sink", modeCfg, state)
       modeSink.add(modeName, child)
     if "initialMode" in cfg:
-      modeSink.set_mode(cfg["initialMode"])
+      if not modeSink.set_mode(cfg["initialMode"]):
+        logger.warning("Cannot set mode: {}".format(cfg["initialMode"]))
     msmm = ModeSinkModeManager(modeSink)
     state["components"]["msmm"] = msmm
     return modeSink
