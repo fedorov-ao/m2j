@@ -3594,7 +3594,7 @@ def make_parser():
         assert(self.resetTime_ > 0.0)
         r = 1.0
         if dt > self.holdTime_:
-          r = max(0.0, 1.0 - (dt - self.holdTime_) / self.resetTime_)
+          r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
         return r * distance
       def reset(self):
         pass
