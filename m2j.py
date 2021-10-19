@@ -911,7 +911,7 @@ class ModeSink:
       return False
 
   def set_mode(self, mode):
-    logger.info("{}: Setting mode: {}".format(self, mode))
+    logger.info("{}: Setting mode: {}".format(self.name_, mode))
     if mode not in self.children_:
       #logger.debug("{}: No such mode: {}".format(self, mode))
       return False
@@ -934,8 +934,8 @@ class ModeSink:
         #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
     
-  def __init__(self):
-    self.children_, self.mode_ = {}, None
+  def __init__(self, name=""):
+    self.children_, self.mode_, self.name_ = {}, None, name
 
 
 class CycleMode:
@@ -3732,7 +3732,7 @@ def make_parser():
   scParser.add("sens", parseSens)
 
   def parseMode(cfg, state):
-    modeSink = ModeSink()
+    modeSink = ModeSink(name=cfg.get("name", ""))
     for modeName,modeCfg in cfg["modes"].items():
       child = state["parser"]("sink", modeCfg, state)
       modeSink.add(modeName, child)
