@@ -3777,7 +3777,6 @@ def make_parser():
 
   #Actions
   #TODO Rename "type" to "action" and update configs
-  #TODO Add custom event emission
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"] if "type" in cfg else cfg["action"])
   parser.add("action", actionParser)
 
@@ -3930,7 +3929,6 @@ def make_parser():
   actionParser.add("print", parsePrint)
 
   #Event descriptors
-  #TODO Add custom event matching
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("ed", edParser)
 
