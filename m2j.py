@@ -3669,9 +3669,9 @@ def make_parser():
         sink.set_next(next) 
     def add(next, sink):
       if next is not None:
-        #TODO Add next sink to level 0 so it will be able to process events that were processed by other binds?
-        #Will be useful in case like when a bind and a mode both need to process some axis event.
-        sink.add(ED.any(), next, 1)
+        #Next sink is added to level 0 so it will be able to process events that were processed by other binds.
+        #This is useful in case like when a bind and a mode both need to process some axis event.
+        sink.add(ED.any(), next, 0)
     def parse_particular(name, cfg, state):
       return state["parser"](name, cfg, state) if name in cfg or cfg.get("type", "") == name else None
     try:
