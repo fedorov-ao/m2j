@@ -596,6 +596,8 @@ class BindSink:
       return False
 
     assert(self.cmp_)
+    #c[0] is event attributes to be matched, c[1] is level, c[2] is list of children to be called
+    #TODO Refactor, make self.children_ element a class with named members
     level, processed = self.children_[0][1], False
     for c in self.children_:
       if c[1] > level:
@@ -3376,6 +3378,7 @@ def make_parser():
     return make_op(cfg["points"], cfg.get("symmetric", 0))
   opParser.add("sbezier", sbezier)
 
+  #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"])
   parser.add("curve", curveParser)
 
@@ -3664,6 +3667,8 @@ def make_parser():
         sink.set_next(next) 
     def add(next, sink):
       if next is not None:
+        #TODO Add next sink to level 0 so it will be able to process events that were processed by other binds?
+        #Will be useful in case like when a bind and a mode both need to process some axis event.
         sink.add(ED.any(), next, 1)
     def parse_particular(name, cfg, state):
       return state["parser"](name, cfg, state) if name in cfg or cfg.get("type", "") == name else None
@@ -3691,6 +3696,7 @@ def make_parser():
         state["components"] = oldComponents
   parser.add("sink", parseBases_(parseSink))
 
+  #Sink components
   scParser = SelectParser()
   parser.add("sc", scParser)
 
@@ -3767,7 +3773,9 @@ def make_parser():
     return r
   scParser.add("next", parseNext)
 
-  #TODO rename "type" to "action" and update configs
+  #Actions
+  #TODO Rename "type" to "action" and update configs
+  #TODO Add custom event emission
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"] if "type" in cfg else cfg["action"])
   parser.add("action", actionParser)
 
@@ -3902,6 +3910,8 @@ def make_parser():
     return lambda e : snapTracker.reset(snapName)
   actionParser.add("resetSnapCount", parseResetSnapCount)
 
+  #Event descriptors
+  #TODO Add custom event matching
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("ed", edParser)
 
