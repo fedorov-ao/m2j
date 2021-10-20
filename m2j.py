@@ -586,26 +586,28 @@ class CalibratingSink:
 
 
 class BindSink:
+  class ChildrenInfo:
+    def __init__(self, attrs, level, children):
+      self.attrs, self.level, self.children = attrs, level, [cc for cc in children]
+
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
-      self.children_.sort(key=lambda c : c[1])
+      self.children_.sort(key=lambda c : c.level)
       self.dirty_ = False
 
     if len(self.children_) == 0:
       return False
 
     assert(self.cmp_)
-    #c[0] is event attributes to be matched, c[1] is level, c[2] is list of children to be called
-    #TODO Refactor, make self.children_ element a class with named members
-    level, processed = self.children_[0][1], False
+    level, processed = self.children_[0].level, False
     for c in self.children_:
-      if c[1] > level:
+      if c.level > level:
         if processed == True:
           return True
         else:
-          level = c[1]
-      for attrName, attrValue in c[0]:
+          level = c.level
+      for attrName, attrValue in c.attrs:
          if hasattr(event, attrName):
             eventValue = getattr(event, attrName)
             if not self.cmp_(attrName, eventValue, attrValue):
@@ -615,9 +617,9 @@ class BindSink:
           break
       else:
         #logger.debug("{}: {} matched".format(self, c[0]))
-        if c[2] is not None: 
+        if c.children is not None: 
           #logger.debug("Processing event {}".format(str(event)))
-          for cc in c[2]:
+          for cc in c.children:
             #logger.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
     return processed
@@ -625,22 +627,22 @@ class BindSink:
   def add(self, attrs, child, level = 0):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
     assert(child is not None)
-    c = next((x for x in self.children_ if level == x[1] and attrs == x[0]), None)
+    c = next((x for x in self.children_ if level == x.level and attrs == x.attrs), None)
     if c is not None:
-      c[2].append(child)
+      c.children.append(child)
     else:
-      self.children_.append([attrs, level, [child]])
+      self.children_.append(self.ChildrenInfo(attrs, level, [child]))
     self.dirty_ = True
     return child
 
   def add_several(self, attrs, childSeq, level = 0):
     for a in attrs:
-      c = next((x for x in self.children_ if level == x[1] and a == x[0]), None)
+      c = next((x for x in self.children_ if level == x.level and a == x.attrs), None)
       if c is not None:
-        assert(isinstance(c[2], list))
-        c[2] += childSeq
+        assert(isinstance(c.children, list))
+        c.children += childSeq
       else:
-        self.children_.append([a, level, [cc for cc in childSeq]])
+        self.children_.append(ChildrenInfo(a, level, childSeq))
     self.dirty_ = True
     return childSeq
 
