@@ -3415,7 +3415,7 @@ def make_parser():
     outputName, axisName = split_full_name(fullAxisName)
     allAxes = state["settings"]["axes"]
     if outputName not in allAxes:
-      raise RuntimeError("No axes were initialized for '{}'".format(outputName, fullAxisName))
+      raise RuntimeError("No axes were initialized for '{}'".format(outputName))
     outputAxes = allAxes[outputName]
     axisId = name2code(axisName)
     if axisId not in outputAxes:
