@@ -227,7 +227,7 @@ class Loop:
     dt = ct - self.t_
     self.t_ = ct
     for c in self.callbacks_:
-      c(dt)
+      c(dt, ct)
     time.sleep(max(self.step_ - (time.time() - ct), 0))
       
   def run(self):
@@ -4104,7 +4104,7 @@ def make_parser():
     rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
     next = state["parser"]("output", cfg["next"], state)
     j = RateLimititngJoystick(next, rates)
-    state["settings"]["updated"].append(lambda tick : j.update(tick))
+    state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateLimit", parseRateLimitOutput)
     
@@ -4113,7 +4113,7 @@ def make_parser():
     limits = {name2code(axisName):value for axisName,value in cfg["limits"].items()}
     next = state["parser"]("output", cfg["next"], state)
     j = RateSettingJoystick(next, rates, limits)
-    state["settings"]["updated"].append(lambda tick : j.update(tick))
+    state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateSet", parseRateSettingOutput)
 
@@ -4131,7 +4131,7 @@ def make_parser():
 
   def parseOpentrackOutput(cfg, state):
     opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
-    state["settings"]["updated"].append(lambda tick : opentrack.send())
+    state["settings"]["updated"].append(lambda tick,ts : opentrack.send())
     return opentrack
   outputParser.add("opentrack", parseOpentrackOutput)
 
@@ -4144,7 +4144,7 @@ def make_parser():
     j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]]) 
     for a,l in cfg.get("limits", {}).items():
       j.set_limits(name2code(a), l)
-    state["settings"]["updated"].append(lambda tick : j.send())
+    state["settings"]["updated"].append(lambda tick,ts : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 

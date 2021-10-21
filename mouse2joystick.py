@@ -185,11 +185,11 @@ def run():
     updated = settings.get("updated", [])
     refreshRate = settings["config"].get("refreshRate", 100.0)
     step = 1.0 / refreshRate
-    def run_source(tick):
+    def run_source(tick, ts):
       source.run_once()
-    def run_updated(tick):
+    def run_updated(tick, ts):
       for u in updated: 
-        u(tick)
+        u(tick, ts)
     callbacks = [run_source, run_updated]
     loop = Loop(callbacks, step)
     try:
