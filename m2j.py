@@ -1691,6 +1691,7 @@ class InputDeltaLinkingCurve:
     d = v - self.v_
     self.v_ = v
 
+    #reset only if moved in opposite direction for more than self.threshold_
     if self.threshold_ is not None:
       s = sign(d)
       if self.s_ == 0:
@@ -1725,6 +1726,10 @@ class InputDeltaLinkingCurve:
 
 
 class InputLinkingCurve:
+  """Directly links positions of 2 axes using op and offset.
+     If controlled axis is moved externally by delta, adds this delta to offset.
+     On reset computes offset as difference between actual and expected positions of controlled axis.
+  """
   def move_by(self, x, timestamp):
     v = self.controllingAxis_.get()
     cv = self.op_(v)
