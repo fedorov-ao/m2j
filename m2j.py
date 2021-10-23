@@ -908,6 +908,8 @@ def ToggleState(stateSink):
 
 class ModeSink:
   def __call__(self, event):
+    #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
+    #  logger.debug("{}: Recieved init event: {}".format(self, event.value))
     child = self.children_.get(self.mode_, None)
     if child is not None:
       return child(event)
