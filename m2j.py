@@ -1348,6 +1348,8 @@ class PointMovingCurve:
     try:
       self.busy_ = True
       r = self.next_.move_by(x, timestamp)
+    except:
+      raise
     finally:
       self.busy_ = False 
     #logger.debug( "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
@@ -1663,9 +1665,13 @@ class OutputDeltaLinkingCurve:
     cd = self.deltaOp_(d, sens)
     if abs(self.tcd_ + cd) < self.radius_:
       self.tcd_ += cd
-      self.busy_ = True
-      self.controlledAxis_.move(cd, relative=True)
-      self.busy_ = False
+      try:
+        self.busy_ = True
+        self.controlledAxis_.move(cd, relative=True)
+      except:
+        raise
+      finally:
+        self.busy_ = False
 
   def reset(self):
     self.v_ = self.controllingAxis_.get()
@@ -1707,9 +1713,13 @@ class InputDeltaLinkingCurve:
     atd = abs(self.td_)
     if atd < self.radius_:
       cd = self.op_(self.td_)
-      self.busy_= True
-      self.controlledAxis_.move(cd + self.cv_, relative=False)
-      self.busy_= False
+      try:
+        self.busy_= True
+        self.controlledAxis_.move(cd + self.cv_, relative=False)
+      except:
+        raise
+      finally:
+        self.busy_= False
 
   def reset(self):
     self.v_ = self.controllingAxis_.get()
@@ -1731,11 +1741,16 @@ class InputLinkingCurve:
      On reset computes offset as difference between actual and expected positions of controlled axis.
   """
   def move_by(self, x, timestamp):
+    """Call this by the same input that is assumed to affect controlling axis."""
     v = self.controllingAxis_.get()
     cv = self.op_(v)
-    self.busy_= True
-    self.controlledAxis_.move(cv + self.offset_, relative=False)
-    self.busy_= False
+    try:
+      self.busy_= True
+      self.controlledAxis_.move(cv + self.offset_, relative=False)
+    except:
+      raise
+    finally:
+      self.busy_= False
 
   def reset(self):
     self.offset_ = self.controlledAxis_.get() - self.op_(self.controllingAxis_.get())
