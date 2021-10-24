@@ -3839,11 +3839,20 @@ def make_parser():
   def parseSetAxes(cfg, state):
     axesAndValues = []
     allAxes = state["settings"]["axes"]
-    for fullAxisName,value in cfg["axesAndValues"].items():
+    axesAndValues = cfg["axesAndValues"]
+    #logger.debug("parseSetAxes(): {}".format(axesAndValues))
+    if type(axesAndValues) is dict:
+      axesAndValues = axesAndValues.items()
+    assert(type(axesAndValues) is list)
+    #logger.debug("parseSetAxes(): {}".format(axesAndValues))
+    av = []
+    for fullAxisName,value in axesAndValues:
       axis = getAxis(fullAxisName, state)
       value = float(value)
-      axesAndValues.append([axis, value, False])
-    r = MoveAxes(axesAndValues)
+      av.append([axis, value, False])
+      #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
+    #logger.debug("parseSetAxes(): {}".format(av))
+    r = MoveAxes(av)
     return r
   actionParser.add("setAxes", parseSetAxes)
 
