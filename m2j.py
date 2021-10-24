@@ -1771,6 +1771,7 @@ class InputLinkingCurve:
 class AxisLinker:
   """Directly links positions of 2 axes using op and offset.
      If controlled axis is moved externally by delta, adds this delta to offset.
+     When resetting axes, reset controlling axis first, then controlled.
   """
   def reset(self):
     self.offset_ = self.controlledAxis_.get() - self.op_(self.controllingAxis_.get())
