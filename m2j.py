@@ -932,6 +932,7 @@ class ModeSink:
   def add(self, mode, child):
     #logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
     self.children_[mode] = child
+    child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if mode == self.mode_ else 0, time.time()))
     return child
 
   def set_active_child_state_(self, state):
