@@ -1195,6 +1195,7 @@ class ReportingAxis:
     old = self.next_.get()
     self.next_.move(v, relative)
     new = self.next_.get()
+    #logger.debug(("{}: {} -> {}".format(self, old, new)))
     for c in self.listeners_:
       if c() is None: continue
       c().on_move_axis(self, old, new)
