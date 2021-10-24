@@ -1767,6 +1767,51 @@ class InputLinkingCurve:
     self.offset_, self.busy_  = 0.0, False
 
 
+class AxisLinker:
+  """Directly links positions of 2 axes using op and offset.
+     If controlled axis is moved externally by delta, adds this delta to offset.
+  """
+  def reset(self):
+    self.offset_ = self.controlledAxis_.get() - self.op_(self.controllingAxis_.get())
+
+  def set_state(self, state):
+    if state == True:
+      self.reset()
+    self.state_ = state
+
+  def on_move_axis(self, axis, old, new):
+    if self.state_:
+      if axis == self.controlledAxis_ and not self.busy_:
+        self.offset_ += new - old
+        #logger.debug(self.offset_))
+      elif axis == self.controllingAxis_:
+        cv = self.op_(new)
+        #logger.debug(cv:{}".format(new, cv)))
+        try:
+          self.busy_= True
+          self.controlledAxis_.move(cv + self.offset_, relative=False)
+        except:
+          raise
+        finally:
+          self.busy_= False
+
+  def __init__(self, controllingAxis, controlledAxis, op):
+    self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
+    self.offset_, self.busy_, self.state_  = 0.0, False, False
+
+
+class SetAxisLinkerState:
+  def __call__(self, event):
+    if self.linker_ is not None and event.type == codes.EV_BCT and event.code == codes.BCT_INIT:  
+      self.linker_.set_state(event.value)
+      return True
+    else:
+      return False
+
+  def __init__(self, linker):
+    self.linker_ = linker
+
+
 class DemaFilter:
   def process(self, v):
     if self.needInit_:
@@ -3570,6 +3615,16 @@ def make_parser():
     return curve
   curveParser.add("inLink", parseInputLinkingCurve)
 
+  def parseAxisLinker(cfg, state):
+    controlledAxis = getAxis(cfg["follower"], state)
+    op = state["parser"]("op", cfg, state)
+    controllingAxis = getAxis(cfg["leader"], state)
+    linker = AxisLinker(controllingAxis, controlledAxis, op)
+    controlledAxis.add_listener(linker)
+    controllingAxis.add_listener(linker)
+    return linker
+  curveParser.add("linker", parseAxisLinker)
+
   def parseCombinedCurve(cfg, state):
     axis = getAxis(state["axis"], state)
     class ApproxOp:
@@ -3942,6 +3997,11 @@ def make_parser():
     snapTracker = state["snapTracker"]
     return lambda e : snapTracker.reset(snapName)
   actionParser.add("resetSnapCount", parseResetSnapCount)
+
+  def parseSetStateOnInit(cfg, state):
+    linker = state["parser"]("curve", cfg, state)
+    return SetAxisLinkerState(linker)
+  actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseEmitCustomEvent(cfg, state):
     bindSink, code, value = state["bindSink"], int(cfg.get("code")), cfg.get("value")
