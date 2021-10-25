@@ -3774,7 +3774,7 @@ def make_parser():
         parse_component("sens", set_next)
         parse_component("modifiers", set_next)
         if sink[0] is None:
-          raise RuntimeError("Could not make sink out of '{}'".format(cfg))
+          logger.debug("Could not make sink out of '{}'".format(cfg))
         return sink[0]
     finally:
       if oldComponents is not None:
