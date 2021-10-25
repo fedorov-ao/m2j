@@ -3927,6 +3927,7 @@ def make_parser():
 
   def parseSetKeyState(cfg, state):
     output, key = split_full_name(cfg["key"])
+    output = state["settings"]["outputs"][output]
     key = name2code(key)
     state = int(cfg["state"])
     return SetButtonState(output, key, state)
