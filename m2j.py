@@ -2479,7 +2479,10 @@ def init_main_sink(settings, make_next):
     mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
 
   grabSink = stateSink.set_next(BindSink(cmpOp))
-  grabbed = [settings["inputs"][g] for g in config.get("grabbed", ())]
+  grabbed = []
+  for g in config.get("grabbed", ()):
+    if g in settings["inputs"]:
+      grabbed.append(settings["inputs"][g])
   grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
   grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
 
@@ -3703,7 +3706,7 @@ def make_parser():
         if s is not None: return s 
       else:
         if "modes" in cfg and "next" in cfg:
-          raise RuntimeError("'next' and 'modes' properties are mutually exclusive")
+          raise RuntimeError("'next' and 'modes' components are mutually exclusive")
         parse_component("next", None)
         parse_component("modes", None)
         parse_component("state", set_next)
@@ -3713,7 +3716,7 @@ def make_parser():
         parse_component("sens", set_next)
         parse_component("modifiers", set_next)
         if sink[0] is None:
-          logger.debug("Could not make sink out of '{}'".format(cfg))
+          raise RuntimeError("Could not make sink out of '{}'".format(cfg))
         return sink[0]
     finally:
       if oldComponents is not None:
