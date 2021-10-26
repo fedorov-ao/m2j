@@ -4015,7 +4015,10 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseEmitCustomEvent(cfg, state):
-    bindSink, code, value = state["bindSink"], int(cfg.get("code")), cfg.get("value")
+    bindSinks, code, value = state.get("bindSinks"), int(cfg.get("code")), cfg.get("value")
+    if bindSinks is None or len(bindSinks) == 0:
+      raise RuntimeError("Not in a bindSink while parsing '{}'".format(cfg))
+    bindSink = bindSinks[-1]
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
       bindSink(event)
@@ -4165,7 +4168,11 @@ def make_parser():
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
     try:
-      state["bindSink"] = bindingSink
+      bindSinks = state.get("bindSinks")
+      if bindSinks is None:
+        bindSinks = []
+        state["bindSinks"] = bindSinks
+      bindSinks.append(bindingSink)
       for bind in binds:
         for i,o in parseInputsOutputs(bind, state):
           bindingSink.add(i, o, 0)
@@ -4173,8 +4180,9 @@ def make_parser():
     finally:
       if oldCurves is not None:
         state["curves"] = oldCurves
-      if "bindSink" in state:
-        del state["bindSink"]
+      bindSinks = state.get("bindSinks")
+      if bindSinks is not None and len(bindSinks) != 0:
+        bindSinks.pop()
 
   scParser.add("binds", parseBinds)
 
