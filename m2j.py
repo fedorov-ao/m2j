@@ -3759,9 +3759,14 @@ def make_parser():
       return state["parser"](name, cfg, state) if name in cfg or cfg.get("type", "") == name else None
     try:
       #TODO Refactor
+      if len(cfg) == 0:
+        def noop(event):
+          return False
+        return noop
       for name in ("layout", "preset"):
         s = parse_particular("layout", cfg, state)
-        if s is not None: return s 
+        if s is not None:
+          return s
       else:
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
