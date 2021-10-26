@@ -123,7 +123,7 @@ def split_full_name_tc(s, sep="."):
 def join_full_name_tc(source, type, code, sep="."):
   tcn = typecode2name(type, code)
   if source is not None:
-    tcn = sep.join(source, tcn)
+    tcn = sep.join((source, tcn))
   return tcn
 
 
