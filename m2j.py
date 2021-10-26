@@ -906,6 +906,42 @@ def ToggleState(stateSink):
   return op
 
 
+class FilterSink:
+  def __call__(self, event):
+   #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+   if (self.next_ is not None):
+     if (self.op_ is None) or (self.op_(event) == True):
+       self.next_(event)
+
+  def set_next(self, next):
+   #logger.debug("{}: setting next to {}".format(self, next))
+   self.next_ = next
+   return next
+
+  def set_op(self, op):
+    self.op_ = op
+
+  def __init__(self, op=None, next=None):
+   self.op_, self.next_ = op, next
+
+
+class SourceFilterOp:
+  def __call__(self, event):
+    if not self.state_ and event.source in self.sources_:
+      return False
+    else:
+      return True
+
+  def set_state(self, state):
+   self.state_ = state
+
+  def get_state(self):
+   return self.state_
+
+  def __init__(self, sources, state=True):
+    self.sources_, self.state_ = sources, state
+
+
 class ModeSink:
   def __call__(self, event):
     #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
@@ -2506,16 +2542,6 @@ def init_main_sink(settings, make_next):
     toggleKey = edParser(toggleKey, state)
     mainSink.add(toggleKey, toggler.make_toggle(), 0)
 
-  onKey = config.get("onKey", None)
-  if onKey is not None:
-    onKey = edParser(onKey, state)
-    mainSink.add(onKey, toggler.make_set_state(True), 0)
-
-  offKey = config.get("offKey", None)
-  if offKey is not None:
-    offKey = edParser(offKey, state)
-    mainSink.add(offKey, toggler.make_set_state(False), 0)
-
   reloadKey = config.get("reloadKey", None)
   if reloadKey is not None:
     def rld(e):
@@ -2552,18 +2578,37 @@ def init_main_sink(settings, make_next):
   if sensSetsAxis is not None:
     mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
 
-  grabSink = stateSink.set_next(BindSink(cmpOp))
+  sourceFilterOp = SourceFilterOp(config.get("grabbed", ()))
+  filterSink = stateSink.set_next(FilterSink(sourceFilterOp))
+
   grabbed = []
   for g in config.get("grabbed", ()):
     if g in settings["inputs"]:
       grabbed.append(settings["inputs"][g])
-  grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
-  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
 
   def print_enabled(event):
     logger.info("Emulation enabled")
   def print_disabled(event):
     logger.info("Emulation disabled")
+
+  onKey = config.get("onKey", None)
+  if onKey is not None:
+    onKey = edParser(onKey, state)
+    mainSink.add(onKey, SetState(sourceFilterOp, True), 0)
+    mainSink.add(onKey, SwallowDevices(grabbed, True), 0)
+    mainSink.add(onKey, print_enabled, 0)
+
+  offKey = config.get("offKey", None)
+  if offKey is not None:
+    offKey = edParser(offKey, state)
+    mainSink.add(offKey, SetState(sourceFilterOp, False), 0)
+    mainSink.add(offKey, SwallowDevices(grabbed, False), 0)
+    mainSink.add(offKey, print_disabled, 0)
+
+  grabSink = filterSink.set_next(BindSink(cmpOp))
+  grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
+  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
+
   grabSink.add(ED.init(1), print_enabled, 0)
   grabSink.add(ED.init(0), print_disabled, 0)
 
