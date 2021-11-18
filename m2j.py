@@ -991,6 +991,18 @@ class ModeSinkModeManager:
     if len(self.mode_):
       self.sink_.set_mode(self.mode_.pop())
 
+  def add(self, mode):
+    self.mode_.append(mode)
+    self.sink_.set_mode(mode)
+
+  def remove(self, mode):
+    if mode in self.mode_:
+      self.mode_.remove(mode)
+      if len(self.mode_):
+        m = self.mode_[-1]
+        if m != self.sink_.get_mode():
+          self.sink_.set_mode(m)
+
   def clear(self):
     self.mode_ = []
 
@@ -1020,6 +1032,16 @@ class ModeSinkModeManager:
   def make_restore(self):
     def op(event):
       self.restore()
+      return True
+    return op
+  def make_add(self, mode):
+    def op(event):
+      self.add(mode)
+      return True
+    return op
+  def make_remove(self, mode):
+    def op(event):
+      self.remove(mode)
       return True
     return op
   def make_clear(self):
@@ -3841,6 +3863,7 @@ def make_parser():
       if not modeSink.set_mode(cfg["initialMode"]):
         logger.warning("Cannot set mode: {}".format(cfg["initialMode"]))
     msmm = ModeSinkModeManager(modeSink)
+    msmm.save()
     state["components"]["msmm"] = msmm
     return modeSink
   scParser.add("modes", parseBases_(parseMode))
@@ -3872,6 +3895,8 @@ def make_parser():
 
   actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
   actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
+  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"]))
+  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"]))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
   actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
   actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
