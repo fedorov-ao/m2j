@@ -996,12 +996,14 @@ class ModeSinkModeManager:
     self.sink_.set_mode(mode)
 
   def remove(self, mode):
-    if mode in self.mode_:
-      self.mode_.remove(mode)
-      if len(self.mode_):
-        m = self.mode_[-1]
-        if m != self.sink_.get_mode():
-          self.sink_.set_mode(m)
+    for i in range(len(self.mode_)-1, -1, -1):
+      if self.mode_[i] == mode:
+        self.mode_.pop(i)
+        break;
+    if len(self.mode_):
+      m = self.mode_[-1]
+      if m != self.sink_.get_mode():
+        self.sink_.set_mode(m)
 
   def clear(self):
     self.mode_ = []
