@@ -2578,38 +2578,51 @@ def init_main_sink(settings, make_next):
   if sensSetsAxis is not None:
     mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
 
-  sourceFilterOp = SourceFilterOp(config.get("grabbed", ()))
+  def names2inputs(names, settings):
+    r = []
+    inputs = settings["inputs"]
+    for d in names:
+      if d in inputs:
+        r.append(inputs[d])
+    return r
+
+  namesOfReleased = config.get("released", ())
+  released = names2inputs(namesOfReleased, settings)
+  sourceFilterOp = SourceFilterOp(namesOfReleased)
   filterSink = stateSink.set_next(FilterSink(sourceFilterOp))
 
-  grabbed = []
-  for g in config.get("grabbed", ()):
-    if g in settings["inputs"]:
-      grabbed.append(settings["inputs"][g])
-
-  def print_enabled(event):
-    logger.info("Emulation enabled")
-  def print_disabled(event):
-    logger.info("Emulation disabled")
+  def print_released(event):
+    logger.info("{} released".format(", ".join(namesOfReleased)))
+  def print_captured(event):
+    logger.info("{} captured".format(", ".join(namesOfReleased)))
 
   onKey = config.get("onKey", None)
   if onKey is not None:
     onKey = edParser(onKey, state)
     mainSink.add(onKey, SetState(sourceFilterOp, True), 0)
-    mainSink.add(onKey, SwallowDevices(grabbed, True), 0)
-    mainSink.add(onKey, print_enabled, 0)
+    mainSink.add(onKey, SwallowDevices(released, True), 0)
+    mainSink.add(onKey, print_captured, 0)
 
   offKey = config.get("offKey", None)
   if offKey is not None:
     offKey = edParser(offKey, state)
     mainSink.add(offKey, SetState(sourceFilterOp, False), 0)
-    mainSink.add(offKey, SwallowDevices(grabbed, False), 0)
-    mainSink.add(offKey, print_disabled, 0)
+    mainSink.add(offKey, SwallowDevices(released, False), 0)
+    mainSink.add(offKey, print_released, 0)
+
+  namesOfGrabbed = config.get("grabbed", ())
+  grabbed = names2inputs(namesOfGrabbed, settings)
+
+  def print_enabled(event):
+    logger.info("Emulation enabled; {} grabbed".format(", ".join(namesOfGrabbed)))
+  def print_disabled(event):
+    logger.info("Emulation disabled; {} ungrabbed".format(", ".join(namesOfGrabbed)))
 
   grabSink = filterSink.set_next(BindSink(cmpOp))
   grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
-  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
-
   grabSink.add(ED.init(1), print_enabled, 0)
+
+  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
   grabSink.add(ED.init(0), print_disabled, 0)
 
   #make_next() may need axes, so initializing them here
