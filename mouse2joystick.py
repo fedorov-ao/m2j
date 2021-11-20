@@ -116,15 +116,24 @@ def init_inputs(names):
   r = {}
   for s,n in names.items():
     for d in devices:
-      if n == d.name:
+      if (n == d.path) or (n == d.name):
         r[s] = EvdevDevice(d, s)
+        break
+    else:
+      logger.warning("Device {} ({}) not found".format(s, n))
   return r
   
 
 def print_devices():
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:
-    print "{} : {}; {}".format(d.name, [f for f,s in d.capabilities(verbose=True, absinfo=False).keys()], d.fn) 
+    caps = d.capabilities(verbose=True, absinfo=False)
+    capsInfo = ""
+    for k,v in caps.items():
+      keyName = k[0]
+      codeNames = ", ".join((str(i[0]) for i in v))
+      capsInfo += " {}: {}\n".format(keyName, codeNames)
+    print "name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq)
 
 
 def parseEvdevJoystickOutput(cfg, state):
@@ -132,7 +141,7 @@ def parseEvdevJoystickOutput(cfg, state):
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
   return EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
 
-  
+ 
 def run():
   def init_outputs(settings):
     nameParser = lambda key,state : key
