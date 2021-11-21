@@ -127,6 +127,51 @@ def join_full_name_tc(source, type, code, sep="."):
   return tcn
 
 
+def split_full_name_state(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', 'REL_X', True)
+  'REL_X' -> (None, 'REL_X', True)
+  '+mouse.REL_X' -> ('mouse', 'REL_X', True)
+  '+REL_X' -> (None, 'REL_X', True)
+  '-mouse.REL_X' -> ('mouse', 'REL_X', False)
+  '-REL_X' -> (None, 'REL_X', False)
+  """
+  state = True
+  if s[0] == "+":
+    s = s[1:]
+  elif s[0] == "-":
+    state = False
+    s = s[1:]
+  i = s.find(sep)
+  return (None, s, state) if i == -1 else (s[:i], s[i+1:], state)
+
+
+def split_full_name_code_state(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', codes.REL_X, True)
+  'REL_X' -> (None, codes.REL_X, True)
+  '+mouse.REL_X' -> ('mouse', codes.REL_X, True)
+  '+REL_X' -> (None, codes.REL_X, True)
+  '-mouse.REL_X' -> ('mouse', codes.REL_X, False)
+  '-REL_X' -> (None, codes.REL_X, False)
+  """
+  r = split_full_name_state(s, sep)
+  return (r[0], name2code(r[1]), r[2])
+
+
+def split_full_name_tc_state(s, sep="."):
+  """
+  'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
+  'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
+  '+mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
+  '+REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
+  '-mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, False)
+  '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
+  """
+  r = split_full_name_state(s, sep)
+  return (r[0], name2type(r[1]), name2code(r[1]), r[2])
+
+
 class ReloadException(Exception):
   pass
 
@@ -669,21 +714,24 @@ class CmpWithModifiers:
         r = eventValue is None
       elif eventValue is None:
         r = False
-      elif len(attrValue) == 0 and len(eventValue) == 0:
-        r = True
-      elif len(attrValue) != len(eventValue):
-        r = False
       else:
         r = True
         for m in attrValue:
+          assert(len(m) == 3)
           found = False
           for n in eventValue:
-            assert(len(m) == 2)
             assert(len(n) == 2)
-            found = (m[1] == n[1]) if m[0] is None else (m == n)
-            if found: break
+            found = True
+            start = 1 if m[0] is None else 0
+            for i in range(start, len(n)):
+              found = found and (m[i] == n[i])
+            if found:
+              break
+          if m[2] == False:
+             found = not found
           r = r and found
-          if not r: break
+          if not r:
+              break
     else:
       r = eventValue == attrValue
     return r
@@ -2576,7 +2624,7 @@ def init_main_sink(settings, make_next):
     sensSetsAxis = split_full_name_code(sensSetsAxis)[1]
   sensSetsMod = config.get("sensSetsMod", None)
   if sensSetsMod is not None:
-    sensSetsMod = [split_full_name_code(sensSetsMod)]
+    sensSetsMod = [split_full_name_code_state(sensSetsMod)]
   if sensSetsAxis is not None:
     mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
 
@@ -4130,7 +4178,7 @@ def make_parser():
   def parseEdModifiers_(r, cfg):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+      modifiers = [split_full_name_code_state(m) for m in cfg["modifiers"]]
       r.append(("modifiers", modifiers)) 
     return r
 
