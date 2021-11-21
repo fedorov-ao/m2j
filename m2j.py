@@ -1027,19 +1027,21 @@ class ModeSinkModeManager:
     if len(self.mode_):
       self.sink_.set_mode(self.mode_.pop())
 
-  def add(self, mode):
-    self.mode_.append(mode)
-    self.sink_.set_mode(mode)
+  def add(self, mode, current):
+    if current is None or self.sink_.get_mode() == current:
+      self.mode_.append(mode)
+      self.sink_.set_mode(mode)
 
-  def remove(self, mode):
-    for i in range(len(self.mode_)-1, -1, -1):
-      if self.mode_[i] == mode:
-        self.mode_.pop(i)
-        break;
-    if len(self.mode_):
-      m = self.mode_[-1]
-      if m != self.sink_.get_mode():
-        self.sink_.set_mode(m)
+  def remove(self, mode, current):
+    if current is None or self.sink_.get_mode() == current:
+      for i in range(len(self.mode_)-1, -1, -1):
+        if self.mode_[i] == mode:
+          self.mode_.pop(i)
+          break;
+      if len(self.mode_):
+        m = self.mode_[-1]
+        if m != self.sink_.get_mode():
+          self.sink_.set_mode(m)
 
   def clear(self):
     self.mode_ = []
@@ -1072,14 +1074,14 @@ class ModeSinkModeManager:
       self.restore()
       return True
     return op
-  def make_add(self, mode):
+  def make_add(self, mode, current=None):
     def op(event):
-      self.add(mode)
+      self.add(mode, current)
       return True
     return op
-  def make_remove(self, mode):
+  def make_remove(self, mode, current=None):
     def op(event):
-      self.remove(mode)
+      self.remove(mode, current)
       return True
     return op
   def make_clear(self):
@@ -3955,8 +3957,8 @@ def make_parser():
 
   actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
   actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
-  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"]))
-  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"]))
+  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"], cfg.get("current")))
+  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"], cfg.get("current")))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
   actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
   actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
