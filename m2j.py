@@ -172,6 +172,14 @@ def split_full_name_tc_state(s, sep="."):
   return (r[0], name2type(r[1]), name2code(r[1]), r[2])
 
 
+class ModifierDesc:
+  def __init__(self, source, code, state):
+      self.source, self.code, self.state = source, code, state
+
+def parse_modifier_desc(s, sep="."):
+  return ModifierDesc(*split_full_name_code_state(s, sep))
+
+
 class ReloadException(Exception):
   pass
 
@@ -706,35 +714,30 @@ class BindSink:
     logger.debug("{} destroyed".format(self))
 
 
+def cmp_modifiers(eventValue, attrValue):
+  r = True
+  if attrValue is None:
+    r = eventValue is None
+  elif eventValue is None:
+    r = False
+  else:
+    r = True
+    for m in attrValue:
+      found = False
+      for n in eventValue:
+        assert(len(n) == 2)
+        found = (True if m.source is None else m.source == n[0]) and (m.code == n[1])
+      if m.state == False:
+         found = not found
+      r = r and found
+      if not r:
+          break
+  return r
+
+
 class CmpWithModifiers:
   def __call__(self, name, eventValue, attrValue):
-    r = True
-    if name == "modifiers":
-      if attrValue is None:
-        r = eventValue is None
-      elif eventValue is None:
-        r = False
-      else:
-        r = True
-        for m in attrValue:
-          assert(len(m) == 3)
-          found = False
-          for n in eventValue:
-            assert(len(n) == 2)
-            found = True
-            start = 1 if m[0] is None else 0
-            for i in range(start, len(n)):
-              found = found and (m[i] == n[i])
-            if found:
-              break
-          if m[2] == False:
-             found = not found
-          r = r and found
-          if not r:
-              break
-    else:
-      r = eventValue == attrValue
-    return r
+    return cmp_modifiers(eventValue, attrValue) if name == "modifiers" else eventValue == attrValue
 
 
 class ED:
@@ -2622,11 +2625,11 @@ def init_main_sink(settings, make_next):
   sensSetsAxis = config.get("sensSetsAxis", None)
   if sensSetsAxis is not None:
     sensSetsAxis = split_full_name_code(sensSetsAxis)[1]
-  sensSetsMod = config.get("sensSetsMod", None)
-  if sensSetsMod is not None:
-    sensSetsMod = [split_full_name_code_state(sensSetsMod)]
+  sensSetsModifier = config.get("sensSetsMod", None)
+  if sensSetsModifier is not None:
+    sensSetsModifier = [parse_modifier_desc(sensSetsModifier)]
   if sensSetsAxis is not None:
-    mainSink.add(ED.move(sensSetsAxis, sensSetsMod), set_sens_set)
+    mainSink.add(ED.move(sensSetsAxis, sensSetsModifier), set_sens_set)
 
   def names2inputs(names, settings):
     r = []
@@ -4178,7 +4181,7 @@ def make_parser():
   def parseEdModifiers_(r, cfg):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [split_full_name_code_state(m) for m in cfg["modifiers"]]
+      modifiers = [parse_modifier_desc(m) for m in cfg["modifiers"]]
       r.append(("modifiers", modifiers)) 
     return r
 
