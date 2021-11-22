@@ -1093,10 +1093,26 @@ class ModeSinkModeManager:
         if self.mode_[i] == mode:
           self.mode_.pop(i)
           break;
-      if len(self.mode_):
-        m = self.mode_[-1]
-        if m != self.sink_.get_mode():
-          self.sink_.set_mode(m)
+      self.set_top_mode_()
+
+  def swap(self, f, t, current):
+    if current is None or self.sink_.get_mode() == current:
+      for i in range(len(self.mode_)-1, -1, -1):
+        if self.mode_[i] == f:
+          self.mode_[i] = t
+          break;
+      self.set_top_mode_()
+
+  def cycle_swap(self, modes, current):
+    if current is None or self.sink_.get_mode() == current:
+      lm = len(modes)
+      for i in range(len(self.mode_)-1, -1, -1):
+        for j in range(0, lm):
+          if self.mode_[i] == modes[j]:
+            j = j+1 if j < lm-1 else 0
+            self.mode_[i] = modes[j]
+            self.set_top_mode_()
+            return
 
   def clear(self):
     self.mode_ = []
@@ -1139,6 +1155,16 @@ class ModeSinkModeManager:
       self.remove(mode, current)
       return True
     return op
+  def make_swap(self, f, t, current=None):
+    def op(event):
+      self.swap(f, t, current)
+      return True
+    return op
+  def make_cycle_swap(self, modes, current=None):
+    def op(event):
+      self.cycle_swap(modes, current)
+      return True
+    return op
   def make_clear(self):
     def op(event):
       self.clear()
@@ -1167,6 +1193,12 @@ class ModeSinkModeManager:
       self.save()
     else:
       assert(False)
+
+  def set_top_mode_(self):
+    if len(self.mode_):
+      m = self.mode_[-1]
+      if m != self.sink_.get_mode():
+        self.sink_.set_mode(m)
 
 
 class PowerApproximator:
@@ -4014,6 +4046,8 @@ def make_parser():
   actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
   actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"], cfg.get("current")))
   actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"], cfg.get("current")))
+  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["f"], cfg["t"], cfg.get("current")))
+  actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(cfg["modes"], cfg.get("current")))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
   actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
   actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
