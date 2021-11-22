@@ -715,11 +715,13 @@ class BindSink:
 
 
 def cmp_modifiers(eventValue, attrValue):
-  r = True
+  r = False
   if attrValue is None:
     r = eventValue is None
   elif eventValue is None:
     r = False
+  elif len(attrValue) == 0:
+    r = len(eventValue) == 0
   else:
     r = True
     for m in attrValue:
@@ -727,6 +729,8 @@ def cmp_modifiers(eventValue, attrValue):
       for n in eventValue:
         assert(len(n) == 2)
         found = (True if m.source is None else m.source == n[0]) and (m.code == n[1])
+        if found:
+          break
       if m.state == False:
          found = not found
       r = r and found
