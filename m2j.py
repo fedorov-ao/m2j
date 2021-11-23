@@ -1201,6 +1201,68 @@ class ModeSinkModeManager:
         self.sink_.set_mode(m)
 
 
+class MultiCurveSink:
+  def __call__(self, event):
+    if event.type in (codes.EV_REL,):
+      k = (event.source, event.code)
+      self.events_.setdefault(k, [])
+      self.events_[k].append(event)
+
+  def update(self, tick, timestamp):
+    keys = self.op_(self.events_, timestamp)
+    for k in keys:
+      for e in self.events_.get(k, ()):
+        self.curves_[k].move_by(e.value, e.timestamp)
+    for k in self.events_.keys():
+      self.events_[k] = []
+
+  def __init__(self, curves, op):
+    self.op_, self.curves_, self.events_ = op, curves, {}
+
+
+class MCSCmpOp:
+  def __call__(self, events, timestamp):
+    if len(events) == 0:
+      return ()
+    selected, distance = None, 0.0
+    for i,q in events.items():
+      d = 0.0
+      for e in q:
+        d += abs(e.value)
+      if self.cmp_(d, distance):
+        selected, distance = i, d
+    return () if selected is None else (selected,)
+
+  def __init__(self, cmp):
+    self.cmp_ = cmp
+
+
+class MCSThresholdOp:
+  def __call__(self, events, timestamp):
+    if len(events) == 0:
+      return ()
+    for i,q in events.items():
+      d = 0.0
+      for e in q:
+        d += abs(e.value)
+      self.distances_.setdefault(i, 0.0)
+      for j in self.distances_.keys():
+        if i == j:
+          self.distances_[j] += d
+        else:
+          self.distances_[j] -= d
+    for j in self.distances_.keys():
+      if self.distances_[j] >= self.thresholds_[j]:
+        self.selected_ = j
+        self.distances_[j] = self.thresholds_[j]
+      else:
+        self.distances_[j] = max(self.distances_[j], 0.0)
+    return () if self.selected_ is None else (self.selected_,)
+
+  def __init__(self, thresholds):
+    self.thresholds_, self.distances_, self.selected_ = thresholds, {}, None
+
+
 class PowerApproximator:
   def __call__(self, v):
     return sign(v)*self.k*abs(v)**self.n
@@ -4072,6 +4134,31 @@ def make_parser():
     axisCurves.append(curve)
     return MoveCurve(curve)
   actionParser.add("move", parseMove)
+
+  def parseMoveOneOf(cfg, state):
+    axesData = cfg["axes"]
+    curves = {}
+    for fullInputAxisName,curveCfg in axesData.items():
+      fullOutputAxisName = curveCfg["axis"]
+      state["axis"] = fullOutputAxisName
+      curve = state["parser"]("curve", curveCfg, state)
+      assert("curves" in state)
+      axisCurves = state["curves"].setdefault(fullOutputAxisName, [])
+      axisCurves.append(curve)
+      curves[split_full_name_code(fullInputAxisName)] = curve
+    op = None
+    if cfg["op"] == "min":
+      op = MCSCmpOp(cmp = lambda new,old : new < old)
+    elif cfg["op"] == "max":
+      op = MCSCmpOp(cmp = lambda new,old : new > old)
+    elif cfg["op"] == "thresholds":
+      op = MCSThresholdOp(thresholds = {split_full_name_code(fullInputAxisName):threshold for fullInputAxisName,threshold in cfg["thresholds"].items()})
+    else:
+      raise Exception("parseMoveOneOf(): Unknown op: {}".format(cfg["op"]))
+    mcs = MultiCurveSink(curves, op)
+    state["settings"]["updated"].append(lambda tick,ts : mcs.update(tick, ts))
+    return mcs
+  actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
     axis = getAxis(cfg["axis"], state)
