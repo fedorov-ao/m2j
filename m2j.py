@@ -2145,7 +2145,7 @@ def make_il2_6dof_packet(v):
     (codes.ABS_RX, -1.0),
     (codes.ABS_RY, 1.0),
     (codes.ABS_RZ, 1.0),
-    (codes.ABS_Z, 1.0),
+    (codes.ABS_Z, -1.0),
     (codes.ABS_X, -1.0),
     (codes.ABS_Y, -1.0)
   )
