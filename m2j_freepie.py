@@ -28,17 +28,17 @@ g_w2nKeyMapping = {
 def w2n_key(k):
   """Wrapper-to-native key conversion"""
   return g_w2nKeyMapping.get(k, None)
-  
+
 g_w2nAxisMapping = {
-  codes.ABS_X : AxisTypes.X, 
-  codes.ABS_Y : AxisTypes.Y, 
-  codes.ABS_Z : AxisTypes.ZAxis, 
-  codes.ABS_RX : AxisTypes.ZRotation, 
-  codes.ABS_RY : AxisTypes.Slider, 
-  codes.ABS_RZ : AxisTypes.XRotation, 
-  codes.ABS_THROTTLE : AxisTypes.YRotation, 
+  codes.ABS_X : AxisTypes.X,
+  codes.ABS_Y : AxisTypes.Y,
+  codes.ABS_Z : AxisTypes.ZAxis,
+  codes.ABS_RX : AxisTypes.ZRotation,
+  codes.ABS_RY : AxisTypes.Slider,
+  codes.ABS_RZ : AxisTypes.XRotation,
+  codes.ABS_THROTTLE : AxisTypes.YRotation,
   codes.ABS_RUDDER : AxisTypes.Dial
-} 
+}
 
 def w2n_axis(a):
   """Wrapper-to-native key conversion"""
@@ -50,7 +50,7 @@ class PollingKeyDevice:
       return None
     else:
       return self.events_.pop()
-  
+
   def update(self):
     value = None
     for i in xrange(len(self.keys_)):
@@ -64,28 +64,28 @@ class PollingKeyDevice:
           #released
           value = 0
         self.states_[i] = s
-        
+
         self.append_event_(codes.EV_KEY, wKey, value)
-        
+
   def append_event_(self, t, code, value):
-    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))     
-    
+    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))
+
   def __init__(self, id, keys, get_key_value):
     self.id_ = id
     self.keys_ = keys
     self.get_key_value_ = get_key_value
-    
+
     self.events_ = []
     self.states_ = [0 for i in xrange(len(self.keys_))]
-    
-    
+
+
 class PollingAxisDevice:
   def read_one(self):
     if (len(self.events_) == 0):
       return None
     else:
       return self.events_.pop()
-  
+
   def update(self):
     value = None
     for i in xrange(len(self.axes_)):
@@ -93,15 +93,15 @@ class PollingAxisDevice:
       value = self.get_axis_value_(ad[1])
       if value != 0.0:
         self.append_event_(ad[0], ad[1], value)
-        
+
   def append_event_(self, t, code, value):
-    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))     
-    
+    self.events_.append(InputEvent(t, code, value, time.time(), self.id_))
+
   def __init__(self, id, axes, get_axis_value):
     self.id_ = id
     self.axes_ = axes
     self.get_axis_value_ = get_axis_value
-    
+
     self.events_ = []
 
 def mouseAxisReporter(wAxis):
@@ -113,7 +113,7 @@ def mouseAxisReporter(wAxis):
 
 def keyboardKeyReporter(wKey):
   return keyboard.getKeyDown(w2n_key(wKey))
-  
+
 class CompositePollingDevice:
   def read_one(self):
     event = None
@@ -124,23 +124,23 @@ class CompositePollingDevice:
       else:
         break
     return event
-    
+
   def update(self):
     for c in self.children_:
       c.update()
     self.i_ = 0
-    
+
   def add(self, child):
     self.children_.append(child)
     self.i_ = 0
-    
+
   def __init__(self):
     self.children_ = []
     self.i_ = 0
-    
-    
+
+
 #Does not work
-class MouseBlocker:   
+class MouseBlocker:
   user32 = ctypes.windll.user32
   kernel32 = ctypes.windll.kernel32
   wintypes = ctypes.wintypes
@@ -163,7 +163,7 @@ class MouseBlocker:
     self.s_ = s
 
   def hook(nCode, wParam, lParam):
-    return self.user32.CallNextHookEx(None, nCode, wParam, lParam)   
+    return self.user32.CallNextHookEx(None, nCode, wParam, lParam)
 
   def __init__(self):
     self.s_ = False
@@ -172,8 +172,8 @@ class MouseBlocker:
     self.hook_ = CMPFUNC(self.hook)
 
 
-class CursorBlocker:   
-  """Blocks mouse cursor movement by confining it in 1x1 rectangle at current cursor pos. 
+class CursorBlocker:
+  """Blocks mouse cursor movement by confining it in 1x1 rectangle at current cursor pos.
      Does not block mouse buttons.
   """
   user32 = ctypes.windll.user32
@@ -219,14 +219,14 @@ class FreePIEMouse2:
 
 
 class FreePIEMouse:
-  def read_one(self): 
+  def read_one(self):
     if (len(self.events_) == 0):
       return None
     else:
       return self.events_.pop()
 
   def swallow(self, s):
-    pass  
+    pass
 
   def update(self):
     dx, dy, dw = mouse.deltaX, mouse.deltaY, mouse.wheel
@@ -236,8 +236,8 @@ class FreePIEMouse:
     if dy !=0:
       self.append_event_(codes.EV_REL, codes.REL_Y, dy)
     if dw != 0:
-      self.append_event_(codes.EV_REL, codes.REL_WHEEL, dw)   
-      
+      self.append_event_(codes.EV_REL, codes.REL_WHEEL, dw)
+
   def append_event_(self, t, code, value):
     self.events_.append(InputEvent(t, code, value, time.time(), self.source_))
 
@@ -271,7 +271,7 @@ class PPJoystick:
     self.scales_ = scales
     self.v_ = dict()
     for a in self.scales_.keys():
-      self.v_[a] = 0.0  
+      self.v_[a] = 0.0
 
 if starting:
   reload(m2j)
@@ -294,30 +294,30 @@ if starting:
   logger = logging.getLogger(__name__)
 
   mouseAxisDevice = PollingAxisDevice(
-    "mouse", 
-    ((codes.EV_REL, codes.REL_X), (codes.EV_REL, codes.REL_Y), (codes.EV_REL, codes.REL_WHEEL)), 
+    "mouse",
+    ((codes.EV_REL, codes.REL_X), (codes.EV_REL, codes.REL_Y), (codes.EV_REL, codes.REL_WHEEL)),
     mouseAxisReporter
   )
   mouseKeyDevice = PollingKeyDevice(
-    "mouse", 
+    "mouse",
     (codes.BTN_LEFT, codes.BTN_RIGHT, codes.BTN_MIDDLE, codes.BTN_SIDE, codes.BTN_EXTRA),
     lambda wKey : mouse.getButton(w2n_key(wKey))
   )
   ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, CursorBlocker())
   #ms = FreePIEMouse2(mouseAxisDevice, mouseKeyDevice, None)
   kbd = PollingKeyDevice(
-    "keyboard", 
-    (codes.KEY_SCROLLLOCK, codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT), 
+    "keyboard",
+    (codes.KEY_SCROLLLOCK, codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT),
     keyboardKeyReporter
   )
   settings["inputs"] = {"mouse" : ms, "keyboard" : kbd}
 
   joystick = PPJoystick(
-    0, 
+    0,
     {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 999.0, codes.ABS_RY : 999.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,}
   )
   headJoystick = PPJoystick(
-    1, 
+    1,
     {codes.ABS_X : 999.0, codes.ABS_Y : 999.0, codes.ABS_Z : 999.0, codes.ABS_RX : 999.0, codes.ABS_RY : 999.0, codes.ABS_RZ : 999.0, codes.ABS_RUDDER : 999.0, codes.ABS_THROTTLE : 999.0,}
   )
   headOpentrack = Opentrack("127.0.0.1", 5555)
@@ -343,11 +343,11 @@ if starting:
     source.run_once()
   updated = settings["updated"]
   def run_updated(tick):
-    for u in updated: 
+    for u in updated:
       u(tick)
-      
+
   callbacks = [run_inputs, run_source, run_updated]
   global g_loop
-  g_loop = Loop(callbacks, 0.0)  
-  
+  g_loop = Loop(callbacks, 0.0)
+
 g_loop.run_once()

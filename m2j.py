@@ -82,9 +82,9 @@ def type2names(type):
 
 
 typeCode2Name = {
-  t : { 
+  t : {
     c : n for n,c in codesDict.items() if name2type(n) == t
-  } 
+  }
   for t in set((name2type(n) for n in codesDict.keys())) if t is not None
 }
 
@@ -206,7 +206,7 @@ class CompositeJoystick:
         cl = list(c.get_limits(axis))
         if cl[0] > cl[1] : cl[0], cl[1] = cl[1], cl[0]
         l[0], l[1] = max(l[0], cl[0]), min(l[1], cl[1])
-        if l[0] >= l[1]: 
+        if l[0] >= l[1]:
           return [0.0, 0.0]
     return l
 
@@ -222,7 +222,7 @@ class CompositeJoystick:
 
 class Event(object):
   def __str__(self):
-    return "type: {}, code: {}, value: {}, timestamp: {}".format(self.type, self.code, self.value, self.timestamp) 
+    return "type: {}, code: {}, value: {}, timestamp: {}".format(self.type, self.code, self.value, self.timestamp)
 
   def __init__(self, type, code, value, timestamp=None):
     if timestamp is None:
@@ -233,7 +233,7 @@ class Event(object):
 class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
-    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers) 
+    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
@@ -246,10 +246,10 @@ class InputEvent(Event):
     #This does not work in FreePie
     #super().__init__(t, code, value, timestamp)
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
-    self.source = source 
+    self.source = source
     self.modifiers = () if modifiers is None else modifiers
 
-  
+
 class EventSource:
   def run_once(self):
     events =[]
@@ -282,7 +282,7 @@ class Loop:
     for c in self.callbacks_:
       c(dt, ct)
     time.sleep(max(self.step_ - (time.time() - ct), 0))
-      
+
   def run(self):
     self.t_ = time.time()
     while (True):
@@ -298,7 +298,7 @@ class MoveJoystickAxis:
     assert(self.curve_ is not None)
     assert(self.j_ is not None)
 
-    if event.type in (codes.EV_REL, codes.EV_ABS):  
+    if event.type in (codes.EV_REL, codes.EV_ABS):
       self.j_.move_axis(self.axis_, self.curve_.calc(event.value, event.timestamp), self.relative_)
       return True
     else:
@@ -314,7 +314,7 @@ class MoveJoystickAxis:
 
 class MoveCurve:
   def __call__(self, event):
-    if self.curve_ is not None and event.type in (codes.EV_REL,):  
+    if self.curve_ is not None and event.type in (codes.EV_REL,):
       self.curve_.move_by(event.value, event.timestamp)
       return True
     else:
@@ -331,23 +331,23 @@ class SetJoystickAxis:
 
   def __del__(self):
     logger.debug("{} destroyed".format(self))
-  
+
   def __call__(self, event):
-    self.js_.move_axis(self.axis_, self.value_, False) 
+    self.js_.move_axis(self.axis_, self.value_, False)
     return True
 
 
 def SetJoystickAxes(joystick, axesAndValues):
   def op(event):
     for axis, value in axesAndValues:
-      joystick.move_axis(axis, value, False) 
+      joystick.move_axis(axis, value, False)
     return True
   return op
 
 
 def SetCurveAxis(curve, value):
   def op(event):
-    curve.get_axis().move(value, False) 
+    curve.get_axis().move(value, False)
     return True
   def noneOp(event):
     return False
@@ -366,8 +366,8 @@ def SetCurveAxis2(curve, value, relative=False, reset=False):
 def SetCurvesAxes(*curvesAndValues):
   def op(event):
     for curve, value in curvesAndValues:
-      if curve is not None: 
-        curve.get_axis().move(value, False) 
+      if curve is not None:
+        curve.get_axis().move(value, False)
     return True
   return op
 
@@ -375,12 +375,12 @@ def SetCurvesAxes(*curvesAndValues):
 def SetCurvesAxes2(curvesData):
   def op(event):
     for curve, value, relative, reset in curvesData:
-      if curve is not None: 
-        curve.move_axis(value, relative, reset) 
+      if curve is not None:
+        curve.move_axis(value, relative, reset)
     return True
   return op
-  
-  
+
+
 def ResetCurve(curve):
   def op(event):
     curve.reset()
@@ -393,7 +393,7 @@ def ResetCurve(curve):
 def ResetCurves(curves):
   def op(event):
     for curve in curves:
-      if curve is not None: 
+      if curve is not None:
         #logger.debug("Resetting curve: {}".format(curve))
         curve.reset()
     return True
@@ -405,26 +405,26 @@ def MoveAxis(axis, value, relative=False):
     if axis is not None:
       axis.move(value, relative)
     return True
-  return op 
+  return op
 
 
 def MoveAxes(axesAndValues):
   def moveAxesOp(event):
     for axis,value,relative in axesAndValues:
-      axis.move(value, relative) 
+      axis.move(value, relative)
   return moveAxesOp
 
 
 def SetButtonState(joystick, button, state):
   def op(event):
-    joystick.set_button_state(button, state) 
+    joystick.set_button_state(button, state)
     #logger.debug(button, state)
   return op
 
 
 class ClickSink:
   def __call__(self, event):
-    if self.next_: 
+    if self.next_:
       self.next_(event)
 
     numClicks = 0
@@ -434,7 +434,7 @@ class ClickSink:
         clickEvent = event
         clickEvent.value = 3
         clickEvent.num_clicks = numClicks
-        if self.next_: 
+        if self.next_:
           self.next_(clickEvent)
 
   #returns number of clicks
@@ -472,7 +472,7 @@ class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       p = (event.source, event.code)
-      if self.modifiers_ is not None: 
+      if self.modifiers_ is not None:
         for m in self.modifiers_:
           if p == m or (m[0] is None and p[1] == m[1]):
             if event.value == 1 and p not in self.m_:
@@ -481,7 +481,7 @@ class ModifierSink:
               self.m_.remove(p)
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
-      event.modifiers = self.m_ 
+      event.modifiers = self.m_
 
     #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
     return self.next_(event) if self.next_ is not None else False
@@ -572,7 +572,7 @@ class CalibratingSink:
     if self.mode_ == 0:
       return self.process_event_(event)
     elif self.mode_ == 1:
-      return self.gather_data_(event) 
+      return self.gather_data_(event)
 
   def set_next(self, next):
     self.next_ = next
@@ -670,7 +670,7 @@ class BindSink:
           break
       else:
         #logger.debug("{}: {} matched".format(self, c[0]))
-        if c.children is not None: 
+        if c.children is not None:
           #logger.debug("Processing event {}".format(str(event)))
           for cc in c.children:
             #logger.debug("Sending event {} to {}".format(str(event), cc))
@@ -705,7 +705,7 @@ class BindSink:
   def __init__(self, cmp = lambda a, b, c : b == c, children = None):
     if children is None:
       children = []
-    self.children_ = children 
+    self.children_ = children
     self.cmp_ = cmp
     self.dirty_ = True
     logger.debug("{} created".format(self))
@@ -917,7 +917,7 @@ class ED3:
           modifiers.append((source, name2code(inpt)))
     if modifiers is not None:
       r.append(("modifiers", modifiers))
-    #logger.debug("ED3.parse(): {} -> {}".format(s, r)) 
+    #logger.debug("ED3.parse(): {} -> {}".format(s, r))
     return r
 
 
@@ -951,8 +951,8 @@ def SetState(stateSink, state):
     stateSink.set_state(state)
     return True
   return op
-    
-    
+
+
 def ToggleState(stateSink):
   def op(event):
     stateSink.set_state(not stateSink.get_state())
@@ -1032,7 +1032,7 @@ class ModeSink:
       if child is not None:
         #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
-    
+
   def __init__(self, name=""):
     self.children_, self.mode_, self.name_ = {}, None, name
 
@@ -1053,7 +1053,7 @@ class SetMode:
   def __call__(self, event):
     self.modeSink.set_mode(self.mode)
     return True
-    
+
   def __init__(self, modeSink, mode):
     self.modeSink, self.mode = modeSink, mode
 
@@ -1062,13 +1062,13 @@ class MSMMSavePolicy:
    SAVE = 1
    CLEAR = 2
    CLEAR_AND_SAVE = 3
-  
+
 
 def nameToMSMMSavePolicy(name):
-  d = { 
-    "noop" : MSMMSavePolicy.NOOP, 
-    "save" : MSMMSavePolicy.SAVE, 
-    "clear" : MSMMSavePolicy.CLEAR, 
+  d = {
+    "noop" : MSMMSavePolicy.NOOP,
+    "save" : MSMMSavePolicy.SAVE,
+    "clear" : MSMMSavePolicy.CLEAR,
     "clearAndSave" : MSMMSavePolicy.CLEAR_AND_SAVE
   }
   return d[name]
@@ -1290,7 +1290,7 @@ class PolynomialApproximator:
   def __init__(self, coeffs, off=0.0):
     self.coeffs_, self.off_ = coeffs, off
 
-    
+
 class SegmentApproximator:
   def __call__(self, x):
     if len(self.x_) == 0 or len(self.y_) == 0:
@@ -1441,11 +1441,11 @@ class RateSettingAxis:
 
   def update(self, tick):
     if self.next_ is None or self.v_ == 0.0:
-      return 
+      return
     delta = self.deltaOp_(self.v_, tick)
     valueBeforeMove = self.next_.get()
     self.next_.move(delta, relative=True)
-    if self.next_.get() == valueBeforeMove: 
+    if self.next_.get() == valueBeforeMove:
       self.v_ = 0.0
 
   def set_next(self, next):
@@ -1455,7 +1455,7 @@ class RateSettingAxis:
     self.next_, self.deltaOp_, self.limits_ = next, deltaOp, limits
     self.v_ = 0.0
 
-  
+
 class Point:
   def calc(self, x):
     r = None if (x is None or self.center_ is None) else self.op_(x - self.center_)
@@ -1469,7 +1469,7 @@ class Point:
 
   def set_center(self, center):
     self.center_ = center
-    
+
   def reset(self):
     pass
 
@@ -1566,7 +1566,7 @@ class PointMovingCurve:
     except:
       raise
     finally:
-      self.busy_ = False 
+      self.busy_ = False
     #logger.debug( "{}: point center:{}, value before move:{}, value after move:{}".format(self, self.point_.get_center(), value, self.getValueOp_(self.next_)))
     if center is not None:
       resetDistanceReached = abs(value - center) > self.resetDistance_
@@ -1594,7 +1594,7 @@ class PointMovingCurve:
 
   def on_move_axis(self, axis, old, new):
     #logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
-    if self.busy_ or self.dirty_: 
+    if self.busy_ or self.dirty_:
       #logger.debug("{}: on_move_axis(): {}{}".format(self, "busy " if self.busy_ else "", "dirty" if self.dirty_ else ""))
       return
     self.dirty_ = True
@@ -1624,10 +1624,10 @@ class PointMovingCurve:
       if self.onMove_ == PointMovingCurveResetPolicy.SET_TO_CURRENT:
         v = self.getValueOp_(self.next_)
         self.point_.set_center(v)
-      
 
-tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1]) 
-float2str = lambda f : "None" if f is None else "{: .3f}".format(f) 
+
+tuple2str = lambda t : "None" if t is None else "({: .3f}, {: .3f})".format(t[0], t[1])
+float2str = lambda f : "None" if f is None else "{: .3f}".format(f)
 
 
 class ValuePointOp:
@@ -1639,7 +1639,7 @@ class ValuePointOp:
     #vp is the point being currently examined
     for vp in self.vps_:
       #Examined point data in form of (result, center)
-      #It is possible to first select points based on their centers, 
+      #It is possible to first select points based on their centers,
       #but since points might change their state (i.e. centers) while computing result in calc(), result is computed first for each point considered
       #Computed result can also be None, which will mean that the point is inactive and should be skipped
       r = vp.calc(value)
@@ -1654,13 +1654,13 @@ class ValuePointOp:
       delta = abs(delta)
       #logger.debug("{}: value: {}, s: {}".format(self, value, s))
       pd = (p[0], delta) #pd in (result, delta)
-      if s == 1 and (left is None or delta < left[1]): 
+      if s == 1 and (left is None or delta < left[1]):
           left = pd
-      elif s == -1 and (right is None or delta < right[1]): 
+      elif s == -1 and (right is None or delta < right[1]):
           right = pd
       else:
         #if delta sign is 0, so the center of the point considered is exactly at value,
-        #first try to assign 
+        #first try to assign
         if left is None: left = pd
         elif right is None: right = pd
         else:
@@ -1711,7 +1711,7 @@ class SimpleValuePointOp:
       vp.reset()
 
   def __init__(self, vps, interpolateOp):
-    self.vps_, self.interpolateOp_ = vps, interpolateOp 
+    self.vps_, self.interpolateOp_ = vps, interpolateOp
 
 
 def interpolate_op(left, right):
@@ -1721,7 +1721,7 @@ def interpolate_op(left, right):
   totalDelta = leftDelta + rightDelta
   #interpolating (sort of)
   #left value is multiplied by right fraction of deltas sum and vice versa
-  r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0] 
+  r = rightDelta/totalDelta*left[0] + leftDelta/totalDelta*right[0]
   return r
 
 
@@ -1833,7 +1833,7 @@ class FMPosInterpolateOp:
       #logger.debug("{}: fixedSlope < movingSlope, f:{: .3f}".format(self, fixedValueAtPos))
       return fixedValueAtPos
     distanceFraction = (deltaPos / interpolationDistance)**self.factor_
-    value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction) 
+    value = fixedValueAtPos*distanceFraction + movingValueAtPos*(1.0-distanceFraction)
     #logger.debug("{}: pos:{: .3f}, f:{: .3f}, m:{: .3f}, interpolated:{: .3f}".format(self, pos, fixedValueAtPos, movingValueAtPos, value))
     return value
 
@@ -1862,7 +1862,7 @@ class FMPosInterpolateOp:
   def __init__(self, fp, mp, interpolationDistance, factor, posLimits, eps):
     self.fp_, self.mp_, self.interpolationDistance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, interpolationDistance, factor, posLimits, eps
 
-    
+
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
@@ -1870,8 +1870,8 @@ class OutputDeltaLinkingCurve:
      Subscribe to controlled axis when initializing: if controlled axis is moved externally, total delta is adjusted.
   """
   def move_by(self, x, timestamp):
-    #Even if x and timestamp are not used, controlled axis is moved in move_by() and not it on_move_axis(), 
-    #because move_by() is called only when the mode this curve is part of is enabled, 
+    #Even if x and timestamp are not used, controlled axis is moved in move_by() and not it on_move_axis(),
+    #because move_by() is called only when the mode this curve is part of is enabled,
     #and on_move_axis() is called regardless of modes
     v = self.controllingAxis_.get()
     d = v - self.v_
@@ -2015,7 +2015,7 @@ class AxisLinker:
 
 class SetAxisLinkerState:
   def __call__(self, event):
-    if self.linker_ is not None and event.type == codes.EV_BCT and event.code == codes.BCT_INIT:  
+    if self.linker_ is not None and event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
       self.linker_.set_state(event.value)
       return True
     else:
@@ -2060,7 +2060,7 @@ class DeviceGrabberSink:
       self.state_ = False
     else:
       self.device_.swallow(True)
-      self.state_ = True 
+      self.state_ = True
     return True
 
   def __init__(self, device):
@@ -2095,7 +2095,7 @@ class Opentrack:
   def move_axis(self, axis, v, relative = True):
     if axis not in self.axes_:
       return
-    v = self.v_.get(axis, 0.0)+v if relative else v 
+    v = self.v_.get(axis, 0.0)+v if relative else v
     self.v_[axis] = clamp(v, *self.get_limits(axis))
     self.dirty_ = True
 
@@ -2112,7 +2112,7 @@ class Opentrack:
     if self.dirty_ == True:
       self.dirty_ = False
       x, y, z = (self.v_[x] for x in self.axes_[0:3])
-      yaw, pitch, roll = 180.0*self.v_[self.axes_[3]], 90.0*self.v_[self.axes_[4]], 90.0*self.v_[self.axes_[5]] 
+      yaw, pitch, roll = 180.0*self.v_[self.axes_[3]], 90.0*self.v_[self.axes_[4]], 90.0*self.v_[self.axes_[5]]
       packet = struct.pack("dddddd", x, y, z, yaw, pitch, roll)
       self.socket_.sendto(packet, (self.ip_, self.port_))
 
@@ -2131,7 +2131,7 @@ class UdpJoystick:
   def move_axis(self, axis, v, relative = True):
     if axis not in self.axes_:
       return
-    v = self.v_.get(axis, 0.0)+v if relative else v 
+    v = self.v_.get(axis, 0.0)+v if relative else v
     self.v_[axis] = clamp(v, *self.get_limits(axis))
     self.dirty_ = True
 
@@ -2232,7 +2232,7 @@ class JoystickSnapManager:
       for j in xrange(len(snap)):
         snap[j][1] = self.joystick_.get_axis_value(snap[j][0])
       return True
-       
+
   def snap_to(self, i):
     #logger.debug("snap_to({})".format(i))
     snap = self.snaps_.get(i, None)
@@ -2263,7 +2263,7 @@ class AxisSnapManager:
       for p in snap:
         p[1] = p[0].get()
       return True
-       
+
   def snap_to(self, i):
     #logger.debug("{}: snapping to {}".format(self, i))
     snap = self.snaps_.get(i, None)
@@ -2331,7 +2331,7 @@ class MappingJoystick:
   def get_limits(self, axis):
     d = self.data_[axis]
     return d[0].get_limits(d[1])
-    
+
   def add(self, axis, joystick, joyAxis):
     self.data_[axis] = (joysitick, joyAxis)
 
@@ -2394,7 +2394,7 @@ class RateLimititngJoystick:
         current = self.next_.get_axis_value(axisId)
         delta = value - current
         if delta != 0.0:
-          if axisId in self.rates_:  
+          if axisId in self.rates_:
             value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
             delta = value - current
           self.next_.move_axis(axisId, delta, True)
@@ -2402,7 +2402,7 @@ class RateLimititngJoystick:
   def __init__(self, next, rates):
     self.next_, self.rates_ = next, rates
     self.set_next(next)
-  
+
 
 class RateSettingJoystick:
   def move_axis(self, axis, value, relative):
@@ -2428,11 +2428,11 @@ class RateSettingJoystick:
     return next
 
   def update(self, tick):
-    if self.next_ is None: 
+    if self.next_ is None:
       return
     for axisId,value in self.v_.items():
       rate = self.rates_.get(axisId, 0.0)
-      if rate == 0.0: 
+      if rate == 0.0:
         continue
       v = rate*value*tick
       self.next_.move_axis(axisId, v, relative=True)
@@ -2481,14 +2481,14 @@ class MetricsJoystick:
       error = abs(d[0] - d[1])
       d[2] = 0.5*error + 0.5*d[2]
       print("{}: {: .3f} {: .3f}".format(self.axisToName[a], error, d[2]))
-        
+
   def reset(self):
     for a in self.data_:
       d = self.data_[a]
       if d[1] is None:
         continue
       d[0],d[2] = d[1],0.0
-    
+
   def set_target(self, axis, target):
     if axis not in self.data_:
       self.data_[axis] = [0.0, None, 0.0]
@@ -2529,12 +2529,12 @@ class RelativeHeadMovementJoystick:
         for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
           limits, current = self.next_.get_limits(axis), self.next_.get_axis_value(axis)
           v = clamp(v+current, *limits) - current
-          self.next_.move_axis(axis, v, True) 
+          self.next_.move_axis(axis, v, True)
       else:
-        self.next_.move_axis(axis, value, relative) 
-        
+        self.next_.move_axis(axis, value, relative)
+
   def get_axis_value(self, axis):
-    return self.next_.get_axis_value(axis) if self.next_ is not None else 0.0 
+    return self.next_.get_axis_value(axis) if self.next_ is not None else 0.0
 
   def get_limits(self, axis):
     return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
@@ -2563,7 +2563,7 @@ def make_curve_makers():
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
       return state["parser"]("curve", cfg, state)
-          
+
     def parseAxes(cfg, state):
       r = {}
       for axisName,axisData in cfg.items():
@@ -2579,7 +2579,7 @@ def make_curve_makers():
         for outputName,outputData in cfg.items():
           state["output"] = outputName
           r[outputName] = parseAxes(outputData, state)
-        return r 
+        return r
 
       groupParsers["curves"] = parseCurvesGroup
 
@@ -2588,7 +2588,7 @@ def make_curve_makers():
         for inputSourceAndAxisName,inputAxisData in cfg.items():
           inputSourceAndAxisId = split_full_name_code(inputSourceAndAxisName, ".")
           r[inputSourceAndAxisId] = float(inputAxisData)
-        return r 
+        return r
 
       groupParsers["sens"] = parseSensGroup
 
@@ -2645,7 +2645,7 @@ def init_main_sink(settings, make_next):
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
-  defaultModifiers = [ (None, m) for m in 
+  defaultModifiers = [ (None, m) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
@@ -2660,7 +2660,7 @@ def init_main_sink(settings, make_next):
     sens = sens[sensSet]
     sens = {split_full_name_code(s[0]):s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
-  
+
   calibratingSink = scaleSink.set_next(CalibratingSink())
 
   sensSets = config.get("sensSets", None)
@@ -2704,21 +2704,21 @@ def init_main_sink(settings, make_next):
   toggleCalibrationKey = config.get("toggleCalibrationKey", None)
   if toggleCalibrationKey is not None:
     def toggle_calibration(e):
-      calibratingSink.toggle() 
+      calibratingSink.toggle()
     toggleCalibrationKey = edParser(toggleCalibrationKey, state)
     mainSink.add(toggleCalibrationKey, toggle_calibration, 0)
 
   resetCalibrationKey = config.get("resetCalibrationKey", None)
   if resetCalibrationKey is not None:
     def reset_calibration(e):
-      calibratingSink.reset() 
+      calibratingSink.reset()
     resetCalibrationKey = edParser(resetCalibrationKey, state)
     mainSink.add(resetCalibrationKey, reset_calibration, 0)
 
   def set_sens_set(e):
     if e.value > 0:
       sensSetSink.set_next_set()
-    else: 
+    else:
       sensSetSink.set_prev_set()
   sensSetsAxis = config.get("sensSetsAxis", None)
   if sensSetsAxis is not None:
@@ -2790,7 +2790,7 @@ def init_main_sink(settings, make_next):
   stateSink.set_state(settings["initState"])
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
-      
+
   return clickSink
 
 
@@ -2842,7 +2842,7 @@ def init_config(configFilesNames):
     except (KeyError, ValueError, IOError) as e:
       raise ConfigReadError(configName, e)
   return cfg
-                              
+
 
 def init_config2(settings):
   config = settings["options"]
@@ -2858,19 +2858,19 @@ def add_scale_sink(sink, cfg):
     #cfg["sens"] is already in form {(e.source, e.code) : value}
     sensSink = ScaleSink2(cfg["sens"], lambda event : ((event.source, event.code), (None, event.code)))
     sensSink.set_next(sink)
-    return sensSink 
+    return sensSink
   else:
     return sink
 
 layout_initializers = {}
 
-def init_layout_empty(settings): 
+def init_layout_empty(settings):
   return None
 
 layout_initializers["empty"] = init_layout_empty
 
 
-def init_layout_main(settings): 
+def init_layout_main(settings):
   return init_main_sink(settings, lambda s : None)
 
 layout_initializers["main"] = init_layout_empty
@@ -2949,7 +2949,7 @@ def init_base_head(curves, snaps):
   return headBindSink
 
 
-def init_layout_base(settings): 
+def init_layout_base(settings):
   cmpOp = CmpWithModifiers()
   curveSet = settings["config"].get("curves", None)
   if curveSet is None:
@@ -2957,7 +2957,7 @@ def init_layout_base(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
      raise Exception("No curves for {}".format(curveSet))
-  
+
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -3055,7 +3055,7 @@ def init_layout_base3(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
-  
+
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -3154,7 +3154,7 @@ def init_layout_base4(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
-  
+
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -3251,7 +3251,7 @@ def init_layout_base41(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
-  
+
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -3350,7 +3350,7 @@ def init_layout_base42(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
-  
+
   curves = curveMaker(settings)
 
   joySnaps = init_base_joystick_snaps(settings["axes"]["joystick"])
@@ -3450,7 +3450,7 @@ def init_layout_descent(settings):
   curveMaker = curveMakers.get(curveSet, None)
   if curveMaker is None:
     raise Exception("No curves for {}".format(curveSet))
-  
+
   joystick = settings["outputs"]["joystick"]
 
   curves = curveMaker(settings)["primary"]
@@ -3523,7 +3523,7 @@ def init_layout_descent(settings):
     joystickModeSink.add(2, ss)
 
   joystickModeSink.set_mode(0)
-    
+
   return joystickSink
 
 layout_initializers["descent"] = init_layout_descent
@@ -3574,7 +3574,7 @@ def parse_dict_live(d, cfg, state, kp, vp, update):
   for key,value in cfg.items():
     k = kp(key, state)
     if k in d and not update:
-      continue 
+      continue
     d[k] = vp(value, state)
   return d
 
@@ -3585,7 +3585,7 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update):
   for key,value in items:
     k = kp(key, state)
     if k in d and not update:
-      continue 
+      continue
     d[k] = vp(value, state)
   return d
 
@@ -3597,7 +3597,7 @@ class SelectParser:
     else:
       parser = self.parsers_[key]
       try:
-        r = parser(cfg, state) 
+        r = parser(cfg, state)
         return r
       except Exception as e:
         logger.debug("Got exception: {}, so cannot parse {}".format(e, cfg))
@@ -3673,7 +3673,7 @@ def make_parser():
       return make_symm_wrapper(op, symmetric)
     return make_op(cfg["coeffs"], cfg.get("symmetric", 0))
   opParser.add("poly", poly)
-  
+
   def bezier(cfg, state):
     def make_op(data, symmetric):
       approx = BezierApproximator(data)
@@ -3715,7 +3715,7 @@ def make_parser():
       "setToCurrent" : PointMovingCurveResetPolicy.SET_TO_CURRENT,
       "setToNone" : PointMovingCurveResetPolicy.SET_TO_NONE,
       "dontTouch" : PointMovingCurveResetPolicy.DONT_TOUCH,
-      "adjust" : PointMovingCurveResetPolicy.ADJUST 
+      "adjust" : PointMovingCurveResetPolicy.ADJUST
     }
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
@@ -3744,7 +3744,7 @@ def make_parser():
     vpo = SimpleValuePointOp(points.values(), op)
     class DeltaOp:
       def calc(self, x, timestamp):
-        return x 
+        return x
       def reset(self):
         pass
     deltaOp = DeltaOp()
@@ -3753,10 +3753,10 @@ def make_parser():
     if "moving" in points:
       point = points["moving"]
       pointCfg = cfg["points"]["moving"]
-      def getValueOp(curve): 
+      def getValueOp(curve):
         return curve.get_axis().get()
       def make_center_op(newRatio, l):
-        oldRatio = 1.0 - newRatio 
+        oldRatio = 1.0 - newRatio
         def op(new,old):
           v = oldRatio*old+newRatio*new
           delta = v - new
@@ -3776,7 +3776,7 @@ def make_parser():
       onReset = parseResetPolicy(pointCfg.get("onReset", "setToCurrent"), state)
       onMove = parseResetPolicy(pointCfg.get("onMove", "setToCurrent"), state)
       curve = PointMovingCurve(
-        next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, 
+        next=curve, point=point, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
         onReset=onReset, onMove=onMove, resetTime=resetTime)
 
     axis.add_listener(curve)
@@ -3808,13 +3808,13 @@ def make_parser():
     posLimits = cfg.get("posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
-    def getValueOp(curve): 
+    def getValueOp(curve):
       return curve.get_pos()
-    centerOp = IterativeCenterOp(point=mp, op=interpolateOp) 
+    centerOp = IterativeCenterOp(point=mp, op=interpolateOp)
     onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
     onMove = parseResetPolicy(cfg.get("onMove", "setToCurrent"), state)
     curve = PointMovingCurve(
-      next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance, 
+      next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
       onReset=onReset, onMove=onMove, resetTime=resetTime)
     axis.add_listener(curve)
     return curve
@@ -3873,7 +3873,7 @@ def make_parser():
       def reset(self):
         pass
       def __init__(self, approx):
-        self.approx_ = approx   
+        self.approx_ = approx
     class CombineOp:
       def calc(self, x, timestamp):
         return self.combine_(x, self.op_.calc(x, timestamp))
@@ -3907,7 +3907,7 @@ def make_parser():
         r = 1.0
         s = sign(x)
         if self.s_ != 0 and s != self.s_:
-          r = 0.0 
+          r = 0.0
         self.s_ = s
         return r * distance
       def reset(self):
@@ -3984,7 +3984,7 @@ def make_parser():
       return op
     def set_next(next, sink):
       if next is not None:
-        sink.set_next(next) 
+        sink.set_next(next)
     def add(next, sink):
       if next is not None:
         #Next sink is added to level 0 so it will be able to process events that were processed by other binds.
@@ -4226,7 +4226,7 @@ def make_parser():
     snapManager = state["snapManager"]
     state.setdefault("snapTracker", SnapTracker(snapManager))
     snapName = cfg["snap"]
-    if not snapManager.has_snap(snapName): 
+    if not snapManager.has_snap(snapName):
       snaps = state["settings"]["config"]["snaps"]
       fullAxesNamesAndValues = snaps[snapName]
       settings = state["settings"]
@@ -4307,7 +4307,7 @@ def make_parser():
     """Helper"""
     if "modifiers" in cfg:
       modifiers = [parse_modifier_desc(m) for m in cfg["modifiers"]]
-      r.append(("modifiers", modifiers)) 
+      r.append(("modifiers", modifiers))
     return r
 
   def parseKey_(cfg, state, value):
@@ -4333,21 +4333,21 @@ def make_parser():
   edParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    r = parseKey_(cfg, state, 3) 
+    r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", 1))
     r = parseEdModifiers_(r, cfg)
     return r
   edParser.add("click", parseClick)
 
   def parseDoubleClick(cfg, state):
-    r = parseKey_(cfg, state, 3) 
+    r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", 2))
     r = parseEdModifiers_(r, cfg)
     return r
   edParser.add("doubleclick", parseDoubleClick)
 
   def parseMultiClick(cfg, state):
-    r = parseKey_(cfg, state, 3) 
+    r = parseKey_(cfg, state, 3)
     num = int(cfg["numClicks"])
     r.append(("num_clicks", num))
     r = parseEdModifiers_(r, cfg)
@@ -4372,7 +4372,7 @@ def make_parser():
     r = [("type", codes.EV_BCT), ("code", codes.BCT_INIT), ("value", value)]
     return r
   edParser.add("init", parseInit)
-        
+
   def parseEvent(cfg, state):
     code, value = cfg["code"], cfg["value"]
     r = [("type", codes.EV_CUSTOM), ("code", code), ("value", value)]
@@ -4483,7 +4483,7 @@ def make_parser():
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateLimit", parseRateLimitOutput)
-    
+
   def parseRateSettingOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
     limits = {name2code(axisName):value for axisName,value in cfg["limits"].items()}
@@ -4500,13 +4500,13 @@ def make_parser():
   outputParser.add("relative", parseRelativeOutput)
 
   def parseCompositeOutput(cfg, state):
-    parser = state["parser"].get("output") 
+    parser = state["parser"].get("output")
     children = parse_list(cfg["children"], state, parser)
     return CompositeJoystick(children)
   outputParser.add("composite", parseCompositeOutput)
 
   def parseOpentrackOutput(cfg, state):
-    opentrack = Opentrack(cfg["ip"], int(cfg["port"])) 
+    opentrack = Opentrack(cfg["ip"], int(cfg["port"]))
     state["settings"]["updated"].append(lambda tick,ts : opentrack.send())
     return opentrack
   outputParser.add("opentrack", parseOpentrackOutput)

@@ -52,7 +52,7 @@ class EvdevJoystick:
     logger.debug("{} created".format(self))
 
   def __del__(self):
-    if self.js is not None: 
+    if self.js is not None:
       self.js.close()
     logger.debug("{} destroyed".format(self))
 
@@ -122,7 +122,7 @@ def init_inputs(names):
     else:
       logger.warning("Device {} ({}) not found".format(s, n))
   return r
-  
+
 
 def print_devices():
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
@@ -141,7 +141,7 @@ def parseEvdevJoystickOutput(cfg, state):
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
   return EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
 
- 
+
 def run():
   def init_outputs(settings):
     nameParser = lambda key,state : key
@@ -197,7 +197,7 @@ def run():
     def run_source(tick, ts):
       source.run_once()
     def run_updated(tick, ts):
-      for u in updated: 
+      for u in updated:
         u(tick, ts)
     callbacks = [run_source, run_updated]
     loop = Loop(callbacks, step)
@@ -253,7 +253,7 @@ def run():
 
 
 def print_tech_data():
-  #print evdev.codes.EV 
+  #print evdev.codes.EV
   constsList = []
   for d in (evdev.ecodes.EV, evdev.ecodes.ABS, evdev.ecodes.REL, evdev.ecodes.BTN, evdev.ecodes.KEY):
     for k, v in d.items():
@@ -268,7 +268,7 @@ def print_tech_data():
     print "'{}':{},".format(*d),
   print "}"
   print dict(constsList)
-    
+
 
 if __name__ == "__main__":
   try:
