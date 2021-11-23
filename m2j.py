@@ -1241,22 +1241,29 @@ class MCSThresholdOp:
   def __call__(self, events, timestamp):
     if len(events) == 0:
       return ()
+    candidate, cd = None, 0.0
+    #Finding axis that has moved the most (the candidate to switch to) and the current distance the candidate has moved
     for i,q in events.items():
+      #Ensuring that all axes that have moved will be in distances_
+      self.distances_.setdefault(i, 0.0)
       d = 0.0
       for e in q:
         d += abs(e.value)
-      self.distances_.setdefault(i, 0.0)
-      for j in self.distances_.keys():
-        if i == j:
-          self.distances_[j] += d
-        else:
-          self.distances_[j] -= d
+      if d > cd:
+        candidate, cd = i, d
+    #Adding current distance of candidate to it's total distance and subtracting this distance from total distances of other axes
     for j in self.distances_.keys():
-      if self.distances_[j] >= self.thresholds_[j]:
-        self.selected_ = j
-        self.distances_[j] = self.thresholds_[j]
+      if j == candidate:
+        #If candidate's total distance has reached threshold, make candidate a selected axis and clamp it's total distance
+        self.distances_[j] += cd
+        if self.distances_[j] >= self.thresholds_[j]:
+          self.selected_ = j
+          self.distances_[j] = self.thresholds_[j]
       else:
+        #When subtracting from total distances of other axes, clamp to 0
+        self.distances_[j] -= cd
         self.distances_[j] = max(self.distances_[j], 0.0)
+    #logger.debug("{} {} {} {}".format(candidate, cd, self.distances_, self.selected_))
     return () if self.selected_ is None else (self.selected_,)
 
   def __init__(self, thresholds):
