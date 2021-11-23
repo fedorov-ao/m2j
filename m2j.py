@@ -3972,6 +3972,7 @@ def make_parser():
     oldComponents = None
     oldComponents = state.get("components", None)
     state["components"] = {}
+    #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
     def parse_component(name, op=None):
       if name in cfg:
@@ -3981,6 +3982,7 @@ def make_parser():
           if op is not None:
             op(sink[0], t)
           sink[0] = t
+    #TODO Currently unused. Remove?
     def make_action_wrapper(nextSink, actionSink):
       def op(event):
         assert(actionSink is not None)
@@ -3997,18 +3999,25 @@ def make_parser():
         #Next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
         sink.add(ED.any(), next, 0)
-    def parse_particular(name, cfg, state):
-      return state["parser"](name, cfg, state) if name in cfg or cfg.get("type", "") == name else None
+    #sinks are grouped in layouts, curves - in presets
+    #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
+    def parse_predefined(cfg, state):
+      r = None
+      for name in ("layout", "preset"):
+        if name in cfg or cfg.get("type", "") == name:
+          r = state["parser"](name, cfg, state)
+          if r is not None:
+            break
+      return r
     try:
       #TODO Refactor
       if len(cfg) == 0:
         def noop(event):
           return False
         return noop
-      for name in ("layout", "preset"):
-        s = parse_particular("layout", cfg, state)
-        if s is not None:
-          return s
+      s = parse_predefined(cfg, state)
+      if s is not None:
+        return s
       else:
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
