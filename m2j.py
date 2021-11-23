@@ -4046,7 +4046,7 @@ def make_parser():
   actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
   actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"], cfg.get("current")))
   actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"], cfg.get("current")))
-  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["f"], cfg["t"], cfg.get("current")))
+  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_swap(cfg["f"], cfg["t"], cfg.get("current")))
   actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(cfg["modes"], cfg.get("current")))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
   actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
