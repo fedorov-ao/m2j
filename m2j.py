@@ -13,6 +13,7 @@ import json
 import traceback
 import weakref
 import re
+import collections
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,11 @@ def clamp(v, lo, hi):
 def merge_dicts(destination, source):
   """https://stackoverflow.com/questions/20656135/python-deep-merge-dictionary-data"""
   for key, value in source.items():
-    if isinstance(value, dict):
+    if isinstance(value, collections.OrderedDict):
+      # get node or create one
+      node = destination.setdefault(key, collections.OrderedDict())
+      merge_dicts(node, value)
+    elif isinstance(value, dict):
       # get node or create one
       node = destination.setdefault(key, {})
       merge_dicts(node, value)
@@ -2840,7 +2845,7 @@ def init_config(configFilesNames):
   for configName in configFilesNames:
     try:
       with open(configName, "r") as f:
-        current = json.load(f)
+        current = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
         configs = current.get("configs", None)
         if configs is not None:
           parent = init_config(configs)
@@ -3607,7 +3612,10 @@ class SelectParser:
         r = parser(cfg, state)
         return r
       except Exception as e:
-        logger.debug("Got exception: {}, so cannot parse {}".format(e, cfg))
+        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, cfg))
+        raise
+      except:
+        logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, cfg))
         raise
 
   def add(self, key, parser):
@@ -4188,7 +4196,7 @@ def make_parser():
     allAxes = state["settings"]["axes"]
     axesAndValues = cfg["axesAndValues"]
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
-    if type(axesAndValues) is dict:
+    if type(axesAndValues) is dict or type(axesAndValues) is collections.OrderedDict:
       axesAndValues = axesAndValues.items()
     assert(type(axesAndValues) is list)
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
