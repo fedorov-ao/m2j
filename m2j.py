@@ -2789,19 +2789,17 @@ def init_main_sink(settings, make_next):
     mainSink.add(offKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed)), 0)
 
   namesOfGrabbed = config.get("grabbed", ())
+  namesOfGrabbedStr = ", ".join(namesOfGrabbed)
   grabbed = names2inputs(namesOfGrabbed, settings)
 
   def print_enabled(event):
-    logger.info("Emulation enabled; {} grabbed".format(", ".join(namesOfGrabbed)))
+    logger.info("Emulation enabled; {} grabbed".format(namesOfGrabbedStr))
   def print_disabled(event):
-    logger.info("Emulation disabled; {} ungrabbed".format(", ".join(namesOfGrabbed)))
+    logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
   grabSink = filterSink.set_next(BindSink(cmpOp))
-  grabSink.add(ED.init(1), SwallowDevices(grabbed, True), 0)
-  grabSink.add(ED.init(1), print_enabled, 0)
-
-  grabSink.add(ED.init(0), SwallowDevices(grabbed, False), 0)
-  grabSink.add(ED.init(0), print_disabled, 0)
+  grabSink.add(ED.init(1), Call(SwallowDevices(grabbed, True), print_enabled), 0)
+  grabSink.add(ED.init(0), Call(SwallowDevices(grabbed, False), print_disabled), 0)
 
   #make_next() may need axes, so initializing them here
   allAxes = {}
