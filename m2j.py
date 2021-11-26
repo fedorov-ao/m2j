@@ -3314,9 +3314,10 @@ def make_parser():
     if presetCfg is None:
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #Setting and restoring axis, creating curve
-    oldPresetFullAxisName, fullAxisName = presetCfg.get("axis"), cfg["axis"]
+    oldPresetFullAxisName, fullAxisName = presetCfg.get("axis"), cfg.get("axis")
     try:
-      presetCfg["axis"] = fullAxisName
+      if fullAxisName is not None:
+        presetCfg["axis"] = fullAxisName
       curve = state["parser"]("curve", presetCfg, state)
       assert("curves" in state)
       axisCurves = state["curves"].setdefault(fullAxisName, [])
