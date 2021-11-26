@@ -278,7 +278,7 @@ if starting:
   global logger
 
   settings = {"options" : {}, "configNames" : [], "updated" : []}
-  settings["options"] = {"layout" : "config", "curves" : "config", "configCurves" : "base8_cfg", "logLevel" : "DEBUG" }
+  settings["options"] = {"layout" : "base8_cfg", "logLevel" : "DEBUG" }
   settings["configNames"] = ["curves.cfg", "m2j_freepie.cfg"]
   settings["parser"] = make_parser()
 
@@ -325,14 +325,7 @@ if starting:
   head = CompositeJoystick([headJoystick, headOpentrack])
   settings["outputs"] = {"joystick" : joystick, "head" : head}
 
-  config = settings["config"]
-  layoutName, curvesName = config["layout"], config["curves"]
-  initializer = layout_initializers.get(layoutName, None)
-  if not initializer:
-    raise Exception("Initialiser for '{}' not found".format(layoutName))
-  else:
-    logger.info("Initializing for '{}' layout, using '{}' curves".format(layoutName, curvesName))
-  sink = init_main_sink(settings, initializer)
+  sink = init_main_sink(settings, init_layout_config)
 
   inputs = settings["inputs"].values()
   def run_inputs(tick):

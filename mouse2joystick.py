@@ -161,13 +161,7 @@ def run():
 
       settings["inputs"] = init_inputs(config["inputs"])
 
-      initializer = layout_initializers.get(config["layout"], None)
-      if not initializer:
-        raise ParseError("", "Initialiser for '{}' not found".format(config["layout"]))
-      else:
-        logger.info("Initializing for '{}' layout, using '{}' curves".format(config["layout"], config["curves"]))
-
-      sink = init_main_sink(settings, initializer)
+      sink = init_main_sink(settings, init_layout_config)
       updated = settings.get("updated", [])
 
       settings["source"] = EventSource(settings["inputs"].values(), sink)
@@ -212,20 +206,16 @@ def run():
     options = {}
     settings["options"] = options
 
-    opts, args = getopt.getopt(sys.argv[1:], "pl:c:f:o:n:", ["print", "layout=", "curves=", "configCurves=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "pl:v:c:", ["print", "layout=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-p", "--print"):
         print_devices()
         return 0
       if o in ("-l", "--layout"):
         options["layout"] = a
-      elif o in ("-c", "--curves"):
-        options["curves"] = a
-      elif o in ("-f", "--configCurves"):
-        options["configCurves"] = a
-      elif o in ("-o", "--logLevel"):
+      elif o in ("-v", "--logLevel"):
         options["logLevel"] = a
-      elif o in ("-n", "--config"):
+      elif o in ("-c", "--config"):
         settings["configNames"].append(a)
 
     parser = make_parser()
