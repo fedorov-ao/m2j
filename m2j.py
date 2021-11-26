@@ -298,6 +298,22 @@ class Loop:
     self.t_ = None
 
 
+def If(cnd, o):
+  def op(event):
+    if cnd():
+      o(event)
+    return True
+  return op
+
+
+def Call(*ops):
+  def op(event):
+    for o in ops:
+      o(event)
+    return True
+  return op
+
+
 class MoveJoystickAxis:
   def __call__(self, event):
     assert(self.curve_ is not None)
@@ -2755,25 +2771,22 @@ def init_main_sink(settings, make_next):
   released = names2inputs(namesOfReleased, settings)
   sourceFilterOp = SourceFilterOp(namesOfReleased)
   filterSink = stateSink.set_next(FilterSink(sourceFilterOp))
+  namesOfReleasedStr = ", ".join(namesOfReleased)
 
-  def print_released(event):
-    logger.info("{} released".format(", ".join(namesOfReleased)))
-  def print_captured(event):
-    logger.info("{} captured".format(", ".join(namesOfReleased)))
+  def print_ungrabbed(event):
+    logger.info("{} ungrabbed".format(namesOfReleasedStr))
+  def print_grabbed(event):
+    logger.info("{} grabbed".format(namesOfReleasedStr))
 
   onKey = config.get("onKey", None)
   if onKey is not None:
     onKey = edParser(onKey, state)
-    mainSink.add(onKey, SetState(sourceFilterOp, True), 0)
-    mainSink.add(onKey, SwallowDevices(released, True), 0)
-    mainSink.add(onKey, print_captured, 0)
+    mainSink.add(onKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed)), 0)
 
   offKey = config.get("offKey", None)
   if offKey is not None:
     offKey = edParser(offKey, state)
-    mainSink.add(offKey, SetState(sourceFilterOp, False), 0)
-    mainSink.add(offKey, SwallowDevices(released, False), 0)
-    mainSink.add(offKey, print_released, 0)
+    mainSink.add(offKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed)), 0)
 
   namesOfGrabbed = config.get("grabbed", ())
   grabbed = names2inputs(namesOfGrabbed, settings)
