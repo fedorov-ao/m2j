@@ -2546,64 +2546,95 @@ class MetricsJoystick:
   axisToName = {p[1]:p[0] for p in {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}.items()}
 
 
+def calc_sphere_intersection_params(p, d, r):
+  """Returns (t1, t2) such that points (position + direction*t1) and (postion + direction*t2) lie on sphere of radius r,
+     where p is position and d is direction."""
+  a = d[0]**2 + d[1]**2 + d[2]**2
+  b = 2.0*(p[0]*d[0] + p[1]*d[1] + p[2]*d[2])
+  c = p[0]**2 + p[1]**2 + p[2]**2 - r**2
+  D = b**2 - 4*a*c
+  if D < 0.0:
+     return None
+  else:
+    sqrtD = D**0.5
+    return (0.5*(-b + sqrtD)/a, 0.5*(-b - sqrtD)/a)
+
+
+def clamp_to_sphere(point, radius):
+  r2 = 0.0
+  for coord in point:
+    r2 += coord**2.0
+  r2 = r2**0.5
+  if r2 > radius:
+    m = radius / r2
+    return [m*coord for coord in point]
+  else:
+    return point
+
+
 class RelativeHeadMovementJoystick:
   def move_axis(self, axis, value, relative):
+    """Sets view angles and position.
+       ABS_RX, ABS_RY and ABS_RZ are angle axes that represent absolute yaw, pitch and roll angles ((0,0,0) is forward),
+       regardless relative is True or False. These angles rotate the view.
+       ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z position ((0,0,0) is center).
+       If relative is True, value is treated as relative amount of movement along a local axis, rotated by view angles.
+       If relative is False, value is treated as absolute position along a global axis.
+    """
     if self.next_ is not None:
-      if relative == True and axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
-        dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
-        rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
-        #TODO Check
-        rYaw = -rYaw
-        sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
-        cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
-        #logging.debug("dYaw:{:+0.3f}, rYaw:{:+0.3f}, sinYaw:{:+0.3f}, cosYaw:{:+0.3f}, dPitch:{:+0.3f}, rPitch:{:+0.3f}, sinPitch:{:+0.3f}, cosPitch:{:+0.3f}, dRoll:{:+0.3f}, rRoll:{:+0.3f}, sinRoll:{:+0.3f}, cosRoll:{:+0.3f}".format(dYaw, rYaw, sinYaw, cosYaw, dPitch, rPitch, sinPitch, cosPitch, dRoll, rRoll, sinRoll, cosRoll))
+      axes = tuple((codes.ABS_X, codes.ABS_Y, codes.ABS_Z))
+      if axis in axes:
+        if relative == True:
+          self.update_dirs_()
+          point = [value*c for c in self.dirs_[axis]]
 
-        x, y, z = 0.0, 0.0, 0.0
-        if axis == codes.ABS_X:
-          m00 = cosRoll*cosYaw - sinRoll*sinPitch*sinYaw
-          m10 = -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw
-          m20 = -cosPitch*sinYaw
-          x, y, z = (value*c for c in (m00, m10, m20))
-        elif axis == codes.ABS_Y:
-          m01 = sinRoll*cosPitch
-          m11 = cosRoll*cosPitch
-          m21 = -sinPitch
-          x, y, z = (value*c for c in (m01, m11, m21))
-        elif axis == codes.ABS_Z:
-          m02 = cosRoll*sinYaw + sinRoll*sinPitch*cosYaw
-          m12 = -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw
-          m22 = cosPitch*cosYaw
-          x, y, z = (value*c for c in (m02, m12, m22))
-
-        #Clamping to sphere
-        cx, cy, cz = self.next_.get_axis_value(codes.ABS_X), self.next_.get_axis_value(codes.ABS_Y), self.next_.get_axis_value(codes.ABS_Z)
-        x, y, z = x+cx, y+cy, z+cz
-        r = (x*x + y*y + z*z)**0.5
-        if r > self.r_:
-          if self.stick_ and abs((cx*cx + cy*cy + cz*cz)**0.5 - self.r_) < 0.001:
+          #Clamping to sphere
+          offset = [self.next_.get_axis_value(a) for a in axes]
+          for a in axes:
+            ia = axes.index(a)
+            point[ia] += offset[ia]
+          clamped = clamp_to_sphere(point, self.r_)
+          if self.stick_ and point != clamped:
             return
-          m = self.r_ / r
-          x, y, z = m*x, m*y, m*z
 
-        #Clamping to limits
-        for axis, v, cv in ((codes.ABS_X, x, cx), (codes.ABS_Y, y, cy), (codes.ABS_Z, z, cz)):
-          limits = self.next_.get_limits(axis)
-          v = clamp(v, *limits) - cv
-          self.next_.move_axis(axis, v, True)
-        #output = [self.next_.get_axis_value(a) for a in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]
-        #output = output[:3] + [x,y,z] + output[3:]
-        #logging.debug("dYaw:{:+0.3f}, dPitch:{:+0.3f}, dRoll:{:+0.3f}, dx:{:+0.3f}, dy:{:+0.3f}, dz:{:+0.3f}, x:{:+0.3f}, y:{:+0.3f}, z:{:+0.3f}".format(*output))
+          #Clamping to limits of next sink and moving
+          for a in axes:
+            limits = self.next_.get_limits(a)
+            ia = axes.index(a)
+            c, o = clamped[ia], offset[ia]
+            c = clamp(c, *limits) - o
+            self.next_.move_axis(a, c, True)
+
+          self.limitsDirty_ = True
+        else:
+          v = [self.next_.get_axis_value(a) for a in axes]
+          v[axes.index(axis)] = value
+          v = clamp_to_sphere(v, self.r_)
+          for a in axes:
+            self.next_.move_axis(a, v[axes.index(a)], False)
       else:
+        if axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ):
+          self.dirsDirty_ = True
         self.next_.move_axis(axis, value, relative)
 
   def get_axis_value(self, axis):
-    return self.next_.get_axis_value(axis) if self.next_ is not None else 0.0
+    """Returns 0.0 for position axes to enable calling sink to work with relative limits correctly; calls next sink for other."""
+    if self.next_ is None:
+      return 0.0
+    elif axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
+      return 0.0
+    else:
+      return self.next_.get_axis_value(axis)
 
   def get_limits(self, axis):
-    #TODO Temp fix. Returning maximal limits to calling code does not get misleaded 
-    #because limits are in fixed coordinate system, but value argument to move_axis() - in rotated.
-    return (-float("inf"), float("inf")) if self.next_ is not None else (0.0, 0.0)
-    #return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
+    """Returns relative, local limits for position axes, calls next sink for other."""
+    self.update_limits_()
+    if self.next_ is None:
+      return (0.0, 0.0)
+    elif axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
+      return self.limits_[axis]
+    else:
+      return self.next_.get_limits(axis)
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ is not None else ()
@@ -2613,10 +2644,44 @@ class RelativeHeadMovementJoystick:
 
   def set_next(self, next):
     self.next_ = next
+    self.update_dirs_()
+    self.update_limits_()
     return next
 
   def __init__(self, next=None, r=float("inf"), stick=True):
     self.next_, self.r_, self.stick_ = next, r, stick
+    self.dirs_, self.limits_ = [0.0, 0.0, 0.0], [(), (), ()]
+    self.dirsDirty_, self.limitsDirty_ = True, True
+
+  def update_dirs_(self):
+    if self.dirsDirty_ == True and self.next_ is not None:
+      dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+      rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
+      #TODO Check
+      rYaw = -rYaw
+      sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
+      cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
+
+      #x - 0, y - 1, z - 2
+      self.dirs_[0] = (cosRoll*cosYaw - sinRoll*sinPitch*sinYaw, -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw, -cosPitch*sinYaw)
+      self.dirs_[1] = (sinRoll*cosPitch, cosRoll*cosPitch, -sinPitch)
+      self.dirs_[2]= (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
+
+      self.dirsDirty_ = False
+      self.limitsDirty_ = True
+
+
+  def update_limits_(self):
+    if self.limitsDirty_ == True and self.next_ is not None:
+      self.update_dirs_()
+      p = [self.next_.get_axis_value(a) for a in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]
+      for a,di in ((codes.ABS_X, 0), (codes.ABS_Y, 1), (codes.ABS_Z, 2)):
+        lim = calc_sphere_intersection_params(p, self.dirs_[di], self.r_)
+        #TODO Check
+        if lim is not None:
+          self.limits_[a] = (min(*lim), max(*lim))
+
+      self.limitsDirty_ = False
 
 
 def make_curve_makers():
