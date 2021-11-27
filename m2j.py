@@ -2582,13 +2582,13 @@ class RelativeHeadMovementJoystick:
        If relative is False, value is treated as absolute position along a global axis.
     """
     if self.next_ is not None:
-      axes = tuple((codes.ABS_X, codes.ABS_Y, codes.ABS_Z))
+      axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
       if axis in axes:
         if relative == True:
           self.update_dirs_()
           point = [value*c for c in self.dirs_[axis]]
 
-          #Clamping to sphere
+          #Clamping to sphere in global cs
           offset = [self.next_.get_axis_value(a) for a in axes]
           for a in axes:
             ia = axes.index(a)
@@ -2597,7 +2597,7 @@ class RelativeHeadMovementJoystick:
           if self.stick_ and point != clamped:
             return
 
-          #Clamping to limits of next sink and moving
+          #Clamping to limits of next sink in global cs and moving in global cs
           for a in axes:
             limits = self.next_.get_limits(a)
             ia = axes.index(a)
@@ -2606,23 +2606,57 @@ class RelativeHeadMovementJoystick:
             self.next_.move_axis(a, c, True)
 
           self.limitsDirty_ = True
-        else:
-          v = [self.next_.get_axis_value(a) for a in axes]
-          v[axes.index(axis)] = value
-          v = clamp_to_sphere(v, self.r_)
+        else: #relative == False
+          #in global cs
+          gp = [self.next_.get_axis_value(a) for a in axes]
+          #in local cs
+          #TODO Check
+          lp = self.global_to_local(gp)
+          lp[axes.index(axis)] = value
+          lp = clamp_to_sphere(lp, self.r_)
+          ngp = self.local_to_global(lp)
           for a in axes:
-            self.next_.move_axis(a, v[axes.index(a)], False)
+            self.next_.move_axis(a, ngp[axes.index(a)], False)
       else:
         if axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ):
           self.dirsDirty_ = True
         self.next_.move_axis(axis, value, relative)
 
+
+  def move_axes(self, data):
+    angleAxes = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+    for axis in angleAxes:
+      for a,v in data:
+        if a == axis:
+          self.next_.move_axis(a, v, False)
+
+    self.update_dirs_()
+
+    posAxes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+    gp = [self.next_.get_axis_value(a) for a in posAxes]
+    lp = self.global_to_local(gp)
+    for axis in posAxes:
+      for a,v in data:
+        if a == axis:
+          lp[posAxes.index(a)] = v
+    ngp = self.local_to_global(lp)
+    for a in posAxes:
+      self.next_.move_axis(a, ngp[axes.index(a)], False)
+
+    for a,v in data:
+      if a not in angleAxes and a not in posAxes:
+        self.next_.move_axis(a, v)
+
+
   def get_axis_value(self, axis):
-    """Returns 0.0 for position axes to enable calling sink to work with relative limits correctly; calls next sink for other."""
+    self.update_dirs_()
+    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
     if self.next_ is None:
       return 0.0
-    elif axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
-      return 0.0
+    elif axis in axes:
+      gp = [self.next_.get_axis_value(a) for a in axes]
+      lp = self.global_to_local(gp)
+      return lp[axes.index(axis)]
     else:
       return self.next_.get_axis_value(axis)
 
@@ -2632,7 +2666,7 @@ class RelativeHeadMovementJoystick:
     if self.next_ is None:
       return (0.0, 0.0)
     elif axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
-      return self.limits_[axis]
+      return (-float("inf"), float("inf"))
     else:
       return self.next_.get_limits(axis)
 
@@ -2665,7 +2699,7 @@ class RelativeHeadMovementJoystick:
       #x - 0, y - 1, z - 2
       self.dirs_[0] = (cosRoll*cosYaw - sinRoll*sinPitch*sinYaw, -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw, -cosPitch*sinYaw)
       self.dirs_[1] = (sinRoll*cosPitch, cosRoll*cosPitch, -sinPitch)
-      self.dirs_[2]= (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
+      self.dirs_[2] = (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
 
       self.dirsDirty_ = False
       self.limitsDirty_ = True
@@ -2682,6 +2716,28 @@ class RelativeHeadMovementJoystick:
           self.limits_[a] = (min(*lim), max(*lim))
 
       self.limitsDirty_ = False
+
+
+  def global_to_local(self, gp):
+    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+    lp = [0.0, 0.0, 0.0]
+    for a in axes:
+      ia = axes.index(a)
+      for j in range(0, len(self.dirs_)):
+        lp[j] += gp[ia]*self.dirs_[j][ia]
+    #logger.debug("global_to_local(): dirs{}; gp:{}; lp:{}".format(self.dirs_, gp, lp))
+    return lp
+
+
+  def local_to_global(self, lp):
+    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+    gp = [0.0, 0.0, 0.0]
+    for a in axes:
+      ia = axes.index(a)
+      for j in range(0, len(self.dirs_)):
+        gp[ia] += lp[ia]*self.dirs_[j][ia]
+    #logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
+    return gp
 
 
 def make_curve_makers():
