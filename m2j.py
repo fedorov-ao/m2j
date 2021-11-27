@@ -2575,9 +2575,20 @@ class RelativeHeadMovementJoystick:
           m22 = cosPitch*cosYaw
           x, y, z = (value*c for c in (m02, m12, m22))
 
-        for axis, v in ((codes.ABS_X, x), (codes.ABS_Y, y), (codes.ABS_Z, z)):
-          limits, current = self.next_.get_limits(axis), self.next_.get_axis_value(axis)
-          v = clamp(v+current, *limits) - current
+        #Clamping to sphere
+        cx, cy, cz = self.next_.get_axis_value(codes.ABS_X), self.next_.get_axis_value(codes.ABS_Y), self.next_.get_axis_value(codes.ABS_Z)
+        x, y, z = x+cx, y+cy, z+cz
+        r = (x*x + y*y + z*z)**0.5
+        if r > self.r_:
+          if self.stick_ and abs((cx*cx + cy*cy + cz*cz)**0.5 - self.r_) < 0.001:
+            return
+          m = self.r_ / r
+          x, y, z = m*x, m*y, m*z
+
+        #Clamping to limits
+        for axis, v, cv in ((codes.ABS_X, x, cx), (codes.ABS_Y, y, cy), (codes.ABS_Z, z, cz)):
+          limits = self.next_.get_limits(axis)
+          v = clamp(v, *limits) - cv
           self.next_.move_axis(axis, v, True)
         #output = [self.next_.get_axis_value(a) for a in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]
         #output = output[:3] + [x,y,z] + output[3:]
@@ -2604,8 +2615,8 @@ class RelativeHeadMovementJoystick:
     self.next_ = next
     return next
 
-  def __init__(self, next=None):
-    self.next_ = next
+  def __init__(self, next=None, r=float("inf"), stick=True):
+    self.next_, self.r_, self.stick_ = next, r, stick
 
 
 def make_curve_makers():
@@ -3886,7 +3897,7 @@ def make_parser():
 
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", cfg["next"], state)
-    j = RelativeHeadMovementJoystick(next)
+    j = RelativeHeadMovementJoystick(next=next, r=cfg.get("clampRadius", float("inf")), stick=cfg.get("stick", True))
     return j
   outputParser.add("relative", parseRelativeOutput)
 
