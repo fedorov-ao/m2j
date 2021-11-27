@@ -2573,57 +2573,67 @@ def clamp_to_sphere(point, radius):
 
 
 class RelativeHeadMovementJoystick:
+  posAxes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
+  angleAxes_ = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+
   def move_axis(self, axis, value, relative):
     """Sets view angles and position.
        ABS_RX, ABS_RY and ABS_RZ are angle axes that represent absolute yaw, pitch and roll angles ((0,0,0) is forward),
        regardless relative is True or False. These angles rotate the view.
        ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z position ((0,0,0) is center).
        If relative is True, value is treated as relative amount of movement along a local axis, rotated by view angles.
-       If relative is False, value is treated as absolute position along a global axis.
+       If relative is False, value is treated as absolute position along a local axis.
     """
     if self.next_ is not None:
-      axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-      if axis in axes:
+      if axis in self.posAxes_:
         if relative == True:
           self.update_dirs_()
+          #Delta in global cs
           point = [value*c for c in self.dirs_[axis]]
 
-          #Clamping to sphere in global cs
-          offset = [self.next_.get_axis_value(a) for a in axes]
-          for a in axes:
-            ia = axes.index(a)
+          #Offset in global cs
+          offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
+          for a in self.posAxes_:
+            ia = self.posAxes_.index(a)
             point[ia] += offset[ia]
+          #Clamping to sphere in global cs
           clamped = clamp_to_sphere(point, self.r_)
           if self.stick_ and point != clamped:
             return
 
-          #Clamping to limits of next sink in global cs and moving in global cs
-          for a in axes:
+          #Clamping to limits of next sink and moving, both in global cs
+          for a in self.posAxes_:
             limits = self.next_.get_limits(a)
-            ia = axes.index(a)
+            ia = self.posAxes_.index(a)
             c, o = clamped[ia], offset[ia]
             c = clamp(c, *limits) - o
             self.next_.move_axis(a, c, True)
 
           self.limitsDirty_ = True
         else: #relative == False
-          #in global cs
-          gp = [self.next_.get_axis_value(a) for a in axes]
-          #in local cs
-          #TODO Check
-          lp = self.global_to_local(gp)
-          lp[axes.index(axis)] = value
-          lp = clamp_to_sphere(lp, self.r_)
-          ngp = self.local_to_global(lp)
-          for a in axes:
-            self.next_.move_axis(a, ngp[axes.index(a)], False)
+          #Position in global cs
+          gp = [0.0, 0.0, 0.0]
+          for a in self.posAxes_:
+            ia = self.posAxes_.index(a)
+            if a == axis:
+              gp[ia] = self.dirs_[ia]*value
+            else:
+              gp[ia] = self.next_.get_axis_value(a)
+          #Clamping to sphere in global cs
+          clamped = clamp_to_sphere(gp, self.r_)
+          if self.stick_ and gp != clamped:
+            return
+          for a in self.posAxes_:
+            self.next_.move_axis(a, gp[self.posAxes_.index(a)], False)
       else:
-        if axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ):
+        if axis in self.angleAxes_:
           self.dirsDirty_ = True
         self.next_.move_axis(axis, value, relative)
 
 
+  #TODO Unused
   def move_axes(self, data):
+    """Moves axes as batch."""
     angleAxes = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
     for axis in angleAxes:
       for a,v in data:
@@ -2649,23 +2659,31 @@ class RelativeHeadMovementJoystick:
 
 
   def get_axis_value(self, axis):
+    """Returns local axis value."""
     self.update_dirs_()
-    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
     if self.next_ is None:
       return 0.0
-    elif axis in axes:
-      gp = [self.next_.get_axis_value(a) for a in axes]
-      lp = self.global_to_local(gp)
-      return lp[axes.index(axis)]
+    elif axis in self.posAxes_:
+      gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
+      l = 0.0
+      d = self.dirs_[self.posAxes_.index(axis)]
+      for i in range(len(gp)):
+        l += gp[i]*d[i]
+      return l
     else:
       return self.next_.get_axis_value(axis)
+
 
   def get_limits(self, axis):
     """Returns relative, local limits for position axes, calls next sink for other."""
     self.update_limits_()
     if self.next_ is None:
       return (0.0, 0.0)
-    elif axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
+    elif axis in self.posAxes_:
+      ia = self.posAxes_.index(axis)
+      #TODO Dynamic limits are not processed correctly. As coord increases, limit decreases, so coord stops increasing when it becomes equal to limit.
+      #Temp returning largest limits possible. Coord is still being clamped.
+      #return self.limits_[ia]
       return (-float("inf"), float("inf"))
     else:
       return self.next_.get_limits(axis)
@@ -2708,9 +2726,10 @@ class RelativeHeadMovementJoystick:
   def update_limits_(self):
     if self.limitsDirty_ == True and self.next_ is not None:
       self.update_dirs_()
-      p = [self.next_.get_axis_value(a) for a in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]
-      for a,di in ((codes.ABS_X, 0), (codes.ABS_Y, 1), (codes.ABS_Z, 2)):
-        lim = calc_sphere_intersection_params(p, self.dirs_[di], self.r_)
+      gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
+      for a in self.posAxes_:
+        ia = self.posAxes_.index(a)
+        lim = calc_sphere_intersection_params(gp, self.dirs_[ia], self.r_)
         #TODO Check
         if lim is not None:
           self.limits_[a] = (min(*lim), max(*lim))
