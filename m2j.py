@@ -2552,8 +2552,11 @@ class RelativeHeadMovementJoystick:
       if relative == True and axis in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z):
         dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
         rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
+        #TODO Check
+        rYaw = -rYaw
         sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
         cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
+        #logging.debug("dYaw:{:+0.3f}, rYaw:{:+0.3f}, sinYaw:{:+0.3f}, cosYaw:{:+0.3f}, dPitch:{:+0.3f}, rPitch:{:+0.3f}, sinPitch:{:+0.3f}, cosPitch:{:+0.3f}, dRoll:{:+0.3f}, rRoll:{:+0.3f}, sinRoll:{:+0.3f}, cosRoll:{:+0.3f}".format(dYaw, rYaw, sinYaw, cosYaw, dPitch, rPitch, sinPitch, cosPitch, dRoll, rRoll, sinRoll, cosRoll))
 
         x, y, z = 0.0, 0.0, 0.0
         if axis == codes.ABS_X:
@@ -2576,6 +2579,9 @@ class RelativeHeadMovementJoystick:
           limits, current = self.next_.get_limits(axis), self.next_.get_axis_value(axis)
           v = clamp(v+current, *limits) - current
           self.next_.move_axis(axis, v, True)
+        #output = [self.next_.get_axis_value(a) for a in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_X, codes.ABS_Y, codes.ABS_Z)]
+        #output = output[:3] + [x,y,z] + output[3:]
+        #logging.debug("dYaw:{:+0.3f}, dPitch:{:+0.3f}, dRoll:{:+0.3f}, dx:{:+0.3f}, dy:{:+0.3f}, dz:{:+0.3f}, x:{:+0.3f}, y:{:+0.3f}, z:{:+0.3f}".format(*output))
       else:
         self.next_.move_axis(axis, value, relative)
 
@@ -2583,7 +2589,10 @@ class RelativeHeadMovementJoystick:
     return self.next_.get_axis_value(axis) if self.next_ is not None else 0.0
 
   def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
+    #TODO Temp fix. Returning maximal limits to calling code does not get misleaded 
+    #because limits are in fixed coordinate system, but value argument to move_axis() - in rotated.
+    return (-float("inf"), float("inf")) if self.next_ is not None else (0.0, 0.0)
+    #return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ is not None else ()
