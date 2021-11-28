@@ -2761,6 +2761,15 @@ class RelativeHeadMovementJoystick:
             mn, mx = min(mn, v), max(mx, v)
         limits.append((mn, mx))
 
+      #Clamping to limits of next in global cs
+      if self.next_ is not None:
+        for a in self.posAxes_:
+          ia = self.posAxes_.index(a)
+          nextLimits = self.next_.get_limits(a)
+          assert(len(nextLimits) == 2)
+          assert(nextLimits[0] <= nextLimits[1])
+          limits[ia] = [clamp(l, *nextLimits) for l in limits[ia]]
+
       #Converting limits to local cs
       gpmin, gpmax = [l[0] for l in limits], [l[1] for l in limits]
       assert(len(gpmin) == len(self.posAxes_))
