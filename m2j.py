@@ -1245,13 +1245,15 @@ class MultiCurveSink:
     if event.type in (codes.EV_REL,):
       k = (event.source, event.code)
       self.events_.setdefault(k, [])
-      self.events_[k].append(event)
+      #Have to store selected properties of event but not reference to event itself,
+      #because event properties might be modified before update() is called
+      self.events_[k].append((event.value, event.timestamp))
 
   def update(self, tick, timestamp):
     keys = self.op_(self.events_, timestamp)
     for k in keys:
       for e in self.events_.get(k, ()):
-        self.curves_[k].move_by(e.value, e.timestamp)
+        self.curves_[k].move_by(e[0], e[1])
     for k in self.events_.keys():
       self.events_[k] = []
 
@@ -1267,7 +1269,7 @@ class MCSCmpOp:
     for i,q in events.items():
       d = 0.0
       for e in q:
-        d += abs(e.value)
+        d += abs(e[0])
       if self.cmp_(d, distance):
         selected, distance = i, d
     return () if selected is None else (selected,)
@@ -1287,7 +1289,7 @@ class MCSThresholdOp:
       self.distances_.setdefault(i, 0.0)
       d = 0.0
       for e in q:
-        d += abs(e.value)
+        d += abs(e[0])
       if d > cd:
         candidate, cd = i, d
     #Adding current distance of candidate to it's total distance and subtracting this distance from total distances of other axes
