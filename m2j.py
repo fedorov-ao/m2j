@@ -2597,6 +2597,7 @@ class RelativeHeadMovementJoystick:
        ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z position ((0,0,0) is center).
        If relative is True, value is treated as relative amount of movement along a local axis, rotated by view angles.
        If relative is False, value is treated as absolute position along a local axis.
+       Angles are expected to be set via object of this class.
     """
     if self.next_ is not None:
       if axis in self.posAxes_:
@@ -2626,7 +2627,7 @@ class RelativeHeadMovementJoystick:
           self.limitsDirty_ = True
         else: #relative == False
           #Position in global cs
-          gp = [0.0, 0.0, 0.0]
+          gp = [0.0 for i in range(len(self.posAxes_))]
           for a in self.posAxes_:
             ia = self.posAxes_.index(a)
             if a == axis:
@@ -2658,12 +2659,12 @@ class RelativeHeadMovementJoystick:
 
     posAxes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
     gp = [self.next_.get_axis_value(a) for a in posAxes]
-    lp = self.global_to_local(gp)
+    lp = self.global_to_local_(gp)
     for axis in posAxes:
       for a,v in data:
         if a == axis:
           lp[posAxes.index(a)] = v
-    ngp = self.local_to_global(lp)
+    ngp = self.local_to_global_(lp)
     for a in posAxes:
       self.next_.move_axis(a, ngp[axes.index(a)], False)
 
@@ -2674,10 +2675,10 @@ class RelativeHeadMovementJoystick:
 
   def get_axis_value(self, axis):
     """Returns local axis value."""
-    self.update_dirs_()
     if self.next_ is None:
       return 0.0
     elif axis in self.posAxes_:
+      self.update_dirs_()
       gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
       l = 0.0
       d = self.dirs_[self.posAxes_.index(axis)]
@@ -2695,10 +2696,7 @@ class RelativeHeadMovementJoystick:
       return (0.0, 0.0)
     elif axis in self.posAxes_:
       ia = self.posAxes_.index(axis)
-      #TODO Dynamic limits are not processed correctly. As coord increases, limit decreases, so coord stops increasing when it becomes equal to limit.
-      #Temp returning largest limits possible. Coord is still being clamped.
-      #return self.limits_[ia]
-      return (-float("inf"), float("inf"))
+      return self.limits_[ia]
     else:
       return self.next_.get_limits(axis)
 
@@ -2740,34 +2738,58 @@ class RelativeHeadMovementJoystick:
   def update_limits_(self):
     if self.limitsDirty_ == True and self.next_ is not None:
       self.update_dirs_()
+
+      #Finding points where orts intersect clamping sphere in global cs
       gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
-      for a in self.posAxes_:
-        ia = self.posAxes_.index(a)
-        lim = calc_sphere_intersection_params(gp, self.dirs_[ia], self.r_)
-        #TODO Check
-        if lim is not None:
-          self.limits_[a] = (min(*lim), max(*lim))
+      intersections = [None for i in range(len(self.posAxes_))] 
+      for ort in self.posAxes_:
+        iort = self.posAxes_.index(ort)
+        intersections[iort] = calc_sphere_intersection_points(gp, self.dirs_[iort], self.r_)
+
+      #Finding limits in global cs
+      limits = []
+      for coord in self.posAxes_:
+        icoord = self.posAxes_.index(coord)
+        mn, mx = 0.0, 0.0
+        for ip in intersections:
+          if ip is None:
+            continue
+          assert(len(ip) == 2)
+          for i in ip:
+            assert(len(i) == len(self.posAxes_))
+            v = i[icoord]
+            mn, mx = min(mn, v), max(mx, v)
+        limits.append((mn, mx))
+
+      #Converting limits to local cs
+      gpmin, gpmax = [l[0] for l in limits], [l[1] for l in limits]
+      assert(len(gpmin) == len(self.posAxes_))
+      assert(len(gpmax) == len(self.posAxes_))
+      lpmin, lpmax = self.global_to_local_(gpmin), self.global_to_local_(gpmax)
+      for coord in self.posAxes_:
+        icoord = self.posAxes_.index(coord)
+        n, x = lpmin[icoord], lpmax[icoord]
+        n, x = min(n, x), max(n, x)
+        self.limits_[icoord] = (n, x)
 
       self.limitsDirty_ = False
 
 
-  def global_to_local(self, gp):
-    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-    lp = [0.0, 0.0, 0.0]
-    for a in axes:
-      ia = axes.index(a)
-      for j in range(0, len(self.dirs_)):
+  def global_to_local_(self, gp):
+    lp = [0.0 for i in range(len(gp))]
+    for a in self.posAxes_:
+      ia = self.posAxes_.index(a)
+      for j in range(len(self.dirs_)):
         lp[j] += gp[ia]*self.dirs_[j][ia]
     #logger.debug("global_to_local(): dirs{}; gp:{}; lp:{}".format(self.dirs_, gp, lp))
     return lp
 
 
-  def local_to_global(self, lp):
-    axes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-    gp = [0.0, 0.0, 0.0]
-    for a in axes:
-      ia = axes.index(a)
-      for j in range(0, len(self.dirs_)):
+  def local_to_global_(self, lp):
+    gp = [0.0 for i in range(len(lp))]
+    for a in self.posAxes_:
+      ia = self.posAxes_.index(a)
+      for j in range(len(self.dirs_)):
         gp[ia] += lp[ia]*self.dirs_[j][ia]
     #logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
     return gp
