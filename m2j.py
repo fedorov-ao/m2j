@@ -2201,13 +2201,13 @@ class UdpJoystick:
       packet = self.make_packet_(self.v_)
       #Need to resend packet several times to make lateral head movement work correctly
       #UDP packets are lost? Even on local machine?
-      for i in range(0, self.numResends_):
+      for i in range(0, self.numPackets_):
         self.socket_.sendto(packet, (self.ip_, self.port_))
 
-  def __init__(self, ip, port, make_packet, numResends=10):
+  def __init__(self, ip, port, make_packet, numPackets=1):
     self.dirty_ = False
     self.socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.ip_, self.port_, self.make_packet_, self.numResends_ = ip, port, make_packet, numResends
+    self.ip_, self.port_, self.make_packet_, self.numPackets_ = ip, port, make_packet, numPackets
     self.limits_ = {}
     self.v_ = {}
     for a in self.axes_:
@@ -3899,7 +3899,7 @@ def make_parser():
       "il2_6dof" : make_il2_6dof_packet,
       "opentrack" : make_opentrack_packet
     }
-    j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]], int(cfg.get("numResends", 10)))
+    j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]], int(cfg.get("numPackets", 1)))
     for a,l in cfg.get("limits", {}).items():
       j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick,ts : j.send())
