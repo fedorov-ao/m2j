@@ -2549,16 +2549,30 @@ class MetricsJoystick:
 def calc_sphere_intersection_params(p, d, r):
   """Returns (t1, t2) such that points (position + direction*t1) and (postion + direction*t2) lie on sphere of radius r,
      where p is position and d is direction."""
-  a = d[0]**2 + d[1]**2 + d[2]**2
-  b = 2.0*(p[0]*d[0] + p[1]*d[1] + p[2]*d[2])
-  c = p[0]**2 + p[1]**2 + p[2]**2 - r**2
-  D = b**2 - 4*a*c
+  assert(len(p) == len(d))
+  l = len(p)
+  a, b, c = 0.0, 0.0, 0.0
+  for i in range(l):
+    a += d[i]**2.0
+    b += p[i]*d[i]
+    c += p[i]**2.0
+  b, c = 2.0*b, c - r**2.0
+  D = b**2.0 - 4.0*a*c
   if D < 0.0:
      return None
   else:
     sqrtD = D**0.5
     return (0.5*(-b + sqrtD)/a, 0.5*(-b - sqrtD)/a)
 
+
+def calc_sphere_intersection_points(p, d, r):
+  assert(len(p) == len(d))
+  t = calc_sphere_intersection_params(p, d, r)
+  if t is None:
+    return None
+  else:
+    assert(len(t) == 2)
+    return (tuple((pc + dc*t[0] for pc,dc in zip(p,d))), tuple((pc + dc*t[1] for pc,dc in zip(p,d))))
 
 def clamp_to_sphere(point, radius):
   r2 = 0.0
