@@ -116,8 +116,9 @@ def init_inputs(names):
   r = {}
   for s,n in names.items():
     for d in devices:
-      if (n == d.path) or (n == d.name):
+      if n in (d.path, d.name.strip(" "), d.phys):
         r[s] = EvdevDevice(d, s)
+        logger.info("Found device {} ({})".format(s, n))
         break
     else:
       logger.warning("Device {} ({}) not found".format(s, n))
