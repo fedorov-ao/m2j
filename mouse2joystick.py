@@ -169,7 +169,7 @@ def run():
 
     except Exception as e:
       logger.error(e)
-      for l in traceback.format_exc().splitlines()[-11:]:
+      for l in traceback.format_exc().splitlines()[-21:]:
         logger.error(l)
 
   def unswallow_inputs(settings):
