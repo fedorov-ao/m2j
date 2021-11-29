@@ -3515,6 +3515,17 @@ def make_parser():
     dtOp = DeltaTimeOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineOp(combine=lambda x,s : x*s, op=DistanceOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
+    if "refFixed" in cfg:
+      refAxis = getAxisByFullName(cfg["refAxis"], state)
+      refApprox = state["parser"]("op", cfg["refFixed"], state)
+      class RefOp:
+        def calc(self, value):
+          return self.next_.calc(value)*self.approx_(self.axis_.get())
+        def reset(self):
+          self.next_.reset()
+        def __init__(self, next, approx, axis):
+          self.next_, self.approx_, self.axis_ = next, approx, axis
+      sensOp = RefOp(sensOp, refApprox, refAxis)
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
