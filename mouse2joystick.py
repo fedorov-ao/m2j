@@ -231,7 +231,11 @@ def run():
       try:
         r = init_and_run(settings)
       except ReloadException:
+        del settings["config"]
         logger.info("Reloading")
+      except Exception as e:
+        logger.error("Unexpected exception: {}".format(e))
+        raise
       finally:
         unswallow_inputs(settings)
 

@@ -3084,13 +3084,17 @@ class ParseError(RuntimeError):
 def init_config(configFilesNames):
   cfg = {}
   for configName in configFilesNames:
+    logger.info("Merging {}".format(configName))
     try:
       with open(configName, "r") as f:
         current = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
         configs = current.get("configs", None)
         if configs is not None:
+          #Including config file overwrites included
           parent = init_config(configs)
-          merge_dicts(current, parent)
+          merge_dicts(parent, current)
+          current = parent
+        #Next config file overwrites previous
         merge_dicts(cfg, current)
     except (KeyError, ValueError, IOError) as e:
       raise ConfigReadError(configName, e)
@@ -3098,6 +3102,8 @@ def init_config(configFilesNames):
 
 
 def init_config2(settings):
+  if "config" in settings:
+    return
   config = settings["options"]
   if "configNames" in settings:
     externalConfig = init_config(settings["configNames"])
