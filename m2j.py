@@ -3556,6 +3556,16 @@ def make_parser():
       return wrapped(cfg, state)
     return parseBasesOp
 
+  class HeadSink:
+    def __call__(self, event):
+      self.next_(event)
+
+    def set_next(self, next):
+        self.next_ = next
+
+    def __init__(self, next=None):
+        self.next_ = next
+
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
@@ -3609,19 +3619,29 @@ def make_parser():
       if s is not None:
         return s
       else:
-        if "modes" in cfg and "next" in cfg:
-          raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parse_component("next", None)
-        parse_component("modes", None)
-        parse_component("state", set_next)
-        parse_component("binds", add)
-        #TODO rename to "action" and update configs
-        #parse_component("type", make_action_wrapper)
-        parse_component("sens", set_next)
-        parse_component("modifiers", set_next)
-        if sink[0] is None:
-          logger.debug("Could not make sink out of '{}'".format(cfg))
-        return sink[0]
+        try:
+          headSink = HeadSink()
+          state.setdefault("sinks", [])
+          state["sinks"].append(headSink)
+          if "modes" in cfg and "next" in cfg:
+            raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+          parse_component("next", None)
+          parse_component("modes", None)
+          parse_component("state", set_next)
+          #TODO Split: construct bind sink here and bindings after all other components
+          parse_component("binds", add)
+          #TODO rename to "action" and update configs
+          #parse_component("type", make_action_wrapper)
+          parse_component("sens", set_next)
+          parse_component("modifiers", set_next)
+          if sink[0] is None:
+            logger.debug("Could not make sink out of '{}'".format(cfg))
+            return None
+          else:
+            headSink.set_next(sink[0])
+            return headSink
+        finally:
+          state["sinks"].pop()
     finally:
       if oldComponents is not None:
         state["components"] = oldComponents
@@ -3672,8 +3692,10 @@ def make_parser():
   scParser.add("sens", parseSens)
 
   def parseMode(cfg, state):
-    modeSink = ModeSink(name=cfg.get("name", ""))
+    name=cfg.get("name", "")
+    modeSink = ModeSink(name)
     for modeName,modeCfg in cfg["modes"].items():
+      logger.debug("{}: parsing mode:".format(name, modeName))
       child = state["parser"]("sink", modeCfg, state)
       modeSink.add(modeName, child)
     if "initialMode" in cfg:
@@ -3876,13 +3898,14 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseEmitCustomEvent(cfg, state):
-    bindSinks, code, value = state.get("bindSinks"), int(cfg.get("code")), cfg.get("value")
-    if bindSinks is None or len(bindSinks) == 0:
-      raise RuntimeError("Not in a bindSink while parsing '{}'".format(cfg))
-    bindSink = bindSinks[-1]
+    sinks, code, value = state.get("sinks"), int(cfg.get("code", 0)), cfg.get("value")
+    if sinks is None or len(sinks) == 0:
+      raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
+    #depth == 0 - current component sink, depth == 1 - its parent
+    sink = sinks[-(1+cfg.get("depth", 0))]
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
-      bindSink(event)
+      sink(event)
       return True
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
@@ -4029,11 +4052,6 @@ def make_parser():
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
     try:
-      bindSinks = state.get("bindSinks")
-      if bindSinks is None:
-        bindSinks = []
-        state["bindSinks"] = bindSinks
-      bindSinks.append(bindingSink)
       for bind in binds:
         for i,o in parseInputsOutputs(bind, state):
           bindingSink.add(i, o, 0)
@@ -4041,9 +4059,6 @@ def make_parser():
     finally:
       if oldCurves is not None:
         state["curves"] = oldCurves
-      bindSinks = state.get("bindSinks")
-      if bindSinks is not None and len(bindSinks) != 0:
-        bindSinks.pop()
 
   scParser.add("binds", parseBinds)
 
