@@ -2017,18 +2017,19 @@ class IterativeInputOp:
     bInputValue, eInputValue = inputValueLimits
     if not self.cmp_(bInputValue, eInputValue):
       bInputValue, eInputValue = eInputValue, bInputValue
-    i = 0
+    i, delta = 0, 0.0
     while i <= self.numSteps_:
       i += 1
       mInputValue = 0.5*bInputValue + 0.5*eInputValue
       mOutputValue = self.outputOp_.calc(mInputValue)
-      if abs(outputValue - mOutputValue) < self.eps_:
+      delta = abs(outputValue - mOutputValue)
+      if delta < self.eps_:
         break
       elif self.cmp_(outputValue, mOutputValue):
         eInputValue = mInputValue
       else:
         bInputValue = mInputValue
-    #logger.debug("{}: Found root {} for {} value in {} steps".format(self, mInputValue, outputValue, i))
+    #logger.debug("{}: Found root {} for value {} in {} steps; delta: {}; limits: {}".format(self, mInputValue, outputValue, i, delta, inputValueLimits))
     return mInputValue
 
   def reset(self):
@@ -2037,6 +2038,29 @@ class IterativeInputOp:
   def __init__(self, outputOp, cmp=lambda a,b: a < b, eps=0.01, numSteps=100):
     assert(outputOp is not None)
     self.outputOp_, self.cmp_, self.eps_, self.numSteps_ = outputOp, cmp, eps, numSteps
+
+
+class LookupInputOp:
+  def calc(self, outputValue, inputValueLimits):
+    assert(self.nextOp_ is not None)
+    ie = bisect.bisect_right(self.ovs_, outputValue)
+    limits = None
+    if ie == 0 or ie == len(self.ivs_):
+      limits = inputValueLimits
+    else:
+      if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
+        raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
+      limits = (self.ivs_[ie-1], self.ivs_[ie])
+    found = self.nextOp_.calc(outputValue, limits)
+    return found
+
+  def reset(self):
+    self.nextOp_.reset()
+
+  def __init__(self, nextOp, ovs, ivLimits):
+    assert(nextOp is not None)
+    self.nextOp_, self.ovs_ = nextOp, ovs
+    self.ivs_ = [nextOp.calc(ov, ivLimits) for ov in ovs]
 
 
 class ApproxOp:
@@ -3674,9 +3698,15 @@ def make_parser():
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.01), numSteps=cfg.get("numSteps", 100))
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
+    numIntervals = cfg.get("numInputIntervals", 10)
+    ovLimits = [inputOp.calc(v, ivLimits) for v in ivLimits]
+    step = (ovLimits[1] - ovLimits[0]) / numIntervals
+    ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
+    inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=cfg.get("inputLimits", (-1.0, 1.0)))
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits)
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
