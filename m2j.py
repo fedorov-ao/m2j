@@ -1462,10 +1462,15 @@ class ReportingAxis:
     self.next_.move(v, relative)
     new = self.next_.get()
     #logger.debug(("{}: {} -> {}".format(self, old, new)))
+    dirty = False
     for c in self.listeners_:
-      if c() is None: continue
+      if c() is None:
+        #logger.debug("{}: Listener {} has been removed".format(self, c))
+        dirty = True
+        continue
       c().on_move_axis(self, old, new)
-    #TODO Implement cleanup
+    if dirty:
+      cleanup_()
 
   def get(self):
     return self.next_.get()
@@ -1474,13 +1479,32 @@ class ReportingAxis:
     return self.next_.limits()
 
   def add_listener(self, listener):
+    #logger.debug("{}: Adding listener {}".format(self, listener))
     self.listeners_.append(weakref.ref(listener))
 
-  #TODO Implement remove_listener()
+  def remove_listener(self, listener):
+    try:
+      self.listeners_.remove(listener)
+    except ValueError:
+      raise RuntimeError("Listener {} not registered".format(listener))
 
   def __init__(self, next):
     assert(next is not None)
     self.next_, self.listeners_ = next, []
+    #logger.debug("{}: Created".format(self))
+
+  def __del__(self):
+  #logger.debug("{}: Deleted".format(self))
+    pass
+
+  def cleanup_(self):
+    i = 0
+    while i < len(self.listeners_):
+      if self.listeners_[i] is None:
+        self.listeners_.pop(i)
+        continue
+      else:
+        i += 1
 
 
 class RateSettingAxis:
