@@ -1969,10 +1969,9 @@ class InputBasedCurve2:
     return self.axis_
 
   def on_move_axis(self, axis, old, new):
-    assert(self.axis_)
-    if self.busy_ or self.dirty_: return
+    #logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
     assert(axis == self.axis_)
-    assert(new == self.axis_.get())
+    if self.busy_ or self.dirty_: return
     self.dirty_ = True
 
   def get_input_value(self):
@@ -3649,8 +3648,9 @@ def make_parser():
     deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.01), numSteps=cfg.get("numSteps", 100))
-#TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
+    #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=cfg.get("inputLimits", (-1.0, 1.0)))
+    axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
 
