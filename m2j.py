@@ -1927,6 +1927,160 @@ class FMPosInterpolateOp:
     self.fp_, self.mp_, self.interpolationDistance_, self.factor_, self.posLimits_, self.eps_ = fp, mp, interpolationDistance, factor, posLimits, eps
 
 
+class InputBasedCurve2:
+  def move_by(self, x, timestamp):
+    assert(self.deltaOp_)
+    assert(self.inputOp_)
+    assert(self.outputOp_)
+    assert(self.axis_)
+    if self.dirty_:
+      self.reset()
+      self.dirty_ = False
+    delta = self.deltaOp_.calc(x, timestamp)
+    inputValue = clamp(self.inputValue_ + delta, *self.inputValueLimits_)
+    if inputValue == self.inputValue_:
+      return
+    self.inputValue_ = inputValue
+    outputValue = self.outputOp_.calc(self.inputValue_)
+    try:
+      self.busy_ = True
+      self.axis_.move(outputValue, False)
+      newOutputValue = self.axis_.get()
+      if newOutputValue != outputValue:
+        self.inputValue_ = self.inputOp_(newOutputValue, self.inputValueLimits_)
+    except:
+      raise
+    finally:
+      self.busy_ = False
+
+  def reset(self):
+    assert(self.deltaOp_)
+    assert(self.inputOp_)
+    assert(self.outputOp_)
+    assert(self.axis_)
+    #logger.debug("{}: resetting".format(self))
+    self.inputOp_.reset()
+    self.outputOp_.reset()
+    self.deltaOp_.reset()
+    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    self.busy_, self.dirty_ = False, False
+
+  def get_axis(self):
+    return self.axis_
+
+  def on_move_axis(self, axis, old, new):
+    assert(self.axis_)
+    if self.busy_ or self.dirty_: return
+    assert(axis == self.axis_)
+    assert(new == self.axis_.get())
+    self.dirty_ = True
+
+  def get_input_value(self):
+    return self.inputValue_
+
+  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0)):
+    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_ = axis, inputOp, outputOp, deltaOp, inputValueLimits
+    assert(self.deltaOp_)
+    assert(self.inputOp_)
+    assert(self.outputOp_)
+    assert(self.axis_)
+    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    self.busy_, self.dirty_ = False, False
+
+
+class IterativeInputOp:
+  def calc(self, outputValue, inputValueLimits):
+    assert(self.outputOp_ is not None)
+    bInputValue, eInputValue = inputValueLimits
+    if not self.cmp_(bInputValue, eInputValue):
+      bInputValue, eInputValue = eInputValue, bInputValue
+    for c in xrange(self.numSteps_):
+      mInputValue = 0.5*bInputValue + 0.5*eInputValue
+      mOutputValue = self.outputOp_.calc(mInputValue)
+      if abs(outputValue - mOutputValue) < self.eps_:
+        return mInputValue
+      elif self.cmp_(outputValue, mOutputValue):
+        eInputValue = mInputValue
+      else:
+        bInputValue = mInputValue
+    return mInputValue
+
+  def reset(self):
+    pass
+
+  def __init__(self, outputOp, cmp=lambda a,b: a < b, eps=0.01, numSteps=100):
+    assert(outputOp is not None)
+    self.outputOp_, self.cmp_, self.eps_, self.numSteps_ = outputOp, cmp, eps, numSteps
+
+
+class ApproxOp:
+  def calc(self, value):
+    return self.approx_(value)
+  def reset(self):
+    pass
+  def __init__(self, approx):
+    self.approx_ = approx
+
+
+class CombineDeltaOp:
+  def calc(self, x, timestamp):
+    return self.combine_(x, self.op_.calc(x, timestamp))
+  def reset(self):
+    self.op_.reset()
+  def __init__(self, combine, op):
+    self.combine_, self.op_ = combine, op
+    self.reset()
+
+
+class DistanceDeltaOp:
+  def calc(self, x, timestamp):
+    if self.timestamp_ is None:
+      self.timestamp_ = timestamp
+    dt = timestamp - self.timestamp_
+    self.timestamp_ = timestamp
+    for op in self.ops_:
+      self.distance_ = op.calc(self.distance_, x, dt)
+    self.distance_ += x
+    return self.approx_(self.distance_)
+  def reset(self):
+    self.timestamp_, self.distance_ = None, 0.0
+    for op in self.ops_:
+      op.reset()
+  def add_op(self, op):
+    self.ops_.append(op)
+  def __init__(self, approx, ops=None):
+    self.approx_ = approx
+    self.ops_ = [] if ops is None else ops
+    self.reset()
+
+
+class SignDeltaOp:
+  def calc(self, distance, x, dt):
+    r = 1.0
+    s = sign(x)
+    if self.s_ != 0 and s != self.s_:
+      r = 0.0
+    self.s_ = s
+    return r * distance
+  def reset(self):
+    self.s_ = 0
+  def __init__(self):
+    self.s_ = 0
+
+
+class DeltaTimeDeltaOp:
+  def calc(self, distance, x, dt):
+    assert(self.resetTime_ > 0.0)
+    r = 1.0
+    if dt > self.holdTime_:
+      r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
+    return r * distance
+  def reset(self):
+    pass
+  def __init__(self, resetTime, holdTime):
+    self.resetTime_, self.holdTime_ = resetTime, holdTime
+
+
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
@@ -3467,68 +3621,10 @@ def make_parser():
 
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
-    class ApproxOp:
-      def calc(self, value):
-        return self.approx_(value)
-      def reset(self):
-        pass
-      def __init__(self, approx):
-        self.approx_ = approx
-    class CombineOp:
-      def calc(self, x, timestamp):
-        return self.combine_(x, self.op_.calc(x, timestamp))
-      def reset(self):
-        self.op_.reset()
-      def __init__(self, combine, op):
-        self.combine_, self.op_ = combine, op
-        self.reset()
-    class DistanceOp:
-      def calc(self, x, timestamp):
-        if self.timestamp_ is None:
-          self.timestamp_ = timestamp
-        dt = timestamp - self.timestamp_
-        self.timestamp_ = timestamp
-        for op in self.ops_:
-          self.distance_ = op.calc(self.distance_, x, dt)
-        self.distance_ += x
-        return self.approx_(self.distance_)
-      def reset(self):
-        self.timestamp_, self.distance_ = None, 0.0
-        for op in self.ops_:
-          op.reset()
-      def add_op(self, op):
-        self.ops_.append(op)
-      def __init__(self, approx, ops=None):
-        self.approx_ = approx
-        self.ops_ = [] if ops is None else ops
-        self.reset()
-    class SignOp:
-      def calc(self, distance, x, dt):
-        r = 1.0
-        s = sign(x)
-        if self.s_ != 0 and s != self.s_:
-          r = 0.0
-        self.s_ = s
-        return r * distance
-      def reset(self):
-        self.s_ = 0
-      def __init__(self):
-        self.s_ = 0
-    class DeltaTimeOp:
-      def calc(self, distance, x, dt):
-        assert(self.resetTime_ > 0.0)
-        r = 1.0
-        if dt > self.holdTime_:
-          r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
-        return r * distance
-      def reset(self):
-        pass
-      def __init__(self, resetTime, holdTime):
-        self.resetTime_, self.holdTime_ = resetTime, holdTime
     movingCfg = cfg["moving"]
-    signOp = SignOp()
-    dtOp = DeltaTimeOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
-    deltaOp = CombineOp(combine=lambda x,s : x*s, op=DistanceOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    signOp = SignDeltaOp()
+    dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     if "refFixed" in cfg:
       refAxis = getAxisByFullName(cfg["refAxis"], state)
@@ -3544,6 +3640,19 @@ def make_parser():
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
+
+  def parseInputBasedCurve2(cfg, state):
+    axis = getAxisByFullName(cfg["axis"], state)
+    movingCfg = cfg["moving"]
+    signOp = SignDeltaOp()
+    dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.01), numSteps=cfg.get("numSteps", 100))
+#TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=cfg.get("inputLimits", (-1.0, 1.0)))
+    return curve
+  curveParser.add("input2", parseInputBasedCurve2)
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
