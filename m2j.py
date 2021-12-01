@@ -1793,10 +1793,17 @@ class InputBasedCurve:
     if self.dirty_:
       self.reset()
       self.dirty_ = False
+    #TODO Add self.deltaOp_(x, timestamp) that will modify x (i.e. based on accumulated x)
+    #Will need to reset it
+    #Take this op and ops it uses from parseCombinedCurve
     pos = clamp(self.pos_ + x, *self.posLimits_)
     if pos == self.pos_:
       return
     self.pos_ = pos
+    #TODO Split op_ into 2 ops with calc() and reset():
+    #valueOp_ that calculates value from pos, and
+    #posOp_ that does the opposite
+    #Mb remname them to outputOp_ and inputOp_
     value = self.op_.calc_value(self.pos_)
     self.move_axis_(value, relative=False)
 
@@ -1835,6 +1842,8 @@ class InputBasedCurve:
       self.busy_ = False
 
 
+#TODO Extract binary search-based calc_pos into separate op that does not rely on point
+#Use precomputed array of positions and values (input and output values), sorted by the latter, for looking up initial input value bounds
 class IterativeCenterOp:
   """For PointMovingCurve"""
   def __call__(self, pos, center):
