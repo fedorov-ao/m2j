@@ -2017,15 +2017,18 @@ class IterativeInputOp:
     bInputValue, eInputValue = inputValueLimits
     if not self.cmp_(bInputValue, eInputValue):
       bInputValue, eInputValue = eInputValue, bInputValue
-    for c in xrange(self.numSteps_):
+    i = 0
+    while i <= self.numSteps_:
+      i += 1
       mInputValue = 0.5*bInputValue + 0.5*eInputValue
       mOutputValue = self.outputOp_.calc(mInputValue)
       if abs(outputValue - mOutputValue) < self.eps_:
-        return mInputValue
+        break
       elif self.cmp_(outputValue, mOutputValue):
         eInputValue = mInputValue
       else:
         bInputValue = mInputValue
+    #logger.debug("{}: Found root {} for {} value in {} steps".format(self, mInputValue, outputValue, i))
     return mInputValue
 
   def reset(self):
