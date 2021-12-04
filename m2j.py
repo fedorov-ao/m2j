@@ -63,6 +63,34 @@ def merge_dicts(destination, source):
   }
 
 
+class CfgStack:
+  def push(self, k, v):
+    p = None
+    if k in self.cfg_:
+      p = (self.RESTORE, k, self.cfg_[k])
+    else:
+      p = (self.DELETE, k)
+    self.stack_.append(p)
+    self.cfg_[k] = v
+
+  def pop(self):
+    p = self.stack_.pop()
+    if p[0] == self.RESTORE:
+      self.cfg_[p[1]] = p[2]
+    else:
+      del self.cfg_[p[1]]
+
+  def pop_all(self):
+    while (len(self.stack_)):
+      self.pop()
+
+  def __init__(self, cfg):
+    self.cfg_, self.stack_ = cfg, []
+
+  RESTORE = 0
+  DELETE = 1
+
+
 class LogLevels:
   l2n = ((logging.CRITICAL, "CRITICAL"), (logging.ERROR, "ERROR"), (logging.WARNING, "WARNING"), (logging.INFO, "INFO"), (logging.DEBUG, "DEBUG"), (logging.NOTSET, "NOTSET"))
   levelToName = { l:n for l,n in l2n }
@@ -3722,18 +3750,20 @@ def make_parser():
     if presetCfg is None:
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #Setting and restoring axis, creating curve
-    oldPresetFullAxisName, fullAxisName = presetCfg.get("axis"), cfg.get("axis")
+    presetCfgStack = CfgStack(presetCfg)
     try:
+      fullAxisName = cfg.get("axis")
       if fullAxisName is not None:
-        presetCfg["axis"] = fullAxisName
+        presetCfgStack.push("axis", fullAxisName)
+      else:
+        fullAxisName = presetCfg.get("axis")
       curve = state["parser"]("curve", presetCfg, state)
       assert("curves" in state)
       axisCurves = state["curves"].setdefault(fullAxisName, [])
       axisCurves.append(curve)
       return curve
     finally:
-      if oldPresetFullAxisName is not None:
-        presetCfg["axis"] = oldPresetFullAxisName
+      presetCfgStack.pop_all()
   curveParser.add("preset", parsePresetCurve)
 
   def parseBases_(wrapped):
