@@ -674,7 +674,7 @@ class CalibratingSink:
       s = 2.0 / delta
       self.sens_[k] = s
       #logger.debug("{}: min:{}, max:{}, delta:{}".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.max, delta))
-      logger.info("Sensitivity for {} is now {:+.3f}".format(join_full_name_tc(k[1], k[0], k[2]), s))
+      logger.info("Sensitivity for {} is now {:+.5f}".format(join_full_name_tc(k[1], k[0], k[2]), s))
 
 
 class BindSink:
@@ -2059,6 +2059,8 @@ class LookupInputOp:
 
   def __init__(self, nextOp, ovs, ivLimits):
     assert(nextOp is not None)
+    assert(ivLimits[0] < ivLimits[1])
+    ovs.sort()
     self.nextOp_, self.ovs_ = nextOp, ovs
     self.ivs_ = [nextOp.calc(ov, ivLimits) for ov in ovs]
 
