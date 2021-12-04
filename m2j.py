@@ -2850,6 +2850,7 @@ def calc_sphere_intersection_points(p, d, r):
     assert(len(t) == 2)
     return (tuple((pc + dc*t[0] for pc,dc in zip(p,d))), tuple((pc + dc*t[1] for pc,dc in zip(p,d))))
 
+
 def clamp_to_sphere(point, radius):
   r2 = 0.0
   for coord in point:
@@ -2860,6 +2861,40 @@ def clamp_to_sphere(point, radius):
     return [m*coord for coord in point]
   else:
     return point
+
+
+def dot_product(v1, v2):
+  assert(len(v1) == len(v2))
+  r = 0.0
+  for i in range(len(v1)):
+    r += v1[i]*v2[i]
+  return r
+
+
+def add_vecs(v1, v2):
+  assert(len(v1) == len(v2))
+  l = len(v1)
+  r = [0.0 for i in range(l)]
+  for i in range(l):
+    r[i] = v1[i]+v2[i]
+  return r
+
+
+def sub_vecs(v1, v2):
+  assert(len(v1) == len(v2))
+  l = len(v1)
+  r = [0.0 for i in range(l)]
+  for i in range(l):
+    r[i] = v1[i]-v2[i]
+  return r
+
+
+def mul_vec(v, s):
+  return [s*vv for vv in v]
+
+
+def copy_vec(v):
+  return [vv for vv in v]
 
 
 class RelativeHeadMovementJoystick:
@@ -2877,45 +2912,41 @@ class RelativeHeadMovementJoystick:
     """
     if self.next_ is not None:
       if axis in self.posAxes_:
+        self.update_dirs_()
+
+        point = None
+
+        #Get offset in global cs
+        offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
+
+        #If relative - add to current pos in global cs
         if relative == True:
-          self.update_dirs_()
-          #Delta in global cs
-          point = [value*c for c in self.dirs_[axis]]
+          #Convert to global cs
+          point = mul_vec(self.dirs_[axis], value)
+          point = add_vecs(point, offset)
+        else:
+          #Convert offset to local cs, replace the value for given axis, and convert back to global cs
+          t = self.global_to_local_(offset)
+          t[self.posAxes_.index(axis)] = value
+          point = self.local_to_global_(t)
 
-          #Offset in global cs
-          offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
-          for a in self.posAxes_:
-            ia = self.posAxes_.index(a)
-            point[ia] += offset[ia]
-          #Clamping to sphere in global cs
-          clamped = clamp_to_sphere(point, self.r_)
-          if self.stick_ and point != clamped:
-            return
+        #Clamp to sphere in global cs
+        clamped = clamp_to_sphere(point, self.r_)
+        if self.stick_ and point != clamped:
+          return
 
-          #Clamping to limits of next sink and moving, both in global cs
-          for a in self.posAxes_:
-            limits = self.next_.get_limits(a)
-            ia = self.posAxes_.index(a)
-            c, o = clamped[ia], offset[ia]
-            c = clamp(c, *limits) - o
-            self.next_.move_axis(a, c, True)
+        #Clamp to limits of next sink and move, both in global cs
+        for a in self.posAxes_:
+          limits = self.next_.get_limits(a)
+          ia = self.posAxes_.index(a)
+          c, o = clamped[ia], offset[ia]
+          c = clamp(c, *limits)
+          if relative == True:
+            self.next_.move_axis(a, c-o, relative=True)
+          else:
+            self.next_.move_axis(a, c, relative=False)
 
-          self.limitsDirty_ = True
-        else: #relative == False
-          #Position in global cs
-          gp = [0.0 for i in range(len(self.posAxes_))]
-          for a in self.posAxes_:
-            ia = self.posAxes_.index(a)
-            if a == axis:
-              gp[ia] = self.dirs_[ia]*value
-            else:
-              gp[ia] = self.next_.get_axis_value(a)
-          #Clamping to sphere in global cs
-          clamped = clamp_to_sphere(gp, self.r_)
-          if self.stick_ and gp != clamped:
-            return
-          for a in self.posAxes_:
-            self.next_.move_axis(a, gp[self.posAxes_.index(a)], False)
+        self.limitsDirty_ = True
       else:
         if axis in self.angleAxes_:
           self.dirsDirty_ = True
