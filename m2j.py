@@ -1994,12 +1994,18 @@ class InputBasedCurve2:
       return
     self.inputValue_ = inputValue
     outputValue = self.outputOp_.calc(self.inputValue_)
+    if self.cb_:
+      class Data:
+        pass
+      data = Data()
+      data.curve, data.x, data.ts, data.delta, data.iv, data.ov = self, x, timestamp, delta, inputValue, outputValue
+      self.cb_(data)
     try:
       self.busy_ = True
       self.axis_.move(outputValue, False)
       newOutputValue = self.axis_.get()
       if newOutputValue != outputValue:
-        self.inputValue_ = self.inputOp_(newOutputValue, self.inputValueLimits_)
+        self.inputValue_ = self.inputOp_.calc(newOutputValue, self.inputValueLimits_)
     except:
       raise
     finally:
@@ -2015,6 +2021,8 @@ class InputBasedCurve2:
     self.outputOp_.reset()
     self.deltaOp_.reset()
     self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    if self.cb_:
+      self.cb_(None)
     self.busy_, self.dirty_ = False, False
 
   def get_axis(self):
@@ -2029,14 +2037,30 @@ class InputBasedCurve2:
   def get_input_value(self):
     return self.inputValue_
 
-  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0)):
-    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_ = axis, inputOp, outputOp, deltaOp, inputValueLimits
+  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0), cb=None):
+    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_, self.cb_ = axis, inputOp, outputOp, deltaOp, inputValueLimits, cb
     assert(self.deltaOp_)
     assert(self.inputOp_)
     assert(self.outputOp_)
     assert(self.axis_)
     self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
     self.busy_, self.dirty_ = False, False
+
+
+class InputBasedCurve2PrintCB:
+  def __call__(self, data):
+    if data is None:
+      self.tx_, self.dx_, self.ddx_ = 0.0, 0.0, 0.0
+    elif data.x != 0:
+      self.tx_ += data.x
+      dx = data.delta / data.x
+      ddx = (dx - self.dx_) / data.x
+      self.dx_ = dx
+      dddx = (ddx - self.ddx_) / data.x
+      self.ddx_ = ddx
+      logger.info("{}: ts:{:+.3f}; x:{:+.3f}; d:{:+.3f}; d/x:{:+.3f}; dd/x:{:+.3f}; ddd/x:{:+.3f}; tx:{:+.3f}; iv:{:+.3f}; ov:{:+.3f}".format(self.name_, data.ts, data.x, data.delta, dx, ddx, dddx, self.tx_, data.iv, data.ov))
+  def __init__(self, name):
+    self.name_ = name
 
 
 class IterativeInputOp:
@@ -3736,7 +3760,8 @@ def make_parser():
     ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits)
+    cb = InputBasedCurve2PrintCB(cfg["axis"]) if ("print" in cfg and cfg["print"] == 1) else None
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb)
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
@@ -3757,6 +3782,8 @@ def make_parser():
         presetCfgStack.push("axis", fullAxisName)
       else:
         fullAxisName = presetCfg.get("axis")
+      if "print" in cfg:
+        presetCfgStack.push("print", cfg["print"])
       curve = state["parser"]("curve", presetCfg, state)
       assert("curves" in state)
       axisCurves = state["curves"].setdefault(fullAxisName, [])
