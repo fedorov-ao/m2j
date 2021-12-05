@@ -1089,7 +1089,7 @@ class ModeSink:
 
   def add(self, mode, child):
     #logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
-    if child is  None:
+    if child is None:
       raise RuntimeError("Child is None")
     self.children_[mode] = child
     child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if mode == self.mode_ else 0, time.time()))
@@ -3866,7 +3866,11 @@ def make_parser():
 
   class HeadSink:
     def __call__(self, event):
-      self.next_(event)
+      #Can be actually called during init when next_ is not set yet
+      if self.next_ is None:
+        logger.debug("{}: next sink is not set".format(self))
+      else:
+        self.next_(event)
 
     def set_next(self, next):
         self.next_ = next
@@ -4018,11 +4022,11 @@ def make_parser():
   def parseState(cfg, state):
     sink = StateSink()
     stateCfg = cfg["state"]
-    if "initialState" in stateCfg:
-      sink.set_state(stateCfg["initialState"])
     if "next" in stateCfg:
       next = state["parser"]("sink", stateCfg["next"], state)
       sink.set_next(next)
+    if "initialState" in stateCfg:
+      sink.set_state(stateCfg["initialState"])
     return sink
   scParser.add("state", parseState)
 
@@ -4211,6 +4215,8 @@ def make_parser():
       raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
     #depth == 0 - current component sink, depth == 1 - its parent
     sink = sinks[-(1+cfg.get("depth", 0))]
+    if sink is None:
+      raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
       sink(event)
