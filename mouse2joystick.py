@@ -170,38 +170,43 @@ def run():
         continue
 
   def init_and_run(settings):
+    oldUpdated = [v for v in settings.get("updated")]
     try:
-      init_config2(settings)
-      init_source(settings)
-      refreshRate = settings["config"].get("refreshRate", 100.0)
-      step = 1.0 / refreshRate
-      source = settings["source"]
-      assert(source is not None)
-      def run_source(tick, ts):
-        source.run_once()
-      updated = settings.get("updated", [])
-      def run_updated(tick, ts):
-        for u in updated:
-          u(tick, ts)
-      callbacks = [run_source, run_updated]
-      loop = Loop(callbacks, step)
-      if "loop" in settings: del settings["loop"]
-      settings["loop"] = loop
-      settings["reloading"] = False
-    except Exception as e:
-      logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-      logger.error("===Traceback begin===")
-      for l in traceback.format_exc().splitlines()[-21:]:
-        logger.error(l)
-      logger.error("===Traceback end===")
-      if settings.get("loop") is not None:
-        logger.error("Falling back to previous state.")
-      else:
-        raise Exception("No valid state to fall back to.")
+      try:
+        init_config2(settings)
+        init_source(settings)
+        refreshRate = settings["config"].get("refreshRate", 100.0)
+        step = 1.0 / refreshRate
+        source = settings["source"]
+        assert(source is not None)
+        def run_source(tick, ts):
+          source.run_once()
+        updated = settings.get("updated", [])
+        def run_updated(tick, ts):
+          for u in updated:
+            u(tick, ts)
+        callbacks = [run_source, run_updated]
+        loop = Loop(callbacks, step)
+        if "loop" in settings: del settings["loop"]
+        settings["loop"] = loop
+        settings["reloading"] = False
+      except Exception as e:
+        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
+        logger.error("===Traceback begin===")
+        for l in traceback.format_exc().splitlines()[-21:]:
+          logger.error(l)
+        logger.error("===Traceback end===")
+        if settings.get("loop") is not None:
+          logger.error("Falling back to previous state.")
+        else:
+          raise Exception("No valid state to fall back to.")
 
-    loop = settings["loop"]
-    assert(loop is not None)
-    loop.run()
+      loop = settings["loop"]
+      assert(loop is not None)
+      loop.run()
+    finally:
+      if oldUpdated is not None:
+        settings["updated"] = oldUpdated
 
   init_log_initial()
   try:
