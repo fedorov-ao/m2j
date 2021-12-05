@@ -3411,7 +3411,7 @@ def init_config(configFilesNames):
 
 
 def init_config2(settings):
-  if "config" in settings:
+  if "config" in settings and not settings["reloading"]:
     return
   config = settings["options"]
   if "configNames" in settings:
@@ -3419,6 +3419,7 @@ def init_config2(settings):
     merge_dicts(externalConfig, config)
     config = externalConfig
   settings["config"] = config
+  logger.info("Configs loaded successfully")
 
 
 def add_scale_sink(sink, cfg):

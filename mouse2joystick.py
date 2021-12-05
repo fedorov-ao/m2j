@@ -156,50 +156,52 @@ def run():
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
   def init_source(settings):
-    try:
-      init_config2(settings)
       config = settings["config"]
-
       settings["inputs"] = init_inputs(config["inputs"])
-
       sink = init_main_sink(settings, init_layout_config)
-      updated = settings.get("updated", [])
-
       settings["source"] = EventSource(settings["inputs"].values(), sink)
 
-    except Exception as e:
-      logger.error(e)
-      for l in traceback.format_exc().splitlines()[-21:]:
-        logger.error(l)
-
-  def unswallow_inputs(settings):
+  def set_inputs_state(settings, state):
     for i in settings["inputs"].values():
       try:
-        i.swallow(False)
+        i.swallow(state)
       except IOError as e:
         logger.debug("got IOError ({}), but that was expected".format(e))
         continue
 
   def init_and_run(settings):
-    oldUpdated = [o for o in settings["updated"]]
-    init_source(settings)
-    source = settings.get("source", None)
-    if source is None:
-      raise Exception("No valid state")
-    updated = settings.get("updated", [])
-    refreshRate = settings["config"].get("refreshRate", 100.0)
-    step = 1.0 / refreshRate
-    def run_source(tick, ts):
-      source.run_once()
-    def run_updated(tick, ts):
-      for u in updated:
-        u(tick, ts)
-    callbacks = [run_source, run_updated]
-    loop = Loop(callbacks, step)
     try:
-      loop.run()
-    finally:
-      settings["updated"] = oldUpdated
+      init_config2(settings)
+      init_source(settings)
+      refreshRate = settings["config"].get("refreshRate", 100.0)
+      step = 1.0 / refreshRate
+      source = settings["source"]
+      assert(source is not None)
+      def run_source(tick, ts):
+        source.run_once()
+      updated = settings.get("updated", [])
+      def run_updated(tick, ts):
+        for u in updated:
+          u(tick, ts)
+      callbacks = [run_source, run_updated]
+      loop = Loop(callbacks, step)
+      if "loop" in settings: del settings["loop"]
+      settings["loop"] = loop
+      settings["reloading"] = False
+    except Exception as e:
+      logger.error("Could not create or recreate loop; reason: '{}'".format(e))
+      logger.error("===Traceback begin===")
+      for l in traceback.format_exc().splitlines()[-21:]:
+        logger.error(l)
+      logger.error("===Traceback end===")
+      if settings.get("loop") is not None:
+        logger.error("Falling back to previous state.")
+      else:
+        raise Exception("No valid state to fall back to.")
+
+    loop = settings["loop"]
+    assert(loop is not None)
+    loop.run()
 
   init_log_initial()
   try:
@@ -223,6 +225,7 @@ def run():
     settings["parser"] = parser
     parser.get("output").add("evdev", parseEvdevJoystickOutput)
 
+    settings["reloading"] = False
     init_config2(settings)
     set_log_level(settings)
     init_outputs(settings)
@@ -231,13 +234,13 @@ def run():
       try:
         r = init_and_run(settings)
       except ReloadException:
-        del settings["config"]
         logger.info("Reloading")
+        settings["reloading"] = True
       except Exception as e:
         logger.error("Unexpected exception: {}".format(e))
         raise
       finally:
-        unswallow_inputs(settings)
+        set_inputs_state(settings, False)
 
   except KeyboardInterrupt:
     logger.info("Exiting normally")
