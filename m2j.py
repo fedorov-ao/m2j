@@ -2914,54 +2914,56 @@ class RelativeHeadMovementJoystick:
 
   def move_axis(self, axis, value, relative):
     """Sets view angles and position.
-       ABS_RX, ABS_RY and ABS_RZ are angle axes that represent absolute yaw, pitch and roll angles ((0,0,0) is forward),
-       regardless relative is True or False. These angles rotate the view.
-       ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z position ((0,0,0) is center).
-       If relative is True, value is treated as relative amount of movement along a local axis, rotated by view angles.
-       If relative is False, value is treated as absolute position along a local axis.
-       Angles are expected to be set via object of this class.
+       ABS_RX, ABS_RY and ABS_RZ are angles that represent yaw, pitch and roll angles of view ((0,0,0) is forward).
+       ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z positions of view ((0,0,0) is center).
+         If relative is True, value is treated as relative amount of movement along a local axis, rotated by view angles.
+         If relative is False, value is treated as absolute position along a local axis.
+       This class needs to know about angles, so set them via object of this class.
+       Using with curves that set absolute positions may produce unexpected and undesired results.
     """
-    if self.next_ is not None:
-      if axis in self.posAxes_:
-        self.update_dirs_()
+    if self.next_ is None:
+      return
 
-        point = None
+    if axis in self.posAxes_:
+      self.update_dirs_()
 
-        #Get offset in global cs
-        offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
+      point = None
 
-        #If relative - add to current pos in global cs
-        if relative == True:
-          #Convert to global cs
-          point = mul_vec(self.dirs_[axis], value)
-          point = add_vecs(point, offset)
-        else:
-          #Convert offset to local cs, replace the value for given axis, and convert back to global cs
-          t = self.global_to_local_(offset)
-          t[self.posAxes_.index(axis)] = value
-          point = self.local_to_global_(t)
+      #Get offset in global cs
+      offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
 
-        #Clamp to sphere in global cs
-        clamped = clamp_to_sphere(point, self.r_)
-        if self.stick_ and point != clamped:
-          return
-
-        #Clamp to limits of next sink and move, both in global cs
-        for a in self.posAxes_:
-          limits = self.next_.get_limits(a)
-          ia = self.posAxes_.index(a)
-          c, o = clamped[ia], offset[ia]
-          c = clamp(c, *limits)
-          if relative == True:
-            self.next_.move_axis(a, c-o, relative=True)
-          else:
-            self.next_.move_axis(a, c, relative=False)
-
-        self.limitsDirty_ = True
+      #If relative - add to current pos in global cs
+      if relative == True:
+        #Convert to global cs
+        point = mul_vec(self.dirs_[axis], value)
+        point = add_vecs(point, offset)
       else:
-        if axis in self.angleAxes_:
-          self.dirsDirty_ = True
-        self.next_.move_axis(axis, value, relative)
+        #Convert offset to local cs, replace the value for given axis, and convert back to global cs
+        t = self.global_to_local_(offset)
+        t[self.posAxes_.index(axis)] = value
+        point = self.local_to_global_(t)
+
+      #Clamp to sphere in global cs
+      clamped = clamp_to_sphere(point, self.r_)
+      if self.stick_ and point != clamped:
+        return
+
+      #Clamp to limits of next sink and move, both in global cs
+      for a in self.posAxes_:
+        limits = self.next_.get_limits(a)
+        ia = self.posAxes_.index(a)
+        c, o = clamped[ia], offset[ia]
+        c = clamp(c, *limits)
+        if relative == True:
+          self.next_.move_axis(a, c-o, relative=True)
+        else:
+          self.next_.move_axis(a, c, relative=False)
+
+      self.limitsDirty_ = True
+    else:
+      if axis in self.angleAxes_:
+        self.dirsDirty_ = True
+      self.next_.move_axis(axis, value, relative)
 
 
   #TODO Unused
