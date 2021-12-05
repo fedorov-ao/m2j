@@ -2050,6 +2050,7 @@ class InputBasedCurve2:
 class InputBasedCurve2PrintCB:
   def __call__(self, data):
     if data is None:
+      logger.info("{}: resetting".format(self.name_))
       self.tx_, self.dx_, self.ddx_ = 0.0, 0.0, 0.0
     elif data.x != 0:
       self.tx_ += data.x
@@ -2178,9 +2179,11 @@ class SignDeltaOp:
     self.s_ = s
     return r * distance
   def reset(self):
-    self.s_ = 0
-  def __init__(self):
-    self.s_ = 0
+    if self.shouldReset_ == True:
+      logger.debug("{}: resetting".format(self))
+      self.s_ = 0
+  def __init__(self, shouldReset=True):
+    self.s_, self.shouldReset_ = 0, shouldReset
 
 
 class DeltaTimeDeltaOp:
@@ -3786,7 +3789,7 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp()
+    signOp = SignDeltaOp(cfg.get("resetDeltaOp", True))
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
@@ -3801,7 +3804,7 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp()
+    signOp = SignDeltaOp(cfg.get("resetDeltaOp", True))
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
