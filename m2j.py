@@ -3790,8 +3790,8 @@ def make_parser():
       combine=lambda x,s : x*s,
       ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     )
+    deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
-    sensOp = makeRefDeltaOp(cfg, state, deltaOp)
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
