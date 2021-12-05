@@ -91,6 +91,30 @@ class CfgStack:
   DELETE = 1
 
 
+class Derivatives:
+  def update(self, df, dx):
+    if dx == 0.0:
+      raise ArgumentError("Argument delta is 0")
+    for i in range(len(self.ds_)):
+      d = df / dx
+      delta = d - self.ds_[i]
+      self.ds_[i] = d
+      df = delta
+
+  def get(self, i):
+    return self.ds_[i-1]
+
+  def order(self):
+    return len(self.ds_)
+
+  def reset(self):
+    for i in range(len(self.ds_)):
+      self.ds_[i] = 0.0
+
+  def __init__(self, order):
+    self.ds_ = [0.0 for i in range(order)]
+
+
 class LogLevels:
   l2n = ((logging.CRITICAL, "CRITICAL"), (logging.ERROR, "ERROR"), (logging.WARNING, "WARNING"), (logging.INFO, "INFO"), (logging.DEBUG, "DEBUG"), (logging.NOTSET, "NOTSET"))
   levelToName = { l:n for l,n in l2n }
@@ -1986,8 +2010,7 @@ class InputBasedCurve2:
     assert(self.outputOp_)
     assert(self.axis_)
     if self.dirty_:
-      self.reset()
-      self.dirty_ = False
+      self.reset_(internal=True)
     delta = self.deltaOp_.calc(x, timestamp)
     inputValue = clamp(self.inputValue_ + delta, *self.inputValueLimits_)
     if inputValue == self.inputValue_:
@@ -2012,18 +2035,7 @@ class InputBasedCurve2:
       self.busy_ = False
 
   def reset(self):
-    assert(self.deltaOp_)
-    assert(self.inputOp_)
-    assert(self.outputOp_)
-    assert(self.axis_)
-    #logger.debug("{}: resetting".format(self))
-    self.inputOp_.reset()
-    self.outputOp_.reset()
-    self.deltaOp_.reset()
-    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
-    if self.cb_:
-      self.cb_(None)
-    self.busy_, self.dirty_ = False, False
+    self.reset_(internal=False)
 
   def get_axis(self):
     return self.axis_
@@ -2037,8 +2049,8 @@ class InputBasedCurve2:
   def get_input_value(self):
     return self.inputValue_
 
-  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0), cb=None):
-    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_, self.cb_ = axis, inputOp, outputOp, deltaOp, inputValueLimits, cb
+  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0), cb=None, resetDeltaOp=True):
+    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_, self.cb_, self.resetDeltaOp_ = axis, inputOp, outputOp, deltaOp, inputValueLimits, cb, resetDeltaOp
     assert(self.deltaOp_)
     assert(self.inputOp_)
     assert(self.outputOp_)
@@ -2046,22 +2058,40 @@ class InputBasedCurve2:
     self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
     self.busy_, self.dirty_ = False, False
 
+  def reset_(self, internal):
+    assert(self.deltaOp_)
+    assert(self.inputOp_)
+    assert(self.outputOp_)
+    assert(self.axis_)
+    #logger.debug("{}: resetting".format(self))
+    self.inputOp_.reset()
+    self.outputOp_.reset()
+    if internal and self.resetDeltaOp_:
+      #logger.debug("{}: resetting deltaOp".format(self))
+      self.deltaOp_.reset()
+    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    if self.cb_:
+      self.cb_(None)
+    self.busy_, self.dirty_ = False, False
+
 
 class InputBasedCurve2PrintCB:
   def __call__(self, data):
     if data is None:
       logger.info("{}: resetting".format(self.name_))
-      self.tx_, self.dx_, self.ddx_ = 0.0, 0.0, 0.0
+      self.ds_.reset()
+      self.tx_ = 0.0
     elif data.x != 0:
       self.tx_ += data.x
-      dx = data.delta / data.x
-      ddx = (dx - self.dx_) / data.x
-      self.dx_ = dx
-      dddx = (ddx - self.ddx_) / data.x
-      self.ddx_ = ddx
-      logger.info("{}: ts:{:+.3f}; x:{:+.3f}; d:{:+.3f}; d/x:{:+.3f}; dd/x:{:+.3f}; ddd/x:{:+.3f}; tx:{:+.3f}; iv:{:+.3f}; ov:{:+.3f}".format(self.name_, data.ts, data.x, data.delta, dx, ddx, dddx, self.tx_, data.iv, data.ov))
-  def __init__(self, name):
-    self.name_ = name
+      self.ds_.update(data.delta, data.x)
+      s = "{}: ts:{:+.3f}; tx:{:+.3f}; x:{:+.3f}; delta:{:+.3f}; ".format(self.name_, data.ts, self.tx_, data.x, data.delta)
+      for i in range(1, self.ds_.order()+1):
+        s += "d({}):{:+.3f}; ".format(i, self.ds_.get(i))
+      s += "iv:{:+.3f}; ov:{:+.3f}".format(data.iv, data.ov)
+      logger.info(s)
+
+  def __init__(self, name, order):
+    self.name_, self.ds_ = name, Derivatives(order)
 
 
 class IterativeInputOp:
@@ -2134,6 +2164,7 @@ class CombineDeltaOp:
       r = op.calc(x, timestamp) if r is None else self.combine_(r, op.calc(x, timestamp))
     return r
   def reset(self):
+    #logger.info("{}: resetting".format(self))
     for op in self.ops_:
       op.reset()
   def __init__(self, combine, ops):
@@ -2159,6 +2190,7 @@ class DistanceDeltaOp:
     self.distance_ += x
     return self.approx_(self.distance_)
   def reset(self):
+    #logger.debug("{}: resetting".format(self))
     self.timestamp_, self.distance_ = None, 0.0
     for op in self.ops_:
       op.reset()
@@ -2179,11 +2211,10 @@ class SignDeltaOp:
     self.s_ = s
     return r * distance
   def reset(self):
-    if self.shouldReset_ == True:
-      logger.debug("{}: resetting".format(self))
-      self.s_ = 0
-  def __init__(self, shouldReset=True):
-    self.s_, self.shouldReset_ = 0, shouldReset
+    #logger.debug("{}: resetting".format(self))
+    self.s_ = 0
+  def __init__(self):
+    self.s_ = 0
 
 
 class DeltaTimeDeltaOp:
@@ -3789,7 +3820,7 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp(cfg.get("resetDeltaOp", True))
+    signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
@@ -3804,7 +3835,7 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp(cfg.get("resetDeltaOp", True))
+    signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
@@ -3819,9 +3850,10 @@ def make_parser():
     ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    cb = InputBasedCurve2PrintCB(cfg["axis"]) if ("print" in cfg and cfg["print"] == 1) else None
+    cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("maxOrder", 3)) if "print" in cfg and cfg["print"] == 1 else None
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb)
+    resetDeltaOp = cfg.get("resetDeltaOp", True)
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetDeltaOp=resetDeltaOp)
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
