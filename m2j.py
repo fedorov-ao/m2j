@@ -2128,12 +2128,23 @@ class ApproxOp:
 
 class CombineDeltaOp:
   def calc(self, x, timestamp):
-    return self.combine_(x, self.op_.calc(x, timestamp))
+    r = None
+    for op in self.ops_:
+      r = op.calc(x, timestamp) if r is None else self.combine_(r, op.calc(x, timestamp))
+    return r
   def reset(self):
-    self.op_.reset()
-  def __init__(self, combine, op):
-    self.combine_, self.op_ = combine, op
+    for op in self.ops_:
+      op.reset()
+  def __init__(self, combine, ops):
+    self.combine_, self.ops_ = combine, ops
     self.reset()
+
+
+class XOp:
+  def calc(self, x, timestamp):
+    return x
+  def reset(self):
+    pass
 
 
 class DistanceDeltaOp:
@@ -3754,24 +3765,32 @@ def make_parser():
     return linker
   curveParser.add("linker", parseAxisLinker)
 
+  def makeRefDeltaOp(cfg, state, sensOp):
+    if "refFixed" not in cfg:
+      return sensOp
+    else:
+      refAxis = getAxisByFullName(cfg["refAxis"], state)
+      refApprox = state["parser"]("op", cfg["refFixed"], state)
+      class RefDeltaOp:
+        def calc(self, x, timestamp):
+          return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
+        def reset(self):
+          self.next_.reset()
+        def __init__(self, combine, next, approx, axis):
+          self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
+      return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
+
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
     signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
-    deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    deltaOp = CombineDeltaOp(
+      combine=lambda x,s : x*s,
+      ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    )
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
-    if "refFixed" in cfg:
-      refAxis = getAxisByFullName(cfg["refAxis"], state)
-      refApprox = state["parser"]("op", cfg["refFixed"], state)
-      class RefOp:
-        def calc(self, value):
-          return self.next_.calc(value)*self.approx_(self.axis_.get())
-        def reset(self):
-          self.next_.reset()
-        def __init__(self, next, approx, axis):
-          self.next_, self.approx_, self.axis_ = next, approx, axis
-      sensOp = RefOp(sensOp, refApprox, refAxis)
+    sensOp = makeRefDeltaOp(cfg, state, deltaOp)
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
   curveParser.add("combined", parseCombinedCurve)
@@ -3781,7 +3800,10 @@ def make_parser():
     movingCfg = cfg["moving"]
     signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
-    deltaOp = CombineDeltaOp(combine=lambda x,s : x*s, op=DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    deltaOp = CombineDeltaOp(
+      combine=lambda x,s : x*s,
+      ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+    )
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
     ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
@@ -3792,6 +3814,7 @@ def make_parser():
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = InputBasedCurve2PrintCB(cfg["axis"]) if ("print" in cfg and cfg["print"] == 1) else None
+    deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb)
     axis.add_listener(curve)
     return curve
