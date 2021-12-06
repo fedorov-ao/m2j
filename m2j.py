@@ -2010,7 +2010,7 @@ class InputBasedCurve2:
     assert(self.outputOp_)
     assert(self.axis_)
     if self.dirty_:
-      self.reset_(internal=True)
+      self.reset_(axisMoved=True)
     delta = self.deltaOp_.calc(x, timestamp)
     inputValue = clamp(self.inputValue_ + delta, *self.inputValueLimits_)
     if inputValue == self.inputValue_:
@@ -2035,7 +2035,7 @@ class InputBasedCurve2:
       self.busy_ = False
 
   def reset(self):
-    self.reset_(internal=False)
+    self.reset_(axisMoved=False)
 
   def get_axis(self):
     return self.axis_
@@ -2049,8 +2049,9 @@ class InputBasedCurve2:
   def get_input_value(self):
     return self.inputValue_
 
-  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0), cb=None, resetDeltaOp=True):
-    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_, self.cb_, self.resetDeltaOp_ = axis, inputOp, outputOp, deltaOp, inputValueLimits, cb, resetDeltaOp
+  def __init__(self, axis, inputOp, outputOp, deltaOp, inputValueLimits=(-1.0, 1.0), cb=None, resetOpsOnAxisMove=True):
+    self.axis_, self.inputOp_, self.outputOp_, self.deltaOp_, self.inputValueLimits_, self.cb_, self.resetOpsOnAxisMove_ = \
+      axis, inputOp, outputOp, deltaOp, inputValueLimits, cb, resetOpsOnAxisMove
     assert(self.deltaOp_)
     assert(self.inputOp_)
     assert(self.outputOp_)
@@ -2058,20 +2059,20 @@ class InputBasedCurve2:
     self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
     self.busy_, self.dirty_ = False, False
 
-  def reset_(self, internal):
+  def reset_(self, axisMoved):
     assert(self.deltaOp_)
     assert(self.inputOp_)
     assert(self.outputOp_)
     assert(self.axis_)
     #logger.debug("{}: resetting".format(self))
-    self.inputOp_.reset()
-    self.outputOp_.reset()
-    if internal and self.resetDeltaOp_:
-      #logger.debug("{}: resetting deltaOp".format(self))
+    if not axisMoved or (axisMoved and self.resetOpsOnAxisMove_):
+      #logger.debug("{}: resetting ops".format(self))
+      self.inputOp_.reset()
+      self.outputOp_.reset()
       self.deltaOp_.reset()
+      if self.cb_:
+        self.cb_(None)
     self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
-    if self.cb_:
-      self.cb_(None)
     self.busy_, self.dirty_ = False, False
 
 
@@ -2091,7 +2092,7 @@ class InputBasedCurve2PrintCB:
       logger.info(s)
 
   def __init__(self, name, order):
-    self.name_, self.ds_ = name, Derivatives(order)
+    self.name_, self.ds_, self.tx_ = name, Derivatives(order), 0.0
 
 
 class IterativeInputOp:
@@ -3852,8 +3853,8 @@ def make_parser():
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("maxOrder", 3)) if "print" in cfg and cfg["print"] == 1 else None
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    resetDeltaOp = cfg.get("resetDeltaOp", True)
-    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetDeltaOp=resetDeltaOp)
+    resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
