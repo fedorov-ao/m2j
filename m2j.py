@@ -650,9 +650,9 @@ class SensSetSink:
     self.currentSet_ = self.sensSets_[idx]
     self.print_set_()
 
-  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code))):
+  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0):
     self.next_, self.sensSets_, self.keyOp_ = None, sensSets, keyOp
-    self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[0]
+    self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
   def print_set_(self):
     logger.info("Setting sensitivity set: {}".format({join_full_name_tc(*k):v for k,v in self.currentSet_.items()}))
@@ -3273,7 +3273,7 @@ def init_main_sink(settings, make_next):
   sensSets = config.get("sensSets", None)
   if sensSets is not None:
     sensSets = [{split_full_name_tc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
-  sensSetSink = calibratingSink.set_next(SensSetSink(sensSets))
+  sensSetSink = calibratingSink.set_next(SensSetSink(sensSets, initial=len(sensSets)/2))
 
   mainSink = sensSetSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
@@ -3323,7 +3323,7 @@ def init_main_sink(settings, make_next):
     mainSink.add(resetCalibrationKey, reset_calibration, 0)
 
   def set_sens_set(e):
-    if e.value > 0:
+    if e.value < 0:
       sensSetSink.set_next_set()
     else:
       sensSetSink.set_prev_set()
