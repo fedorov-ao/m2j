@@ -3268,14 +3268,14 @@ def init_main_sink(settings, make_next):
     sens = {split_full_name_code(s[0]):s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
-  calibratingSink = scaleSink.set_next(CalibratingSink())
-
   sensSets = config.get("sensSets", None)
   if sensSets is not None:
     sensSets = [{split_full_name_tc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
-  sensSetSink = calibratingSink.set_next(SensSetSink(sensSets, initial=len(sensSets)/2))
+  sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=len(sensSets)/2))
 
-  mainSink = sensSetSink.set_next(BindSink(cmpOp))
+  calibratingSink = sensSetSink.set_next(CalibratingSink())
+
+  mainSink = calibratingSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
   class Toggler:
