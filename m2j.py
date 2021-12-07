@@ -1132,14 +1132,20 @@ class ModeSink:
 
 class CycleMode:
   def __call__(self, event):
-    self.i += 1
-    if self.i >= len(self.modes):
-      self.i = 0
-    self.modeSink.set_mode(self.modes[self.i])
+    assert(len(self.modes))
+    i = self.i
+    if i == len(self.modes) - 1:
+      if self.loop == True:
+        i = 0
+    else:
+      i += 1
+    if i != self.i:
+      self.i = i
+      self.modeSink.set_mode(self.modes[self.i])
     return True
 
-  def __init__(self, modeSink, modes):
-    self.i, self.modeSink, self.modes = 0, modeSink, modes
+  def __init__(self, modeSink, modes, loop=True):
+    self.i, self.modeSink, self.modes, self.loop = 0, modeSink, modes, loop
 
 
 class SetMode:
@@ -1217,16 +1223,21 @@ class ModeSinkModeManager:
   def cycle(self, modes, save):
     self.save_(save)
     m = self.sink_.get_mode()
+    assert(len(modes))
     if m in modes:
-      i = modes.index(m)+1
-      if i >= len(modes): i = 0
+      i = modes.index(m)
+      if i == len(modes) - 1:
+        if self.loop_ == True:
+          i = 0
+      else:
+        i += 1
       m = modes[i]
     else:
       m = modes[0]
     self.sink_.set_mode(m)
 
-  def __init__(self, sink):
-    self.sink_, self.mode_ = sink, []
+  def __init__(self, sink, loop=True):
+    self.sink_, self.mode_, self.loop_ = sink, [], loop
 
   def make_save(self):
     def op(event):
@@ -1268,7 +1279,7 @@ class ModeSinkModeManager:
       self.set(mode, save)
       return True
     return op
-  def make_cycle(self, modes, save):
+  def make_cycle(self, modes, save, loop=True):
     def op(event):
       self.cycle(modes, save)
       return True
@@ -4094,7 +4105,7 @@ def make_parser():
   actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(cfg["modes"], cfg.get("current")))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
   actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
-  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop")), cfg.get("loop", True)))
 
   def parseSetState(cfg, state):
     s = cfg["state"]
