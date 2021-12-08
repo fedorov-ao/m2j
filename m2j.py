@@ -2230,7 +2230,7 @@ class SignDeltaOp:
     return r * distance
   def reset(self):
     #logger.debug("{}: resetting".format(self))
-    self.s_ = 0
+    self.s_, self.sd_ = 0, 0.0
   def __init__(self, deadzone=0.0):
     self.sd_, self.s_, self.deadzone_ = 0.0, 0, deadzone
 
@@ -2246,6 +2246,25 @@ class DeltaTimeDeltaOp:
     pass
   def __init__(self, resetTime, holdTime):
     self.resetTime_, self.holdTime_ = resetTime, holdTime
+
+
+class DeadzoneDeltaOp:
+  def calc(self, x, dt):
+    """Returns 0 while inside deadzone, x otherwise. Deadzone value is in one direction, not in both."""
+    s = sign(x)
+    if self.s_ != s:
+      self.s_, self.sd_ = s, 0.0
+    self.sd_ += abs(x)
+    if self.sd_ > self.deadzone_:
+      return self.next_.calc(x, dt)
+    else:
+      return 0.0
+  def reset(self):
+    #logger.debug("{}: resetting".format(self))
+    self.s_, self.sd_ = 0, 0.0
+    self.next_.reset()
+  def __init__(self, next, deadzone=0.0):
+    self.sd_, self.s_, self.next_, self.deadzone_ = 0.0, 0, next, deadzone
 
 
 class OutputDeltaLinkingCurve:
@@ -3838,13 +3857,14 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp(cfg.get("deadzone", 0.0))
+    signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
       ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
     )
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
+    deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     return curve
@@ -3853,7 +3873,7 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp(cfg.get("deadzone", 0.0))
+    signOp = SignDeltaOp()
     dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
@@ -3868,8 +3888,9 @@ def make_parser():
     ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("maxOrder", 3)) if "print" in cfg and cfg["print"] == 1 else None
+    cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("maxOrder", 3)) if cfg.get("print", 0) == 1 else None
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
+    deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
