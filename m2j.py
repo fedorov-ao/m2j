@@ -2040,8 +2040,6 @@ class InputBasedCurve2:
       newOutputValue = self.axis_.get()
       if newOutputValue != outputValue:
         self.inputValue_ = self.inputOp_.calc(newOutputValue, self.inputValueLimits_)
-    except:
-      raise
     finally:
       self.busy_ = False
 
