@@ -92,9 +92,11 @@ class CfgStack:
 
 
 class Derivatives:
-  def update(self, df, dx):
-    if dx == 0.0:
-      raise ArgumentError("Argument delta is 0")
+  def update(self, f, x):
+    df, dx = f - self.f_, x - self.x_
+    self.f_, self.x_ = f, x
+    if dx == 0.0 and df != 0.0:
+      raise RuntimeError("Argument delta is 0")
     for i in range(len(self.ds_)):
       d = df / dx
       delta = d - self.ds_[i]
@@ -107,11 +109,13 @@ class Derivatives:
   def order(self):
     return len(self.ds_)
 
-  def reset(self):
+  def reset(self, f=0.0, x=0.0):
+    self.f_, self.x_ = f, x
     for i in range(len(self.ds_)):
       self.ds_[i] = 0.0
 
   def __init__(self, order):
+    self.f_, self.x_ = 0.0, 0.0
     self.ds_ = [0.0 for i in range(order)]
 
 
@@ -2089,19 +2093,33 @@ class InputBasedCurve2PrintCB:
   def __call__(self, data):
     if data is None:
       logger.info("{}: resetting".format(self.name_))
-      self.ds_.reset()
-      self.tx_ = 0.0
+      self.deltaDerivatives_.reset()
+      self.ivDerivatives_.reset()
+      self.ovDerivatives_.reset()
+      self.td_, self.tx_ = 0.0, 0.0
     elif data.x != 0:
+      self.td_ += data.delta
       self.tx_ += data.x
-      self.ds_.update(data.delta, data.x)
-      s = "{}: ts:{:+.3f}; tx:{:+.3f}; x:{:+.3f}; delta:{:+.3f}; ".format(self.name_, data.ts, self.tx_, data.x, data.delta)
-      for i in range(1, self.ds_.order()+1):
-        s += "d({}):{:+.3f}; ".format(i, self.ds_.get(i))
-      s += "iv:{:+.3f}; ov:{:+.3f}".format(data.iv, data.ov)
+      self.deltaDerivatives_.update(self.td_, self.tx_)
+      self.ivDerivatives_.update(data.iv, self.tx_)
+      self.ovDerivatives_.update(data.ov, self.tx_)
+      s = "{}: ts:{:+.3f}; x:{:+.3f}; tx:{:+.3f}; delta:{:+.3f}; td:{:+.3f}; ".format(self.name_, data.ts, data.x, self.tx_, data.delta, self.td_)
+      for i in range(1, self.deltaDerivatives_.order()+1):
+        s += "d({}):{:+.3f}; ".format(i, self.deltaDerivatives_.get(i))
+      s += "iv:{:+.3f}; ".format(data.iv)
+      for i in range(1, self.ivDerivatives_.order()+1):
+        s += "d({}):{:+.3f}; ".format(i, self.ivDerivatives_.get(i))
+      s += "ov:{:+.3f}; ".format(data.ov)
+      for i in range(1, self.ovDerivatives_.order()+1):
+        s += "d({}):{:+.3f}; ".format(i, self.ovDerivatives_.get(i))
+      s = s[:-2]
       logger.info(s)
 
-  def __init__(self, name, order):
-    self.name_, self.ds_, self.tx_ = name, Derivatives(order), 0.0
+  def __init__(self, name, deltaOrder, ivOrder, ovOrder):
+    self.name_, self.tx_, self.td_ = name, 0.0, 0.0
+    self.deltaDerivatives_ = Derivatives(deltaOrder)
+    self.ivDerivatives_ = Derivatives(ivOrder)
+    self.ovDerivatives_ = Derivatives(ovOrder)
 
 
 class IterativeInputOp:
@@ -3886,7 +3904,9 @@ def make_parser():
     ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("maxOrder", 3)) if cfg.get("print", 0) == 1 else None
+    cb = None
+    if cfg.get("print", 0) == 1:
+      cb = InputBasedCurve2PrintCB(cfg["axis"], cfg.get("deltaOrder", 3), cfg.get("ivOrder", 3), cfg.get("ovOrder", 3))
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
