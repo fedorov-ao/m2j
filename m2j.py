@@ -2207,19 +2207,15 @@ class XOp:
     pass
 
 
-class DistanceDeltaOp:
+class AccumulateDeltaOp:
   def calc(self, x, timestamp):
-    if self.timestamp_ is None:
-      self.timestamp_ = timestamp
-    dt = timestamp - self.timestamp_
-    self.timestamp_ = timestamp
     for op in self.ops_:
-      self.distance_ = op.calc(self.distance_, x, dt)
+      self.distance_ = op.calc(self.distance_, x, timestamp)
     self.distance_ += x
     return self.approx_(self.distance_)
   def reset(self):
     #logger.debug("{}: resetting".format(self))
-    self.timestamp_, self.distance_ = None, 0.0
+    self.distance_ = 0.0
     for op in self.ops_:
       op.reset()
   def add_op(self, op):
@@ -2230,8 +2226,8 @@ class DistanceDeltaOp:
     self.reset()
 
 
-class SignDeltaOp:
-  def calc(self, distance, x, dt):
+class SignDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
     r = 1.0
     s = sign(x)
     if self.s_ == 0:
@@ -2251,28 +2247,33 @@ class SignDeltaOp:
     self.sd_, self.s_, self.deadzone_ = 0.0, 0, deadzone
 
 
-class DeltaTimeDeltaOp:
-  def calc(self, distance, x, dt):
+class TimeDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
     assert(self.resetTime_ > 0.0)
     r = 1.0
+    if self.timestamp_ is None:
+      self.timestamp_ = timestamp
+    dt = timestamp - self.timestamp_
+    self.timestamp_ = timestamp
     if dt > self.holdTime_:
       r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
     return r * distance
   def reset(self):
-    pass
+    self.timestamp_ = None
   def __init__(self, resetTime, holdTime):
     self.resetTime_, self.holdTime_ = resetTime, holdTime
+    self.timestamp_ = None
 
 
 class DeadzoneDeltaOp:
-  def calc(self, x, dt):
+  def calc(self, x, timestamp):
     """Returns 0 while inside deadzone, x otherwise. Deadzone value is in one direction, not in both."""
     s = sign(x)
     if self.s_ != s:
       self.s_, self.sd_ = s, 0.0
     self.sd_ += abs(x)
     if self.sd_ > self.deadzone_:
-      return self.next_.calc(x, dt)
+      return self.next_.calc(x, timestamp)
     else:
       return 0.0
   def reset(self):
@@ -3873,11 +3874,11 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp()
-    dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    signDDOp = SignDistanceDeltaOp()
+    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+      ops=(XOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
@@ -3889,11 +3890,11 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
-    signOp = SignDeltaOp()
-    dtOp = DeltaTimeDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    signDDOp = SignDistanceDeltaOp()
+    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XOp(), DistanceDeltaOp(state["parser"]("op", movingCfg, state), ops=[signOp, dtOp]))
+      ops=(XOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
