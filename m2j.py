@@ -2294,6 +2294,30 @@ class DeadzoneDeltaOp:
     self.sd_, self.s_, self.next_, self.deadzone_ = 0.0, 0, next, deadzone
 
 
+class AccumulateChainCurve:
+  def move_by(self, x, timestamp):
+    self.value_ = self.inputDDOp_.calc(self.value_, x, timestamp)
+    self.value_ += x
+    self.next_.move_by(self.value_, timestamp)
+
+  def reset(self):
+    self.value_ = 0.0
+    self.inputDDOp_.reset()
+    self.outputOp_.reset()
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.outputOp_.calc(self.next_.get_value())
+
+  def get_value(self):
+    return self.value_
+
+  def __init__(self, next, inputDDOp, outputOp):
+    self.next_, self.inputDDOp_, self.outputOp_ = next, inputDDOp, outputOp
+    self.value_ = 0.0
+
+
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
