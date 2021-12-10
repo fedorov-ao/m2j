@@ -764,7 +764,7 @@ class BindSink:
          else:
           break
       else:
-        #logger.debug("{}: {} matched".format(self, c[0]))
+        #logger.debug("{}: {} matched {}".format(self, event, c.attrs))
         if c.children is not None:
           #logger.debug("Processing event {}".format(str(event)))
           for cc in c.children:
