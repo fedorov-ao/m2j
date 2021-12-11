@@ -759,7 +759,7 @@ class BindSink:
          if hasattr(event, attrName):
             eventValue = getattr(event, attrName)
             if not self.cmp_(attrName, eventValue, attrValue):
-              #logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c[0], attrName, eventValue, attrValue))
+              #logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c.attrs, attrName, eventValue, attrValue))
               break
          else:
           break
@@ -817,7 +817,7 @@ def cmp_modifiers(eventValue, attrValue):
     r = False
   elif len(attrValue) == 0:
     r = len(eventValue) == 0
-  else:
+  elif len(attrValue) == len(eventValue):
     r = True
     for m in attrValue:
       found = False
@@ -836,7 +836,14 @@ def cmp_modifiers(eventValue, attrValue):
 
 class CmpWithModifiers:
   def __call__(self, name, eventValue, attrValue):
-    return cmp_modifiers(eventValue, attrValue) if name == "modifiers" else eventValue == attrValue
+    if name == "modifiers":
+      return cmp_modifiers(eventValue, attrValue)
+    elif name == "source":
+      return (attrValue is None) or (eventValue == attrValue)
+    elif name == "value" and type(eventValue) in (int, float):
+      return (attrValue == "+" and eventValue > 0.0) or (attrValue == "-" and eventValue < 0.0) or eventValue == attrValue
+    else:
+      return eventValue == attrValue
 
 
 class ED:
@@ -3383,13 +3390,13 @@ def init_main_sink(settings, make_next):
       sensSetSink.set_prev_set()
   sensSetsAxis = config.get("sensSetsAxis", None)
   if sensSetsAxis is not None:
-    sensSetsAxis = split_full_name_code(sensSetsAxis)[1]
+    sensSetsAxis = split_full_name_code(sensSetsAxis)
   sensSetsModifier = config.get("sensSetsMod", None)
   if sensSetsModifier is not None:
     sensSetsModifier = [parse_modifier_desc(sensSetsModifier)]
   if sensSetsAxis is not None:
-    mainSink.add(ED.move(sensSetsAxis, sensSetsModifier), set_sens_set)
-
+    ed = ED2.move(source=sensSetsAxis[0], axis=sensSetsAxis[1], modifiers=sensSetsModifier)
+    mainSink.add(ed, set_sens_set)
   def names2inputs(names, settings):
     r = []
     inputs = settings["inputs"]
@@ -4387,6 +4394,10 @@ def make_parser():
     r = [("type", eventType), ("code", axis)]
     if source is not None:
       r.append(("source", source))
+    value = cfg.get("value")
+    if value is not None:
+      value = value if value in ("+", "-") else float(value)
+      r.append(("value", value))
     r = parseEdModifiers_(r, cfg)
     return r
   edParser.add("move", parseMove)
