@@ -1547,7 +1547,7 @@ class ReportingAxis:
         continue
       c().on_move_axis(self, old, new)
     if dirty:
-      cleanup_()
+      self.cleanup_()
 
   def get(self):
     return self.next_.get()
