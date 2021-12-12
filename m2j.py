@@ -1547,7 +1547,7 @@ class ReportingAxis:
         continue
       c().on_move_axis(self, old, new)
     if dirty:
-      cleanup_()
+      self.cleanup_()
 
   def get(self):
     return self.next_.get()
@@ -2186,8 +2186,38 @@ class LookupInputOp:
     self.ivs_ = [nextOp.calc(ov, ivLimits) for ov in ovs]
 
 
+class LimitedOpToOp:
+  def calc(self, value):
+    return self.op_.calc(value, self.limits_)
+
+  def reset(self):
+    self.op_.reset()
+
+  def __init__(self, op, limits):
+    self.op_, self.limits_ = op, limits
+
+
 class ApproxOp:
   def calc(self, value):
+    return self.approx_(value)
+  def reset(self):
+    pass
+  def __init__(self, approx):
+    self.approx_ = approx
+
+
+#delta ops
+class OpToDeltaOp:
+  def calc(self, value, timestamp):
+    return self.op_.calc(value)
+  def reset(self):
+    self.op_.reset()
+  def __init__(self, op):
+    self.op_ = op
+
+
+class ApproxDeltaOp:
+  def calc(self, value, timestamp):
     return self.approx_(value)
   def reset(self):
     pass
@@ -2222,7 +2252,7 @@ class AccumulateDeltaOp:
     for op in self.ops_:
       self.distance_ = op.calc(self.distance_, x, timestamp)
     self.distance_ += x
-    return self.approx_(self.distance_)
+    return self.approx_(self.distance_) if self.approx_ is not None else self.distance_
   def reset(self):
     #logger.debug("{}: resetting".format(self))
     self.distance_ = 0.0
@@ -2236,48 +2266,9 @@ class AccumulateDeltaOp:
     self.reset()
 
 
-class SignDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    r = 1.0
-    s = sign(x)
-    if self.s_ == 0:
-      self.s_ = s
-    elif self.s_ != s:
-      self.sd_ += abs(x)
-      if self.sd_ > self.deadzone_:
-        #logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(self, self.s_, s))
-        self.sd_, self.s_, r = 0.0, s, 0.0
-    elif self.sd_ != 0.0:
-      self.sd_ = 0.0
-    return r * distance
-  def reset(self):
-    #logger.debug("{}: resetting".format(self))
-    self.s_, self.sd_ = 0, 0.0
-  def __init__(self, deadzone=0.0):
-    self.sd_, self.s_, self.deadzone_ = 0.0, 0, deadzone
-
-
-class TimeDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    assert(self.resetTime_ > 0.0)
-    r = 1.0
-    if self.timestamp_ is None:
-      self.timestamp_ = timestamp
-    dt = timestamp - self.timestamp_
-    self.timestamp_ = timestamp
-    if dt > self.holdTime_:
-      r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
-    return r * distance
-  def reset(self):
-    self.timestamp_ = None
-  def __init__(self, resetTime, holdTime):
-    self.resetTime_, self.holdTime_ = resetTime, holdTime
-    self.timestamp_ = None
-
-
 class DeadzoneDeltaOp:
   def calc(self, x, timestamp):
-    """Returns 0 while inside deadzone, x otherwise. Deadzone value is in one direction, not in both."""
+    """Returns 0 while inside deadzone radius, x otherwise."""
     s = sign(x)
     if self.s_ != s:
       self.s_, self.sd_ = s, 0.0
@@ -2294,30 +2285,207 @@ class DeadzoneDeltaOp:
     self.sd_, self.s_, self.next_, self.deadzone_ = 0.0, 0, next, deadzone
 
 
-class AccumulateChainCurve:
+class OffsetDeltaOp:
+  def calc(self, x, timestamp):
+    """adds x to internally stored offset.
+       if x changes sign, sets offset to previous x."""
+    s = sign(x)
+    if self.s_ != s:
+      if self.s_ != 0:
+        self.offset_ = self.x_
+      self.s_ = s
+    self.x_ = x
+    return self.offset_ + (x if self.next_ is None else self.next_(x, timestamp)) 
+  def reset(self):
+    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, next=None):
+    self.next_ = next
+    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
+
+
+#distance-delta ops
+class AccumulateDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    return x + (distance if self.next_ is None else self.next_(distance, x, timestamp))
+  def reset(self):
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, next=None):
+    self.next_ = next
+    self.reset()
+
+
+class SignDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    r = 1.0
+    s = sign(x)
+    if self.s_ == 0:
+      self.s_ = s
+    elif self.s_ != s:
+      self.sd_ += abs(x)
+      if self.sd_ > self.deadzone_:
+        #logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(self, self.s_, s))
+        self.sd_, self.s_, r = 0.0, s, 0.0
+    elif self.sd_ != 0.0:
+      self.sd_ = 0.0
+    return r * (distance if self.next_ is None else self.next_(distance, x, timestamp))
+  def reset(self):
+    #logger.debug("{}: resetting".format(self))
+    self.s_, self.sd_ = 0, 0.0
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, deadzone=0.0, next=None):
+    self.next_, self.deadzone_ = next, deadzone
+    self.sd_, self.s_ = 0.0, 0
+
+
+class TimeDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    assert(self.resetTime_ > 0.0)
+    r = 1.0
+    if self.timestamp_ is None:
+      self.timestamp_ = timestamp
+    dt = timestamp - self.timestamp_
+    self.timestamp_ = timestamp
+    if dt > self.holdTime_:
+      r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
+    return r * (distance if self.next_ is None else self.next_(distance, x, timestamp))
+  def reset(self):
+    self.timestamp_ = None
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, resetTime, holdTime, next=None):
+    self.resetTime_, self.holdTime_, self.next_ = resetTime, holdTime, next
+    self.timestamp_ = None
+
+
+#TODO Remove?
+class OffsetDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """adds x to internally stored offset.
+       if x changes sign, sets offset to distance.
+       distance and x arguments are absolute. distance is treated as previous x."""
+    s = sign(x)
+    if self.s_ != s:
+      if self.s_ != 0:
+        self.offset_ = distance
+      self.s_ = s
+    return self.offset_ + (x if self.next_ is None else self.next_(distance, x, timestamp)) 
+  def reset(self):
+    self.s_, self.offset_ = 0, 0.0
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, next=None):
+    self.next_ = next
+    self.offset_, self.s_ = 0.0, 0
+
+
+#Chain curves
+#TODO add set_next()
+#TODO use distance-delta ops and check value after moving axis
+class OpChainCurve:
   def move_by(self, x, timestamp):
-    self.value_ = self.inputDDOp_.calc(self.value_, x, timestamp)
-    self.value_ += x
+    self.value_ = self.outputOp_.calc(x, timestamp)
     self.next_.move_by(self.value_, timestamp)
 
   def reset(self):
-    self.value_ = 0.0
-    self.inputDDOp_.reset()
+    self.inputOp_.reset()
     self.outputOp_.reset()
     self.next_.reset()
+    print self, self.inputOp_
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
 
   def on_move_axis(self, axis, old, new):
     self.next_.on_move_axis(axis, old, new)
-    self.value_ = self.outputOp_.calc(self.next_.get_value())
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
 
   def get_value(self):
     return self.value_
 
-  def __init__(self, next, inputDDOp, outputOp):
-    self.next_, self.inputDDOp_, self.outputOp_ = next, inputDDOp, outputOp
-    self.value_ = 0.0
+  def __init__(self, next, inputOp, outputOp):
+    self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
 
 
+class AxisChainCurve:
+  """Acturally moves axis. Is meant to be at the bottom of chain."""
+  def move_by(self, x, timestamp):
+    self.axis_.move(x, self.relative_)
+
+  def reset(self):
+    pass
+
+  def on_move_axis(self, axis, old, new):
+    pass
+
+  def get_value(self):
+    return self.axis_.get()
+
+  def __init__(self, axis, relative):
+    self.axis_, self.relative_ = axis, relative
+
+
+class AxisTrackerChainCurve:
+  """Prevents endless recursion on moving axis.
+     Is meant to be at the top of chain.
+     Subscribe as axis listener."""
+  def move_by(self, x, timestamp):
+    if self.dirty_ == True:
+      self.reset()
+    self.busy_ = True
+    try:
+      self.next_.move_by(x, timestamp)
+    finally:
+      self.busy_ = False
+
+  def reset(self):
+    self.busy_, self.dirty_ = False, False
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    if (self.busy_ == True) or (self.resetOnAxisMove_ == False):
+      return
+    self.dirty_ = True
+
+  def get_value(self):
+    return self.next_.get_value()
+
+  def __init__(self, next, resetOnAxisMove):
+    self.next_, self.resetOnAxisMove_ = next, resetOnAxisMove
+    self.busy_, self.dirty_ = False, False
+
+
+class OffsetChainCurve:
+  def move_by(self, x, timestamp):
+    s = sign(x)
+    if self.s_ != s:
+      if self.s_ != 0:
+        self.offset_ += self.x_
+      self.s_ = s
+    self.x_ = x
+    print self, self.offset_, self.x_
+    self.next_.move_by(x + self.offset_, timestamp)
+
+  def reset(self):
+    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    self.offset_ = new
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.x_
+
+  def __init__(self, next):
+    self.next_ = next
+
+
+#linking curves    
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
@@ -3949,6 +4117,48 @@ def make_parser():
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
+
+  def parseAbsInputBasedCurve(cfg, state):
+    #axis tracker
+    resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
+    axisTrackerChainCurve = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
+    axis = getAxisByFullName(cfg["axis"], state)
+    axis.add_listener(axisTrackerChainCurve)
+    #accumulate
+    #Order of ops should not matter
+    movingCfg = cfg["moving"]
+    movingOp = ApproxOp(state["parser"]("op", movingCfg, state))
+    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    signDDOp = SignDistanceDeltaOp()
+    accumulateOp = AccumulateDeltaOp(approx=None, ops=[signDDOp, timeDDOp])
+    class ResetOp:
+      def calc(self, value):
+        return 0.0
+      def reset(self):
+        pass
+    accumulateChainCurve = OpChainCurve(next=None, outputOp=accumulateOp, inputOp=ResetOp()) 
+    axisTrackerChainCurve.next_ = accumulateChainCurve
+    #transform accumulated
+    movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
+    movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
+    movingChainCurve = OpChainCurve(next=None, inputOp=movingInputOp, outputOp=OpToDeltaOp(movingOutputOp))
+    accumulateChainCurve.next_ = movingChainCurve
+    #offset transformed
+    offsetChainCurve = OffsetChainCurve(next=None)
+    movingChainCurve.next_ = offsetChainCurve
+    #transform offset
+    fixedCfg = cfg["fixed"]
+    fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
+    fixedInputOp = IterativeInputOp(outputOp=fixedOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
+    fixedChainCurve = OpChainCurve(next=None, inputOp=fixedInputOp, outputOp=OpToDeltaOp(fixedOutputOp))
+    offsetChainCurve.next_ = fixedChainCurve
+    #move axis
+    axisChainCurve = AxisChainCurve(axis=axis, relative=False)
+    fixedChainCurve.next_ = axisChainCurve
+    return axisTrackerChainCurve
+  curveParser.add("absInput", parseAbsInputBasedCurve)
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
