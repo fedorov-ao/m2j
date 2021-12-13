@@ -2443,6 +2443,7 @@ class AccumulateChainCurve:
 
   def __init__(self, next, valueDDOp, inputOp):
     self.next_, self.valueDDOp_, self.inputOp_ = next, valueDDOp, inputOp
+    self.value_ = 0.0
 
 
 class TransformChainCurve:
