@@ -2419,7 +2419,8 @@ class AccumulateChainCurve:
     self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
     newValue = self.next_.move_by(self.value_, timestamp)
     if newValue != self.value_:
-      self.value_ = self.inputOp_.calc(newValue)
+      self.value_ = newValue
+    #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
     return self.value_
 
   def reset(self):
@@ -2444,8 +2445,10 @@ class TransformChainCurve:
     self.value_ = x
     outputValue = self.outputOp_.calc(self.value_)
     newOutputValue = self.next_.move_by(outputValue, timestamp)
+    #logger.debug("{}: value_:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, self.value_, outputValue, newOutputValue))
     if newOutputValue != outputValue:
       self.value_ = self.inputOp_.calc(newOutputValue)
+    #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
     return self.value_
 
   def reset(self):
@@ -2469,6 +2472,7 @@ class AxisChainCurve:
   """Acturally moves axis. Is meant to be at the bottom of chain."""
   def move_by(self, x, timestamp):
     self.axis_.move(x, self.relative_)
+    #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
     return self.axis_.get()
 
   def reset(self):
@@ -2518,6 +2522,7 @@ class AxisTrackerChainCurve:
 
 class OffsetChainCurve:
   def move_by(self, x, timestamp):
+    logger.info("{}: x:{:+.3f}".format(self, x))
     s = sign(x)
     if self.s_ != s:
       if self.s_ != 0:
@@ -2525,11 +2530,22 @@ class OffsetChainCurve:
       self.s_ = s
     ox = x + self.offset_
     nox = self.next_.move_by(ox, timestamp)
-    self.x_ = x if nox == ox else nox - self.offset_
+    logger.info("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
+    if nox == ox:
+      #within limits
+      self.x_ = x
+      self.sx_ = sign(x)
+    else:
+      #outside limits
+      if sign(x) != self.sx_:
+        self.x_ = x
+      else:
+        self.x_ = nox - self.offset_
+    logger.info("{}: offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
     return self.x_
 
   def reset(self):
-    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
+    self.s_, self.sx_, self.x_, self.offset_ = 0, 0, 0.0, 0.0
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
@@ -2541,6 +2557,7 @@ class OffsetChainCurve:
     return self.x_
 
   def __init__(self, next):
+    self.s_, self.sx_, self.x_, self.offset_ = 0, 0, 0.0, 0.0
     self.next_ = next
 
 
@@ -4215,7 +4232,6 @@ def make_parser():
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis, relative=False)
     fixedChainCurve.next_ = axisChainCurve
-    print "constructed", axisTrackerChainCurve
     return axisTrackerChainCurve
   curveParser.add("absInput", parseAbsInputBasedCurve)
 
