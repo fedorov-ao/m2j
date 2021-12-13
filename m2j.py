@@ -4216,7 +4216,7 @@ def make_parser():
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=movingCfg.get("eps", 0.001), numSteps=movingCfg.get("numSteps", 100))
-    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-1.0, 1.0)))
+    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-2.0, 2.0)))
     movingChainCurve = TransformChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.next_ = movingChainCurve
     #offset transformed
