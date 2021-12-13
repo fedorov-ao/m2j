@@ -2578,6 +2578,39 @@ class OffsetChainCurve:
     self.next_ = next
 
 
+class PrintChainCurve:
+  def move_by(self, x, timestamp):
+    r = self.next_.move_by(x, timestamp)
+    self.tx_ += x
+    av = self.axis_.get()
+    self.ds_.update(av, self.tx_)
+    s = "{}: x:{:+.3f}; tx:{:+.3f}; av:{:+.3f}; ".format(self.name_, x, self.tx_, av)
+    for i in range(1, self.ds_.order()+1):
+      s += "d({}):{:+.3f}; ".format(i, self.ds_.get(i))
+    s = s[:-2]
+    logger.info(s)
+    return r
+
+  def reset(self):
+    self.next_.reset()
+    self.ds_.reset()
+    self.tx_ = 0.0
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.axis_.get()
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, axis, name, order):
+    self.next_, self.axis_, self.name_ = next, axis, name
+    self.tx_ = 0.0
+    self.ds_ = Derivatives(order)
+
+
 #linking curves    
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
@@ -4214,9 +4247,9 @@ def make_parser():
   def parseAbsInputBasedCurve(cfg, state):
     #axis tracker
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
-    axisTrackerChainCurve = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
+    curve = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
     axis = getAxisByFullName(cfg["axis"], state)
-    axis.add_listener(axisTrackerChainCurve)
+    axis.add_listener(curve)
     #accumulate
     #Order of ops should not matter
     movingCfg = cfg["moving"]
@@ -4229,7 +4262,7 @@ def make_parser():
       def reset(self):
         pass
     accumulateChainCurve = AccumulateChainCurve(next=None, valueDDOp=accumulateDDOp, inputOp=ResetOp()) 
-    axisTrackerChainCurve.set_next(accumulateChainCurve)
+    curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=movingCfg.get("eps", 0.001), numSteps=movingCfg.get("numSteps", 100))
@@ -4249,7 +4282,9 @@ def make_parser():
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis, relative=False)
     fixedChainCurve.set_next(axisChainCurve)
-    return axisTrackerChainCurve
+    if cfg.get("print", False) == True:
+      curve = PrintChainCurve(curve, axis, cfg["axis"], cfg.get("avOrder", 3))
+    return curve
   curveParser.add("absInput", parseAbsInputBasedCurve)
 
   def parsePresetCurve(cfg, state):
