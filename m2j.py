@@ -2309,7 +2309,7 @@ class OffsetDeltaOp:
 class AccumulateDistanceDeltaOp:
   def calc(self, distance, x, timestamp):
     """distance is absolute, x is relative."""
-    return x + (distance if self.next_ is None else self.next_(distance, x, timestamp))
+    return x + (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
   def reset(self):
     if self.next_:
       self.next_.reset()
@@ -2332,7 +2332,7 @@ class SignDistanceDeltaOp:
         self.sd_, self.s_, r = 0.0, s, 0.0
     elif self.sd_ != 0.0:
       self.sd_ = 0.0
-    return r * (distance if self.next_ is None else self.next_(distance, x, timestamp))
+    return r * (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
   def reset(self):
     #logger.debug("{}: resetting".format(self))
     self.s_, self.sd_ = 0, 0.0
@@ -2354,7 +2354,7 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = timestamp
     if dt > self.holdTime_:
       r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
-    return r * (distance if self.next_ is None else self.next_(distance, x, timestamp))
+    return r * (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
   def reset(self):
     self.timestamp_ = None
     if self.next_:
@@ -2416,7 +2416,6 @@ class OpChainCurve:
 
 class AccumulateChainCurve:
   def move_by(self, x, timestamp):
-    print self, x, timestamp
     self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
     newValue = self.next_.move_by(self.value_, timestamp)
     if newValue != self.value_:
@@ -2490,7 +2489,6 @@ class AxisTrackerChainCurve:
      Is meant to be at the top of chain.
      Subscribe as axis listener."""
   def move_by(self, x, timestamp):
-    print self, x, timestamp
     if self.dirty_ == True:
       self.reset()
     self.busy_ = True
@@ -2525,10 +2523,10 @@ class OffsetChainCurve:
       if self.s_ != 0:
         self.offset_ += self.x_
       self.s_ = s
-    self.x_ = x
     ox = x + self.offset_
-    ox = self.next_.move_by(ox, timestamp)
-    return ox - self.offset_
+    nox = self.next_.move_by(ox, timestamp)
+    self.x_ = x if nox == ox else nox - self.offset_
+    return self.x_
 
   def reset(self):
     self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
