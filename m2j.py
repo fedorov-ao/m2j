@@ -2550,8 +2550,7 @@ class OffsetChainCurve:
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
-    #TODO Or new - self.x_?
-    self.offset_ = new
+    self.offset_ += new - old
     self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
