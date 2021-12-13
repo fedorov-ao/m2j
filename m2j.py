@@ -2533,19 +2533,19 @@ class OffsetChainCurve:
     logger.info("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
     if nox == ox:
       #within limits
+      if self.state_ == 1:
+        self.sx_, self.state_ = 0, 0
       self.x_ = x
-      self.sx_ = sign(x)
     else:
       #outside limits
-      if sign(x) != self.sx_:
-        self.x_ = x
-      else:
-        self.x_ = nox - self.offset_
+      if self.state_ == 0:
+        self.sx_, self.state_ = s, 1
+      self.x_ = x if self.sx_ != s else (nox - self.offset_)
     logger.info("{}: offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
     return self.x_
 
   def reset(self):
-    self.s_, self.sx_, self.x_, self.offset_ = 0, 0, 0.0, 0.0
+    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
@@ -2557,7 +2557,7 @@ class OffsetChainCurve:
     return self.x_
 
   def __init__(self, next):
-    self.s_, self.sx_, self.x_, self.offset_ = 0, 0, 0.0, 0.0
+    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
     self.next_ = next
 
 
