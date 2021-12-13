@@ -2217,7 +2217,7 @@ class OpToDeltaOp:
 
 
 class ApproxDeltaOp:
-  def calc(self, value, timestamp):
+  def calcOutput(self, value, timestamp):
     return self.approx_(value)
   def reset(self):
     pass
@@ -2387,17 +2387,72 @@ class OffsetDistanceDeltaOp:
 
 #Chain curves
 #TODO add set_next()
-#TODO use distance-delta ops and check value after moving axis
 class OpChainCurve:
   def move_by(self, x, timestamp):
-    self.value_ = self.outputOp_.calc(x, timestamp)
-    self.next_.move_by(self.value_, timestamp)
+    self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
+    outputValue = self.outputOp_.calc(self.value_)
+    newOutputValue = self.next_.move_by(outputValue, timestamp)
+    if newOutputValue != outputValue:
+      self.value_ = self.inputOp_.calc(newOutputValue)
+    return self.value_
+
+  def reset(self):
+    self.valueDDOp_.reset()
+    self.inputOp_.reset()
+    self.outputOp_.reset()
+    self.next_.reset()
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def get_value(self):
+    return self.value_
+
+  def __init__(self, next, valueDDOp, inputOp, outputOp):
+    self.next_, self.valueDDOp_, self.inputOp_, self.outputOp_ = next, valueDDOp, inputOp, outputOp
+
+
+class AccumulateChainCurve:
+  def move_by(self, x, timestamp):
+    print self, x, timestamp
+    self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
+    newValue = self.next_.move_by(self.value_, timestamp)
+    if newValue != self.value_:
+      self.value_ = self.inputOp_.calc(newValue)
+    return self.value_
+
+  def reset(self):
+    self.valueDDOp_.reset()
+    self.inputOp_.reset()
+    self.next_.reset()
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def get_value(self):
+    return self.value_
+
+  def __init__(self, next, valueDDOp, inputOp):
+    self.next_, self.valueDDOp_, self.inputOp_ = next, valueDDOp, inputOp
+
+
+class TransformChainCurve:
+  def move_by(self, x, timestamp):
+    self.value_ = x
+    outputValue = self.outputOp_.calc(self.value_)
+    newOutputValue = self.next_.move_by(outputValue, timestamp)
+    if newOutputValue != outputValue:
+      self.value_ = self.inputOp_.calc(newOutputValue)
+    return self.value_
 
   def reset(self):
     self.inputOp_.reset()
     self.outputOp_.reset()
     self.next_.reset()
-    print self, self.inputOp_
     self.value_ = self.inputOp_.calc(self.next_.get_value())
 
   def on_move_axis(self, axis, old, new):
@@ -2415,6 +2470,7 @@ class AxisChainCurve:
   """Acturally moves axis. Is meant to be at the bottom of chain."""
   def move_by(self, x, timestamp):
     self.axis_.move(x, self.relative_)
+    return self.axis_.get()
 
   def reset(self):
     pass
@@ -2434,13 +2490,16 @@ class AxisTrackerChainCurve:
      Is meant to be at the top of chain.
      Subscribe as axis listener."""
   def move_by(self, x, timestamp):
+    print self, x, timestamp
     if self.dirty_ == True:
       self.reset()
     self.busy_ = True
+    v = None
     try:
-      self.next_.move_by(x, timestamp)
+      v = self.next_.move_by(x, timestamp)
     finally:
       self.busy_ = False
+    return v
 
   def reset(self):
     self.busy_, self.dirty_ = False, False
@@ -2467,14 +2526,16 @@ class OffsetChainCurve:
         self.offset_ += self.x_
       self.s_ = s
     self.x_ = x
-    print self, self.offset_, self.x_
-    self.next_.move_by(x + self.offset_, timestamp)
+    ox = x + self.offset_
+    ox = self.next_.move_by(ox, timestamp)
+    return ox - self.offset_
 
   def reset(self):
     self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
+    #TODO Or new - self.x_?
     self.offset_ = new
     self.next_.on_move_axis(axis, old, new)
 
@@ -4127,22 +4188,21 @@ def make_parser():
     #accumulate
     #Order of ops should not matter
     movingCfg = cfg["moving"]
-    movingOp = ApproxOp(state["parser"]("op", movingCfg, state))
-    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     signDDOp = SignDistanceDeltaOp()
-    accumulateOp = AccumulateDeltaOp(approx=None, ops=[signDDOp, timeDDOp])
+    timeDDOp = TimeDistanceDeltaOp(next=signDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    accumulateDDOp = AccumulateDistanceDeltaOp(next=timeDDOp)
     class ResetOp:
       def calc(self, value):
         return 0.0
       def reset(self):
         pass
-    accumulateChainCurve = OpChainCurve(next=None, outputOp=accumulateOp, inputOp=ResetOp()) 
+    accumulateChainCurve = AccumulateChainCurve(next=None, valueDDOp=accumulateDDOp, inputOp=ResetOp()) 
     axisTrackerChainCurve.next_ = accumulateChainCurve
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
     movingInputOp = LimitedOpToOp(op=movingInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
-    movingChainCurve = OpChainCurve(next=None, inputOp=movingInputOp, outputOp=OpToDeltaOp(movingOutputOp))
+    movingChainCurve = TransformChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.next_ = movingChainCurve
     #offset transformed
     offsetChainCurve = OffsetChainCurve(next=None)
@@ -4152,11 +4212,12 @@ def make_parser():
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
     fixedInputOp = IterativeInputOp(outputOp=fixedOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
     fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
-    fixedChainCurve = OpChainCurve(next=None, inputOp=fixedInputOp, outputOp=OpToDeltaOp(fixedOutputOp))
+    fixedChainCurve = TransformChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.next_ = fixedChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis, relative=False)
     fixedChainCurve.next_ = axisChainCurve
+    print "constructed", axisTrackerChainCurve
     return axisTrackerChainCurve
   curveParser.add("absInput", parseAbsInputBasedCurve)
 
