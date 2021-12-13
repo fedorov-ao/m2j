@@ -4200,6 +4200,16 @@ def make_parser():
           self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
       return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
 
+  def makeIterativeInputOp(cfg, outputOp):
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
+    numIntervals = cfg.get("numInputIntervals", 10)
+    ovLimits = [inputOp.calc(v, ivLimits) for v in ivLimits]
+    step = (ovLimits[1] - ovLimits[0]) / numIntervals
+    ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
+    inputOp = LookupInputOp(inputOp, ovs, ivLimits)
+    return inputOp
+
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
@@ -4226,13 +4236,7 @@ def make_parser():
       ops=(XOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
-    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
-    numIntervals = cfg.get("numInputIntervals", 10)
-    ovLimits = [inputOp.calc(v, ivLimits) for v in ivLimits]
-    step = (ovLimits[1] - ovLimits[0]) / numIntervals
-    ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
-    inputOp = LookupInputOp(inputOp, ovs, ivLimits)
+    inputOp = makeIterativeInputOp(cfg, outputOp)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
     if cfg.get("print", 0) == 1:
@@ -4240,6 +4244,7 @@ def make_parser():
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
+    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     return curve
@@ -4266,7 +4271,7 @@ def make_parser():
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=movingCfg.get("eps", 0.001), numSteps=movingCfg.get("numSteps", 100))
+    movingInputOp = makeIterativeInputOp(movingCfg, movingOutputOp)
     movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-2.0, 2.0)))
     movingChainCurve = TransformChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.set_next(movingChainCurve)
@@ -4276,7 +4281,7 @@ def make_parser():
     #transform offset
     fixedCfg = cfg["fixed"]
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = IterativeInputOp(outputOp=fixedOutputOp, eps=fixedCfg.get("eps", 0.001), numSteps=fixedCfg.get("numSteps", 100))
+    fixedInputOp = makeIterativeInputOp(fixedCfg, fixedOutputOp)
     fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-1.0, 1.0)))
     fixedChainCurve = TransformChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.set_next(fixedChainCurve)
