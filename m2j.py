@@ -2522,7 +2522,7 @@ class AxisTrackerChainCurve:
 
 class OffsetChainCurve:
   def move_by(self, x, timestamp):
-    logger.info("{}: x:{:+.3f}".format(self, x))
+    #logger.debug("{}: x:{:+.3f}".format(self, x))
     s = sign(x)
     if self.s_ != s:
       if self.s_ != 0:
@@ -2530,7 +2530,8 @@ class OffsetChainCurve:
       self.s_ = s
     ox = x + self.offset_
     nox = self.next_.move_by(ox, timestamp)
-    logger.info("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
+    #logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
+    #nox can still be outside of next_ input limits, so have to store sign of x to be able to backtrack
     if nox == ox:
       #within limits
       if self.state_ == 1:
@@ -2541,7 +2542,7 @@ class OffsetChainCurve:
       if self.state_ == 0:
         self.sx_, self.state_ = s, 1
       self.x_ = x if self.sx_ != s else (nox - self.offset_)
-    logger.info("{}: offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+    #logger.debug("{}: offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
     return self.x_
 
   def reset(self):
@@ -4215,8 +4216,8 @@ def make_parser():
     axisTrackerChainCurve.next_ = accumulateChainCurve
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
-    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
+    movingInputOp = IterativeInputOp(outputOp=movingOutputOp, eps=movingCfg.get("eps", 0.001), numSteps=movingCfg.get("numSteps", 100))
+    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-1.0, 1.0)))
     movingChainCurve = TransformChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.next_ = movingChainCurve
     #offset transformed
@@ -4225,8 +4226,8 @@ def make_parser():
     #transform offset
     fixedCfg = cfg["fixed"]
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = IterativeInputOp(outputOp=fixedOutputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
-    fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=cfg.get("inputLimits", (-1.0, 1.0)))
+    fixedInputOp = IterativeInputOp(outputOp=fixedOutputOp, eps=fixedCfg.get("eps", 0.001), numSteps=fixedCfg.get("numSteps", 100))
+    fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-1.0, 1.0)))
     fixedChainCurve = TransformChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.next_ = fixedChainCurve
     #move axis
