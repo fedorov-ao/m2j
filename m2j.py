@@ -2386,40 +2386,11 @@ class OffsetDistanceDeltaOp:
 
 
 #Chain curves
-class OpChainCurve:
+class AccumulateRelChainCurve:
   def move_by(self, x, timestamp):
+    """x is relative."""
     self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
-    outputValue = self.outputOp_.calc(self.value_)
-    newOutputValue = self.next_.move_by(outputValue, timestamp)
-    if newOutputValue != outputValue:
-      self.value_ = self.inputOp_.calc(newOutputValue)
-    return self.value_
-
-  def reset(self):
-    self.valueDDOp_.reset()
-    self.inputOp_.reset()
-    self.outputOp_.reset()
-    self.next_.reset()
-    self.value_ = self.inputOp_.calc(self.next_.get_value())
-
-  def on_move_axis(self, axis, old, new):
-    self.next_.on_move_axis(axis, old, new)
-    self.value_ = self.inputOp_.calc(self.next_.get_value())
-
-  def get_value(self):
-    return self.value_
-
-  def set_next(self, next):
-    self.next_ = next
-
-  def __init__(self, next, valueDDOp, inputOp, outputOp):
-    self.next_, self.valueDDOp_, self.inputOp_, self.outputOp_ = next, valueDDOp, inputOp, outputOp
-
-
-class AccumulateChainCurve:
-  def move_by(self, x, timestamp):
-    self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
-    newValue = self.next_.move_by(self.value_, timestamp)
+    newValue = self.next_.move(self.value_, timestamp)
     if newValue != self.value_:
       self.value_ = newValue
     #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
@@ -2446,14 +2417,15 @@ class AccumulateChainCurve:
     self.value_ = 0.0
 
 
-class TransformChainCurve:
-  def move_by(self, x, timestamp):
-    self.value_ = x
-    outputValue = self.outputOp_.calc(self.value_)
-    newOutputValue = self.next_.move_by(outputValue, timestamp)
+class TransformAbsChainCurve:
+  def move(self, x, timestamp):
+    outputValue = self.outputOp_.calc(x)
+    newOutputValue = self.next_.move(outputValue, timestamp)
     #logger.debug("{}: value_:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, self.value_, outputValue, newOutputValue))
     if newOutputValue != outputValue:
       self.value_ = self.inputOp_.calc(newOutputValue)
+    else:
+      self.value_ = x
     #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
     return self.value_
 
@@ -2477,10 +2449,10 @@ class TransformChainCurve:
     self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
 
 
-class AxisChainCurve:
+class AxisAbsChainCurve:
   """Acturally moves axis. Is meant to be at the bottom of chain."""
-  def move_by(self, x, timestamp):
-    self.axis_.move(x, self.relative_)
+  def move(self, x, timestamp):
+    self.axis_.move(x, relative=False)
     #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
     return self.axis_.get()
 
@@ -2496,15 +2468,16 @@ class AxisChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, axis, relative):
-    self.axis_, self.relative_ = axis, relative
+  def __init__(self, axis):
+    self.axis_ = axis
 
 
-class AxisTrackerChainCurve:
+class AxisTrackerRelChainCurve:
   """Prevents endless recursion on moving axis.
      Is meant to be at the top of chain.
      Subscribe as axis listener."""
   def move_by(self, x, timestamp):
+    """x is relative."""
     if self.dirty_ == True:
       self.reset()
     self.busy_ = True
@@ -2535,8 +2508,9 @@ class AxisTrackerChainCurve:
     self.busy_, self.dirty_ = False, False
 
 
-class OffsetChainCurve:
-  def move_by(self, x, timestamp):
+class OffsetAbsChainCurve:
+  def move(self, x, timestamp):
+    """x is absolute."""
     #logger.debug("{}: x:{:+.3f}".format(self, x))
     s = sign(x)
     if self.s_ != s:
@@ -2544,7 +2518,7 @@ class OffsetChainCurve:
         self.offset_ += self.x_
       self.s_ = s
     ox = x + self.offset_
-    nox = self.next_.move_by(ox, timestamp)
+    nox = self.next_.move(ox, timestamp)
     #logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
     #nox can still be outside of next_ input limits, so have to store sign of x to be able to backtrack
     if nox == ox:
@@ -2579,8 +2553,9 @@ class OffsetChainCurve:
     self.next_ = next
 
 
-class PrintChainCurve:
+class PrintRelChainCurve:
   def move_by(self, x, timestamp):
+    """x is relative."""
     r = self.next_.move_by(x, timestamp)
     self.tx_ += x
     av = self.axis_.get()
@@ -4253,9 +4228,15 @@ def make_parser():
   def parseAbsInputBasedCurve(cfg, state):
     #axis tracker
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
-    curve = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
+    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
+    curve = top
     axis = getAxisByFullName(cfg["axis"], state)
     axis.add_listener(curve)
+    #print
+    if cfg.get("print", False) == True:
+      printCurve = PrintRelChainCurve(None, axis, cfg["axis"], cfg.get("avOrder", 3))
+      top.set_next(printCurve)
+      curve = printCurve
     #accumulate
     #Order of ops should not matter
     movingCfg = cfg["moving"]
@@ -4267,30 +4248,28 @@ def make_parser():
         return 0.0
       def reset(self):
         pass
-    accumulateChainCurve = AccumulateChainCurve(next=None, valueDDOp=accumulateDDOp, inputOp=ResetOp()) 
+    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=accumulateDDOp, inputOp=ResetOp()) 
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     movingInputOp = makeIterativeInputOp(movingCfg, movingOutputOp)
     movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-2.0, 2.0)))
-    movingChainCurve = TransformChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
+    movingChainCurve = TransformAbsChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.set_next(movingChainCurve)
     #offset transformed
-    offsetChainCurve = OffsetChainCurve(next=None)
+    offsetChainCurve = OffsetAbsChainCurve(next=None)
     movingChainCurve.set_next(offsetChainCurve)
     #transform offset
     fixedCfg = cfg["fixed"]
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
     fixedInputOp = makeIterativeInputOp(fixedCfg, fixedOutputOp)
     fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-1.0, 1.0)))
-    fixedChainCurve = TransformChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
+    fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.set_next(fixedChainCurve)
     #move axis
-    axisChainCurve = AxisChainCurve(axis=axis, relative=False)
+    axisChainCurve = AxisAbsChainCurve(axis=axis)
     fixedChainCurve.set_next(axisChainCurve)
-    if cfg.get("print", False) == True:
-      curve = PrintChainCurve(curve, axis, cfg["axis"], cfg.get("avOrder", 3))
-    return curve
+    return top
   curveParser.add("absInput", parseAbsInputBasedCurve)
 
   def parsePresetCurve(cfg, state):
