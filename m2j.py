@@ -2364,6 +2364,15 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = None
 
 
+class RefDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    return self.next_.calc(distance, self.combine_(x, self.approx_(self.axis_.get())), timestamp)
+  def reset(self):
+    self.next_.reset()
+  def __init__(self, combine, next, approx, axis):
+    self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
+
+
 #TODO Remove?
 class OffsetDistanceDeltaOp:
   def calc(self, distance, x, timestamp):
@@ -4243,6 +4252,10 @@ def make_parser():
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(next=signDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     accumulateDDOp = AccumulateDistanceDeltaOp(next=timeDDOp)
+    if "refFixed" in cfg:
+      refAxis = getAxisByFullName(cfg["refAxis"], state)
+      refApprox = state["parser"]("op", cfg["refFixed"], state)
+      accumulateDDOp = RefDistanceDeltaOp(combine=lambda a,b: a*b, next=accumulateDDOp, approx=refApprox, axis=refAxis)
     class ResetOp:
       def calc(self, value):
         return 0.0
