@@ -4225,7 +4225,7 @@ def make_parser():
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
 
-  def parseAbsInputBasedCurve(cfg, state):
+  def parseOffsetCurve(cfg, state):
     #axis tracker
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
@@ -4270,7 +4270,7 @@ def make_parser():
     axisChainCurve = AxisAbsChainCurve(axis=axis)
     fixedChainCurve.set_next(axisChainCurve)
     return top
-  curveParser.add("absInput", parseAbsInputBasedCurve)
+  curveParser.add("offset", parseOffsetCurve)
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
