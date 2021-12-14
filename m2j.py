@@ -2502,9 +2502,11 @@ class AxisTrackerRelChainCurve:
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
-    if (self.busy_ == True) or (self.resetOnAxisMove_ == False):
+    if self.busy_ == True:
       return
-    self.dirty_ = True
+    if self.resetOnAxisMove_ == True:
+      self.dirty_ = True
+    self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
     return self.next_.get_value()
@@ -4236,8 +4238,8 @@ def make_parser():
 
   def parseOffsetCurve(cfg, state):
     #axis tracker
-    resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
-    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOpsOnAxisMove)
+    resetOnAxisMove = cfg.get("resetOnAxisMove", True)
+    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
     curve = top
     axis = getAxisByFullName(cfg["axis"], state)
     axis.add_listener(curve)
