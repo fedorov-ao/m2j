@@ -2354,6 +2354,7 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = timestamp
     if dt > self.holdTime_:
       r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
+    #logger.debug("{}.calc(): r:{:.3f}".format(self, r))
     return r * (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
   def reset(self):
     self.timestamp_ = None
@@ -2527,7 +2528,12 @@ class OffsetAbsChainCurve:
     if self.s_ != s:
       if self.s_ != 0:
         self.offset_ += self.x_
+        #logger.debug("{}: new offset_: {}".format(self, self.offset_))
       self.s_ = s
+    elif abs(x) < abs(self.x_):
+      self.offset_ += self.x_ - x
+      self.x_ = x
+      return self.x_
     ox = x + self.offset_
     nox = self.next_.move(ox, timestamp)
     #logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
@@ -2537,12 +2543,14 @@ class OffsetAbsChainCurve:
       if self.state_ == 1:
         self.sx_, self.state_ = 0, 0
       self.x_ = x
+      #logger.debug("{}: within limits, x: {}, x_: {}".format(self, x, self.x_))
     else:
       #outside limits
       if self.state_ == 0:
         self.sx_, self.state_ = s, 1
       self.x_ = x if self.sx_ != s else (nox - self.offset_)
-    #logger.debug("{}: offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+      #logger.debug("{}: outside limits, x: {}, x_: {}".format(self, x, self.x_))
+    #logger.debug("{}.move(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
     return self.x_
 
   def reset(self):
@@ -2550,7 +2558,8 @@ class OffsetAbsChainCurve:
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
-    self.offset_ += new - old
+    self.offset_ += (new - old)
+    #logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
     self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
