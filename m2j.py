@@ -4260,7 +4260,7 @@ def make_parser():
       accumulateDDOp = RefDistanceDeltaOp(combine=lambda a,b: a*b, next=accumulateDDOp, approx=refApprox, axis=refAxis)
     class ResetOp:
       def calc(self, value):
-        return 0.0
+        return value
       def reset(self):
         pass
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=accumulateDDOp, inputOp=ResetOp()) 
