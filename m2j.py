@@ -4201,17 +4201,19 @@ def make_parser():
     #accumulate
     #Order of ops should not matter
     movingCfg = cfg["moving"]
-    signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(next=signDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
-    valueDDOp = timeDDOp
-    deltaDOp = makeRefDeltaOp(movingCfg, state, XDeltaOp())
+    valueDDOp = SignDistanceDeltaOp()
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaDOp = XDeltaOp()
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
+    deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
         return value
       def reset(self):
         pass
-    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=ResetOp()) 
+    inputOp = ResetOp()
+    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
