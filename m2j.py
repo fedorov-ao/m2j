@@ -2285,39 +2285,7 @@ class DeadzoneDeltaOp:
     self.sd_, self.s_, self.next_, self.deadzone_ = 0.0, 0, next, deadzone
 
 
-class OffsetDeltaOp:
-  def calc(self, x, timestamp):
-    """adds x to internally stored offset.
-       if x changes sign, sets offset to previous x."""
-    s = sign(x)
-    if self.s_ != s:
-      if self.s_ != 0:
-        self.offset_ = self.x_
-      self.s_ = s
-    self.x_ = x
-    return self.offset_ + (x if self.next_ is None else self.next_(x, timestamp)) 
-  def reset(self):
-    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
-    if self.next_:
-      self.next_.reset()
-  def __init__(self, next=None):
-    self.next_ = next
-    self.s_, self.x_, self.offset_ = 0, 0.0, 0.0
-
-
 #distance-delta ops
-class AccumulateDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    """distance is absolute, x is relative."""
-    return x + (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
-  def reset(self):
-    if self.next_:
-      self.next_.reset()
-  def __init__(self, next=None):
-    self.next_ = next
-    self.reset()
-
-
 class SignDistanceDeltaOp:
   def calc(self, distance, x, timestamp):
     """distance is absolute, x is relative."""
@@ -2363,36 +2331,6 @@ class TimeDistanceDeltaOp:
   def __init__(self, resetTime, holdTime, next=None):
     self.resetTime_, self.holdTime_, self.next_ = resetTime, holdTime, next
     self.timestamp_ = None
-
-
-class RefDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    return self.next_.calc(distance, self.combine_(x, self.approx_(self.axis_.get())), timestamp)
-  def reset(self):
-    self.next_.reset()
-  def __init__(self, combine, next, approx, axis):
-    self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
-
-
-#TODO Remove?
-class OffsetDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    """adds x to internally stored offset.
-       if x changes sign, sets offset to distance.
-       distance and x arguments are absolute. distance is treated as previous x."""
-    s = sign(x)
-    if self.s_ != s:
-      if self.s_ != 0:
-        self.offset_ = distance
-      self.s_ = s
-    return self.offset_ + (x if self.next_ is None else self.next_(distance, x, timestamp)) 
-  def reset(self):
-    self.s_, self.offset_ = 0, 0.0
-    if self.next_:
-      self.next_.reset()
-  def __init__(self, next=None):
-    self.next_ = next
-    self.offset_, self.s_ = 0.0, 0
 
 
 #Chain curves
