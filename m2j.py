@@ -101,7 +101,7 @@ def get_arg(value, state):
       v = args.get(argName)
       if v is not None:
         return v
-    dfault = value.get("default")
+    dfault = value.get("or")
     if dfault is not None:
       return dfault
     else:
