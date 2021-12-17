@@ -2186,8 +2186,38 @@ class LookupInputOp:
     self.ivs_ = [nextOp.calc(ov, ivLimits) for ov in ovs]
 
 
+class LimitedOpToOp:
+  def calc(self, value):
+    return self.op_.calc(value, self.limits_)
+
+  def reset(self):
+    self.op_.reset()
+
+  def __init__(self, op, limits):
+    self.op_, self.limits_ = op, limits
+
+
 class ApproxOp:
   def calc(self, value):
+    return self.approx_(value)
+  def reset(self):
+    pass
+  def __init__(self, approx):
+    self.approx_ = approx
+
+
+#delta ops
+class OpToDeltaOp:
+  def calc(self, value, timestamp):
+    return self.op_.calc(value)
+  def reset(self):
+    self.op_.reset()
+  def __init__(self, op):
+    self.op_ = op
+
+
+class ApproxDeltaOp:
+  def calcOutput(self, value, timestamp):
     return self.approx_(value)
   def reset(self):
     pass
@@ -2210,7 +2240,7 @@ class CombineDeltaOp:
     self.reset()
 
 
-class XOp:
+class XDeltaOp:
   def calc(self, x, timestamp):
     return x
   def reset(self):
@@ -2222,7 +2252,7 @@ class AccumulateDeltaOp:
     for op in self.ops_:
       self.distance_ = op.calc(self.distance_, x, timestamp)
     self.distance_ += x
-    return self.approx_(self.distance_)
+    return self.approx_(self.distance_) if self.approx_ is not None else self.distance_
   def reset(self):
     #logger.debug("{}: resetting".format(self))
     self.distance_ = 0.0
@@ -2236,48 +2266,9 @@ class AccumulateDeltaOp:
     self.reset()
 
 
-class SignDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    r = 1.0
-    s = sign(x)
-    if self.s_ == 0:
-      self.s_ = s
-    elif self.s_ != s:
-      self.sd_ += abs(x)
-      if self.sd_ > self.deadzone_:
-        #logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(self, self.s_, s))
-        self.sd_, self.s_, r = 0.0, s, 0.0
-    elif self.sd_ != 0.0:
-      self.sd_ = 0.0
-    return r * distance
-  def reset(self):
-    #logger.debug("{}: resetting".format(self))
-    self.s_, self.sd_ = 0, 0.0
-  def __init__(self, deadzone=0.0):
-    self.sd_, self.s_, self.deadzone_ = 0.0, 0, deadzone
-
-
-class TimeDistanceDeltaOp:
-  def calc(self, distance, x, timestamp):
-    assert(self.resetTime_ > 0.0)
-    r = 1.0
-    if self.timestamp_ is None:
-      self.timestamp_ = timestamp
-    dt = timestamp - self.timestamp_
-    self.timestamp_ = timestamp
-    if dt > self.holdTime_:
-      r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
-    return r * distance
-  def reset(self):
-    self.timestamp_ = None
-  def __init__(self, resetTime, holdTime):
-    self.resetTime_, self.holdTime_ = resetTime, holdTime
-    self.timestamp_ = None
-
-
 class DeadzoneDeltaOp:
   def calc(self, x, timestamp):
-    """Returns 0 while inside deadzone, x otherwise. Deadzone value is in one direction, not in both."""
+    """Returns 0 while inside deadzone radius, x otherwise."""
     s = sign(x)
     if self.s_ != s:
       self.s_, self.sd_ = s, 0.0
@@ -2294,6 +2285,270 @@ class DeadzoneDeltaOp:
     self.sd_, self.s_, self.next_, self.deadzone_ = 0.0, 0, next, deadzone
 
 
+#distance-delta ops
+class SignDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    r = 1.0
+    s = sign(x)
+    if self.s_ == 0:
+      self.s_ = s
+    elif self.s_ != s:
+      self.sd_ += abs(x)
+      if self.sd_ > self.deadzone_:
+        #logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(self, self.s_, s))
+        self.sd_, self.s_, r = 0.0, s, 0.0
+    elif self.sd_ != 0.0:
+      self.sd_ = 0.0
+    return r * (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
+  def reset(self):
+    #logger.debug("{}: resetting".format(self))
+    self.s_, self.sd_ = 0, 0.0
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, deadzone=0.0, next=None):
+    self.next_, self.deadzone_ = next, deadzone
+    self.sd_, self.s_ = 0.0, 0
+
+
+class TimeDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    assert(self.resetTime_ > 0.0)
+    r = 1.0
+    if self.timestamp_ is None:
+      self.timestamp_ = timestamp
+    dt = timestamp - self.timestamp_
+    self.timestamp_ = timestamp
+    if dt > self.holdTime_:
+      r = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
+    #logger.debug("{}.calc(): r:{:.3f}".format(self, r))
+    return r * (distance if self.next_ is None else self.next_.calc(distance, x, timestamp))
+  def reset(self):
+    self.timestamp_ = None
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, resetTime, holdTime, next=None):
+    self.resetTime_, self.holdTime_, self.next_ = resetTime, holdTime, next
+    self.timestamp_ = None
+
+
+#Chain curves
+class AccumulateRelChainCurve:
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    value = self.valueDDOp_.calc(self.value_, x, timestamp)
+    delta = self.deltaDOp_.calc(x, timestamp)
+    self.value_ = self.combine_(value, delta)
+    newValue = self.next_.move(self.value_, timestamp)
+    if newValue != self.value_:
+      self.value_ = newValue
+    #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
+    return self.value_
+
+  def reset(self):
+    self.valueDDOp_.reset()
+    self.deltaDOp_.reset()
+    self.inputOp_.reset()
+    self.next_.reset()
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def get_value(self):
+    return self.value_
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, valueDDOp, deltaDOp, combine, inputOp):
+    self.next_, self.valueDDOp_, self.deltaDOp_, self.combine_, self.inputOp_ = next, valueDDOp, deltaDOp, combine, inputOp
+    self.value_ = 0.0
+
+
+class TransformAbsChainCurve:
+  def move(self, x, timestamp):
+    outputValue = self.outputOp_.calc(x)
+    newOutputValue = self.next_.move(outputValue, timestamp)
+    #logger.debug("{}: value_:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, self.value_, outputValue, newOutputValue))
+    if newOutputValue != outputValue:
+      self.value_ = self.inputOp_.calc(newOutputValue)
+    else:
+      self.value_ = x
+    #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
+    return self.value_
+
+  def reset(self):
+    self.inputOp_.reset()
+    self.outputOp_.reset()
+    self.next_.reset()
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.inputOp_.calc(self.next_.get_value())
+
+  def get_value(self):
+    return self.value_
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, inputOp, outputOp):
+    self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
+
+
+class AxisAbsChainCurve:
+  """Acturally moves axis. Is meant to be at the bottom of chain."""
+  def move(self, x, timestamp):
+    self.axis_.move(x, relative=False)
+    #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
+    return self.axis_.get()
+
+  def reset(self):
+    pass
+
+  def on_move_axis(self, axis, old, new):
+    pass
+
+  def get_value(self):
+    return self.axis_.get()
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, axis):
+    self.axis_ = axis
+
+
+class AxisTrackerRelChainCurve:
+  """Prevents endless recursion on moving axis.
+     Is meant to be at the top of chain.
+     Subscribe as axis listener."""
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    if self.dirty_ == True:
+      self.reset()
+    self.busy_ = True
+    v = None
+    try:
+      v = self.next_.move_by(x, timestamp)
+    finally:
+      self.busy_ = False
+    return v
+
+  def reset(self):
+    self.busy_, self.dirty_ = False, False
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    if self.busy_ == True:
+      return
+    if self.resetOnAxisMove_ == True:
+      self.dirty_ = True
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.next_.get_value()
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, resetOnAxisMove):
+    self.next_, self.resetOnAxisMove_ = next, resetOnAxisMove
+    self.busy_, self.dirty_ = False, False
+
+
+class OffsetAbsChainCurve:
+  def move(self, x, timestamp):
+    """x is absolute."""
+    #logger.debug("{}: x:{:+.3f}".format(self, x))
+    s = sign(x)
+    if self.s_ != s:
+      if self.s_ != 0:
+        self.offset_ += self.x_
+        #logger.debug("{}: new offset_: {}".format(self, self.offset_))
+      self.s_ = s
+    elif abs(x) < abs(self.x_):
+      self.offset_ += self.x_ - x
+      self.x_ = x
+      return self.x_
+    ox = x + self.offset_
+    nox = self.next_.move(ox, timestamp)
+    #logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
+    #nox can still be outside of next_ input limits, so have to store sign of x to be able to backtrack
+    if nox == ox:
+      #within limits
+      if self.state_ == 1:
+        self.sx_, self.state_ = 0, 0
+      self.x_ = x
+      #logger.debug("{}: within limits, x: {}, x_: {}".format(self, x, self.x_))
+    else:
+      #outside limits
+      if self.state_ == 0:
+        self.sx_, self.state_ = s, 1
+      self.x_ = x if self.sx_ != s else (nox - self.offset_)
+      #logger.debug("{}: outside limits, x: {}, x_: {}".format(self, x, self.x_))
+    #logger.debug("{}.move(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+    return self.x_
+
+  def reset(self):
+    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    self.offset_ += (new - old)
+    #logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.x_
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next):
+    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
+    self.next_ = next
+
+
+class PrintRelChainCurve:
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    r = self.next_.move_by(x, timestamp)
+    self.tx_ += x
+    av = self.axis_.get()
+    self.ds_.update(av, self.tx_)
+    s = "{}: x:{:+.3f}; tx:{:+.3f}; av:{:+.3f}; ".format(self.name_, x, self.tx_, av)
+    for i in range(1, self.ds_.order()+1):
+      s += "d({}):{:+.3f}; ".format(i, self.ds_.get(i))
+    s = s[:-2]
+    logger.info(s)
+    return r
+
+  def reset(self):
+    self.next_.reset()
+    self.ds_.reset()
+    self.tx_ = 0.0
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.axis_.get()
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, axis, name, order):
+    self.next_, self.axis_, self.name_ = next, axis, name
+    self.tx_ = 0.0
+    self.ds_ = Derivatives(order)
+
+
+#linking curves    
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
@@ -3881,6 +4136,16 @@ def make_parser():
           self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
       return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
 
+  def makeIterativeInputOp(cfg, outputOp):
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
+    numIntervals = cfg.get("numInputIntervals", 10)
+    ovLimits = [inputOp.calc(v, ivLimits) for v in ivLimits]
+    step = (ovLimits[1] - ovLimits[0]) / numIntervals
+    ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
+    inputOp = LookupInputOp(inputOp, ovs, ivLimits)
+    return inputOp
+
   def parseCombinedCurve(cfg, state):
     axis = getAxisByFullName(cfg["axis"], state)
     movingCfg = cfg["moving"]
@@ -3888,7 +4153,7 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
@@ -3904,16 +4169,10 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
-    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
-    numIntervals = cfg.get("numInputIntervals", 10)
-    ovLimits = [inputOp.calc(v, ivLimits) for v in ivLimits]
-    step = (ovLimits[1] - ovLimits[0]) / numIntervals
-    ovs = [ovLimits[0]+i*step for i in xrange(numIntervals+1)]
-    inputOp = LookupInputOp(inputOp, ovs, ivLimits)
+    inputOp = makeIterativeInputOp(cfg, outputOp)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
     if cfg.get("print", 0) == 1:
@@ -3921,10 +4180,62 @@ def make_parser():
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
+    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
+
+  def parseOffsetCurve(cfg, state):
+    #axis tracker
+    resetOnAxisMove = cfg.get("resetOnAxisMove", True)
+    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
+    curve = top
+    axis = getAxisByFullName(cfg["axis"], state)
+    axis.add_listener(curve)
+    #print
+    if cfg.get("print", False) == True:
+      printCurve = PrintRelChainCurve(None, axis, cfg["axis"], cfg.get("avOrder", 3))
+      top.set_next(printCurve)
+      curve = printCurve
+    #accumulate
+    #Order of ops should not matter
+    movingCfg = cfg["moving"]
+    valueDDOp = SignDistanceDeltaOp()
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaDOp = XDeltaOp()
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
+    deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
+    combine = lambda a,b: a+b
+    class ResetOp:
+      def calc(self, value):
+        return value
+      def reset(self):
+        pass
+    inputOp = ResetOp()
+    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
+    curve.set_next(accumulateChainCurve)
+    #transform accumulated
+    movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
+    movingInputOp = makeIterativeInputOp(movingCfg, movingOutputOp)
+    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-2.0, 2.0)))
+    movingChainCurve = TransformAbsChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
+    accumulateChainCurve.set_next(movingChainCurve)
+    #offset transformed
+    offsetChainCurve = OffsetAbsChainCurve(next=None)
+    movingChainCurve.set_next(offsetChainCurve)
+    #transform offset
+    fixedCfg = cfg["fixed"]
+    fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
+    fixedInputOp = makeIterativeInputOp(fixedCfg, fixedOutputOp)
+    fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-1.0, 1.0)))
+    fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
+    offsetChainCurve.set_next(fixedChainCurve)
+    #move axis
+    axisChainCurve = AxisAbsChainCurve(axis=axis)
+    fixedChainCurve.set_next(axisChainCurve)
+    return top
+  curveParser.add("offset", parseOffsetCurve)
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
