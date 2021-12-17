@@ -4118,6 +4118,7 @@ def make_parser():
     linker = AxisLinker(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
+    #FIXME Since there is no "axis" property in config node, it does not get added to state["curves"]
     return linker
   curveParser.add("linker", parseAxisLinker)
 
@@ -4256,6 +4257,7 @@ def make_parser():
       if "print" in cfg:
         presetCfgStack.push("print", cfg["print"])
       curve = state["parser"]("curve", presetCfg, state)
+      #TODO Encapsulate adding curve to state["curves"] and do in in each curve factory
       assert("curves" in state)
       axisCurves = state["curves"].setdefault(fullAxisName, [])
       axisCurves.append(curve)
