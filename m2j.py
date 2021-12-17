@@ -91,6 +91,23 @@ class CfgStack:
   DELETE = 1
 
 
+def get_arg(value, state):
+  if type(value) not in (dict, collections.OrderedDict) or "arg" not in value:
+    return value
+  else:
+    args = state.get("args")
+    if args is not None:
+      argName = value["arg"]
+      v = args.get(argName)
+      if v is not None:
+        return v
+    dfault = value.get("default")
+    if dfault is not None:
+      return dfault
+    else:
+      raise RuntimeError("No default arg value: '{}'".format(value))
+
+
 class Derivatives:
   def update(self, f, x):
     df, dx = f - self.f_, x - self.x_
@@ -3787,6 +3804,7 @@ def add_scale_sink(sink, cfg):
     return sink
 
 
+#TODO Unused. Remove?
 def init_layout_config(settings):
   config = settings["config"]
   layoutName = config["layout"]
@@ -4259,7 +4277,7 @@ def make_parser():
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
-    presetName = cfg.get("name", None)
+    presetName = get_arg(cfg.get("name", None), state)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
     presetCfg = presets.get(presetName, None)
@@ -4715,7 +4733,7 @@ def make_parser():
   edParser.add("multiclick", parseMultiClick)
 
   def parseMove(cfg, state):
-    source, axis = split_full_name(cfg["axis"])
+    source, axis = split_full_name(get_arg(cfg["axis"], state))
     eventType = name2type(axis)
     axis = name2code(axis)
     r = [("type", eventType), ("code", axis)]
@@ -4809,12 +4827,18 @@ def make_parser():
 
   def parseExternal_(propName, groupName):
     def parseExternalOp(cfg, state):
-      group = state["settings"]["config"][groupName]
-      name = cfg.get(propName, None)
-      if name is None: name = cfg["name"]
-      cfg = group[name]
-      sink = state["parser"]("sink", cfg, state)
-      return sink
+      stateStack = CfgStack(state)
+      try:
+        group = state["settings"]["config"][groupName]
+        name = cfg.get(propName, None)
+        if name is None: name = cfg["name"]
+        cfg2 = group[name]
+        if "args" in cfg:
+          stateStack.push("args", cfg["args"])
+        sink = state["parser"]("sink", cfg2, state)
+        return sink
+      finally:
+        stateStack.pop_all()
     return parseExternalOp
 
   parser.add("preset", parseBases_(parseExternal_("preset", "presets")))
