@@ -4268,10 +4268,9 @@ def make_parser():
     #Setting and restoring axis, creating curve
     presetCfgStack = CfgStack(presetCfg)
     try:
-      if "axis" in cfg:
-        presetCfgStack.push("axis", cfg["axis"])
-      if "print" in cfg:
-        presetCfgStack.push("print", cfg["print"])
+      for n in ("axis", "controlling", "leader", "follower", "print"):
+        if n in cfg:
+          presetCfgStack.push(n, cfg[n])
       curve = state["parser"]("curve", presetCfg, state)
       return curve
     finally:
