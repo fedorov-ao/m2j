@@ -4610,10 +4610,10 @@ def make_parser():
   actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState(cfg, state):
-    output, key = split_full_name(get_arg(cfg["key"]))
+    output, key = split_full_name(get_arg(cfg["key"], state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    state = int(get_arg(cfg["state"]))
+    state = int(get_arg(cfg["state"], state))
     return SetButtonState(output, key, state)
   actionParser.add("setKeyState", parseSetKeyState)
 
