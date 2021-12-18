@@ -98,9 +98,14 @@ def get_arg(value, state):
     args = state.get("args")
     if args is not None:
       argName = value["arg"]
-      v = args.get(argName)
-      if v is not None:
-        return v
+      if len(argName) != 0:
+        argNameTokens, v = argName.split("."), args
+        for t in argNameTokens:
+          v = v.get(t)
+          if v is None:
+            break
+        if v is not None:
+          return v
     dfault = value.get("or")
     if dfault is not None:
       return dfault
