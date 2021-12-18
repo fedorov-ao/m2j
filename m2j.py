@@ -3948,6 +3948,23 @@ def make_parser():
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"])
   parser.add("curve", curveParser)
 
+  def get_axis_by_full_name(fullAxisName, state):
+    outputName, axisName = split_full_name(fullAxisName)
+    allAxes = state["settings"]["axes"]
+    if outputName not in allAxes:
+      raise RuntimeError("No axes were initialized for '{}'".format(outputName))
+    outputAxes = allAxes[outputName]
+    axisId = name2code(axisName)
+    if axisId not in outputAxes:
+      raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
+    axis = outputAxes[axisId]
+    return axis
+
+  def add_curve_to_state(fullAxisName, curve, state):
+      assert("curves" in state)
+      axisCurves = state["curves"].setdefault(fullAxisName, [])
+      axisCurves.append(curve)
+
   def parsePoints(cfg, state):
     """Helper"""
     pointParsers = {}
@@ -3975,20 +3992,8 @@ def make_parser():
     }
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
-  def getAxisByFullName(fullAxisName, state):
-    outputName, axisName = split_full_name(fullAxisName)
-    allAxes = state["settings"]["axes"]
-    if outputName not in allAxes:
-      raise RuntimeError("No axes were initialized for '{}'".format(outputName))
-    outputAxes = allAxes[outputName]
-    axisId = name2code(axisName)
-    if axisId not in outputAxes:
-      raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
-    axis = outputAxes[axisId]
-    return axis
-
   def parsePointsOutputBasedCurve(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     points = parsePoints(cfg["points"], state)
     vpoName = cfg.get("vpo", None)
     ops = {
@@ -4036,11 +4041,12 @@ def make_parser():
         onReset=onReset, onMove=onMove, resetTime=resetTime)
 
     axis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
     return curve
   curveParser.add("pointsOut", parsePointsOutputBasedCurve)
 
   def parseFixedPointInputBasedCurve(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     points = parsePoints(cfg["points"], state)
     fp = points["fixed"]
     interpolationDistance = cfg.get("interpolationDistance", 0.3)
@@ -4049,11 +4055,12 @@ def make_parser():
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     axis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
     return curve
   curveParser.add("fpointIn", parseFixedPointInputBasedCurve)
 
   def parsePointsInputBasedCurve(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     points = parsePoints(cfg["points"], state)
     fp = points["fixed"]
     mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
@@ -4073,52 +4080,61 @@ def make_parser():
       next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
       onReset=onReset, onMove=onMove, resetTime=resetTime)
     axis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
     return curve
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
 
   def parseOutputDeltaLinkingCurve(cfg, state):
-    controlledAxis = getAxisByFullName(cfg["axis"], state)
+    controlledAxis = get_axis_by_full_name(cfg["axis"], state)
     sensOp = state["parser"]("op", cfg, state)
     deltaOp = lambda delta, sens : delta*sens
-    controllingAxis = getAxisByFullName(cfg["controlling"], state)
+    controllingAxis = get_axis_by_full_name(cfg["controlling"], state)
     radius = cfg.get("radius", float("inf"))
     curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
+    add_curve_to_state(cfg["controlling"], curve, state)
     return curve
   curveParser.add("outDeltaLink", parseOutputDeltaLinkingCurve)
 
   def parseInputDeltaLinkingCurve(cfg, state):
-    controlledAxis = getAxisByFullName(cfg["axis"], state)
+    controlledAxis = get_axis_by_full_name(cfg["axis"], state)
     op = state["parser"]("op", cfg, state)
-    controllingAxis = getAxisByFullName(cfg["controlling"], state)
+    controllingAxis = get_axis_by_full_name(cfg["controlling"], state)
     radius = cfg.get("radius", float("inf"))
     threshold = cfg.get("threshold", 0.0)
     threshold = None if threshold == "none" else float(threshold)
     curve = InputDeltaLinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
+    add_curve_to_state(cfg["controlling"], curve, state)
     return curve
   curveParser.add("inDeltaLink", parseInputDeltaLinkingCurve)
 
   def parseInputLinkingCurve(cfg, state):
-    controlledAxis = getAxisByFullName(cfg["axis"], state)
+    controlledAxis = get_axis_by_full_name(cfg["axis"], state)
     op = state["parser"]("op", cfg, state)
-    controllingAxis = getAxisByFullName(cfg["controlling"], state)
+    controllingAxis = get_axis_by_full_name(cfg["controlling"], state)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
+    add_curve_to_state(cfg["controlling"], curve, state)
     return curve
   curveParser.add("inLink", parseInputLinkingCurve)
 
   def parseAxisLinker(cfg, state):
-    controlledAxis = getAxisByFullName(cfg["follower"], state)
+    controlledAxis = get_axis_by_full_name(cfg["follower"], state)
     op = state["parser"]("op", cfg, state)
-    controllingAxis = getAxisByFullName(cfg["leader"], state)
+    controllingAxis = get_axis_by_full_name(cfg["leader"], state)
     linker = AxisLinker(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
     #FIXME Since there is no "axis" property in config node, it does not get added to state["curves"]
+    add_curve_to_state(cfg["follower"], linker, state)
+    add_curve_to_state(cfg["leader"], linker, state)
     return linker
   curveParser.add("linker", parseAxisLinker)
 
@@ -4126,7 +4142,7 @@ def make_parser():
     if "refFixed" not in cfg:
       return sensOp
     else:
-      refAxis = getAxisByFullName(cfg["refAxis"], state)
+      refAxis = get_axis_by_full_name(cfg["refAxis"], state)
       refApprox = state["parser"]("op", cfg["refFixed"], state)
       class RefDeltaOp:
         def calc(self, x, timestamp):
@@ -4148,7 +4164,7 @@ def make_parser():
     return inputOp
 
   def parseCombinedCurve(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     movingCfg = cfg["moving"]
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
@@ -4160,11 +4176,12 @@ def make_parser():
     deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
     sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
+    add_curve_to_state(cfg["axis"], curve, state)
     return curve
   curveParser.add("combined", parseCombinedCurve)
 
   def parseInputBasedCurve2(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     movingCfg = cfg["moving"]
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
@@ -4184,6 +4201,7 @@ def make_parser():
     ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
+    add_curve_to_state(cfg["axis"], curve, state)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
 
@@ -4192,7 +4210,7 @@ def make_parser():
     resetOnAxisMove = cfg.get("resetOnAxisMove", True)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
     curve = top
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     axis.add_listener(curve)
     #print
     if cfg.get("print", False) == True:
@@ -4235,6 +4253,7 @@ def make_parser():
     #move axis
     axisChainCurve = AxisAbsChainCurve(axis=axis)
     fixedChainCurve.set_next(axisChainCurve)
+    add_curve_to_state(cfg["axis"], top, state)
     return top
   curveParser.add("offset", parseOffsetCurve)
 
@@ -4249,18 +4268,11 @@ def make_parser():
     #Setting and restoring axis, creating curve
     presetCfgStack = CfgStack(presetCfg)
     try:
-      fullAxisName = cfg.get("axis")
-      if fullAxisName is not None:
-        presetCfgStack.push("axis", fullAxisName)
-      else:
-        fullAxisName = presetCfg.get("axis")
+      if "axis" in cfg:
+        presetCfgStack.push("axis", cfg["axis"])
       if "print" in cfg:
         presetCfgStack.push("print", cfg["print"])
       curve = state["parser"]("curve", presetCfg, state)
-      #TODO Encapsulate adding curve to state["curves"] and do in in each curve factory
-      assert("curves" in state)
-      axisCurves = state["curves"].setdefault(fullAxisName, [])
-      axisCurves.append(curve)
       return curve
     finally:
       presetCfgStack.pop_all()
@@ -4507,7 +4519,7 @@ def make_parser():
   actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
-    axis = getAxisByFullName(cfg["axis"], state)
+    axis = get_axis_by_full_name(cfg["axis"], state)
     value = float(cfg["value"])
     r = MoveAxis(axis, value, False)
     return r
@@ -4524,7 +4536,7 @@ def make_parser():
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = getAxisByFullName(fullAxisName, state)
+      axis = get_axis_by_full_name(fullAxisName, state)
       value = float(value)
       av.append([axis, value, False])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
@@ -4537,7 +4549,7 @@ def make_parser():
     axesAndValues = []
     allAxes = state["settings"]["axes"]
     for fullAxisName,value in cfg["axesAndValues"].items():
-      axis = getAxisByFullName(fullAxisName, state)
+      axis = get_axis_by_full_name(fullAxisName, state)
       value = float(value)
       axesAndValues.append([axis, value, True])
     r = MoveAxes(axesAndValues)
