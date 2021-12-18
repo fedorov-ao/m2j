@@ -4341,7 +4341,7 @@ def make_parser():
       if bases is not None:
         layouts, full = state["settings"]["config"]["layouts"], {}
         for b in bases:
-          logger.debug("parsing base : {}".format(b))
+          logger.debug("Parsing base : {}".format(b))
           merge_dicts(full, layouts[b])
         merge_dicts(full, cfg)
         cfg = full
@@ -4873,6 +4873,7 @@ def make_parser():
         group = state["settings"]["config"][groupName]
         name = cfg.get(propName, None)
         if name is None: name = cfg["name"]
+        logger.debug("Parsing {} '{}'".format(propName, name))
         cfg2 = group[name]
         if "args" in cfg:
           stateStack.push("args", cfg["args"])
