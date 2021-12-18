@@ -4534,14 +4534,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[split_full_name_code(fullInputAxisName)] = curve
+      curves[split_full_name_code(get_arg(fullInputAxisName, state))] = curve
     op = None
     if cfg["op"] == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif cfg["op"] == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif cfg["op"] == "thresholds":
-      op = MCSThresholdOp(thresholds = {split_full_name_code(fullInputAxisName):threshold for fullInputAxisName,threshold in cfg["thresholds"].items()})
+      op = MCSThresholdOp(thresholds = {split_full_name_code(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(cfg["op"]))
     mcs = MultiCurveSink(curves, op)
@@ -4550,25 +4550,24 @@ def make_parser():
   actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
-    axis = get_axis_by_full_name(cfg["axis"], state)
-    value = float(cfg["value"])
+    axis = get_axis_by_full_name(get_arg(cfg["axis"], state), state)
+    value = float(get_arg(cfg["value"], state))
     r = MoveAxis(axis, value, False)
     return r
   actionParser.add("setAxis", parseSetAxis)
 
   def parseSetAxes(cfg, state):
-    axesAndValues = []
     allAxes = state["settings"]["axes"]
     axesAndValues = cfg["axesAndValues"]
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
-    if type(axesAndValues) is dict or type(axesAndValues) is collections.OrderedDict:
+    if type(axesAndValues) in (dict, collections.OrderedDict):
       axesAndValues = axesAndValues.items()
     assert(type(axesAndValues) is list)
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = get_axis_by_full_name(fullAxisName, state)
-      value = float(value)
+      axis = get_axis_by_full_name(get_arg(fullAxisName, state), state)
+      value = float(get_arg(value, state))
       av.append([axis, value, False])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
@@ -4577,21 +4576,24 @@ def make_parser():
   actionParser.add("setAxes", parseSetAxes)
 
   def parseSetAxesRel(cfg, state):
-    axesAndValues = []
     allAxes = state["settings"]["axes"]
-    for fullAxisName,value in cfg["axesAndValues"].items():
-      axis = get_axis_by_full_name(fullAxisName, state)
-      value = float(value)
-      axesAndValues.append([axis, value, True])
-    r = MoveAxes(axesAndValues)
+    axesAndValues = cfg["axesAndValues"]
+    if type(axesAndValues) in (dict, collections.OrderedDict):
+      axesAndValues = axesAndValues.items()
+    av = []
+    for fullAxisName,value in axesAndValues:
+      axis = get_axis_by_full_name(get_arg(fullAxisName, state), state)
+      value = float(get_arg(value, state))
+      av.append([axis, value, True])
+    r = MoveAxes(av)
     return r
   actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState(cfg, state):
-    output, key = split_full_name(cfg["key"])
+    output, key = split_full_name(get_arg(cfg["key"]))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    state = int(cfg["state"])
+    state = int(get_arg(cfg["state"]))
     return SetButtonState(output, key, state)
   actionParser.add("setKeyState", parseSetKeyState)
 
@@ -4601,7 +4603,7 @@ def make_parser():
     assert(allCurves is not None)
     curvesToReset = []
     for fullAxisName in cfg["axes"]:
-      curves = allCurves.get(fullAxisName, None)
+      curves = allCurves.get(get_arg(fullAxisName, state), None)
       if curves is None:
         logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, cfg))
       else:
@@ -4704,7 +4706,7 @@ def make_parser():
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    source, key = split_full_name(cfg["key"])
+    source, key = split_full_name(get_arg(cfg["key"], state))
     eventType = name2type(key)
     key = name2code(key)
     r = [("type", eventType), ("code", key), ("value", value)]
