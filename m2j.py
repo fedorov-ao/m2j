@@ -108,6 +108,13 @@ def get_arg(value, state):
       raise RuntimeError("No default arg value: '{}'".format(value))
 
 
+def resolve_args(args, state):
+  r = collections.OrderedDict()
+  for n,a in args.items():
+    r[n] = get_arg(a, state)
+  return r
+
+
 class Derivatives:
   def update(self, f, x):
     df, dx = f - self.f_, x - self.x_
@@ -2565,7 +2572,7 @@ class PrintRelChainCurve:
     self.ds_ = Derivatives(order)
 
 
-#linking curves    
+#linking curves
 class OutputDeltaLinkingCurve:
   """Links controlled and and controlling axes.
      Takes controlling axis value delta, calculates controlled axis value delta using op and moves controlled axis by this delta.
@@ -3970,7 +3977,7 @@ def make_parser():
     outputName, axisName = split_full_name(fullAxisName)
     allAxes = state["settings"]["axes"]
     if outputName not in allAxes:
-      raise RuntimeError("No axes were initialized for '{}'".format(outputName))
+      raise RuntimeError("No axes were initialized for '{}' (while parsing '{}')".format(outputName, fullAxisName))
     outputAxes = allAxes[outputName]
     axisId = name2code(axisName)
     if axisId not in outputAxes:
@@ -4245,7 +4252,7 @@ def make_parser():
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(curve)
     #print
-    if cfg.get("print", False) == True:
+    if get_arg(cfg.get("print", False), state) == True:
       printCurve = PrintRelChainCurve(None, axis, fullAxisName, cfg.get("avOrder", 3))
       top.set_next(printCurve)
       curve = printCurve
@@ -4297,16 +4304,29 @@ def make_parser():
     presetCfg = presets.get(presetName, None)
     if presetCfg is None:
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
-    #Setting and restoring axis, creating curve
-    presetCfgStack = CfgStack(presetCfg)
-    try:
-      for n in ("axis", "controlling", "leader", "follower", "print"):
-        if n in cfg:
-          presetCfgStack.push(n, cfg[n])
-      curve = state["parser"]("curve", presetCfg, state)
-      return curve
-    finally:
-      presetCfgStack.pop_all()
+    #creating curve
+    if "args" in cfg:
+      oldArgs = state.get("args")
+      try:
+        args = resolve_args(cfg["args"], state)
+        #logger.debug("{} -> {}".format(cfg["args"], args))
+        state["args"] = args
+        curve = state["parser"]("curve", presetCfg, state)
+        return curve
+      finally:
+        if oldArgs:
+          state["args"] = oldArgs
+    else:
+      presetCfgStack = CfgStack(presetCfg)
+      try:
+        for n in ("axis", "controlling", "leader", "follower", "print"):
+          if n in cfg:
+            presetCfgStack.push(n, cfg[n])
+        curve = state["parser"]("curve", presetCfg, state)
+        return curve
+      finally:
+        presetCfgStack.pop_all()
+
   curveParser.add("preset", parsePresetCurve)
 
   def parseBases_(wrapped):
