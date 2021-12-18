@@ -4365,9 +4365,11 @@ def make_parser():
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
-    oldComponents = None
     oldComponents = state.get("components", None)
     state["components"] = {}
+    oldArgs = state.get("args", None)
+    if "args" in cfg:
+      state["args"] = resolve_args(cfg["args"], state)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
     def parse_component(name, op=None):
@@ -4441,6 +4443,8 @@ def make_parser():
     finally:
       if oldComponents is not None:
         state["components"] = oldComponents
+      if oldArgs is not None:
+        state["args"] = oldArgs
   parser.add("sink", parseBases_(parseSink))
 
   #Sink components
@@ -4868,19 +4872,13 @@ def make_parser():
 
   def parseExternal_(propName, groupName):
     def parseExternalOp(cfg, state):
-      stateStack = CfgStack(state)
-      try:
-        group = state["settings"]["config"][groupName]
-        name = cfg.get(propName, None)
-        if name is None: name = cfg["name"]
-        logger.debug("Parsing {} '{}'".format(propName, name))
-        cfg2 = group[name]
-        if "args" in cfg:
-          stateStack.push("args", cfg["args"])
-        sink = state["parser"]("sink", cfg2, state)
-        return sink
-      finally:
-        stateStack.pop_all()
+      group = state["settings"]["config"][groupName]
+      name = cfg.get(propName, None)
+      if name is None: name = cfg["name"]
+      logger.debug("Parsing {} '{}'".format(propName, name))
+      cfg2 = group[name]
+      sink = state["parser"]("sink", cfg2, state)
+      return sink
     return parseExternalOp
 
   parser.add("preset", parseBases_(parseExternal_("preset", "presets")))
