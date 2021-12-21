@@ -92,12 +92,12 @@ class CfgStack:
 
 
 def get_arg(value, state):
-  if type(value) not in (dict, collections.OrderedDict) or "arg" not in value:
-    return value
-  else:
+  argPrefix = "arg:"
+  argPrefixLen = len(argPrefix)
+  if type(value) in (str, unicode) and value[:argPrefixLen] == argPrefix:
+    argName = value[argPrefixLen:]
     args = state.get("args")
     if args is not None:
-      argName = value["arg"]
       if len(argName) != 0:
         argNameTokens, v = argName.split("."), args
         for t in argNameTokens:
@@ -106,11 +106,8 @@ def get_arg(value, state):
             break
         if v is not None:
           return v
-    dfault = value.get("or")
-    if dfault is not None:
-      return dfault
-    else:
-      raise RuntimeError("No default arg value: '{}'".format(value))
+  else:
+    return value
 
 
 def resolve_args(args, state):
