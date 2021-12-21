@@ -3816,7 +3816,6 @@ def add_scale_sink(sink, cfg):
     return sink
 
 
-#TODO Unused. Remove?
 def init_layout_config(settings):
   config = settings["config"]
   layoutName = config["layout"]
