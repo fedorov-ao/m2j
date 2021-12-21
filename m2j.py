@@ -3934,14 +3934,14 @@ def make_parser():
       return wrapped
 
   def constant(cfg, state):
-    return ConstantApproximator(cfg["value"])
+    return ConstantApproximator(get_arg(cfg["value"], state))
   opParser.add("constant", constant)
 
   def segment(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentApproximator(data, 1.0, True, True)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(cfg["points"], cfg.get("symmetric", 0))
+    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
   opParser.add("segment", segment)
 
   def poly(cfg, state):
@@ -3953,21 +3953,21 @@ def make_parser():
           r += k*x**p
         return r
       return make_symm_wrapper(op, symmetric)
-    return make_op(cfg["coeffs"], cfg.get("symmetric", 0))
+    return make_op(get_arg(cfg["coeffs"], state), get_arg(cfg.get("symmetric", 0), state))
   opParser.add("poly", poly)
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
       approx = BezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(cfg["points"], cfg.get("symmetric", 0))
+    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
   opParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentedBezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(cfg["points"], cfg.get("symmetric", 0))
+    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
   #Curves
