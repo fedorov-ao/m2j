@@ -3902,6 +3902,9 @@ class IntrusiveSelectParser:
   """FreePie does not handle inheritance well, so this class is implemented via composition."""
   def __call__(self, cfg, state):
     key = self.keyOp_(cfg)
+    while type(key) in (dict, collections.OrderedDict):
+      cfg = key
+      key = self.keyOp_(cfg)
     #logger.debug(cfg)
     return self.p_(key, cfg, state)
 
