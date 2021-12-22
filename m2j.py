@@ -106,6 +106,8 @@ def get_arg(value, state):
             break
         if v is not None:
           return v
+    #Fallback
+    return None
   else:
     return value
 
