@@ -57,6 +57,37 @@ def merge_dicts(destination, source):
   return destination
 
 
+def str2(v):
+  ps = {
+    collections.OrderedDict : ( "{{", "}}" ),
+    dict : ( "{", "}" ),
+    list : ( "[", "]" ),
+    tuple : ( "(", ")" ),
+    str : ( '"', '"' ),
+    unicode : ( '"', '"' )
+  }
+  s = str()
+  if type(v) in (dict, collections.OrderedDict):
+    for a,b in v.items():
+      s += str2(a) + " : " + str2(b) + ", "
+    s = s[:-2]
+  elif type(v) in (tuple, list):
+    for a in v:
+      s += str2(a) + ", "
+    s = s[:-2]
+  else:
+    s = str(v)
+  tv = type(v)
+  if tv in ps:
+    p = ps[tv]
+    s = p[0] + s + p[1]
+  return s
+
+
+def truncate(cfg, l=30, ellipsis=True):
+  return str2(cfg)[:l] + "..." if ellipsis else ""
+
+
   levelName = settings["config"].get("logLevel", "NOTSET").upper()
   nameToLevel = {
     logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
@@ -3881,10 +3912,10 @@ class SelectParser:
         r = parser(cfg, state)
         return r
       except Exception as e:
-        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, cfg))
+        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
         raise
       except:
-        logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, cfg))
+        logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
         raise
 
   def add(self, key, parser):
@@ -4332,8 +4363,12 @@ def make_parser():
         return curve
       finally:
         presetCfgStack.pop_all()
-
   curveParser.add("preset", parsePresetCurve)
+
+  def parseObjectCurve(cfg, state):
+    objects = state["objects"]
+    return objects[cfg["name"]]
+  curveParser.add("object", parseObjectCurve)
 
   def parseBases_(wrapped):
     def parseBasesOp(cfg, state):
@@ -4363,6 +4398,19 @@ def make_parser():
     def __init__(self, next=None):
         self.next_ = next
 
+  def make_objects(objectsCfg, state):
+    parser = state["parser"]
+    r = collections.OrderedDict()
+    for k,v in objectsCfg.items():
+      for n in ("curve", "op"):
+        if n in v:
+          r[k] = parser(n, v, state)
+          #break is needed to avoid executing the "else" block
+          break
+      else:
+        r[k] = parser("sink", v, state)
+    return r
+
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
@@ -4371,6 +4419,11 @@ def make_parser():
     oldArgs = state.get("args", None)
     if "args" in cfg:
       state["args"] = resolve_args(cfg["args"], state)
+    oldCurves = state.get("curves", None)
+    state["curves"] = {}
+    oldObjects = state.get("objects", None)
+    if "objects" in cfg:
+      state["objects"] = make_objects(cfg["objects"], state)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
     def parse_component(name, op=None):
@@ -4446,6 +4499,10 @@ def make_parser():
         state["components"] = oldComponents
       if oldArgs is not None:
         state["args"] = oldArgs
+      if oldObjects is not None:
+        state["objects"] = oldObjects
+      if oldCurves is not None:
+        state["curves"] = oldCurves
   parser.add("sink", parseBases_(parseSink))
 
   #Sink components
@@ -4628,17 +4685,22 @@ def make_parser():
   actionParser.add("setKeyState", parseSetKeyState)
 
   def parseResetCurves(cfg, state):
-    #logger.debug("collected curves: {}".format(state["curves"]))
-    allCurves = state.get("curves", None)
-    assert(allCurves is not None)
     curvesToReset = []
-    for fullAxisName in cfg["axes"]:
-      curves = allCurves.get(get_arg(fullAxisName, state), None)
-      if curves is None:
-        logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, cfg))
-      else:
-        curvesToReset += curves
-    #logger.debug("selected curves: {}".format(curves))
+    allCurves = state.get("curves")
+    assert(allCurves is not None)
+    if "axes" in cfg:
+      for fullAxisName in cfg["axes"]:
+        curves = allCurves.get(get_arg(fullAxisName, state), None)
+        if curves is None:
+          logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
+        else:
+          curvesToReset += curves
+    elif "objects" in cfg:
+      objects = state["objects"]
+      for objectName in cfg["objects"]:
+        curvesToReset.append(objects[objectName]) 
+    else:
+      raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg)))
     return ResetCurves(curvesToReset)
   actionParser.add("resetCurves", parseResetCurves)
 
@@ -4816,10 +4878,10 @@ def make_parser():
           try:
             t = parser(c, state)
           except RuntimeError as e:
-            logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, c))
+            logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
             continue
           if t is None:
-            logger.warning("Could not parse {} '{}')".format(n1, c))
+            logger.warning("Could not parse {} '{}')".format(n1, str2(c)))
             continue
           r.append(t)
         return r
@@ -4829,16 +4891,16 @@ def make_parser():
         try:
           return parser.get("action")(cfg, state)
         except KeyError:
-          logger.debug("Action parser could not parse '{}', so trying sink parser".format(cfg))
+          logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
           return parser.get("sink")(cfg, state)
 
       inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
       if len(inputs) == 0:
-        logger.warning("No inputs were constructed (encountered when parsing '{}')".format(cfg))
+        logger.warning("No inputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
       outputs = parseGroup("output", "outputs", actionParser, cfg, state)
       if len(outputs) == 0:
-        logger.warning("No outputs were constructed (encountered when parsing '{}')".format(cfg))
+        logger.warning("No outputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
       return ((i,o) for i in inputs for o in outputs)
 
@@ -4856,18 +4918,12 @@ def make_parser():
           r = max(r, checkOutput(o))
       return r
     binds.sort(key=bindsKey)
-    oldCurves = state.get("curves", None)
-    state["curves"] = {}
     cmpOp = CmpWithModifiers()
     bindingSink = BindSink(cmpOp)
-    try:
-      for bind in binds:
-        for i,o in parseInputsOutputs(bind, state):
-          bindingSink.add(i, o, 0)
-      return bindingSink
-    finally:
-      if oldCurves is not None:
-        state["curves"] = oldCurves
+    for bind in binds:
+      for i,o in parseInputsOutputs(bind, state):
+        bindingSink.add(i, o, 0)
+    return bindingSink
 
   scParser.add("binds", parseBinds)
 
