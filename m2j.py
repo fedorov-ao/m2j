@@ -17,6 +17,13 @@ import collections
 
 logger = logging.getLogger(__name__)
 
+class KeyError2:
+  def __init__(self, key, keys):
+    self.key, self.keys = key, keys
+  def __str__(self):
+    return "{} not in {}".format(self.key, self.keys)
+
+
 def sign(v):
   return -1 if v < 0 else 1 if v > 0 else 0
 
@@ -126,9 +133,13 @@ def get_nested(name, d):
   if len(name) != 0:
     tokens = name.split(".")
     for t in tokens:
-      d = d.get(t)
-      if d is None:
-        break
+      nd = d.get(t)
+      if nd is None:
+        path = ".".join(tokens[:tokens.index(t)])
+        token = ".".join((path, t))
+        keys = [".".join((path, k)) for k in d.keys()]
+        raise KeyError2(token, keys)
+      d = nd
     if d is not None:
       return d
   #Fallback
@@ -145,9 +156,12 @@ def get_arg(value, state):
       argName = value[lpa:]
       args = state.get("args")
       if args is not None:
-        return get_nested(argName, args)
+        try:
+          return get_nested(argName, args)
+        except KeyError2 as e:
+          raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
       else:
-        return None
+        raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(argName)))
   #Fallback
   return value
 
@@ -165,7 +179,7 @@ def get_object(name, state):
     raise RuntimeError("Objects were not created.")
   obj = objects.get(name)
   if obj is None:
-    raise RuntimeError("Object '{}' was not created.".format(str2(name)))
+    raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), str2(objects.keys())))
   return obj
 
 
@@ -213,7 +227,10 @@ codesDict = { 'EV_BCT':-1, 'EV_CUSTOM':-2, 'BCT_INIT':0, 'ABS_BRAKE':10, 'ABS_CN
 codes = type("codes", (object,), codesDict)
 
 def name2code(name):
-  return codesDict[name]
+  r = codesDict.get(name)
+  if r is None:
+    raise RuntimeError("Bad name: {}".format(str2(name)))
+  return r
 
 
 def name2type(name):
@@ -225,7 +242,7 @@ def name2type(name):
     "BCT" : codes.EV_BCT,
   }
   prefix = name[:3]
-  return p2t.get(prefix, None)
+  return p2t.get(prefix)
 
 
 def type2names(type):
