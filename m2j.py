@@ -4762,6 +4762,11 @@ def make_parser():
     return SetAxisLinkerState(linker)
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
+  def parseSetObjectState(cfg, state):
+    obj = state["objects"][cfg["object"]]
+    return SetState(obj, cfg["state"])
+  actionParser.add("setObjectState", parseSetObjectState)
+
   def parseEmitCustomEvent(cfg, state):
     sinks, code, value = state.get("sinks"), int(cfg.get("code", 0)), cfg.get("value")
     if sinks is None or len(sinks) == 0:
