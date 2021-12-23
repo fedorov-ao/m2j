@@ -136,17 +136,20 @@ def get_nested(name, d):
 
 
 def get_arg(value, state):
-  argPrefix = "arg:"
-  argPrefixLen = len(argPrefix)
-  if type(value) in (str, unicode) and value[:argPrefixLen] == argPrefix:
-    argName = value[argPrefixLen:]
-    args = state.get("args")
-    if args is not None:
-      return get_nested(argName, args)
-    else:
-      return None
-  else:
-    return value
+  if type(value) in (str, unicode):
+    pa, po = "arg:", "obj:"
+    lpa, lpo = len(pa), len(po)
+    if value[:lpo] == po:
+      return get_object(value[lpo:], state)
+    elif value[:lpa] == pa:
+      argName = value[lpa:]
+      args = state.get("args")
+      if args is not None:
+        return get_nested(argName, args)
+      else:
+        return None
+  #Fallback
+  return value
 
 
 def resolve_args(args, state):
@@ -3966,15 +3969,38 @@ class IntrusiveSelectParser:
   def has(self, key):
     return self.p_.has(key)
 
-  def __init__(self, keyOp, parsers=None):
+  def __init__(self, keyOp, parser=None):
     self.keyOp_ = keyOp
-    self.p_ = SelectParser(parsers)
+    self.p_ = SelectParser() if parser is None else parser
+
+
+class ArgObjSelectParser:
+  def __call__(self, key, cfg, state):
+    pa, po = "arg:", "obj:"
+    lpa, lpo = len(pa), len(po)
+    if key[:lpo] == po:
+      return get_object(key[lpo:], state)
+    elif key[:lpa] == pa:
+      key = get_arg(key, state)
+    return self.p_(key, cfg, state)
+
+  def add(self, key, parser):
+    self.p_.add(key, parser)
+
+  def get(self, key, dfault=None):
+    return self.p_.get(key, dfault)
+
+  def has(self, key):
+    return self.p_.has(key)
+
+  def __init__(self, parser=None):
+    self.p_ = SelectParser() if parser is None else parser
 
 
 def make_parser():
   parser = SelectParser()
 
-  opParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["op"])
+  opParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["op"], parser=ArgObjSelectParser())
   parser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
@@ -4027,7 +4053,7 @@ def make_parser():
   opParser.add("object", object_op)
 
   #Curves
-  curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"])
+  curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"], parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
 
   def get_axis_by_full_name(fullAxisName, state):
