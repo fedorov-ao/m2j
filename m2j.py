@@ -122,6 +122,19 @@ class CfgStack:
   DELETE = 1
 
 
+def get_nested(name, d):
+  if len(name) != 0:
+    tokens = name.split(".")
+    for t in tokens:
+      d = d.get(t)
+      if d is None:
+        break
+    if d is not None:
+      return d
+  #Fallback
+  return None
+
+
 def get_arg(value, state):
   argPrefix = "arg:"
   argPrefixLen = len(argPrefix)
@@ -129,16 +142,9 @@ def get_arg(value, state):
     argName = value[argPrefixLen:]
     args = state.get("args")
     if args is not None:
-      if len(argName) != 0:
-        argNameTokens, v = argName.split("."), args
-        for t in argNameTokens:
-          v = v.get(t)
-          if v is None:
-            break
-        if v is not None:
-          return v
-    #Fallback
-    return None
+      return get_nested(argName, args)
+    else:
+      return None
   else:
     return value
 
@@ -148,6 +154,16 @@ def resolve_args(args, state):
   for n,a in args.items():
     r[n] = get_arg(a, state)
   return r
+
+
+def get_object(name, state):
+  objects = state.get("objects")
+  if objects is None:
+    raise RuntimeError("Objects were not created.")
+  obj = objects.get(name)
+  if obj is None:
+    raise RuntimeError("Object '{}' was not created.".format(str2(name)))
+  return obj
 
 
 class Derivatives:
@@ -4006,6 +4022,10 @@ def make_parser():
     return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
+  def object_op(cfg, state):
+    return get_object(cfg["object"], state)
+  opParser.add("object", object_op)
+
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"])
   parser.add("curve", curveParser)
@@ -4366,8 +4386,7 @@ def make_parser():
   curveParser.add("preset", parsePresetCurve)
 
   def parseObjectCurve(cfg, state):
-    objects = state["objects"]
-    return objects[cfg["name"]]
+    return get_object(cfg["object"], state)
   curveParser.add("object", parseObjectCurve)
 
   def parseBases_(wrapped):
@@ -4763,7 +4782,7 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseSetObjectState(cfg, state):
-    obj = state["objects"][cfg["object"]]
+    obj = get_object(cfg["object"], state)
     return SetState(obj, cfg["state"])
   actionParser.add("setObjectState", parseSetObjectState)
 
