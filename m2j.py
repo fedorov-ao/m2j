@@ -4440,6 +4440,9 @@ def make_parser():
         layouts, full = state["settings"]["config"]["layouts"], {}
         for b in bases:
           logger.debug("Parsing base : {}".format(b))
+          layout = layouts.get(b)
+          if layout is None:
+            raise RuntimeError("No layout {}, available layouts are: {}".format(str2(b), str2(layouts.keys())))
           merge_dicts(full, layouts[b])
         merge_dicts(full, cfg)
         cfg = full
