@@ -1179,7 +1179,7 @@ class FilterSink:
 
 class SourceFilterOp:
   def __call__(self, event):
-    if not self.state_ and event.source in self.sources_:
+    if not self.state_ and hasattr(event, "source") and event.source in self.sources_:
       return False
     else:
       return True
