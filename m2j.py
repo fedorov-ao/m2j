@@ -1208,6 +1208,7 @@ class ModeSink:
     if mode == self.mode_:
       return True
     logger.info("{}: Setting mode: {}".format(self.name_, mode))
+    #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
       return False
@@ -4433,20 +4434,26 @@ def make_parser():
   curveParser.add("object", parseObjectCurve)
 
   def parseBases_(wrapped):
-    def parseBasesOp(cfg, state):
+    def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
       bases = cfg.get("bases", None)
-      if bases is not None:
+      if bases is None:
+        return cfg
+      else:
         layouts, full = state["settings"]["config"]["layouts"], {}
         for b in bases:
           logger.debug("Parsing base : {}".format(b))
           layout = layouts.get(b)
           if layout is None:
             raise RuntimeError("No layout {}, available layouts are: {}".format(str2(b), str2(layouts.keys())))
-          merge_dicts(full, layouts[b])
+          merge_dicts(full, worker(layouts[b], state))
         merge_dicts(full, cfg)
-        cfg = full
-      return wrapped(cfg, state)
+        del full["bases"]
+        return full
+    def parseBasesOp(cfg, state):
+      expandedCfg = worker(cfg, state)
+      #logger.debug("parseBasesOp():\n{}\n->\n{}".format(str2(cfg), str2(expandedCfg)))
+      return wrapped(expandedCfg, state)
     return parseBasesOp
 
   class HeadSink:
