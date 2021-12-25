@@ -279,7 +279,7 @@ if starting:
 
   settings = {"options" : {}, "configNames" : [], "updated" : []}
   settings["options"] = {"layout" : "base8_cfg", "logLevel" : "DEBUG" }
-  settings["configNames"] = ["curves.cfg", "m2j_freepie.cfg"]
+  settings["configNames"] = ["m2j_freepie.cfg"]
   settings["parser"] = make_parser()
 
   init_config2(settings)
