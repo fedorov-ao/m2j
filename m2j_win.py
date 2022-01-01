@@ -70,8 +70,35 @@ RIDEV_EXINPUTSINK = 0x00001000
 RIDEV_CAPTUREMOUSE = 0x00000200
 
 RID_INPUT = 0x10000003
-RIM_TYPEMOUSE = 0x00000000
-RIM_TYPEKEYBOARD = 0x00000001
+
+RIM_TYPEMOUSE = 0
+RIM_TYPEKEYBOARD = 1
+RIM_TYPEHID = 2
+
+RI_MOUSE_LEFT_BUTTON_DOWN = 0x0001
+RI_MOUSE_LEFT_BUTTON_UP = 0x0002
+RI_MOUSE_RIGHT_BUTTON_DOWN = 0x0004
+RI_MOUSE_RIGHT_BUTTON_UP = 0x0008
+RI_MOUSE_MIDDLE_BUTTON_DOWN = 0x0010
+RI_MOUSE_MIDDLE_BUTTON_UP = 0x0020
+RI_MOUSE_BUTTON_4_DOWN = 0x0040
+RI_MOUSE_BUTTON_4_UP = 0x0080
+RI_MOUSE_BUTTON_5_DOWN = 0x0100
+RI_MOUSE_BUTTON_5_UP = 0x0200
+RI_MOUSE_WHEEL = 0x0400
+
+RI_MOUSE_BUTTON_1_DOWN = RI_MOUSE_LEFT_BUTTON_DOWN
+RI_MOUSE_BUTTON_1_UP = RI_MOUSE_LEFT_BUTTON_UP
+RI_MOUSE_BUTTON_2_DOWN = RI_MOUSE_RIGHT_BUTTON_DOWN
+RI_MOUSE_BUTTON_2_UP = RI_MOUSE_RIGHT_BUTTON_UP
+RI_MOUSE_BUTTON_3_DOWN = RI_MOUSE_MIDDLE_BUTTON_DOWN
+RI_MOUSE_BUTTON_3_UP = RI_MOUSE_MIDDLE_BUTTON_UP
+
+MOUSE_MOVE_RELATIVE = 0
+MOUSE_MOVE_ABSOLUTE = 1
+MOUSE_VIRTUAL_DESKTOP = 0x02
+MOUSE_ATTRIBUTES_CHANGED = 0x04
+MOUSE_MOVE_NOCOALESCE = 0x08
 
 HID_USAGE_PAGE_GENERIC = 0x01
 HID_USAGE_PAGE_GAME = 0x05
@@ -352,23 +379,61 @@ class RawInputEventSource:
         if raw.header.hDevice in self.devs_:
           hd = raw.header.hDevice
           source = self.devs_[hd]
+          events = None
           if raw.header.dwType == RIM_TYPEMOUSE:
             #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
             logger.debug("{}: Got mouse event".format(self))
-            self.sink_(self.make_mouse_event_(raw, source))
+            events = self.make_mouse_event_(raw, source)
           elif raw.header.dwType == RIM_TYPEKEYBOARD:
             #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
             logger.debug("{}: Got keyboard event".format(self))
-            self.sink_(self.make_kbd_event_(raw, source))
+            events = self.make_kbd_event_(raw, source)
+          elif raw.header.dwType == RIM_TYPEHID:
+            logger.debug("{}: Got HID event".format(self))
+          if events is not None:
+            for e in events:
+              self.sink_(e)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
   
   #TODO Implement
   def make_mouse_event_(self, raw, source):
-    return InputEvent(0, 0, 0, time.time(), source)
+    ts, events = time.time(), []
+    mouse = raw.mouse
+    usButtonFlags = mouse._u1._s2.usButtonFlags
+    if mouse.usFlags & MOUSE_MOVE_RELATIVE == MOUSE_MOVE_RELATIVE:
+      if mouse.lLastX != 0:
+        events.append(InputEvent(codes.EV_REL, codes.REL_X, mouse.lLastX, ts, source))
+      if mouse.lLastY != 0:
+        events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, source))
+    elif mouse.usFlags & MOUSE_MOVE_ABSOLUTE == MOUSE_MOVE_ABSOLUTE:
+      events.append(InputEvent(codes.EV_ABS, codes.REL_X, mouse.lLastX, ts, source))
+      events.append(InputEvent(codes.EV_ABS, codes.REL_Y, mouse.lLastY, ts, source))
+    if usButtonFlags & RI_MOUSE_WHEEL:
+      #usButtonData is actually a signed value, and ctypes support only pointer casts,
+      #so converting it this way
+      delta = cast(pointer(USHORT(mouse._u1._s2.usButtonData)), POINTER(SHORT)).contents.value
+      events.append(InputEvent(codes.EV_REL, codes.REL_WHEEL, delta, ts, source))
+    codeMapping = (
+      (RI_MOUSE_LEFT_BUTTON_DOWN, codes.BTN_LEFT, 1),
+      (RI_MOUSE_LEFT_BUTTON_UP, codes.BTN_LEFT, 0),
+      (RI_MOUSE_RIGHT_BUTTON_DOWN, codes.BTN_RIGHT, 1),
+      (RI_MOUSE_RIGHT_BUTTON_UP, codes.BTN_RIGHT, 0),
+      (RI_MOUSE_MIDDLE_BUTTON_DOWN, codes.BTN_MIDDLE, 1),
+      (RI_MOUSE_MIDDLE_BUTTON_UP, codes.BTN_MIDDLE, 0),
+      #TODO Check
+      (RI_MOUSE_BUTTON_4_DOWN, codes.BTN_SIDE, 1),
+      (RI_MOUSE_BUTTON_4_UP, codes.BTN_SIDE, 0),
+      (RI_MOUSE_BUTTON_5_DOWN, codes.BTN_EXTRA, 1),
+      (RI_MOUSE_BUTTON_5_UP, codes.BTN_EXTRA, 0)
+    )
+    for cm in codeMapping:
+      if usButtonFlags & cm[0]:
+        events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, source))
+    return events
   
   #TODO Implement
   def make_kbd_event_(self, raw, source):
-    return InputEvent(0, 0, 0, time.time(), source)
+    return []
 
 
 def print_devices():
@@ -392,7 +457,7 @@ def run():
   def init_source(settings):
       config = settings["config"]
       sink = init_main_sink(settings, init_layout_config)
-      source = RawInputEventSource(useMessageWindow=False)
+      source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
       for s,n in config["inputs"].items():
         source.track_device(n, s)
       source.set_sink(sink)
