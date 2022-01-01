@@ -3753,7 +3753,7 @@ def init_main_sink(settings, make_next):
     mainSink.add(ed, set_sens_set)
   def names2inputs(names, settings):
     r = []
-    inputs = settings["inputs"]
+    inputs = settings.get("inputs", ())
     for d in names:
       if d in inputs:
         r.append(inputs[d])
