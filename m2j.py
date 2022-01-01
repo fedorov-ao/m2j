@@ -3803,7 +3803,7 @@ def init_main_sink(settings, make_next):
       allAxes[oName][axisId] = valueAxis
 
   grabSink.add(ED.any(), make_next(settings), 1)
-  settings.setdefault("initState", False)
+  settings.setdefault("initState", config.get("initState", False))
   stateSink.set_state(settings["initState"])
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
@@ -4861,6 +4861,13 @@ def make_parser():
       return True
     return callback
   actionParser.add("print", parsePrint)
+
+  def parsePrintEvent(cfg, state):
+    def callback(e):
+      print e
+      return True
+    return callback
+  actionParser.add("printEvent", parsePrintEvent)
 
   #Event descriptors
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
