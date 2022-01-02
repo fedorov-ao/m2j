@@ -18,6 +18,8 @@ import sys
 from ctypes import *
 from ctypes.wintypes import *
 
+import win32file
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,121 @@ class NullJoystick:
 def parseNullJoystickOutput(cfg, state):
   return NullJoystick()
 
+
+#PPJoystick
+FILE_DEVICE_UNKNOWN = 0x00000022
+METHOD_BUFFERED = 0
+FILE_ANY_ACCESS = 0
+def CTL_CODE(DeviceType,Function,Method,Access):
+  return (((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))
+
+class PPJoystick:
+  def move_axis(self, axis, value, relative):
+    if axis not in self.a_:
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    v = value if relative == False else self.a_[axis]+value
+    v = clamp(v, *self.get_limits(axis))
+    self.a_[axis] = v
+    #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
+    self.dirty_ = True
+
+  def get_axis_value(self, axis):
+    if axis not in self.a_:
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    return self.a_[axis]
+
+  def get_limits(self, axis):
+    if axis not in self.a_:
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    return (-1.0, 1.0)
+
+  def get_supported_axes(self):
+    return self.axes_
+
+  def set_button_state(self, button, state):
+    if button < 0 or button >= NUM_DIGITAL:
+      raise RuntimeError("Button not supported: {}".format(button))
+    self.d_[button] = state
+    self.dirty_ = True
+
+  def get_button_state(self, button):
+    if button < 0 or button >= NUM_DIGITAL:
+      raise RuntimeError("Button not supported: {}".format(button))
+    return self.d_[button]
+
+  def update(self):
+    if not self.dirty_:
+      return
+    #logger.debug("{}: updating".format(self))
+    data = self.make_data_()
+    rs = DWORD()
+    if not win32file.DeviceIoControl(self.devHandle_, self.IOCTL_PPORTJOY_SET_STATE, byref(data), self.dataSize_, None, 0, byref(rs), None):
+      rc = windll.kernel32.GetLastError()
+      if rc == 2:
+        raise RuntimeError("Underlying joystick device deleted")
+      else:
+        raise RuntimeError("DeviceIoControl error 0x{:x}".format(rc))
+    self.dirty_ = False
+
+  def __init__(self, i):
+    devName = self.PPJOY_IOCTL_DEVNAME_PREFIX + str(i)
+    try:
+      self.devHandle_ = win32file.CreateFile(devName, win32file.GENERIC_WRITE, win32file.FILE_SHARE_WRITE, None, win32file.OPEN_EXISTING, 0, None);
+    except Exception as e:
+      raise RuntimeError("CreateFile failed with error code 0x{:x} trying to open {} device ({})".format(windll.kernel32.GetLastError(), devName, e))
+    """
+    typedef struct
+    {
+     unsigned long	Signature;				/* Signature to identify packet to PPJoy IOCTL */
+     char			NumAnalog;				/* Num of analog values we pass */
+     long			Analog[NUM_ANALOG];		/* Analog values */
+     char			NumDigital;				/* Num of digital values we pass */
+     char			Digital[NUM_DIGITAL];	/* Digital values */
+    }	JOYSTICK_STATE;
+    """
+    self.fmt_ = "Lb" + "l"*self.NUM_ANALOG + "b" + "b"*self.NUM_DIGITAL
+    self.dataSize_ = struct.calcsize(self.fmt_)
+    self.a_ = {axis : 0.0 for axis in self.axes_}
+    self.d_ = [0 for i in range(self.NUM_DIGITAL)]
+    self.dirty_ = True
+
+  def __del__(self):
+    if hasattr(self, "devHandle_"):
+      win32file.CloseHandle(self.devHandle_)
+
+  def make_data_(self):
+    analog = tuple(self.a_[axis]*self.PPJOY_AXIS_MAX for axis in self.axes_)
+    digital = tuple(d for d in self.d_)
+    data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.NUM_ANALOG,) + analog + (self.NUM_DIGITAL,) + digital))
+    return data
+
+  NUM_ANALOG = 8
+  NUM_DIGITAL = 16
+  JOYSTICK_STATE_V1 = 0x53544143
+  PPJOY_IOCTL_DEVNAME_PREFIX = "\\\\.\\PPJoyIOCTL"
+  PPJOY_AXIS_MAX = 32767
+  IOCTL_PPORTJOY_SET_STATE = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x0, METHOD_BUFFERED, FILE_ANY_ACCESS)
+  """
+  The sequence of axes are as follows:
+  X Position
+  Y Position
+  Z Position
+  Z Rotation
+  Slider
+  X Rotation
+  Y Rotation
+  Dial 
+  """
+  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)
+
+
+def parsePPJoystickOutput(cfg, state):
+  ppj = PPJoystick(cfg["id"])
+  state["settings"]["updated"].append(lambda tick, ts : ppj.update())
+  return ppj
+
+
+#Raw input device manager
 MAX_PATH = 255
 WM_INPUT = 255
 WNDPROC = WINFUNCTYPE(c_long, c_int, c_uint, c_int, c_int)
@@ -708,6 +825,7 @@ def run():
     parser = make_parser()
     settings["parser"] = parser
     parser.get("output").add("null", parseNullJoystickOutput)
+    parser.get("output").add("ppjoy", parsePPJoystickOutput)
 
     settings["reloading"] = False
     init_config2(settings)
