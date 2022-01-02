@@ -55,7 +55,7 @@ class NullJoystick:
     pass
   
 
-def parsePPJoystickOutput(cfg, state):
+def parseNullJoystickOutput(cfg, state):
   return NullJoystick()
 
 MAX_PATH = 255
@@ -707,7 +707,7 @@ def run():
 
     parser = make_parser()
     settings["parser"] = parser
-    parser.get("output").add("ppjoy", parsePPJoystickOutput)
+    parser.get("output").add("null", parseNullJoystickOutput)
 
     settings["reloading"] = False
     init_config2(settings)
