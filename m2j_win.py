@@ -641,7 +641,10 @@ def run():
       sink = init_main_sink(settings, init_layout_config)
       source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
       for s,n in config["inputs"].items():
-        source.track_device(n, s)
+        try:
+          source.track_device(n, s)
+        except RuntimeError as e:
+          logger.warning(e)
       source.set_sink(sink)
       settings["source"] = source
 
