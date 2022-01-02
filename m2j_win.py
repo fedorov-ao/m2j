@@ -132,7 +132,7 @@ class PPJoystick:
      char			Digital[NUM_DIGITAL];	/* Digital values */
     }	JOYSTICK_STATE;
     """
-    self.fmt_ = "Lb" + "l"*self.NUM_ANALOG + "b" + "b"*self.NUM_DIGITAL
+    self.fmt_ = "Lb{:d}lb{:d}b".format(self.NUM_ANALOG, self.NUM_DIGITAL)
     self.dataSize_ = struct.calcsize(self.fmt_)
     self.a_ = {axis : 0.0 for axis in self.axes_}
     self.d_ = [0 for i in range(self.NUM_DIGITAL)]
