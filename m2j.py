@@ -3112,25 +3112,26 @@ class MappingJoystick:
 
   def move_axis(self, axis, value, relative):
     d = self.data_[axis]
-    d[0].move_axis(d[1], value, relative)
+    d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
 
   def get_axis_value(self, axis):
     d = self.data_[axis]
-    return d[0].get_axis_value(d[1])
+    value = d.toJoystick.get_axis_value(d.toAxis)
+    return d.factor*value
 
   def get_limits(self, axis):
     d = self.data_[axis]
-    return d[0].get_limits(d[1])
+    return (d.factor*l for l in d.toJoystick.get_limits(d.toAxis))
 
-  def add(self, axis, joystick, joyAxis):
-    self.data_[axis] = (joysitick, joyAxis)
+  def add(self, fromAxis, toJoystick, toAxis, factor=1.0):
+    class D:
+      pass
+    d = D()
+    d.toJoystick, d.toAxis, d.factor = toJoysitick, toAxis, factor
+    self.data_[fromAxis] = d
 
-  def __init__(self, initData = None):
+  def __init__(self):
     self.data_ = dict()
-    if initData is not None:
-      for d in initData:
-        self.data_[d[0]] = (d[1], d[2])
-
 
 class NodeJoystick(object):
   def move_axis(self, axis, value, relative):
@@ -5073,6 +5074,16 @@ def make_parser():
     children = parse_list(cfg["children"], state, parser)
     return CompositeJoystick(children)
   outputParser.add("composite", parseCompositeOutput)
+
+  def parseMappingOutput(cfg, state):
+    outputs = state["settings"]["outputs"]
+    mj = MappingJoystick()
+    for fromAxis,to in cfg["mapping"].items():
+      toJoystick, toAxis = split_full_name_code(to["to"])
+      factor = to.get("factor", 1.0)
+      mj.add(name2code(fromAxis), toJoystick, toAxis, factor)
+    return mj
+  outputParser.add("mapping", parseMappingOutput)
 
   def parseOpentrackOutput(cfg, state):
     opentrack = Opentrack(cfg["ip"], int(cfg["port"]))
