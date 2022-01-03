@@ -662,17 +662,24 @@ class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       p = (event.source, event.code)
+      #logger.debug("{}.__call__(): got: {}".format(self, p))
       if self.modifiers_ is not None:
         for m in self.modifiers_:
+          #logger.debug("{}.__call__(): checking against: {}".format(self, m))
           if p == m or (m[0] is None and p[1] == m[1]):
+            #logger.debug("{}.__call__(): {} matched {}".format(self, p, m))
             if event.value == 1 and p not in self.m_:
               self.m_.append(p)
             elif event.value == 0 and p in self.m_:
               self.m_.remove(p)
+          else:
+            #logger.debug("{}.__call__(): {} mismatched {}".format(self, p, m))
+            pass
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
       event.modifiers = self.m_
 
+    #logger.debug("{}.__call__(): active modifiers: {}".format(self, self.m_))
     #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
     return self.next_(event) if self.next_ is not None else False
 
@@ -684,6 +691,7 @@ class ModifierSink:
     self.m_ = []
 
   def __init__(self, next = None, modifiers = None):
+    #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, typecode2name(codes.EV_KEY, m)) for s,m in modifiers]))
     self.m_, self.next_, self.modifiers_ = [], next, modifiers
 
 
