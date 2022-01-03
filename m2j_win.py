@@ -99,7 +99,7 @@ class PPJoystick:
   def get_limits(self, axis):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    return (-1.0, 1.0)
+    return self.limis_[axis]
 
   def get_supported_axes(self):
     return self.axes_[:self.numAxes_]
@@ -126,8 +126,13 @@ class PPJoystick:
       logger.error("DeviceIoControl error: {}".format(e))
     self.dirty_ = False
 
-  def __init__(self, i, numAxes=8, numButtons=16):
+  def __init__(self, i, numAxes=8, numButtons=16, limits=None):
     self.numAxes_, self.numButtons_ = numAxes, numButtons
+
+    self.limits_ = {}
+    for axis in self.get_supported_axes():
+      self.limits_[axis] = (-1.0, 1.0) if (limits is None or axis not in limits) else limits[axis]
+
     devName = self.PPJOY_IOCTL_DEVNAME_PREFIX + str(i)
     try:
       self.devHandle_ = win32file.CreateFile(devName, win32file.GENERIC_WRITE, win32file.FILE_SHARE_WRITE, None, win32file.OPEN_EXISTING, 0, None);
@@ -155,17 +160,7 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    """
-    -1.0 -> PPJOY_AXIS_MIN
-    +1.0 -> PPJOY_AXIS_MAX
-    a*(-1.0) + b = PPJOY_AXIS_MIN
-    a*(1.0) + b = PPJOY_AXIS_MAX
-    b = (PPJOY_AXIS_MIN+PPJOY_AXIS_MAX)/2.0
-    a = PPJOY_AXIS_MAX - b
-    """
-    b = (self.PPJOY_AXIS_MIN + self.PPJOY_AXIS_MAX) / 2.0
-    a = self.PPJOY_AXIS_MAX - b
-    analog = tuple(a*self.a_[axis]+b for axis in self.axes_)
+    analog = tuple(lerp(self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], PPJOY_AXIS_MIN, PPJOY_AXIS_MAX) for axis in self.axes_)
     digital = tuple(d for d in self.d_)
     data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
     return data
@@ -192,7 +187,10 @@ class PPJoystick:
 
 
 def parsePPJoystickOutput(cfg, state):
-  ppj = PPJoystick(cfg["id"], cfg.get("numAxes", 8), cfg.get("numButtons", 16))
+  limits = cfg.get("limits")
+  if limits is not None:
+    limits = {name2code(n) : v for n,v in limits.items()}
+  ppj = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits)
   state["settings"]["updated"].append(lambda tick, ts : ppj.update())
   return ppj
 

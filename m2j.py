@@ -44,6 +44,13 @@ def clamp(v, lo, hi):
   return lo if v < lo else hi if v > hi else v
 
 
+def lerp(fv, fb, fe, tb, te):
+  #tv = a*fv + b
+  a = (te - tb) / (fe - fb)
+  b = te - a*fe
+  return a*fv + b
+
+
 def merge_dicts(destination, source):
   """https://stackoverflow.com/questions/20656135/python-deep-merge-dictionary-data"""
   for key, value in source.items():
