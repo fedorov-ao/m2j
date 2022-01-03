@@ -70,7 +70,7 @@ def CTL_CODE(DeviceType,Function,Method,Access):
 
 class PPJoystick:
   def move_axis(self, axis, value, relative):
-    if axis not in self.a_:
+    if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
     v = value if relative == False else self.a_[axis]+value
     v = clamp(v, *self.get_limits(axis))
@@ -79,44 +79,42 @@ class PPJoystick:
     self.dirty_ = True
 
   def get_axis_value(self, axis):
-    if axis not in self.a_:
+    if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
     return self.a_[axis]
 
   def get_limits(self, axis):
-    if axis not in self.a_:
+    if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
     return (-1.0, 1.0)
 
   def get_supported_axes(self):
-    return self.axes_
+    return self.axes_[:self.numAxes_]
 
   def set_button_state(self, button, state):
-    if button < 0 or button >= NUM_DIGITAL:
+    if button < 0 or button >= self.numButtons_:
       raise RuntimeError("Button not supported: {}".format(button))
     self.d_[button] = state
     self.dirty_ = True
 
   def get_button_state(self, button):
-    if button < 0 or button >= NUM_DIGITAL:
+    if button < 0 or button >= self.numButtons_:
       raise RuntimeError("Button not supported: {}".format(button))
     return self.d_[button]
 
   def update(self):
     if not self.dirty_:
       return
-    #logger.debug("{}: updating".format(self))
     data = self.make_data_()
-    rs = DWORD()
-    if not win32file.DeviceIoControl(self.devHandle_, self.IOCTL_PPORTJOY_SET_STATE, byref(data), self.dataSize_, None, 0, byref(rs), None):
-      rc = windll.kernel32.GetLastError()
-      if rc == 2:
-        raise RuntimeError("Underlying joystick device deleted")
-      else:
-        raise RuntimeError("DeviceIoControl error 0x{:x}".format(rc))
+    #logger.debug("{}.update(): data: {}".format(self, struct.unpack(self.fmt_, data)))
+    try:
+      win32file.DeviceIoControl(self.devHandle_, self.IOCTL_PPORTJOY_SET_STATE, data, 0, None)
+    except Exception as e:
+      logger.error("DeviceIoControl error: {}".format(e))
     self.dirty_ = False
 
-  def __init__(self, i):
+  def __init__(self, i, numAxes=8, numButtons=16):
+    self.numAxes_, self.numButtons_ = numAxes, numButtons
     devName = self.PPJOY_IOCTL_DEVNAME_PREFIX + str(i)
     try:
       self.devHandle_ = win32file.CreateFile(devName, win32file.GENERIC_WRITE, win32file.FILE_SHARE_WRITE, None, win32file.OPEN_EXISTING, 0, None);
@@ -132,7 +130,8 @@ class PPJoystick:
      char			Digital[NUM_DIGITAL];	/* Digital values */
     }	JOYSTICK_STATE;
     """
-    self.fmt_ = "Lb{:d}lb{:d}b".format(self.NUM_ANALOG, self.NUM_DIGITAL)
+    #Have to explicitly specify little-endiannes
+    self.fmt_ = "<Lb{:d}lb{:d}b".format(self.NUM_ANALOG, self.NUM_DIGITAL)
     self.dataSize_ = struct.calcsize(self.fmt_)
     self.a_ = {axis : 0.0 for axis in self.axes_}
     self.d_ = [0 for i in range(self.NUM_DIGITAL)]
@@ -143,15 +142,26 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    analog = tuple(self.a_[axis]*self.PPJOY_AXIS_MAX for axis in self.axes_)
+    """
+    -1.0 -> PPJOY_AXIS_MIN
+    +1.0 -> PPJOY_AXIS_MAX
+    a*(-1.0) + b = PPJOY_AXIS_MIN
+    a*(1.0) + b = PPJOY_AXIS_MAX
+    b = (PPJOY_AXIS_MIN+PPJOY_AXIS_MAX)/2.0
+    a = PPJOY_AXIS_MAX - b
+    """
+    b = (self.PPJOY_AXIS_MIN + self.PPJOY_AXIS_MAX) / 2.0
+    a = self.PPJOY_AXIS_MAX - b
+    analog = tuple(a*self.a_[axis]+b for axis in self.axes_)
     digital = tuple(d for d in self.d_)
-    data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.NUM_ANALOG,) + analog + (self.NUM_DIGITAL,) + digital))
+    data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
     return data
 
-  NUM_ANALOG = 8
-  NUM_DIGITAL = 16
   JOYSTICK_STATE_V1 = 0x53544143
   PPJOY_IOCTL_DEVNAME_PREFIX = "\\\\.\\PPJoyIOCTL"
+  NUM_ANALOG = 8
+  NUM_DIGITAL = 16
+  PPJOY_AXIS_MIN = 1
   PPJOY_AXIS_MAX = 32767
   IOCTL_PPORTJOY_SET_STATE = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x0, METHOD_BUFFERED, FILE_ANY_ACCESS)
   """
@@ -169,7 +179,7 @@ class PPJoystick:
 
 
 def parsePPJoystickOutput(cfg, state):
-  ppj = PPJoystick(cfg["id"])
+  ppj = PPJoystick(cfg["id"], cfg.get("numAxes", 8), cfg.get("numButtons", 16))
   state["settings"]["updated"].append(lambda tick, ts : ppj.update())
   return ppj
 
