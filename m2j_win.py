@@ -62,7 +62,7 @@ class NullJoystick:
 
   def set_button_state(self, button, state):
     pass
-  
+
 
 def parseNullJoystickOutput(cfg, state):
   values = cfg.get("values")
@@ -99,7 +99,7 @@ class PPJoystick:
   def get_limits(self, axis):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.limis_[axis]
+    return self.limits_[axis]
 
   def get_supported_axes(self):
     return self.axes_[:self.numAxes_]
@@ -160,7 +160,7 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    analog = tuple(lerp(self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], PPJOY_AXIS_MIN, PPJOY_AXIS_MAX) for axis in self.axes_)
+    analog = tuple(lerp(self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for axis in self.axes_)
     digital = tuple(d for d in self.d_)
     data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
     return data
@@ -172,18 +172,7 @@ class PPJoystick:
   PPJOY_AXIS_MIN = 1
   PPJOY_AXIS_MAX = 32767
   IOCTL_PPORTJOY_SET_STATE = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x0, METHOD_BUFFERED, FILE_ANY_ACCESS)
-  """
-  The sequence of axes are as follows:
-  X Position
-  Y Position
-  Z Position
-  Z Rotation
-  Slider
-  X Rotation
-  Y Rotation
-  Dial 
-  """
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RX, codes.ABS_RY, codes.ABS_RUDDER)
+  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
 
 
 def parsePPJoystickOutput(cfg, state):
@@ -423,7 +412,7 @@ VK_OEM_CLEAR = 0xFE
 
 #TODO Implement
 g_vkey2codeDict = {
-  VK_PLAY : codes.KEY_PLAY, VK_F21 : codes.KEY_F21, VK_PAUSE : codes.KEY_PAUSE, VK_HOME : codes.KEY_HOME, VK_HELP : codes.KEY_HELP, VK_HANGEUL : codes.KEY_HANGEUL, VK_SELECT : codes.KEY_SELECT, VK_RIGHT : codes.KEY_RIGHT, VK_HANJA : codes.KEY_HANJA, VK_TAB : codes.KEY_TAB, VK_F9 : codes.KEY_F9, VK_F8 : codes.KEY_F8, VK_F3 : codes.KEY_F3, VK_F2 : codes.KEY_F2, VK_F1 : codes.KEY_F1, VK_F7 : codes.KEY_F7, VK_F6 : codes.KEY_F6, VK_F5 : codes.KEY_F5, VK_F4 : codes.KEY_F4, VK_F22 : codes.KEY_F22, VK_F23 : codes.KEY_F23, VK_ZOOM : codes.KEY_ZOOM, VK_CANCEL : codes.KEY_CANCEL, VK_DELETE : codes.KEY_DELETE, VK_SPACE : codes.KEY_SPACE, VK_F24 : codes.KEY_F24, VK_NUMLOCK : codes.KEY_NUMLOCK, VK_END : codes.KEY_END, VK_PRINT : codes.KEY_PRINT, VK_CLEAR : codes.KEY_CLEAR, VK_MENU : codes.KEY_MENU, VK_LEFT : codes.KEY_LEFT, VK_BACK : codes.KEY_BACK, VK_INSERT : codes.KEY_INSERT, VK_UP : codes.KEY_UP, VK_NEXT : codes.KEY_NEXT, VK_F10 : codes.KEY_F10, VK_F20 : codes.KEY_F20, VK_SLEEP : codes.KEY_SLEEP, VK_F19 : codes.KEY_F19, VK_F18 : codes.KEY_F18, VK_F13 : codes.KEY_F13, VK_F12 : codes.KEY_F12, VK_F11 : codes.KEY_F11, VK_DOWN : codes.KEY_DOWN, VK_F17 : codes.KEY_F17, VK_F16 : codes.KEY_F16, VK_F15 : codes.KEY_F15, VK_F14 : codes.KEY_F14, VK_SCROLL : codes.KEY_SCROLLLOCK, 
+  VK_PLAY : codes.KEY_PLAY, VK_F21 : codes.KEY_F21, VK_PAUSE : codes.KEY_PAUSE, VK_HOME : codes.KEY_HOME, VK_HELP : codes.KEY_HELP, VK_HANGEUL : codes.KEY_HANGEUL, VK_SELECT : codes.KEY_SELECT, VK_RIGHT : codes.KEY_RIGHT, VK_HANJA : codes.KEY_HANJA, VK_TAB : codes.KEY_TAB, VK_F9 : codes.KEY_F9, VK_F8 : codes.KEY_F8, VK_F3 : codes.KEY_F3, VK_F2 : codes.KEY_F2, VK_F1 : codes.KEY_F1, VK_F7 : codes.KEY_F7, VK_F6 : codes.KEY_F6, VK_F5 : codes.KEY_F5, VK_F4 : codes.KEY_F4, VK_F22 : codes.KEY_F22, VK_F23 : codes.KEY_F23, VK_ZOOM : codes.KEY_ZOOM, VK_CANCEL : codes.KEY_CANCEL, VK_DELETE : codes.KEY_DELETE, VK_SPACE : codes.KEY_SPACE, VK_F24 : codes.KEY_F24, VK_NUMLOCK : codes.KEY_NUMLOCK, VK_END : codes.KEY_END, VK_PRINT : codes.KEY_PRINT, VK_CLEAR : codes.KEY_CLEAR, VK_MENU : codes.KEY_MENU, VK_LEFT : codes.KEY_LEFT, VK_BACK : codes.KEY_BACK, VK_INSERT : codes.KEY_INSERT, VK_UP : codes.KEY_UP, VK_NEXT : codes.KEY_NEXT, VK_F10 : codes.KEY_F10, VK_F20 : codes.KEY_F20, VK_SLEEP : codes.KEY_SLEEP, VK_F19 : codes.KEY_F19, VK_F18 : codes.KEY_F18, VK_F13 : codes.KEY_F13, VK_F12 : codes.KEY_F12, VK_F11 : codes.KEY_F11, VK_DOWN : codes.KEY_DOWN, VK_F17 : codes.KEY_F17, VK_F16 : codes.KEY_F16, VK_F15 : codes.KEY_F15, VK_F14 : codes.KEY_F14, VK_SCROLL : codes.KEY_SCROLLLOCK,
   VK_SHIFT : codes.KEY_RIGHTSHIFT, VK_CONTROL : codes.KEY_RIGHTCTRL, VK_MENU : codes.KEY_RIGHTALT,
   VK_APPS : codes.KEY_APPSELECT,
   0x41 : codes.KEY_A, 0x42 : codes.KEY_B, 0x43 : codes.KEY_C, 0x44 : codes.KEY_D, 0x45 : codes.KEY_E, 0x46 : codes.KEY_F, 0x47 : codes.KEY_G, 0x48 : codes.KEY_H, 0x49 : codes.KEY_I, 0x4a : codes.KEY_J, 0x4b : codes.KEY_K, 0x4c : codes.KEY_L, 0x4d : codes.KEY_M, 0x4e : codes.KEY_N, 0x4f : codes.KEY_O, 0x50 : codes.KEY_P, 0x51 : codes.KEY_Q, 0x52 : codes.KEY_R, 0x53 : codes.KEY_S, 0x54 : codes.KEY_T, 0x55 : codes.KEY_U, 0x56 : codes.KEY_V, 0x57 : codes.KEY_W, 0x58 : codes.KEY_X, 0x59 : codes.KEY_Y, 0x5a : codes.KEY_Z, }
@@ -491,8 +480,8 @@ class RAWINPUTDEVICELIST(Structure):
         ("hDevice", HANDLE),
         ("dwType", DWORD)
     ]
-    
-    
+
+
 class RAWINPUTHEADER(Structure):
     _fields_ = [
         ("dwType", DWORD),
@@ -602,7 +591,7 @@ class RawInputEventSource:
       windll.user32.UpdateWindow(c_int(hwnd))
     #TODO Check for error
     self.hwnd = hwnd
-    
+
     #TODO Listen to other types of devices
     numRid = 2
     Rid = (numRid * RAWINPUTDEVICE)()
@@ -616,9 +605,9 @@ class RawInputEventSource:
     Rid[1].hwndTarget = hwnd
     #TODO Check for error
     r = windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE))
-    
+
     self.devs_ = {}
-    
+
   def __del__(self):
     self.stop()
 
@@ -637,15 +626,15 @@ class RawInputEventSource:
         raise RuntimError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
       else:
         del self.wndclass
-        
+
   def run_once(self):
     msg = MSG()
     pMsg = pointer(msg)
     NULL = c_int(win32con.NULL)
     PM_REMOVE = 1
     while windll.user32.PeekMessageA(pMsg, self.hwnd, 0, 0, PM_REMOVE) != 0:
-        windll.user32.DispatchMessageA(pMsg)    
-    
+        windll.user32.DispatchMessageA(pMsg)
+
   def track_device(self, name, source):
     devices = self.get_devices()
     for d in devices:
@@ -653,10 +642,10 @@ class RawInputEventSource:
         self.devs_[d.handle] = source
         return
     raise RuntimeError("Device {} not found".format(name))
-    
+
   def set_sink(self, sink):
     self.sink_ = sink
-  
+
   def get_devices(self):
     uiNumDevices = c_uint(0)
     r = windll.user32.GetRawInputDeviceList(0, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
@@ -688,7 +677,7 @@ class RawInputEventSource:
             di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
             devices.append(di)
       return devices
-      
+
   #TODO Implement
   def wnd_proc(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
@@ -715,7 +704,7 @@ class RawInputEventSource:
             for e in events:
               self.sink_(e)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
-  
+
   #TODO Implement
   def make_mouse_event_(self, raw, source):
     ts, events = time.time(), []
@@ -751,7 +740,7 @@ class RawInputEventSource:
       if usButtonFlags & cm[0]:
         events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, source))
     return events
-  
+
   #TODO Implement
   def make_kbd_event_(self, raw, source):
     ts = time.time()
