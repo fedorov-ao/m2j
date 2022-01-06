@@ -85,6 +85,7 @@ class PPJoystick:
   def move_axis(self, axis, value, relative):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
+    value *= self.factors_.get(axis, 1.0)
     v = value if relative == False else self.a_[axis]+value
     v = clamp(v, *self.get_limits(axis))
     self.a_[axis] = v
@@ -94,7 +95,7 @@ class PPJoystick:
   def get_axis_value(self, axis):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.a_[axis]
+    return self.a_[axis] / self.factors_.get(axis, 1.0)
 
   def get_limits(self, axis):
     if axis not in self.get_supported_axes():
@@ -126,12 +127,14 @@ class PPJoystick:
       logger.error("DeviceIoControl error: {}".format(e))
     self.dirty_ = False
 
-  def __init__(self, i, numAxes=8, numButtons=16, limits=None):
+  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None):
     self.numAxes_, self.numButtons_ = numAxes, numButtons
 
     self.limits_ = {}
     for axis in self.get_supported_axes():
       self.limits_[axis] = (-1.0, 1.0) if (limits is None or axis not in limits) else limits[axis]
+
+    self.factors_ = factors if factors is not None else {}
 
     devName = self.PPJOY_IOCTL_DEVNAME_PREFIX + str(i)
     try:
@@ -179,7 +182,10 @@ def parsePPJoystickOutput(cfg, state):
   limits = cfg.get("limits")
   if limits is not None:
     limits = {name2code(n) : v for n,v in limits.items()}
-  ppj = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits)
+  factors = cfg.get("factors")
+  if factors is not None:
+    factors = {name2code(n) : v for n,v in factors.items()}
+  ppj = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
   state["settings"]["updated"].append(lambda tick, ts : ppj.update())
   return ppj
 
