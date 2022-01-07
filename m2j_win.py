@@ -556,6 +556,51 @@ class RAWINPUT(Structure):
     _anonymous_ = ("_u1", )
 
 
+class RID_DEVICE_INFO_MOUSE(Structure):
+    _fields_ = [
+        ("dwId", DWORD),
+        ("dwNumberOfButtons", DWORD),
+        ("dwSampleRate", DWORD),
+        ("fHasHorizontalWheel", BOOL),
+    ]
+
+
+class RID_DEVICE_INFO_KEYBOARD(Structure):
+    _fields_ = [
+      ("dwType", DWORD),
+      ("dwSubType", DWORD),
+      ("dwKeyboardMode", DWORD),
+      ("dwNumberOfFunctionKeys", DWORD),
+      ("dwNumberOfIndicators", DWORD),
+      ("dwNumberOfKeysTotal", DWORD),
+    ]
+
+
+class RID_DEVICE_INFO_HID(Structure):
+    _fields_ = [
+        ("dwVendorId", DWORD ),
+        ("dwProductId", DWORD ),
+        ("dwVersionNumber", DWORD ),
+        ("usUsagePage", USHORT),
+        ("usUsage", USHORT),
+    ]
+
+
+class RID_DEVICE_INFO(Structure):
+    class _U1(Union):
+        _fields_ = [
+            ("mouse", RID_DEVICE_INFO_MOUSE),
+            ("keyboard", RID_DEVICE_INFO_KEYBOARD),
+            ("hid", RID_DEVICE_INFO_HID),
+        ]
+    _fields_ = [
+        ("cbSize", DWORD),
+        ("dwType", DWORD),
+        ("_u1", _U1)
+    ]
+    _anonymous_ = ("_u1", )
+
+
 def ErrorIfZero(handle):
     if handle == 0:
         raise WinError()
@@ -597,21 +642,8 @@ class RawInputEventSource:
     #TODO Check for error
     self.hwnd = hwnd
 
-    #TODO Listen to other types of devices
-    numRid = 2
-    Rid = (numRid * RAWINPUTDEVICE)()
-    Rid[0].usUsagePage = HID_USAGE_PAGE_GENERIC
-    Rid[0].usUsage = HID_USAGE_GENERIC_MOUSE
-    Rid[0].dwFlags = RIDEV_INPUTSINK
-    Rid[0].hwndTarget = hwnd
-    Rid[1].usUsagePage = HID_USAGE_PAGE_GENERIC
-    Rid[1].usUsage = HID_USAGE_GENERIC_KEYBOARD
-    Rid[1].dwFlags = RIDEV_INPUTSINK
-    Rid[1].hwndTarget = hwnd
-    #TODO Check for error
-    r = windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE))
-
-    self.devs_ = {}
+    self.devs_ = dict()
+    self.upu_ = set()
 
   def __del__(self):
     self.stop()
@@ -644,6 +676,17 @@ class RawInputEventSource:
     devices = self.get_devices()
     for d in devices:
       if d.name == name:
+        p = (d.usagePage, d.usage)
+        if p not in self.upu_:
+          numRid = 1
+          Rid = (numRid * RAWINPUTDEVICE)()
+          Rid[0].usUsagePage = d.usagePage
+          Rid[0].usUsage = d.usage
+          Rid[0].dwFlags = RIDEV_INPUTSINK
+          Rid[0].hwndTarget = self.hwnd
+          if not windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE)):
+            raise WinError()
+          self.upu_.add(p)
         self.devs_[d.handle] = source
         return
     raise RuntimeError("Device {} not found".format(name))
@@ -660,28 +703,38 @@ class RawInputEventSource:
     r = windll.user32.GetRawInputDeviceList(rawInputDeviceList, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
     if r == c_uint(-1):
       raise RuntimError("Error listing devices")
-    else:
-      class DeviceInfo:
-        pass
-      devices = []
-      for i in range(r):
-        ridl = rawInputDeviceList[i]
-        #Get required device name string length
-        pName = 0
-        szName = c_uint(0)
-        r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
-        if r == c_uint(-1):
-          raise RuntimError("Error getting device name string length")
-        else:
-          pName = create_string_buffer(szName.value)
-          r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
-          if r == c_uint(-1):
-            raise RuntimError("Error getting device name")
-          else:
-            di = DeviceInfo()
-            di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
-            devices.append(di)
-      return devices
+    class DeviceInfo:
+      pass
+    devices = []
+    for i in range(r):
+      ridl = rawInputDeviceList[i]
+      #Get required device name string length
+      pName = 0
+      szName = c_uint(0)
+      r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
+      if r == c_uint(-1):
+        raise RuntimError("Error getting device name string length")
+      pName = create_string_buffer(szName.value)
+      r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
+      if r == c_uint(-1):
+        raise RuntimError("Error getting device name")
+      ridi = RID_DEVICE_INFO()
+      szRidi = c_uint(sizeof(RID_DEVICE_INFO))
+      r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICEINFO, byref(ridi), byref(szRidi))
+      if r == c_uint(-1):
+        raise RuntimError("Error getting device info")
+      di = DeviceInfo()
+      di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
+      if ridi.dwType == RIM_TYPEMOUSE:
+        di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE
+      elif ridi.dwType == RIM_TYPEKEYBOARD:
+        di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_KEYBOARD
+      elif ridi.dwType == RIM_TYPEHID:
+        di.usagePage, di.usage = ridi.hid.usUsagePage, ridi.hid.usUsage
+      else:
+        raise RuntimeError("Unexpected device type: 0x{:x}".format(ridi.dwType))
+      devices.append(di)
+    return devices
 
   def wnd_proc(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
