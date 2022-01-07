@@ -624,7 +624,7 @@ class RawInputEventSource:
     wndclass.hCursor = windll.user32.LoadCursorA(c_int(win32con.NULL), c_int(win32con.IDC_ARROW))
     wndclass.hbrBackground = windll.gdi32.GetStockObject(c_int(win32con.WHITE_BRUSH))
     wndclass.lpszMenuName = None
-    wndclass.lpszClassName = "RawInputDeviceManagerClass"
+    wndclass.lpszClassName = str(id(self))
     # Register Window Class
     if not windll.user32.RegisterClassA(byref(wndclass)):
         raise WinError()
@@ -632,7 +632,7 @@ class RawInputEventSource:
     self.wndclass = wndclass
     # Create Window
     hwnd = CreateWindowEx(
-      0, wndclass.lpszClassName, "RawInputDeviceManager",
+      0, wndclass.lpszClassName, str(id(self)),
       win32con.WS_OVERLAPPEDWINDOW, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT,
       win32con.HWND_MESSAGE if useMessageWindow else win32con.NULL,
       win32con.NULL, wndclass.hInstance, win32con.NULL)
@@ -644,9 +644,11 @@ class RawInputEventSource:
 
     self.devs_ = dict()
     self.upu_ = set()
+    logger.debug("{}: created".format(self))
 
   def __del__(self):
     self.stop()
+    logger.debug("{}: destroyed".format(self))
 
   def stop(self):
     if hasattr(self, "hwnd"):
@@ -666,11 +668,31 @@ class RawInputEventSource:
 
   def run_once(self):
     msg = MSG()
-    pMsg = pointer(msg)
-    NULL = c_int(win32con.NULL)
     PM_REMOVE = 1
-    while windll.user32.PeekMessageA(pMsg, self.hwnd, 0, 0, PM_REMOVE) != 0:
-        windll.user32.DispatchMessageA(pMsg)
+    while windll.user32.PeekMessageA(byref(msg), self.hwnd, 0, 0, PM_REMOVE) != 0:
+      if msg.message == WM_INPUT:
+        raw = RAWINPUT()
+        dwSize = c_uint(sizeof(RAWINPUT))
+        if windll.user32.GetRawInputData(msg.lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
+          if raw.header.hDevice in self.devs_:
+            hd = raw.header.hDevice
+            source = self.devs_[hd]
+            events = None
+            if raw.header.dwType == RIM_TYPEMOUSE:
+              #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
+              logger.debug("{}: Got mouse event".format(self))
+              events = self.make_mouse_event_(raw, source)
+            elif raw.header.dwType == RIM_TYPEKEYBOARD:
+              #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
+              logger.debug("{}: Got keyboard event".format(self))
+              events = self.make_kbd_event_(raw, source)
+            elif raw.header.dwType == RIM_TYPEHID:
+              logger.debug("{}: Got HID event".format(self))
+            if events is not None:
+              for e in events:
+                self.sink_(e)
+      else:
+        windll.user32.DispatchMessageA(byref(msg))
 
   def track_device(self, name, source):
     devices = self.get_devices()
@@ -739,27 +761,6 @@ class RawInputEventSource:
   def wnd_proc(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
       windll.user32.PostQuitMessage(0)
-    elif message == WM_INPUT:
-      raw = RAWINPUT()
-      dwSize = c_uint(sizeof(RAWINPUT))
-      if windll.user32.GetRawInputData(lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
-        if raw.header.hDevice in self.devs_:
-          hd = raw.header.hDevice
-          source = self.devs_[hd]
-          events = None
-          if raw.header.dwType == RIM_TYPEMOUSE:
-            #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
-            logger.debug("{}: Got mouse event".format(self))
-            events = self.make_mouse_event_(raw, source)
-          elif raw.header.dwType == RIM_TYPEKEYBOARD:
-            #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
-            logger.debug("{}: Got keyboard event".format(self))
-            events = self.make_kbd_event_(raw, source)
-          elif raw.header.dwType == RIM_TYPEHID:
-            logger.debug("{}: Got HID event".format(self))
-          if events is not None:
-            for e in events:
-              self.sink_(e)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
 
   def make_mouse_event_(self, raw, source):
@@ -824,16 +825,22 @@ def run():
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
   def init_source(settings):
-      config = settings["config"]
-      sink = init_main_sink(settings, init_layout_config)
-      source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
-      for s,n in config["inputs"].items():
-        try:
-          source.track_device(n, s)
-        except RuntimeError as e:
-          logger.warning(e)
-      source.set_sink(sink)
-      settings["source"] = source
+    config = settings["config"]
+    sink = init_main_sink(settings, init_layout_config)
+    source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
+    for s,n in config["inputs"].items():
+      try:
+        source.track_device(n, s)
+      except RuntimeError as e:
+        logger.warning(e)
+    source.set_sink(sink)
+    oldSource = settings.get("source")
+    #settings["source"].stop()
+    settings["source"] = source
+    if oldSource:
+      if hasattr(oldSource, "stop"):
+        oldSource.stop()
+      del oldSource
 
   def init_and_run(settings):
     oldUpdated = [v for v in settings.get("updated")]
