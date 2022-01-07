@@ -563,7 +563,6 @@ def ErrorIfZero(handle):
         return handle
 
 
-#TODO Implement
 class RawInputEventSource:
   def __init__(self, useMessageWindow=True):
     CreateWindowEx = windll.user32.CreateWindowExA
@@ -684,7 +683,6 @@ class RawInputEventSource:
             devices.append(di)
       return devices
 
-  #TODO Implement
   def wnd_proc(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
       windll.user32.PostQuitMessage(0)
@@ -711,7 +709,6 @@ class RawInputEventSource:
               self.sink_(e)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
 
-  #TODO Implement
   def make_mouse_event_(self, raw, source):
     ts, events = time.time(), []
     mouse = raw.mouse
@@ -747,19 +744,12 @@ class RawInputEventSource:
         events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, source))
     return events
 
-  #TODO Implement
   def make_kbd_event_(self, raw, source):
     ts = time.time()
-    v = None
-    if (raw.keyboard.Message in (win32con.WM_KEYDOWN, win32con.WM_SYSKEYDOWN)):
-      v = 1
-    elif (raw.keyboard.Message in (win32con.WM_KEYUP, win32con.WM_SYSKEYUP)):
-      v = 0
-    else:
-      raise RuntimError("Unknown keyboard message: 0x{:x}".format(raw.keyboard.Message))
+    v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
     #logger.debug("0x{:x}".format(raw.keyboard.VKey))
-    #logger.debug("raw.keyboard.Message = 0x{:x}".format(raw.keyboard.Message))
-    return (InputEvent(codes.EV_KEY, vkey2code(raw.keyboard.VKey), v, ts, source),)
+    #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message))
+    return (InputEvent(codes.EV_KEY, raw.keyboard.MakeCode, v, ts, source),)
 
 
 def print_devices():
