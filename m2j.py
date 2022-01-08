@@ -3814,9 +3814,10 @@ def init_main_sink(settings, make_next):
   settings["axes"] = allAxes
   for oName,o in settings["outputs"].items():
     allAxes.setdefault(oName, {})
-    for axisId in o.get_supported_axes():
-      valueAxis = ReportingAxis(JoystickAxis(o, axisId))
-      allAxes[oName][axisId] = valueAxis
+    if hasattr(o, "get_supported_axes"):
+      for axisId in o.get_supported_axes():
+        valueAxis = ReportingAxis(JoystickAxis(o, axisId))
+        allAxes[oName][axisId] = valueAxis
 
   grabSink.add(ED.any(), make_next(settings), 1)
   settings.setdefault("initState", config.get("initState", False))
