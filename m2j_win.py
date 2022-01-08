@@ -431,6 +431,22 @@ def vkey2code(vkey):
   return r
 
 
+g_mc2c = [
+  #E0
+  { 0x37 : codes.KEY_PRINT, 0x46 : codes.KEY_PAUSE, 0x52 : codes.KEY_INSERT, 0x47 : codes.KEY_HOME, 0x49 : codes.KEY_PAGEUP, 0x53 : codes.KEY_DELETE, 0x4f : codes.KEY_END, 0x51 : codes.KEY_PAGEDOWN, 0x4d : codes.KEY_RIGHT, 0x4b : codes.KEY_LEFT, 0x50 : codes.KEY_DOWN, 0x48 : codes.KEY_UP, 0x35 : codes.KEY_KPSLASH, 0x1c : codes.KEY_KPENTER, 0x5d : codes.KEY_APPSELECT, 0x5e : codes.KEY_POWER, 0x1d : codes.KEY_RIGHTCTRL, 0x38 : codes.KEY_RIGHTALT, },
+  #E1
+  { 0x45 : codes.KEY_NUMLOCK, },
+  #other
+  #0x60 should not be used, but WINE reports CAPSLOCK by this code
+  { 0x60: codes.KEY_CAPSLOCK, 0x69 : codes.KEY_COMPOSE, 0x45 : codes.KEY_PAUSE, }
+]
+
+def makecode2code(mc, flags):
+  lb = mc & 0xFF
+  group = 0 if (flags & RI_KEY_E0) else 1 if (flags & RI_KEY_E1) else 2
+  return g_mc2c[group].get(lb, lb)
+
+
 class WNDCLASS(Structure):
     _fields_ = [('style', c_uint),
                 ('lpfnWndProc', WNDPROC),
@@ -809,8 +825,8 @@ class RawInputEventSource:
   def make_kbd_event_(self, raw, source):
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
-    #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
-    return (InputEvent(codes.EV_KEY, raw.keyboard.MakeCode, v, ts, source),)
+    #logger.info("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
+    return (InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source),)
 
 
 def print_devices():

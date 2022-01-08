@@ -414,7 +414,7 @@ class Event(object):
 class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
-    return "type: {}, code: {}, value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, self.code, self.value, self.timestamp, self.source, self.modifiers)
+    return "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, self.modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
