@@ -106,15 +106,17 @@ class PPJoystick:
     return self.axes_[:self.numAxes_]
 
   def set_button_state(self, button, state):
-    if button < 0 or button >= self.numButtons_:
+    n = button - 256
+    if n < 0 or n >= self.numButtons_:
       raise RuntimeError("Button not supported: {}".format(button))
-    self.d_[button] = state
+    self.d_[n] = state
     self.dirty_ = True
 
   def get_button_state(self, button):
-    if button < 0 or button >= self.numButtons_:
+    n = button - 256
+    if n < 0 or n >= self.numButtons_:
       raise RuntimeError("Button not supported: {}".format(button))
-    return self.d_[button]
+    return self.d_[n]
 
   def update(self):
     if not self.dirty_:
@@ -667,10 +669,12 @@ class RawInputEventSource:
         del self.wndclass
 
   def run_once(self):
+    #logger.debug("{}.run_once()".format(self))
     msg = MSG()
     PM_REMOVE = 1
     while windll.user32.PeekMessageA(byref(msg), self.hwnd, 0, 0, PM_REMOVE) != 0:
       if msg.message == WM_INPUT:
+        #logger.debug("{}.run_once(): got WM_INPUT".format(self))
         raw = RAWINPUT()
         dwSize = c_uint(sizeof(RAWINPUT))
         if windll.user32.GetRawInputData(msg.lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
@@ -680,14 +684,16 @@ class RawInputEventSource:
             events = None
             if raw.header.dwType == RIM_TYPEMOUSE:
               #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
-              logger.debug("{}: Got mouse event".format(self))
+              #logger.debug("{}: Got mouse event".format(self))
               events = self.make_mouse_event_(raw, source)
             elif raw.header.dwType == RIM_TYPEKEYBOARD:
               #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
-              logger.debug("{}: Got keyboard event".format(self))
+              #logger.debug("{}: Got keyboard event".format(self))
               events = self.make_kbd_event_(raw, source)
             elif raw.header.dwType == RIM_TYPEHID:
-              logger.debug("{}: Got HID event".format(self))
+              #logger.debug("{}: Got HID event".format(self))
+              #TODO Process HID events
+              pass
             if events is not None:
               for e in events:
                 self.sink_(e)
@@ -710,8 +716,9 @@ class RawInputEventSource:
             raise WinError()
           self.upu_.add(p)
         self.devs_[d.handle] = source
+        logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
         return
-    raise RuntimeError("Device {} not found".format(name))
+    raise RuntimeError("Device {} ({}) not found".format(name, source))
 
   def set_sink(self, sink):
     self.sink_ = sink
@@ -726,7 +733,8 @@ class RawInputEventSource:
     if r == c_uint(-1):
       raise RuntimError("Error listing devices")
     class DeviceInfo:
-      pass
+      def __str__(self):
+        return "{} {} {} {} {}".format(di.handle, di.type, di.name, di.usagePage, di.usage)
     devices = []
     for i in range(r):
       ridl = rawInputDeviceList[i]
@@ -747,11 +755,11 @@ class RawInputEventSource:
         raise RuntimError("Error getting device info")
       di = DeviceInfo()
       di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
-      if ridi.dwType == RIM_TYPEMOUSE:
+      if ridl.dwType == RIM_TYPEMOUSE:
         di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE
-      elif ridi.dwType == RIM_TYPEKEYBOARD:
+      elif ridl.dwType == RIM_TYPEKEYBOARD:
         di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_KEYBOARD
-      elif ridi.dwType == RIM_TYPEHID:
+      elif ridl.dwType == RIM_TYPEHID:
         di.usagePage, di.usage = ridi.hid.usUsagePage, ridi.hid.usUsage
       else:
         raise RuntimeError("Unexpected device type: 0x{:x}".format(ridi.dwType))
@@ -801,8 +809,7 @@ class RawInputEventSource:
   def make_kbd_event_(self, raw, source):
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
-    #logger.debug("0x{:x}".format(raw.keyboard.VKey))
-    #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message))
+    #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
     return (InputEvent(codes.EV_KEY, raw.keyboard.MakeCode, v, ts, source),)
 
 
