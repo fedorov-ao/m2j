@@ -685,6 +685,7 @@ class INPUT(Structure):
 
 class DirectInputKeyboard:
   def set_key_state(self, key, state):
+    logger.info("{}: Setting key {} (0x{:X}) to {}".format(self, typecode2name(codes.EV_KEY, key), key, state))
     extra = ULONG(0)
     inpt = INPUT()
     inpt.type = INPUT_KEYBOARD

@@ -612,10 +612,10 @@ def MoveAxes(axesAndValues):
   return moveAxesOp
 
 
-def SetButtonState(joystick, button, state):
+def SetButtonState(output, button, state):
   def op(event):
-    joystick.set_button_state(button, state)
-    #logger.debug(button, state)
+    output.set_button_state(button, state)
+    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, typecode2name(codes.EV_KEY, button), button, state))
   return op
 
 
@@ -4765,14 +4765,38 @@ def make_parser():
     return r
   actionParser.add("setAxesRel", parseSetAxesRel)
 
-  def parseSetKeyState(cfg, state):
+  def parseSetKeyState_(cfg, state, s):
     output, key = split_full_name(get_arg(cfg["key"], state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    state = int(get_arg(cfg["state"], state))
-    return SetButtonState(output, key, state)
+    return SetButtonState(output, key, s)
+
+  def parseSetKeyState(cfg, state):
+    s = int(get_arg(cfg["state"], state))
+    return parseSetKeyState_(cfg, state, s)
   actionParser.add("setKeyState", parseSetKeyState)
 
+  def parsePress(cfg, state):
+    return parseSetKeyState_(cfg, state, 1)
+  actionParser.add("press", parsePress)
+
+  def parseRelease(cfg, state):
+    return parseSetKeyState_(cfg, state, 0)
+  actionParser.add("release", parseRelease)
+
+  def parseClick(cfg, state):
+    output, key = split_full_name(get_arg(cfg["key"], state))
+    output = state["settings"]["outputs"][output]
+    key = name2code(key)
+    n = int(get_arg(cfg.get("numClicks", 1), state))
+    def op(event):
+      for i in range(n):
+        for s in (1, 0):
+          output.set_button_state(key, s)
+    return op
+  actionParser.add("click", parseClick)
+
+  actionParser.add("setKeyState", parseSetKeyState)
   def parseResetCurves(cfg, state):
     curvesToReset = []
     allCurves = state.get("curves")
