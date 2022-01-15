@@ -4914,10 +4914,10 @@ def make_parser():
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("ed", edParser)
 
-  def parseEdModifiers_(r, cfg):
+  def parseEdModifiers_(r, cfg, state):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [parse_modifier_desc(m) for m in cfg["modifiers"]]
+      modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(cfg["modifiers"], state)]
       r.append(("modifiers", modifiers))
     return r
 
@@ -4932,28 +4932,28 @@ def make_parser():
     return r
 
   def parseAny(cfg, state):
-    return parseEdModifiers_([], cfg)
+    return parseEdModifiers_([], cfg, state)
   edParser.add("any", parseAny)
 
   def parsePress(cfg, state):
-    return parseEdModifiers_(parseKey_(cfg, state, 1), cfg)
+    return parseEdModifiers_(parseKey_(cfg, state, 1), cfg, state)
   edParser.add("press", parsePress)
 
   def parseRelease(cfg, state):
-    return parseEdModifiers_(parseKey_(cfg, state, 0), cfg)
+    return parseEdModifiers_(parseKey_(cfg, state, 0), cfg, state)
   edParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", 1))
-    r = parseEdModifiers_(r, cfg)
+    r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("click", parseClick)
 
   def parseDoubleClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", 2))
-    r = parseEdModifiers_(r, cfg)
+    r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("doubleclick", parseDoubleClick)
 
@@ -4961,7 +4961,7 @@ def make_parser():
     r = parseKey_(cfg, state, 3)
     num = int(cfg["numClicks"])
     r.append(("num_clicks", num))
-    r = parseEdModifiers_(r, cfg)
+    r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("multiclick", parseMultiClick)
 
@@ -4976,7 +4976,7 @@ def make_parser():
     if value is not None:
       value = value if value in ("+", "-") else float(value)
       r.append(("value", value))
-    r = parseEdModifiers_(r, cfg)
+    r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("move", parseMove)
 
