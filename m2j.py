@@ -665,6 +665,42 @@ class ClickSink:
     logger.debug("{} destroyed".format(self))
 
 
+class HoldSink:
+  def __call__(self, event):
+    if event.type == codes.EV_KEY:
+      if event.value == 0:
+        if event.code in self.keys_:
+          del self.keys_[event.code]
+      elif event.value == 1:
+        class D:
+          pass
+        d = D()
+        #TODO No modifiers?
+        d.source, d.timestamp = event.source, event.timestamp
+        self.keys_[event.code] = d
+    if self.next_:
+      self.next_(event)
+
+  def update(self, tick, timestamp):
+    for k,d in self.keys_.items():
+      if d.timestamp is not None and timestamp - d.timestamp >= self.holdTime_:
+        if self.next_:
+          event = InputEvent(codes.EV_KEY, k, self.value_, timestamp, d.source)
+          self.next_(event)
+        self.keys_[k].timestamp = None if self.fireOnce_ else timestamp
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def __init__(self, holdTime, value, fireOnce):
+    self.next_, self.keys_, self.holdTime_, self.value_, self.fireOnce_ = None, {}, holdTime, value, fireOnce
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
+
+
 class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
@@ -3683,12 +3719,16 @@ def init_main_sink(settings, make_next):
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
+  holdSink = clickSink.set_next(HoldSink(config.get("holdTime", 0.75), 4, False))
+  settings["updated"].append(lambda tick,ts : holdSink.update(tick, ts))
+  longPressSink = holdSink.set_next(HoldSink(config.get("longPressTime", 0.75), 5, True))
+  settings["updated"].append(lambda tick,ts : longPressSink.update(tick, ts))
   defaultModifiers = [ (None, m) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
   modifiers = [split_full_name_code(m) for m in modifiers] if modifiers is not None else defaultModifiers
-  modifierSink = clickSink.set_next(ModifierSink(modifiers=modifiers))
+  modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -4964,6 +5004,18 @@ def make_parser():
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("multiclick", parseMultiClick)
+
+  def parseHold(cfg, state):
+    r = parseKey_(cfg, state, 4)
+    r = parseEdModifiers_(r, cfg, state)
+    return r
+  edParser.add("hold", parseHold)
+
+  def parseLongPress(cfg, state):
+    r = parseKey_(cfg, state, 5)
+    r = parseEdModifiers_(r, cfg, state)
+    return r
+  edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
     source, axis = split_full_name(get_arg(cfg["axis"], state))
