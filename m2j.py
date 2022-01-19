@@ -5100,7 +5100,7 @@ def make_parser():
     bindingSink = BindSink(cmpOp)
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
-        bindingSink.add(i, o, 0)
+        bindingSink.add(i, o, bind.get("level", 0))
     return bindingSink
 
   scParser.add("binds", parseBinds)
