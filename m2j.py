@@ -5032,10 +5032,12 @@ def make_parser():
   edParser.add("move", parseMove)
 
   def parseInit(cfg, state):
-    eventName = cfg["event"]
-    value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
-    assert(value is not None)
-    r = [("type", codes.EV_BCT), ("code", codes.BCT_INIT), ("value", value)]
+    r = [("type", codes.EV_BCT), ("code", codes.BCT_INIT)]
+    eventName = cfg.get("event")
+    if eventName is not None:
+      value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
+      assert(value is not None)
+      r.append(("value", value))
     return r
   edParser.add("init", parseInit)
 
