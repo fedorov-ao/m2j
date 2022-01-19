@@ -3186,6 +3186,9 @@ class NodeJoystick(object):
   def get_limits(self, axis):
     return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
 
+  def get_supported_axes(self):
+    return self.next_.get_supported_axes() if self.next_ is not None else ()
+
   def set_button_state(self, button, state):
     self.next_.set_button_state(button, state)
 
@@ -3331,6 +3334,85 @@ class MetricsJoystick:
     self.data_ = dict()
 
   axisToName = {p[1]:p[0] for p in {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}.items()}
+
+
+class ReportingJoystickAxis:
+  def move(self, v, relative):
+    self.joystick_.move_axis(self.axis_, v, relative)
+
+  def get(self):
+    return self.joystick_.get_axis_value(self.axis_)
+
+  def limits(self):
+    return self.joystick_.get_limits(self.axis_)
+
+  def add_listener(self, listener):
+    self.listeners_.append(weakref.ref(listener))
+
+  def remove_listener(self, listener):
+    try:
+      self.listeners_.remove(listener)
+    except ValueError:
+      raise RuntimeError("Listener {} not registered".format(listener))
+
+  def on_move(self, old, new):
+    dirty = False
+    for c in self.listeners_:
+      if c() is None:
+        dirty = True
+        continue
+      c().on_move_axis(self, old, new)
+    if dirty:
+      self.cleanup_()
+
+  def __init__(self, joystick, axis):
+    self.joystick_, self.axis_, self.listeners_ = joystick, axis, []
+    #logger.debug("{}: Created".format(self))
+
+  def __del__(self):
+    #logger.debug("{}: Deleted".format(self))
+    pass
+
+  def cleanup_(self):
+    i = 0
+    while i < len(self.listeners_):
+      if self.listeners_[i] is None:
+        self.listeners_.pop(i)
+      else:
+        i += 1
+
+
+class ReportingJoystick(NodeJoystick):
+  def move_axis(self, axis, value, relative):
+    old = self.get_axis_value(axis)
+    super(ReportingJoystick, self).move_axis(axis, value, relative)
+    new = self.get_axis_value(axis)
+    dirty = False
+    for a in self.axes_.get(axis, ()):
+      if a() is not None:
+        a().on_move(old, new)
+      else:
+        dirty = True
+    if dirty:
+      self.cleanup_()
+
+  def make_axis(self, axisId):
+    a = ReportingJoystickAxis(self, axisId)
+    self.axes_.setdefault(axisId, [])
+    self.axes_[axisId].append(weakref.ref(a))
+    return a
+
+  def __init__(self, next):
+    super(ReportingJoystick, self).__init__(next)
+    self.axes_ = {}
+
+  def cleanup_(self):
+    i = 0
+    while i < len(self.axes_):
+      if self.axes_[i] is None:
+        self.axes_.pop(i)
+      else:
+        i += 1
 
 
 def calc_sphere_intersection_params(p, d, r):
@@ -3851,11 +3933,13 @@ def init_main_sink(settings, make_next):
   #make_next() may need axes, so initializing them here
   allAxes = {}
   settings["axes"] = allAxes
-  for oName,o in settings["outputs"].items():
+  outputs = settings["outputs"]
+  for oName,o in outputs.items():
     allAxes.setdefault(oName, {})
     if hasattr(o, "get_supported_axes"):
+      isReportingJoystick = type(o) is ReportingJoystick
       for axisId in o.get_supported_axes():
-        valueAxis = ReportingAxis(JoystickAxis(o, axisId))
+        valueAxis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
         allAxes[oName][axisId] = valueAxis
 
   grabSink.add(ED.any(), make_next(settings), 1)
@@ -5136,7 +5220,7 @@ def make_parser():
     next = state["parser"]("output", cfg["next"], state)
     j = RateLimititngJoystick(next, rates)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
-    return j
+    return ReportingJoystick(j)
   outputParser.add("rateLimit", parseRateLimitOutput)
 
   def parseRateSettingOutput(cfg, state):
@@ -5145,35 +5229,36 @@ def make_parser():
     next = state["parser"]("output", cfg["next"], state)
     j = RateSettingJoystick(next, rates, limits)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
-    return j
+    return ReportingJoystick(j)
   outputParser.add("rateSet", parseRateSettingOutput)
 
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", cfg["next"], state)
     j = RelativeHeadMovementJoystick(next=next, r=cfg.get("clampRadius", float("inf")), stick=cfg.get("stick", True))
-    return j
+    return ReportingJoystick(j)
   outputParser.add("relative", parseRelativeOutput)
 
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output")
     children = parse_list(cfg["children"], state, parser)
-    return CompositeJoystick(children)
+    j = CompositeJoystick(children)
+    return ReportingJoystick(j)
   outputParser.add("composite", parseCompositeOutput)
 
   def parseMappingOutput(cfg, state):
     outputs = state["settings"]["outputs"]
-    mj = MappingJoystick()
+    j = MappingJoystick()
     for fromAxis,to in cfg["mapping"].items():
       toJoystick, toAxis = split_full_name_code(to["to"])
       factor = to.get("factor", 1.0)
-      mj.add(name2code(fromAxis), toJoystick, toAxis, factor)
-    return mj
+      j.add(name2code(fromAxis), toJoystick, toAxis, factor)
+    return ReportingJoystick(j)
   outputParser.add("mapping", parseMappingOutput)
 
   def parseOpentrackOutput(cfg, state):
-    opentrack = Opentrack(cfg["ip"], int(cfg["port"]))
-    state["settings"]["updated"].append(lambda tick,ts : opentrack.send())
-    return opentrack
+    j = Opentrack(cfg["ip"], int(cfg["port"]))
+    state["settings"]["updated"].append(lambda tick,ts : j.send())
+    return ReportingJoystick(j)
   outputParser.add("opentrack", parseOpentrackOutput)
 
   def parseUdpJoystickOutput(cfg, state):
@@ -5186,7 +5271,7 @@ def make_parser():
     for a,l in cfg.get("limits", {}).items():
       j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick,ts : j.send())
-    return j
+    return ReportingJoystick(j)
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
   return parser

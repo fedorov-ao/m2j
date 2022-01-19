@@ -71,7 +71,8 @@ def parseNullJoystickOutput(cfg, state):
   limits = cfg.get("limits")
   if limits is not None:
     limits = {name2code(n) : v for n,v in limits.items()}
-  return NullJoystick(values=values, limits=limits)
+  j = NullJoystick(values=values, limits=limits)
+  return ReportingJoystick(j)
 
 
 #PPJoystick
@@ -187,9 +188,9 @@ def parsePPJoystickOutput(cfg, state):
   factors = cfg.get("factors")
   if factors is not None:
     factors = {name2code(n) : v for n,v in factors.items()}
-  ppj = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
-  state["settings"]["updated"].append(lambda tick, ts : ppj.update())
-  return ppj
+  j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
+  state["settings"]["updated"].append(lambda tick, ts : j.update())
+  return ReportingJoystick(j)
 
 
 #Raw input device manager

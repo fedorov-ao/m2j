@@ -140,7 +140,8 @@ def print_devices():
 def parseEvdevJoystickOutput(cfg, state):
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
-  return EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
+  j = EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
+  return ReportingJoystick(j)
 
 
 def run():
