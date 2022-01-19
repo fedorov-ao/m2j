@@ -905,12 +905,13 @@ class BindSink:
          if hasattr(event, attrName):
             eventValue = getattr(event, attrName)
             if not self.cmp_(attrName, eventValue, attrValue):
-              #logger.debug("{}: Mismatch while matching {} at {} (got {}, needed {})".format(self, c.attrs, attrName, eventValue, attrValue))
+              #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
               break
          else:
+          #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
           break
       else:
-        #logger.debug("{}: {} matched {}".format(self, event, c.attrs))
+        #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
         if c.children is not None:
           #logger.debug("Processing event {}".format(str(event)))
           for cc in c.children:
@@ -957,12 +958,10 @@ class BindSink:
 
 def cmp_modifiers(eventValue, attrValue):
   r = False
-  if attrValue is None:
-    r = eventValue is None
+  if (attrValue is None) or (len(attrValue) == 0):
+    r = (eventValue is None) or (len(eventValue) == 0)
   elif eventValue is None:
     r = False
-  elif len(attrValue) == 0:
-    r = len(eventValue) == 0
   elif len(attrValue) == len(eventValue):
     r = True
     for m in attrValue:
