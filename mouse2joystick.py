@@ -137,11 +137,12 @@ def print_devices():
     print "name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq)
 
 
+@make_reporting_joystick
 def parseEvdevJoystickOutput(cfg, state):
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
   j = EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
-  return ReportingJoystick(j)
+  return j
 
 
 def run():

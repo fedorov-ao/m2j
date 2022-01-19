@@ -3415,6 +3415,12 @@ class ReportingJoystick(NodeJoystick):
         i += 1
 
 
+def make_reporting_joystick(f):
+  def op(*args, **kwargs):
+    return ReportingJoystick(f(*args, **kwargs))
+  return op
+
+
 def calc_sphere_intersection_params(p, d, r):
   """Returns (t1, t2) such that points (position + direction*t1) and (postion + direction*t2) lie on sphere of radius r,
      where p is position and d is direction."""
@@ -5215,36 +5221,41 @@ def make_parser():
     return j
   outputParser.add("external", parseExternalOutput)
 
+  @make_reporting_joystick
   def parseRateLimitOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
     next = state["parser"]("output", cfg["next"], state)
     j = RateLimititngJoystick(next, rates)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
-    return ReportingJoystick(j)
+    return j
   outputParser.add("rateLimit", parseRateLimitOutput)
 
+  @make_reporting_joystick
   def parseRateSettingOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
     limits = {name2code(axisName):value for axisName,value in cfg["limits"].items()}
     next = state["parser"]("output", cfg["next"], state)
     j = RateSettingJoystick(next, rates, limits)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
-    return ReportingJoystick(j)
+    return j
   outputParser.add("rateSet", parseRateSettingOutput)
 
+  @make_reporting_joystick
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", cfg["next"], state)
     j = RelativeHeadMovementJoystick(next=next, r=cfg.get("clampRadius", float("inf")), stick=cfg.get("stick", True))
-    return ReportingJoystick(j)
+    return j
   outputParser.add("relative", parseRelativeOutput)
 
+  @make_reporting_joystick
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output")
     children = parse_list(cfg["children"], state, parser)
     j = CompositeJoystick(children)
-    return ReportingJoystick(j)
+    return j
   outputParser.add("composite", parseCompositeOutput)
 
+  @make_reporting_joystick
   def parseMappingOutput(cfg, state):
     outputs = state["settings"]["outputs"]
     j = MappingJoystick()
@@ -5252,15 +5263,17 @@ def make_parser():
       toJoystick, toAxis = split_full_name_code(to["to"])
       factor = to.get("factor", 1.0)
       j.add(name2code(fromAxis), toJoystick, toAxis, factor)
-    return ReportingJoystick(j)
+    return j
   outputParser.add("mapping", parseMappingOutput)
 
+  @make_reporting_joystick
   def parseOpentrackOutput(cfg, state):
     j = Opentrack(cfg["ip"], int(cfg["port"]))
     state["settings"]["updated"].append(lambda tick,ts : j.send())
-    return ReportingJoystick(j)
+    return j
   outputParser.add("opentrack", parseOpentrackOutput)
 
+  @make_reporting_joystick
   def parseUdpJoystickOutput(cfg, state):
     packetMakers = {
       "il2" : make_il2_packet,
@@ -5271,7 +5284,7 @@ def make_parser():
     for a,l in cfg.get("limits", {}).items():
       j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick,ts : j.send())
-    return ReportingJoystick(j)
+    return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
   return parser

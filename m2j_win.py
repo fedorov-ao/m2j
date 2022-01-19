@@ -64,6 +64,7 @@ class NullJoystick:
     pass
 
 
+@make_reporting_joystick
 def parseNullJoystickOutput(cfg, state):
   values = cfg.get("values")
   if values is not None:
@@ -72,7 +73,7 @@ def parseNullJoystickOutput(cfg, state):
   if limits is not None:
     limits = {name2code(n) : v for n,v in limits.items()}
   j = NullJoystick(values=values, limits=limits)
-  return ReportingJoystick(j)
+  return j
 
 
 #PPJoystick
@@ -181,6 +182,7 @@ class PPJoystick:
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
 
 
+@make_reporting_joystick
 def parsePPJoystickOutput(cfg, state):
   limits = cfg.get("limits")
   if limits is not None:
@@ -190,7 +192,7 @@ def parsePPJoystickOutput(cfg, state):
     factors = {name2code(n) : v for n,v in factors.items()}
   j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
   state["settings"]["updated"].append(lambda tick, ts : j.update())
-  return ReportingJoystick(j)
+  return j
 
 
 #Raw input device manager
