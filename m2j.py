@@ -2827,13 +2827,13 @@ class AxisLinker:
   def on_move_axis(self, axis, old, new):
     if self.state_:
       if axis == self.controlledAxis_ and not self.busy_:
+        #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
         self.offset_ += new - old
-        #logger.debug(self.offset_))
       elif axis == self.controllingAxis_:
         cv = self.op_(new)
-        #logger.debug(cv:{}".format(new, cv)))
         try:
           self.busy_= True
+          #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
           self.controlledAxis_.move(cv + self.offset_, relative=False)
         except:
           raise
