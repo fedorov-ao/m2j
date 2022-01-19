@@ -3375,7 +3375,7 @@ def clamp_to_sphere(point, radius):
     return point
 
 
-def dot_product(v1, v2):
+def vec_dot(v1, v2):
   assert(len(v1) == len(v2))
   r = 0.0
   for i in range(len(v1)):
@@ -3383,7 +3383,7 @@ def dot_product(v1, v2):
   return r
 
 
-def add_vecs(v1, v2):
+def vec_add(v1, v2):
   assert(len(v1) == len(v2))
   l = len(v1)
   r = [0.0 for i in range(l)]
@@ -3392,7 +3392,7 @@ def add_vecs(v1, v2):
   return r
 
 
-def sub_vecs(v1, v2):
+def vec_sub(v1, v2):
   assert(len(v1) == len(v2))
   l = len(v1)
   r = [0.0 for i in range(l)]
@@ -3401,11 +3401,11 @@ def sub_vecs(v1, v2):
   return r
 
 
-def mul_vec(v, s):
+def vec_mul(v, s):
   return [s*vv for vv in v]
 
 
-def copy_vec(v):
+def vec_copy(v):
   return [vv for vv in v]
 
 
@@ -3436,8 +3436,8 @@ class RelativeHeadMovementJoystick:
       #If relative - add to current pos in global cs
       if relative == True:
         #Convert to global cs
-        point = mul_vec(self.dirs_[axis], value)
-        point = add_vecs(point, offset)
+        point = vec_mul(self.dirs_[axis], value)
+        point = vec_add(point, offset)
       else:
         #Convert offset to local cs, replace the value for given axis, and convert back to global cs
         t = self.global_to_local_(offset)
