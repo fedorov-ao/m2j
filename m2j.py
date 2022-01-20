@@ -2843,6 +2843,10 @@ class AxisLinker:
   def __init__(self, controllingAxis, controlledAxis, op):
     self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
     self.offset_, self.busy_, self.state_  = 0.0, False, False
+    logger.debug("{}: Created".format(self))
+
+  def __del__(self):
+    logger.debug("{}: Deleted".format(self))
 
 
 class SetAxisLinkerState:
