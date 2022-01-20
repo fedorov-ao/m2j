@@ -3945,17 +3945,11 @@ def init_main_sink(settings, make_next):
   grabSink.add(ED.init(1), Call(SwallowDevices(grabbed, True), print_enabled), 0)
   grabSink.add(ED.init(0), Call(SwallowDevices(grabbed, False), print_disabled), 0)
 
-  #make_next() may need axes, so initializing them here
-  allAxes = {}
-  settings["axes"] = allAxes
-  outputs = settings["outputs"]
-  for oName,o in outputs.items():
-    allAxes.setdefault(oName, {})
-    if hasattr(o, "get_supported_axes"):
-      isReportingJoystick = type(o) is ReportingJoystick
-      for axisId in o.get_supported_axes():
-        valueAxis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
-        allAxes[oName][axisId] = valueAxis
+  #axes are created on demand by get_axis_by_full_name
+  #remove listeners from axes if reinitializing
+  for oName, oAxes in settings.get("axes", {}).items():
+    for axisId, axis in oAxes.items():
+      axis.remove_all_listeners()
 
   grabSink.add(ED.any(), make_next(settings), 1)
   settings.setdefault("initState", config.get("initState", False))
@@ -4170,6 +4164,29 @@ class ArgObjSelectParser:
     self.p_ = SelectParser() if parser is None else parser
 
 
+def get_axis_by_full_name(fullAxisName, state):
+  outputName, axisName = split_full_name(fullAxisName)
+  settings = state["settings"]
+  if "axes" not in settings:
+    settings["axes"] = {}
+  allAxes = settings["axes"]
+  if outputName not in allAxes:
+    #raise RuntimeError("No axes were initialized for '{}' (while parsing '{}')".format(outputName, fullAxisName))
+    allAxes[outputName] = {}
+  outputAxes = allAxes[outputName]
+  axisId = name2code(axisName)
+  axis = None
+  if axisId not in outputAxes:
+    #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
+    outputs = settings["outputs"]
+    o = outputs[outputName]
+    isReportingJoystick = type(o) is ReportingJoystick
+    axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
+    outputAxes[axisId] = axis
+  else:
+    axis = outputAxes[axisId]
+  return axis
+
 def make_parser():
   parser = SelectParser()
 
@@ -4228,18 +4245,6 @@ def make_parser():
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"], parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
-
-  def get_axis_by_full_name(fullAxisName, state):
-    outputName, axisName = split_full_name(fullAxisName)
-    allAxes = state["settings"]["axes"]
-    if outputName not in allAxes:
-      raise RuntimeError("No axes were initialized for '{}' (while parsing '{}')".format(outputName, fullAxisName))
-    outputAxes = allAxes[outputName]
-    axisId = name2code(axisName)
-    if axisId not in outputAxes:
-      raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
-    axis = outputAxes[axisId]
-    return axis
 
   def add_curve_to_state(fullAxisName, curve, state):
       assert("curves" in state)
@@ -4963,13 +4968,9 @@ def make_parser():
     if not snapManager.has_snap(snapName):
       snaps = state["settings"]["config"]["snaps"]
       fullAxesNamesAndValues = snaps[snapName]
-      settings = state["settings"]
-      allAxes = settings["axes"]
       snap = []
       for fullAxisName,value in fullAxesNamesAndValues.items():
-        outputName, axisName = split_full_name(fullAxisName)
-        axisId = name2code(axisName)
-        axis = allAxes[outputName][axisId]
+        axis = get_axis_by_full_name(fullAxisName, state)
         snap.append((axis, value))
       snapManager.set_snap(snapName, snap)
 
