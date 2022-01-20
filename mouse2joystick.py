@@ -47,7 +47,7 @@ class EvdevJoystick:
     for a,l in limits.items():
       self.axes_[a] = (l[1] + l[0])/2
 
-    self.buttons_ = buttons if buttons is not None else {}
+    self.buttons_ = { b:False for b in buttons } if buttons is not None else {}
 
     self.limits = limits
 
@@ -91,14 +91,14 @@ class EvdevJoystick:
   def set_button_state(self, button, state):
     if button not in self.buttons_:
       raise RuntimeError("Button not supported: {}".format(button))
-    self.buttons_[n] = state
+    self.buttons_[button] = state
     self.js.write(ecodes.EV_KEY, code2ecode(button), state)
     self.js.syn()
 
   def get_button_state(self, button):
     if button not in self.buttons_:
       raise RuntimeError("Button not supported: {}".format(button))
-    return self.buttons_[n]
+    return self.buttons_[button]
 
 
 def translate_evdev_event(evdevEvent, source):
