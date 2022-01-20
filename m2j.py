@@ -1723,7 +1723,7 @@ class ReportingAxis:
   def cleanup_(self):
     i = 0
     while i < len(self.listeners_):
-      if self.listeners_[i] is None:
+      if self.listeners_[i]() is None:
         self.listeners_.pop(i)
         continue
       else:
@@ -3348,12 +3348,18 @@ class ReportingJoystickAxis:
 
   def add_listener(self, listener):
     self.listeners_.append(weakref.ref(listener))
+    logger.debug("{}: Adding listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
 
   def remove_listener(self, listener):
     try:
       self.listeners_.remove(listener)
+      logger.debug("{}: Removing listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
     except ValueError:
       raise RuntimeError("Listener {} not registered".format(listener))
+
+  def remove_all_listeners(self):
+    self.listeners_ = []
+    logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
 
   def on_move(self, old, new):
     dirty = False
@@ -3367,19 +3373,20 @@ class ReportingJoystickAxis:
 
   def __init__(self, joystick, axis):
     self.joystick_, self.axis_, self.listeners_ = joystick, axis, []
-    #logger.debug("{}: Created".format(self))
+    logger.debug("{}: Created".format(self))
 
   def __del__(self):
-    #logger.debug("{}: Deleted".format(self))
+    logger.debug("{}: Deleted".format(self))
     pass
 
   def cleanup_(self):
     i = 0
     while i < len(self.listeners_):
-      if self.listeners_[i] is None:
+      if self.listeners_[i]() is None:
         self.listeners_.pop(i)
       else:
         i += 1
+    logger.debug("{}: listeners after cleanup {}".format(self, self.listeners_))
 
 
 class ReportingJoystick(NodeJoystick):
@@ -3407,12 +3414,14 @@ class ReportingJoystick(NodeJoystick):
     self.axes_ = {}
 
   def cleanup_(self):
-    i = 0
-    while i < len(self.axes_):
-      if self.axes_[i] is None:
-        self.axes_.pop(i)
-      else:
-        i += 1
+    for axisId, axes in self.axes_.items():
+      i = 0
+      while i < len(axes):
+        if axes[i]() is None:
+          axes.pop(i)
+        else:
+          i += 1
+    logger.debug("{}: axes after cleanup {}".format(self, self.axes_))
 
 
 def make_reporting_joystick(f):
