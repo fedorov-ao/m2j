@@ -2520,8 +2520,9 @@ class TransformAbsChainCurve:
   def move(self, x, timestamp):
     outputValue = self.outputOp_.calc(x)
     newOutputValue = self.next_.move(outputValue, timestamp)
-    #logger.debug("{}: value_:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, self.value_, outputValue, newOutputValue))
+    #logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, x, outputValue, newOutputValue))
     if newOutputValue != outputValue:
+      #logger.debug("{}: nov != ov".format(self))
       self.value_ = self.inputOp_.calc(newOutputValue)
     else:
       self.value_ = x
@@ -2546,6 +2547,7 @@ class TransformAbsChainCurve:
 
   def __init__(self, next, inputOp, outputOp):
     self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
+    self.value_ = 0.0
 
 
 class AxisAbsChainCurve:
