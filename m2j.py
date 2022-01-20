@@ -958,10 +958,12 @@ class BindSink:
 
 def cmp_modifiers(eventValue, attrValue):
   r = False
-  if (attrValue is None) or (len(attrValue) == 0):
-    r = (eventValue is None) or (len(eventValue) == 0)
+  if attrValue is None:
+    r = eventValue is None
   elif eventValue is None:
     r = False
+  elif len(attrValue) == 0:
+    r = len(eventValue) == 0
   elif len(attrValue) == len(eventValue):
     r = True
     for m in attrValue:
