@@ -43,9 +43,11 @@ class EvdevJoystick:
     if name is None: name='virtual-joystick'
     self.js = UInput(cap, name=name, version=0x3, phys=phys)
 
-    self.coords = {}
+    self.axes_ = {}
     for a,l in limits.items():
-      self.coords[a] = (l[1] + l[0])/2
+      self.axes_[a] = (l[1] + l[0])/2
+
+    self.buttons_ = buttons if buttons is not None else {}
 
     self.limits = limits
 
@@ -66,28 +68,37 @@ class EvdevJoystick:
     self.move_axis_to(axis, self.get_axis_value(axis)+v)
 
   def move_axis_to(self, axis, v):
-    if axis not in self.coords:
+    if axis not in self.axes_:
       return
     v = clamp(v, *self.limits.get(axis, (0.0, 0.0)))
-    self.coords[axis] = v
-    maxAbsLimit = max((abs(l) for l in self.limits[axis]))
-    v = int(v * self.nativeLimit_ / maxAbsLimit)
+    self.axes_[axis] = v
+    l = self.limits[axis]
+    v = lerp(v, l[0], l[1], -self.nativeLimit_, self.nativeLimit_)
+    v = int(v)
     #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
     self.js.write(ecodes.EV_ABS, code2ecode(axis), v)
     self.js.syn()
 
   def get_axis_value(self, axis):
-    return self.coords.get(axis, 0.0)
+    return self.axes_.get(axis, 0.0)
 
   def get_limits(self, axis):
     return self.limits[axis]
 
   def get_supported_axes(self):
-    return self.coords.keys()
+    return self.axes_.keys()
 
   def set_button_state(self, button, state):
+    if button not in self.buttons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    self.buttons_[n] = state
     self.js.write(ecodes.EV_KEY, code2ecode(button), state)
     self.js.syn()
+
+  def get_button_state(self, button):
+    if button not in self.buttons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    return self.buttons_[n]
 
 
 def translate_evdev_event(evdevEvent, source):
