@@ -15,7 +15,6 @@ sys.path.append(".")
 import gc
 import getopt
 import traceback
-import logging
 import m2j
 from m2j import *
 import evdev
