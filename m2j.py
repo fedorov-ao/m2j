@@ -2345,6 +2345,56 @@ class LimitedOpToOp:
     self.op_, self.limits_ = op, limits
 
 
+class LookupOp:
+  def calc(self, outputValue):
+    ie, ivLimits = bisect.bisect_right(self.ovs_, outputValue), None
+    
+    if ie == 0:
+      iv = self.ivs_[0]
+      while True:
+        iv -= self.s_*self.inputStep_
+        ov = self.outputOp_.calc(iv)
+        self.ivs_.insert(0, iv)
+        self.ovs_.insert(0, ov)  
+        logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
+        if ov < outputValue:
+          ivLimits = (iv, iv+self.inputStep_)
+          break
+    elif ie == len(self.ivs_):
+      iv = self.ivs_[-1]
+      while True:
+        iv += self.s_*self.inputStep_
+        ov = self.outputOp_.calc(iv)
+        self.ivs_.insert(-1, iv)
+        self.ovs_.insert(-1, ov)  
+        logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
+        if ov > outputValue:
+          ivLimits = (iv-self.inputStep_, iv)
+          break
+    else:
+      ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
+
+    if ivLimits[0] > ivLimits[1]:
+      ivLimits = (ivLimits[1], ivLimits[0])
+    return self.inputOp_.calc(outputValue, ivLimits)
+
+  def reset(self):
+    self.inputOp_.reset()
+    self.outputOp_.reset()
+
+  def __init__(self, inputOp, outputOp, inputStep):
+    self.inputOp_, self.outputOp_, self.inputStep_ = inputOp, outputOp, inputStep
+    self.ivs_, self.ovs_ = [], []
+    iv = (0.0, self.inputStep_)
+    ov = tuple((self.outputOp_.calc(ivv) for ivv in iv))
+    self.s_ = sign(iv[1]-iv[0])*sign(ov[1]-ov[0])
+    self.ivs_.append(iv[0])
+    self.ovs_.append(ov[0])
+    i1 = -1 if self.s_ > 0 else 0
+    self.ivs_.insert(i1, iv[1])
+    self.ovs_.insert(i1, ov[1])
+
+
 class ApproxOp:
   def calc(self, value):
     return self.approx_(value)
@@ -4482,6 +4532,12 @@ def make_parser():
     inputOp = LookupInputOp(inputOp, ovs, ivLimits)
     return inputOp
 
+  def makeIterativeInputOp3(cfg, outputOp):
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
+    inputStep = cfg.get("inputStep", 0.1)
+    inputOp = LookupOp(inputOp, outputOp, inputStep)
+    return inputOp
+
   def parseCombinedCurve(cfg, state):
     fullAxisName = get_arg(cfg["axis"], state)
     axis = get_axis_by_full_name(fullAxisName, state)
@@ -4559,8 +4615,9 @@ def make_parser():
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    movingInputOp = makeIterativeInputOp(movingCfg, movingOutputOp)
-    movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-fmax, fmax)))
+    #movingInputOp = makeIterativeInputOp(movingCfg, movingOutputOp)
+    #movingInputOp = LimitedOpToOp(op=movingInputOp, limits=movingCfg.get("inputLimits", (-fmax, fmax)))
+    movingInputOp = makeIterativeInputOp3(cfg, movingOutputOp)
     movingChainCurve = TransformAbsChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.set_next(movingChainCurve)
     #offset transformed
@@ -4569,9 +4626,10 @@ def make_parser():
     #transform offset
     fixedCfg = cfg["fixed"]
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = makeIterativeInputOp(fixedCfg, fixedOutputOp)
+    #fixedInputOp = makeIterativeInputOp(fixedCfg, fixedOutputOp)
     #fixedInputOp = makeIterativeInputOp2(fixedCfg, fixedOutputOp, axis.limits())
-    fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-fmax, fmax)))
+    #fixedInputOp = LimitedOpToOp(op=fixedInputOp, limits=fixedCfg.get("inputLimits", (-fmax, fmax)))
+    fixedInputOp = makeIterativeInputOp3(cfg, fixedOutputOp)
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.set_next(fixedChainCurve)
     #move axis
