@@ -2361,22 +2361,23 @@ class LookupOp:
         self.ovs_.insert(0, ov)  
         logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
         if ov < outputValue:
-          ivLimits = (iv, iv+self.inputStep_)
+          ie = 1
           break
     elif ie == len(self.ivs_):
       iv = self.ivs_[-1]
       while True:
         iv += self.s_*self.inputStep_
         ov = self.outputOp_.calc(iv)
-        self.ivs_.insert(-1, iv)
-        self.ovs_.insert(-1, ov)  
+        self.ivs_.append(iv)
+        self.ovs_.append(ov)
         logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
         if ov > outputValue:
-          ivLimits = (iv-self.inputStep_, iv)
+          ie = len(self.ivs_)-1
           break
-    else:
-      ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
 
+    if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
+      raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
+    ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     if ivLimits[0] > ivLimits[1]:
       ivLimits = (ivLimits[1], ivLimits[0])
     return self.inputOp_.calc(outputValue, ivLimits)
@@ -2393,7 +2394,7 @@ class LookupOp:
     self.s_ = sign(iv[1]-iv[0])*sign(ov[1]-ov[0])
     self.ivs_.append(iv[0])
     self.ovs_.append(ov[0])
-    i1 = -1 if self.s_ > 0 else 0
+    i1 = 1 if self.s_ > 0 else 0
     self.ivs_.insert(i1, iv[1])
     self.ovs_.insert(i1, ov[1])
 
