@@ -2285,10 +2285,12 @@ class InputBasedCurve2PrintCB:
 
 class IterativeInputOp:
   def calc(self, outputValue, inputValueLimits):
+    """inputValueLimits[0] can be < or > inputValueLimits[1]"""
     assert(self.outputOp_ is not None)
     bInputValue, eInputValue = inputValueLimits
-    if bInputValue > eInputValue:
-      bInputValue, eInputValue = eInputValue, bInputValue
+    #Determine how beginning output value compares to end output value
+    #If outputRelation is True, then output function is increasing from the self.cmp_ point of view, otherwise it is decreasing
+    outputRelation = self.cmp_(self.outputOp_.calc(bInputValue), self.outputOp_.calc(eInputValue))
     i, delta = 0, 0.0
     while i <= self.numSteps_:
       i += 1
@@ -2297,10 +2299,13 @@ class IterativeInputOp:
       delta = abs(outputValue - mOutputValue)
       if delta < self.eps_:
         break
-      elif self.cmp_(outputValue, mOutputValue):
-        eInputValue = mInputValue
-      else:
+      elif outputRelation ^ self.cmp_(outputValue, mOutputValue):
+        #If given outputValue compares to middle output value differently,
+        #than beginning output value compares to end output value,
+        #look in the second half, else in first
         bInputValue = mInputValue
+      else:
+        eInputValue = mInputValue
     #logger.debug("{}: Found root {} for value {} in {} steps; delta: {}; limits: {}".format(self, mInputValue, outputValue, i, delta, inputValueLimits))
     return mInputValue
 
