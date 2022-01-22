@@ -2204,7 +2204,7 @@ class InputBasedCurve2:
       self.axis_.move(outputValue, False)
       newOutputValue = self.axis_.get()
       if newOutputValue != outputValue:
-        self.inputValue_ = self.inputOp_.calc(newOutputValue, self.inputValueLimits_)
+        self.inputValue_ = self.inputOp_.calc(newOutputValue)
     finally:
       self.busy_ = False
 
@@ -2230,7 +2230,7 @@ class InputBasedCurve2:
     assert(self.inputOp_)
     assert(self.outputOp_)
     assert(self.axis_)
-    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    self.inputValue_ = self.inputOp_.calc(self.axis_.get())
     self.busy_, self.dirty_ = False, False
 
   def reset_(self, axisMoved):
@@ -2246,7 +2246,7 @@ class InputBasedCurve2:
       self.deltaOp_.reset()
       if self.cb_:
         self.cb_(None)
-    self.inputValue_ = self.inputOp_.calc(self.axis_.get(), self.inputValueLimits_)
+    self.inputValue_ = self.inputOp_.calc(self.axis_.get())
     self.busy_, self.dirty_ = False, False
 
 
@@ -2383,8 +2383,6 @@ class LookupOp:
     if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
       raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
-    if ivLimits[0] > ivLimits[1]:
-      ivLimits = (ivLimits[1], ivLimits[0])
     return self.inputOp_.calc(outputValue, ivLimits)
 
   def reset(self):

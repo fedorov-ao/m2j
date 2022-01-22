@@ -87,7 +87,7 @@ class DecLookupOpTestCase(unittest.TestCase):
   longMessage = True
     
   def setUp(self):
-    self.lookupOp = make_lookup_op(coeffs=[0.0, -2.0], inputStep=0.1, cmp=lambda a,b : a > b)
+    self.lookupOp = make_lookup_op(coeffs=[0.0, -2.0], inputStep=0.1, cmp=lambda a,b : a < b)
 
   def test_init(self):
     self.assertEqual(self.lookupOp.ivs_, [0.1, 0.0])
