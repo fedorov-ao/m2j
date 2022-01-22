@@ -2287,7 +2287,7 @@ class IterativeInputOp:
   def calc(self, outputValue, inputValueLimits):
     assert(self.outputOp_ is not None)
     bInputValue, eInputValue = inputValueLimits
-    if not self.cmp_(bInputValue, eInputValue):
+    if bInputValue > eInputValue:
       bInputValue, eInputValue = eInputValue, bInputValue
     i, delta = 0, 0.0
     while i <= self.numSteps_:
