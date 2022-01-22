@@ -2355,35 +2355,44 @@ class LimitedOpToOp:
 
 class LookupOp:
   def calc(self, outputValue):
-    ie, ivLimits = bisect.bisect_right(self.ovs_, outputValue), None
+    ie, ivLimits, ovPrev = bisect.bisect_right(self.ovs_, outputValue), None, None
     
     if ie == 0:
       iv = self.ivs_[0]
       while True:
         iv -= self.s_*self.inputStep_
         ov = self.outputOp_.calc(iv)
+        if ov == ovPrev:
+          break
+        else:
+          ovPrev = ov
         self.ivs_.insert(0, iv)
         self.ovs_.insert(0, ov)  
-        logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
-        if ov < outputValue:
+        logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        if ov <= outputValue:
           ie = 1
           break
     elif ie == len(self.ivs_):
-      iv = self.ivs_[-1]
+      iv = self.ivs_[ie-1]
       while True:
         iv += self.s_*self.inputStep_
         ov = self.outputOp_.calc(iv)
+        if ov == ovPrev:
+          break
+        else:
+          ovPrev = ov
         self.ivs_.append(iv)
         self.ovs_.append(ov)
-        logger.debug("{}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, iv, ov))
-        if ov > outputValue:
+        logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        if ov >= outputValue:
           ie = len(self.ivs_)-1
           break
 
     if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
       raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
-    return self.inputOp_.calc(outputValue, ivLimits)
+    inputValue = self.inputOp_.calc(outputValue, ivLimits)
+    return inputValue
 
   def reset(self):
     self.inputOp_.reset()
