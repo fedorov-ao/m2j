@@ -23,59 +23,6 @@ import win32file
 logger = logging.getLogger(__name__)
 
 
-class NullJoystick:
-  """Temporory placeholder joystick class."""
-  def __init__(self, values=None, limits=None):
-    self.v_ = {}
-    if values is not None:
-      for a,v in values.items():
-        self.v_[a] = v
-    self.limits_ = {}
-    if limits is not None:
-      for a,l in limits:
-        self.limits_[a] = l
-    logger.debug("{} created".format(self))
-
-  def __del__(self):
-    logger.debug("{} destroyed".format(self))
-
-  def move_axis(self, axis, v, relative):
-    if relative:
-      self.move_axis_by(axis, v)
-    else:
-      self.move_axis_to(axis, v)
-
-  def move_axis_by(self, axis, v):
-    self.move_axis_to(axis, self.get_axis_value(axis)+v)
-
-  def move_axis_to(self, axis, v):
-    self.v_[axis] = clamp(v, *self.get_limits(axis))
-
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
-
-  def get_limits(self, axis):
-    return self.limits_.get(axis, (-float("inf"), float("inf")))
-
-  def get_supported_axes(self):
-    return self.v_.keys()
-
-  def set_button_state(self, button, state):
-    pass
-
-
-@make_reporting_joystick
-def parseNullJoystickOutput(cfg, state):
-  values = cfg.get("values")
-  if values is not None:
-    values = {name2code(n) : v for n,v in values.items()}
-  limits = cfg.get("limits")
-  if limits is not None:
-    limits = {name2code(n) : v for n,v in limits.items()}
-  j = NullJoystick(values=values, limits=limits)
-  return j
-
-
 #PPJoystick
 FILE_DEVICE_UNKNOWN = 0x00000022
 METHOD_BUFFERED = 0
@@ -1185,7 +1132,6 @@ def run():
 
     parser = make_parser()
     settings["parser"] = parser
-    parser.get("output").add("null", parseNullJoystickOutput)
     parser.get("output").add("ppjoy", parsePPJoystickOutput)
     parser.get("output").add("di_keyboard", parseDirectInputKeyboardOutput)
 

@@ -364,6 +364,48 @@ def parse_modifier_desc(s, sep="."):
 class ReloadException(Exception):
   pass
 
+
+class NullJoystick:
+  """Placeholder joystick class."""
+  def __init__(self, values=None, limits=None):
+    self.v_ = {}
+    if values is not None:
+      for a,v in values.items():
+        self.v_[a] = v
+    self.limits_ = {}
+    if limits is not None:
+      for a,l in limits:
+        self.limits_[a] = l
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    logger.debug("{} destroyed".format(self))
+
+  def move_axis(self, axis, v, relative):
+    if relative:
+      self.move_axis_by(axis, v)
+    else:
+      self.move_axis_to(axis, v)
+
+  def move_axis_by(self, axis, v):
+    self.move_axis_to(axis, self.get_axis_value(axis)+v)
+
+  def move_axis_to(self, axis, v):
+    self.v_[axis] = clamp(v, *self.get_limits(axis))
+
+  def get_axis_value(self, axis):
+    return self.v_.get(axis, 0.0)
+
+  def get_limits(self, axis):
+    return self.limits_.get(axis, (-float("inf"), float("inf")))
+
+  def get_supported_axes(self):
+    return self.v_.keys()
+
+  def set_button_state(self, button, state):
+    pass
+
+
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
     value = self.get_axis_value(axis) + v if relative else v
@@ -2392,6 +2434,7 @@ class LookupOp:
       raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
+    logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f}".format(self, inputValue, outputValue))
     return inputValue
 
   def reset(self):
@@ -5290,6 +5333,18 @@ def make_parser():
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
   parser.add("output", outputParser)
+
+  @make_reporting_joystick
+  def parseNullJoystickOutput(cfg, state):
+    values = cfg.get("values")
+    if values is not None:
+      values = {name2code(n) : v for n,v in values.items()}
+    limits = cfg.get("limits")
+    if limits is not None:
+      limits = {name2code(n) : v for n,v in limits.items()}
+    j = NullJoystick(values=values, limits=limits)
+    return j
+  outputParser.add("null", parseNullJoystickOutput)
 
   def parseExternalOutput(cfg, state):
     settings, name = state["settings"], cfg["name"]
