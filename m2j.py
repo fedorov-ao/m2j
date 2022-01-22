@@ -1564,7 +1564,10 @@ class PolynomialApproximator:
     v += self.off_
     r = 0.0
     for i in range(0, len(self.coeffs_)):
-      r += self.coeffs_[i]*v**i
+      c = self.coeffs_[i]
+      if c == 0.0:
+        continue
+      r += c*v**i
     return r
 
   def __init__(self, coeffs, off=0.0):
