@@ -32,7 +32,7 @@ def ecode2code(code):
 class EvdevJoystick:
   nativeLimit_ = 32767
 
-  def __init__(self, limits, buttons=None, name=None, phys=None):
+  def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True):
     axesData = []
     for a,l in limits.items():
       axesData.append((a, AbsInfo(value=0, min=-self.nativeLimit_, max=self.nativeLimit_, fuzz=0, flat=0, resolution=0)))
@@ -49,6 +49,9 @@ class EvdevJoystick:
     self.buttons_ = { b:False for b in buttons } if buttons is not None else {}
 
     self.limits = limits
+
+    self.immediateSyn_ = immediateSyn
+    self.dirty_ = False
 
     logger.debug("{} created".format(self))
 
@@ -76,7 +79,10 @@ class EvdevJoystick:
     v = int(v)
     #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
     self.js.write(ecodes.EV_ABS, code2ecode(axis), v)
-    self.js.syn()
+    if self.immediateSyn_ == True:
+      self.js.syn()
+    else:
+      self.dirty_ = True
 
   def get_axis_value(self, axis):
     return self.axes_.get(axis, 0.0)
@@ -92,12 +98,20 @@ class EvdevJoystick:
       raise RuntimeError("Button not supported: {}".format(button))
     self.buttons_[button] = state
     self.js.write(ecodes.EV_KEY, code2ecode(button), state)
-    self.js.syn()
+    if self.immediateSyn_ == True:
+      self.js.syn()
+    else:
+      self.dirty_ = True
 
   def get_button_state(self, button):
     if button not in self.buttons_:
       raise RuntimeError("Button not supported: {}".format(button))
     return self.buttons_[button]
+
+  def update(self, tick, ts):
+    if self.immediateSyn_ == False and self.dirty_ == True:
+      self.js.syn()
+      self.dirty_ = False
 
 
 def translate_evdev_event(evdevEvent, source):
@@ -151,7 +165,10 @@ def print_devices():
 def parseEvdevJoystickOutput(cfg, state):
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
-  j = EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""))
+  immediateSyn=cfg.get("immediateSyn", True)
+  j = EvdevJoystick(limits, buttons, cfg.get("name", ""), cfg.get("phys", ""), immediateSyn=immediateSyn)
+  if immediateSyn == False:
+    state["settings"]["updated"].append(lambda tick,ts : j.update(tick, ts))
   return j
 
 
