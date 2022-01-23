@@ -2939,7 +2939,7 @@ class AxisLinker:
 
   def on_move_axis(self, axis, old, new):
     if self.state_:
-      if axis == self.controlledAxis_ and not self.busy_:
+      if not self.busy_ and axis == self.controlledAxis_:
         #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
         self.offset_ += new - old
       elif axis == self.controllingAxis_:
@@ -3513,7 +3513,7 @@ class ReportingJoystickAxis:
 class ReportingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
     old = self.get_axis_value(axis)
-    super(ReportingJoystick, self).move_axis(axis, value, relative)
+    NodeJoystick.move_axis(self, axis, value, relative)
     new = self.get_axis_value(axis)
     dirty = False
     for a in self.axes_.get(axis, ()):
