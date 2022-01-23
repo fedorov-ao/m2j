@@ -374,7 +374,7 @@ class NullJoystick:
         self.v_[a] = v
     self.limits_ = {}
     if limits is not None:
-      for a,l in limits:
+      for a,l in limits.items():
         self.limits_[a] = l
     logger.debug("{} created".format(self))
 
