@@ -972,6 +972,7 @@ class BindSink:
           for cc in c.children:
             #logger.debug("Sending event {} to {}".format(str(event), cc))
             processed = cc(event) or processed
+
     return processed
 
   def add(self, attrs, child, level = 0):
@@ -1838,6 +1839,23 @@ class Point:
   def __init__(self, op, center=None):
     self.op_ = op
     self.center_ = center
+
+
+class NoopCurve:
+  def move_by(self, x, timestamp):
+    return self.value_
+
+  def reset(self):
+    pass
+
+  def on_move_axis(self, axis, old, new):
+    pass
+
+  def get_value(self):
+    return self.value_
+
+  def __init__(self, value):
+    self.value_ = value
 
 
 class OutputBasedCurve:
@@ -4741,6 +4759,15 @@ def make_parser():
   def parseObjectCurve(cfg, state):
     return get_object(cfg["object"], state)
   curveParser.add("object", parseObjectCurve)
+
+  def parseNoopCurve(cfg, state):
+    fullAxisName = get_arg(cfg["axis"], state)
+    #To init state
+    get_axis_by_full_name(fullAxisName, state)
+    curve = NoopCurve(value=get_arg(cfg.get("value", 0.0), state))
+    add_curve_to_state(fullAxisName, curve, state)
+    return curve
+  curveParser.add("noop", parseNoopCurve)
 
   def parseBases_(wrapped):
     def worker(cfg, state):
