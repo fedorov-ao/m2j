@@ -1042,7 +1042,7 @@ class CmpWithModifiers:
       return cmp_modifiers(eventValue, attrValue)
     elif name == "source":
       return (attrValue is None) or (eventValue == attrValue)
-    elif name == "value" and type(attrValue) is str and type(eventValue) in (int, float):
+    elif name == "value" and type(attrValue) in (str, unicode) and type(eventValue) in (int, float):
       return (attrValue == "+" and eventValue > 0.0) or (attrValue == "-" and eventValue < 0.0)
     else:
       return eventValue == attrValue
