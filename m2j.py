@@ -944,13 +944,12 @@ class BindSink:
         else:
           level = c.level
       for attrName, attrValue in c.attrs:
-         if hasattr(event, attrName):
-            eventValue = getattr(event, attrName)
-            if not self.cmp_(attrName, eventValue, attrValue):
-              #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
-              break
-         else:
+        eventValue = getattr(event, attrName, None)
+        if eventValue is None:
           #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
+          break
+        if not self.cmp_(attrName, eventValue, attrValue):
+          #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
           break
       else:
         #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
