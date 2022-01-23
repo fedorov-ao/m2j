@@ -2594,6 +2594,7 @@ class TimeDistanceDeltaOp:
 class AccumulateRelChainCurve:
   def move_by(self, x, timestamp):
     """x is relative."""
+    self.update_()
     value = self.valueDDOp_.calc(self.value_, x, timestamp)
     delta = self.deltaDOp_.calc(x, timestamp)
     self.value_ = self.combine_(value, delta)
@@ -2609,12 +2610,15 @@ class AccumulateRelChainCurve:
     self.inputOp_.reset()
     self.next_.reset()
     self.value_ = self.inputOp_.calc(self.next_.get_value())
+    self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
+    #logger.debug("{}.on_move_axis({}, {:+0.3f}, {:+0.3f})".format(self, axis, old, new))
+    self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
-    self.value_ = self.inputOp_.calc(self.next_.get_value())
 
   def get_value(self):
+    self.update_()
     return self.value_
 
   def set_next(self, next):
@@ -2622,11 +2626,18 @@ class AccumulateRelChainCurve:
 
   def __init__(self, next, valueDDOp, deltaDOp, combine, inputOp):
     self.next_, self.valueDDOp_, self.deltaDOp_, self.combine_, self.inputOp_ = next, valueDDOp, deltaDOp, combine, inputOp
-    self.value_ = 0.0
+    self.value_, self.dirty_ = 0.0, False
+
+  def update_(self):
+    if self.dirty_ == True:
+      self.value_ = self.inputOp_.calc(self.next_.get_value())
+      #logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
+      self.dirty_ = False
 
 
 class TransformAbsChainCurve:
   def move(self, x, timestamp):
+    self.update_()
     outputValue = self.outputOp_.calc(x)
     newOutputValue = self.next_.move(outputValue, timestamp)
     #logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, x, outputValue, newOutputValue))
@@ -2643,12 +2654,14 @@ class TransformAbsChainCurve:
     self.outputOp_.reset()
     self.next_.reset()
     self.value_ = self.inputOp_.calc(self.next_.get_value())
+    self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
+    self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
-    self.value_ = self.inputOp_.calc(self.next_.get_value())
 
   def get_value(self):
+    self.update_()
     return self.value_
 
   def set_next(self, next):
@@ -2656,7 +2669,13 @@ class TransformAbsChainCurve:
 
   def __init__(self, next, inputOp, outputOp):
     self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
-    self.value_ = 0.0
+    self.value_, self.dirty_ = 0.0, False
+
+  def update_(self):
+    if self.dirty_ == True:
+      self.value_ = self.inputOp_.calc(self.next_.get_value())
+      #logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
+      self.dirty_ = False
 
 
 class AxisAbsChainCurve:
