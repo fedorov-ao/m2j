@@ -941,7 +941,7 @@ class BindSink:
       self.attrs, self.level, self.children = attrs, level, [cc for cc in children]
 
   def __call__(self, event):
-    logger.info("{}: processing {})".format(self, event))
+    #logger.debug("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c.level)
       self.dirty_ = False
