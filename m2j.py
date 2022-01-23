@@ -3384,6 +3384,8 @@ class RateSettingJoystick:
     if self.next_ is None:
       return
     for axisId,value in self.v_.items():
+      if value == 0.0:
+        continue
       rate = self.rates_.get(axisId, 0.0)
       if rate == 0.0:
         continue
