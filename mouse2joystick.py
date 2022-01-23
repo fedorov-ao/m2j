@@ -121,7 +121,7 @@ def translate_evdev_event(evdevEvent, source):
 class EvdevDevice:
   def read_one(self):
     assert(self.dev_)
-    event = translate_evdev_event(self.dev_.read_one(), self.source_)
+    event = translate_evdev_event(self.dev_.read_one(), self.sourceHash_)
     #logger.debug("{}: read event: {}".format(self, event))
     return event
 
@@ -132,7 +132,9 @@ class EvdevDevice:
       self.dev_.ungrab()
 
   def __init__(self, dev, source):
-    self.dev_, self.source_ = dev, source
+    self.dev_, self.sourceName_ = dev, source
+    self.sourceHash_ = calc_hash(source)
+    InputEvent.add_source_hash(source, self.sourceHash_)
 
 
 def init_inputs(names):

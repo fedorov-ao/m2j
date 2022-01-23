@@ -160,6 +160,9 @@ RIM_TYPEMOUSE = 0
 RIM_TYPEKEYBOARD = 1
 RIM_TYPEHID = 2
 
+def rimtype2str(t):
+  return "mouse" if t == RIM_TYPEMOUSE else "keyboard" if t == RIM_TYPEKEYBOARD else "hid" if t == RIM_TYPEHID else ""
+
 RI_MOUSE_LEFT_BUTTON_DOWN = 0x0001
 RI_MOUSE_LEFT_BUTTON_UP = 0x0002
 RI_MOUSE_RIGHT_BUTTON_DOWN = 0x0004
@@ -904,16 +907,16 @@ class RawInputEventSource:
         if windll.user32.GetRawInputData(msg.lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
           if raw.header.hDevice in self.devs_:
             hd = raw.header.hDevice
-            source = self.devs_[hd]
+            sourceHash = self.devs_[hd].hash
             events = None
             if raw.header.dwType == RIM_TYPEMOUSE:
               #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
               #logger.debug("{}: Got mouse event".format(self))
-              events = self.make_mouse_event_(raw, source)
+              events = self.make_mouse_event_(raw, sourceHash)
             elif raw.header.dwType == RIM_TYPEKEYBOARD:
               #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
               #logger.debug("{}: Got keyboard event".format(self))
-              events = self.make_kbd_event_(raw, source)
+              events = self.make_kbd_event_(raw, sourceHash)
             elif raw.header.dwType == RIM_TYPEHID:
               #logger.debug("{}: Got HID event".format(self))
               #TODO Process HID events
@@ -939,7 +942,12 @@ class RawInputEventSource:
           if not windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE)):
             raise WinError()
           self.upu_.add(p)
-        self.devs_[d.handle] = source
+        class DevInfo:
+          pass
+        di = DevInfo()
+        di.source, di.hash = source, calc_hash(source)
+        self.devs_[d.handle] = di
+        InputEvent.add_source_hash(di.source, di.hash)
         logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
         return
     raise RuntimeError("Device {} ({}) not found".format(name, source))
@@ -1040,7 +1048,7 @@ class RawInputEventSource:
 def print_devices():
   devices = RawInputEventSource().get_devices()
   for d in devices:
-    print "name: {}\nhandle: {}\ntype:\n{}\n".format(d.name, d.handle, d.type)
+    print "name: {}\nhandle: {}\ntype: {} ({})\n".format(d.name, d.handle, rimtype2str(d.type), d.type)
 
 
 def run():

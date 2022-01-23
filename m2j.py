@@ -14,6 +14,7 @@ import traceback
 import weakref
 import re
 import collections
+import zlib
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,10 @@ def get_object(name, state):
   return obj
 
 
+def calc_hash(s):
+  return None if s is None else zlib.adler32(s)
+
+
 class Derivatives:
   def update(self, f, x):
     df, dx = f - self.f_, x - self.x_
@@ -355,7 +360,7 @@ def split_full_name_tc_state(s, sep="."):
 
 class ModifierDesc:
   def __init__(self, source, code, state):
-      self.source, self.code, self.state = source, code, state
+      self.source, self.code, self.state = calc_hash(source), code, state
 
 def parse_modifier_desc(s, sep="."):
   return ModifierDesc(*split_full_name_code_state(s, sep))
@@ -456,7 +461,9 @@ class Event(object):
 class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
-    return "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}, source: {}, modifiers: {}".format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, self.modifiers)
+    fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}, source: {} ({}), modifiers: {}"
+    modifiers = [((s, str(self.hashes_.get(s, ""))), m) for s,m in self.modifiers]
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, self.hashes_.get(self.source, ""), modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
@@ -471,6 +478,13 @@ class InputEvent(Event):
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
     self.source = source
     self.modifiers = () if modifiers is None else modifiers
+
+
+  @classmethod
+  def add_source_hash(cls, source, hsh):
+    cls.hashes_[hsh] = source
+
+  hashes_ = {}
 
 
 class EventSource:
@@ -927,7 +941,7 @@ class BindSink:
       self.attrs, self.level, self.children = attrs, level, [cc for cc in children]
 
   def __call__(self, event):
-    #logger.debug("{}: processing {})".format(self, event))
+    logger.info("{}: processing {})".format(self, event))
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c.level)
       self.dirty_ = False
@@ -1100,49 +1114,49 @@ class ED:
 class ED2:
   @staticmethod
   def move(source, axis, modifiers = None):
-    r = (("source", source), ("type", codes.EV_REL), ("code", axis))
+    r = (("source", calc_hash(source)), ("type", codes.EV_REL), ("code", axis))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def move_to(source, axis, modifiers = None):
-    r = (("source", source), ("type", codes.EV_ABS), ("code", axis))
+    r = (("source", calc_hash(source)), ("type", codes.EV_ABS), ("code", axis))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def press(source, key, modifiers = None):
-    r  = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 1))
+    r  = (("source", calc_hash(source)), ("type", codes.EV_KEY), ("code", key), ("value", 1))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def release(source, key, modifiers = None):
-    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 0))
+    r = (("source", calc_hash(source)), ("type", codes.EV_KEY), ("code", key), ("value", 0))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def click(source, key, modifiers = None):
-    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 1))
+    r = (("source", calc_hash(source)), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 1))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def doubleclick(source, key, modifiers = None):
-    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 2))
+    r = (("source", calc_hash(source)), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 2))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
 
   @staticmethod
   def multiclick(source, key, n, modifiers = None):
-    r = (("source", source), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", n))
+    r = (("source", calc_hash(source)), ("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", n))
     if modifiers is not None:
       r = r + (("modifiers", modifiers),)
     return r
@@ -1178,7 +1192,7 @@ class ED3:
           r += [("type", codes.EV_BCT), ("code", codes.BCT_INIT), ("value", int(inpt))]
         else:
           if source != "":
-            r.append(("source", source))
+            r.append(("source", calc_hash(source)))
           r.append(("code", name2code(inpt)))
           if action == "press":
             r += [("type", codes.EV_KEY), ("value", 1)]
@@ -1204,7 +1218,7 @@ class ED3:
             source, inpt = m2.group(1), m2.group(2)
           else:
             inpt = t
-          modifiers.append((source, name2code(inpt)))
+          modifiers.append((calc_hash(source), name2code(inpt)))
     if modifiers is not None:
       r.append(("modifiers", modifiers))
     #logger.debug("ED3.parse(): {} -> {}".format(s, r))
@@ -1272,7 +1286,7 @@ class FilterSink:
 
 class SourceFilterOp:
   def __call__(self, event):
-    if not self.state_ and hasattr(event, "source") and event.source in self.sources_:
+    if not self.state_ and getattr(event, "source", None) in self.sources_:
       return False
     else:
       return True
@@ -1284,7 +1298,7 @@ class SourceFilterOp:
    return self.state_
 
   def __init__(self, sources, state=True):
-    self.sources_, self.state_ = sources, state
+    self.sources_, self.state_ = [calc_hash(s) for s in sources], state
 
 
 class ModeSink:
@@ -5202,7 +5216,7 @@ def make_parser():
     key = name2code(key)
     r = [("type", eventType), ("code", key), ("value", value)]
     if source is not None:
-      r.append(("source", source))
+      r.append(("source", calc_hash(source)))
     return r
 
   def parseAny(cfg, state):
@@ -5257,7 +5271,7 @@ def make_parser():
     axis = name2code(axis)
     r = [("type", eventType), ("code", axis)]
     if source is not None:
-      r.append(("source", source))
+      r.append(("source", calc_hash(source)))
     value = cfg.get("value")
     if value is not None:
       value = value if value in ("+", "-") else float(value)
