@@ -3472,7 +3472,7 @@ class ReportingJoystickAxis:
   def remove_listener(self, listener):
     try:
       self.listeners_.remove(listener)
-      logger.debug("{}: Removing listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
+      #logger.debug("{}: Removing listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
     except ValueError:
       raise RuntimeError("Listener {} not registered".format(listener))
 
@@ -3483,10 +3483,12 @@ class ReportingJoystickAxis:
   def on_move(self, old, new):
     dirty = False
     for c in self.listeners_:
-      if c() is None:
+      cc = c()
+      if cc is None:
         dirty = True
-        continue
-      c().on_move_axis(self, old, new)
+      else:
+        #logger.debug("{}: moving listener {}, old: {:0.3f}, new: {:0.3f}".format(self, cc, old, new))
+        cc.on_move_axis(self, old, new)
     if dirty:
       self.cleanup_()
 
@@ -3515,8 +3517,9 @@ class ReportingJoystick(NodeJoystick):
     new = self.get_axis_value(axis)
     dirty = False
     for a in self.axes_.get(axis, ()):
-      if a() is not None:
-        a().on_move(old, new)
+      aa = a()
+      if aa is not None:
+        aa.on_move(old, new)
       else:
         dirty = True
     if dirty:
