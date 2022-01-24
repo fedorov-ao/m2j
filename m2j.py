@@ -1056,13 +1056,14 @@ def cmp_modifiers(eventValue, attrValue):
 
 
 class CmpWithModifiers:
+  fi = float("inf")
   def __call__(self, name, eventValue, attrValue):
-    if name == "modifiers":
-      return cmp_modifiers(eventValue, attrValue)
+    if name == "value" and abs(attrValue) == self.fi:
+      return sign(attrValue) == sign(eventValue)
     elif name == "source":
       return (attrValue is None) or (eventValue == attrValue)
-    elif name == "value" and type(attrValue) in (str, unicode) and type(eventValue) in (int, float):
-      return (attrValue == "+" and eventValue > 0.0) or (attrValue == "-" and eventValue < 0.0)
+    elif name == "modifiers":
+      return cmp_modifiers(eventValue, attrValue)
     else:
       return eventValue == attrValue
 
@@ -5319,7 +5320,7 @@ def make_parser():
       r.append(("source", calc_hash(source)))
     value = cfg.get("value")
     if value is not None:
-      value = value if value in ("+", "-") else float(value)
+      value = float("inf") if value == "+" else -float("inf") if value == "-" else float(value)
       r.append(("value", value))
     r = parseEdModifiers_(r, cfg, state)
     return r
