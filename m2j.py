@@ -834,7 +834,10 @@ class SensSetSink:
     if event.type in (codes.EV_REL, codes.EV_ABS):
       if self.currentSet_ is not None:
         keys = self.keyOp_(event)
-        event.value *= self.currentSet_.get(keys[0], self.currentSet_.get(keys[1], 1.0))
+        scale = self.currentSet_.get(keys[0])
+        if scale is None:
+          scale = self.currentSet_.get(keys[1], 1.0)
+        event.value *= scale
     return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
