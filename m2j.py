@@ -898,14 +898,13 @@ class CalibratingSink:
     logger.info("Calibration reset")
 
   def __init__(self):
-    self.next_, self.sens_, self.mode_ = None, None, 0
+    self.next_, self.sens_, self.mode_ = None, {}, 0
 
   def process_event_(self, event):
     if self.next_ is not None:
       if event.type in (codes.EV_REL, codes.EV_ABS):
-        if self.sens_ is not None:
-          sens = self.sens_.get((event.type, event.source, event.code), 1.0)
-          event.value *= sens
+        sens = self.sens_.get((event.type, event.source, event.code), 1.0)
+        event.value *= sens
       return self.next_(event)
     else:
       return False
