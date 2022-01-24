@@ -259,6 +259,7 @@ def name2type(name):
 
 def type2names(type):
   t2ps = {
+    codes.EV_SYN : ("SYN",),
     codes.EV_REL : ("REL",),
     codes.EV_ABS : ("ABS",),
     codes.EV_KEY : ("BTN", "KEY",),

@@ -121,8 +121,17 @@ def translate_evdev_event(evdevEvent, source):
 class EvdevDevice:
   def read_one(self):
     assert(self.dev_)
-    event = translate_evdev_event(self.dev_.read_one(), self.sourceHash_)
-    #logger.debug("{}: read event: {}".format(self, event))
+    evdevEvent = self.dev_.read_one()
+    while (evdevEvent is not None) and (evdevEvent.type == 0):
+      evdevEvent = self.dev_.read_one()
+    event = translate_evdev_event(evdevEvent, self.sourceHash_)
+    if event is None:
+      if self.numEvents_ != 0:
+        #logger.debug("{}: {} got {} events".format(self, self.sourceName_, self.numEvents_))
+        self.numEvents_ = 0
+    else:
+      #logger.debug("{}: {} read event: {}".format(self, self.sourceName_, event))
+      self.numEvents_ += 1
     return event
 
   def swallow(self, s):
@@ -135,6 +144,7 @@ class EvdevDevice:
     self.dev_, self.sourceName_ = dev, source
     self.sourceHash_ = calc_hash(source)
     InputEvent.add_source_hash(source, self.sourceHash_)
+    self.numEvents_ = 0
 
 
 def init_inputs(names):
