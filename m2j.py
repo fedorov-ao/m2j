@@ -518,7 +518,10 @@ class Loop:
     self.t_ = ct
     for c in self.callbacks_:
       c(dt, ct)
-    time.sleep(max(self.step_ - (time.time() - ct), 0))
+    dt = time.time() - ct
+    sleepTime = max(self.step_ - dt, 0)
+    if sleepTime != 0:
+      time.sleep(sleepTime)
 
   def run(self):
     self.t_ = time.time()
