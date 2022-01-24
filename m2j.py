@@ -4154,7 +4154,7 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
-def init_log_initial(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(created)f:%(message)s"):
+def init_log_initial(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s"):
   root = logging.getLogger()
   root.setLevel(level)
   handler.setLevel(logging.NOTSET)
