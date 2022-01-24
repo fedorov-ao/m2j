@@ -815,7 +815,10 @@ class ScaleSink2:
     if event.type in (codes.EV_REL, codes.EV_ABS):
       if self.sens_ is not None:
         keys = self.keyOp_(event)
-        event.value *= self.sens_.get(keys[0], self.sens_.get(keys[1], 1.0))
+        scale = self.sens_.get(keys[0])
+        if scale is None:
+          scale = self.sens_.get(keys[1], 1.0)
+        event.value *= scale
     return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
