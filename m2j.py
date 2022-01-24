@@ -697,18 +697,17 @@ class ClickSink:
   def update_keys(self, event):
     if event.type == codes.EV_KEY:
       #logger.debug("{} {}".format(event.code, event.value))
-      if event.code in self.keys_:
-        prevValue, prevTimestamp, prevNumClicks = self.keys_[event.code]
-        dt = event.timestamp - prevTimestamp
-        if event.value == 0 and prevValue > 0 and dt <= self.clickTime_:
-          self.keys_[event.code][2] += 1
-        elif event.value > 0 and prevValue == 0 and dt > self.clickTime_:
-          self.keys_[event.code][2] = 0
-        self.keys_[event.code][0] = event.value
-        self.keys_[event.code][1] = event.timestamp
-      else:
-        self.keys_[event.code] = [event.value, event.timestamp, 0]
-      return self.keys_[event.code][2]
+      self.keys_.setdefault(event.code, [event.value, event.timestamp, 0])
+      keyData = self.keys_[event.code]
+      prevValue, prevTimestamp, prevNumClicks = keyData
+      dt = event.timestamp - prevTimestamp
+      if event.value == 0 and prevValue > 0 and dt <= self.clickTime_:
+        keyData[2] += 1
+      elif event.value > 0 and prevValue == 0 and dt > self.clickTime_:
+        keyData[2] = 0
+      keyData[0] = event.value
+      keyData[1] = event.timestamp
+      return keyData[2]
     else:
       return 0
 
