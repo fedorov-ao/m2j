@@ -488,6 +488,33 @@ class InputEvent(Event):
   hashes_ = {}
 
 
+class EventCompressorDevice:
+  def read_one(self):
+    while True:
+      event = self.next_.read_one()
+      if event is None:
+        if len(self.events_) != 0:
+          axisId, event = self.events_.items()[0]
+          del self.events_[axisId]
+        break
+      elif event.type == codes.EV_REL:
+        e = self.events_.get(event.code)
+        if e is None:
+          self.events_[event.code] = event
+        else:
+          e.value += event.value
+      else:
+        break
+    return event
+
+  def swallow(self, s):
+    self.next_.swallow(s)
+
+  def __init__(self, next):
+    self.next_ = next
+    self.events_ = {}
+
+
 class EventSource:
   def run_once(self):
     events =[]
