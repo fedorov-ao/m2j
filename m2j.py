@@ -1295,9 +1295,8 @@ def ToggleState(stateSink):
 class FilterSink:
   def __call__(self, event):
    #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
-   if (self.next_ is not None):
-     if (self.op_ is None) or (self.op_(event) == True):
-       self.next_(event)
+   if self.next_ is not None and self.op_(event) == True:
+     self.next_(event)
 
   def set_next(self, next):
    #logger.debug("{}: setting next to {}".format(self, next))
@@ -1307,16 +1306,13 @@ class FilterSink:
   def set_op(self, op):
     self.op_ = op
 
-  def __init__(self, op=None, next=None):
+  def __init__(self, op=lambda event: True, next=None):
    self.op_, self.next_ = op, next
 
 
 class SourceFilterOp:
   def __call__(self, event):
-    if not self.state_ and getattr(event, "source", None) in self.sources_:
-      return False
-    else:
-      return True
+    return not (not self.state_ and getattr(event, "source", None) in self.sources_)
 
   def set_state(self, state):
    self.state_ = state
