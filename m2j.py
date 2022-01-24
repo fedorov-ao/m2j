@@ -2463,7 +2463,7 @@ class LookupOp:
           ovPrev = ov
         self.ivs_.insert(0, iv)
         self.ovs_.insert(0, ov)  
-        logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        #logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
         if ov <= outputValue:
           ie = 1
           break
@@ -2478,7 +2478,7 @@ class LookupOp:
           ovPrev = ov
         self.ivs_.append(iv)
         self.ovs_.append(ov)
-        logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        #logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
         if ov >= outputValue:
           ie = len(self.ivs_)-1
           break
@@ -2487,7 +2487,7 @@ class LookupOp:
       raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
-    logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f}".format(self, inputValue, outputValue))
+    #logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f}".format(self, inputValue, outputValue))
     return inputValue
 
   def reset(self):
@@ -3247,7 +3247,7 @@ class JoystickSnapManager:
     #logger.debug("update_snap({})".format(i))
     snap = self.snaps_.get(i, None)
     if snap is None:
-      logger.debug("{}: no snap {}".format(self, i))
+      #logger.debug("{}: no snap {}".format(self, i))
       return False
     else:
       for j in xrange(len(snap)):
