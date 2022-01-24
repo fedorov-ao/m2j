@@ -942,9 +942,7 @@ class BindSink:
 
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
-    if self.dirty_ == True:
-      self.children_.sort(key=lambda c : c.level)
-      self.dirty_ = False
+    self.update_()
 
     if len(self.children_) == 0:
       return False
@@ -1000,16 +998,36 @@ class BindSink:
   def clear(self):
     del self.children_[:]
 
-  def __init__(self, cmp = lambda a, b, c : b == c, children = None):
+  def __init__(self, cmp = lambda a, b, c : b == c, children = None, sortEDs = True):
     if children is None:
       children = []
     self.children_ = children
     self.cmp_ = cmp
+    self.sortEDs_ = sortEDs
     self.dirty_ = True
     logger.debug("{} created".format(self))
 
   def __del__(self):
     logger.debug("{} destroyed".format(self))
+
+  def update_(self):
+    if self.dirty_ == True:
+      self.children_.sort(key=lambda c : c.level)
+      if self.sortEDs_ == True:
+        attrFreq = {}
+        for c in self.children_:
+          for attrName, attrValue in c.attrs:
+            attrFreq.setdefault(attrName, set())
+            if type(attrValue) not in (list, dict, collections.OrderedDict):
+              attrFreq[attrName].add(attrValue)
+        for k,v in attrFreq.items():
+          attrFreq[k] = len(v)
+        for c in self.children_:
+          if type(c.attrs) is not list:
+            c.attrs = [a for a in c.attrs]
+          c.attrs.sort(key=lambda a : attrFreq[a[0]], reverse=True)
+        #logger.debug("{}: level: {}, attrFreq: {}, sorted attrs: {}".format(self, c.level, attrFreq, c.attrs))
+      self.dirty_ = False
 
 
 def cmp_modifiers(eventValue, attrValue):
