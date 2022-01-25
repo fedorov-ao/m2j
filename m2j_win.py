@@ -34,9 +34,9 @@ class PPJoystick:
   def move_axis(self, axis, value, relative):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    value *= self.factors_.get(axis, 1.0)
     v = value if relative == False else self.a_[axis]+value
     v = clamp(v, *self.get_limits(axis))
+    v *= self.factors_.get(axis, 1.0)
     self.a_[axis] = v
     #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
     self.dirty_ = True
