@@ -489,6 +489,11 @@ class InputEvent(Event):
 
 
 class EventCompressorDevice:
+  """Compresses movement events along each relative axis into one event per such axis.
+     Other events are unchanged and passed to the caller immediately.
+     Sends compressed events after underlying device is exhausted (returns None from read_one())
+     in an unspecified order.
+     Assumes there are no  modifiers in relative axis movement events."""
   def read_one(self):
     while True:
       event = self.next_.read_one()
@@ -498,11 +503,13 @@ class EventCompressorDevice:
           del self.events_[axisId]
         break
       elif event.type == codes.EV_REL:
-        e = self.events_.get(event.code)
+        k = (event.source, event.code)
+        e = self.events_.get(k)
         if e is None:
-          self.events_[event.code] = event
+          self.events_[k] = event
         else:
           e.value += event.value
+          e.timestamp = event.timestamp
       else:
         break
     return event
