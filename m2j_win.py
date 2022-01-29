@@ -34,9 +34,8 @@ class PPJoystick:
   def move_axis(self, axis, value, relative):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    v = value if relative == False else self.a_[axis]+value
+    v = value if relative == False else self.get_axis_value(axis)+value
     v = clamp(v, *self.get_limits(axis))
-    v *= self.factors_.get(axis, 1.0)
     self.a_[axis] = v
     #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
     self.dirty_ = True
@@ -44,7 +43,7 @@ class PPJoystick:
   def get_axis_value(self, axis):
     if axis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.a_[axis] / self.factors_.get(axis, 1.0)
+    return self.a_[axis]
 
   def get_limits(self, axis):
     if axis not in self.get_supported_axes():
@@ -114,7 +113,7 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    analog = tuple(lerp(self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for axis in self.axes_)
+    analog = tuple(lerp(self.factors_.get(axis, 1.0)*self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for axis in self.axes_)
     digital = tuple(d for d in self.d_)
     data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
     return data
