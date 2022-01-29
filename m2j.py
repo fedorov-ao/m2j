@@ -1646,14 +1646,15 @@ class MCSThresholdOp:
       if j == candidate:
         #If candidate's total distance has reached threshold, make candidate a selected axis and clamp it's total distance
         self.distances_[j] += cd
-        if self.distances_[j] >= self.thresholds_[j]:
+        threshold = self.thresholds_.get(j, float("inf"))
+        if self.distances_[j] >= threshold:
           if self.selected_ != j:
             #logger.debug("Selecting {} over {}; dist:{}; thr:{}".format(j, self.selected_, self.distances_[j], self.thresholds_[j]))
             self.selected_ = j
             for k in self.distances_.keys():
               self.distances_[k] = 0.0
             break
-          self.distances_[j] = self.thresholds_[j]
+          self.distances_[j] = threshold
       else:
         #When subtracting from total distances of other axes, clamp to 0
         self.distances_[j] -= cd
