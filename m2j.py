@@ -296,6 +296,15 @@ def split_full_name_code(s, sep="."):
   """
   r = split_full_name(s, sep)
   return (r[0], name2code(r[1]))
+  
+  
+def split_full_name_hash_code(s, sep="."):
+  """
+  'mouse.REL_X' -> (calc_hash('mouse'), codes.REL_X)
+  'REL_X' -> (None, codes.REL_X)
+  """
+  r = split_full_name_code(s, sep)
+  return (calc_hash(r[0]), r[1])  
 
 
 def split_full_name_tc(s, sep="."):
@@ -5086,14 +5095,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[split_full_name_code(get_arg(fullInputAxisName, state))] = curve
+      curves[split_full_name_hash_code(get_arg(fullInputAxisName, state))] = curve
     op = None
     if cfg["op"] == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif cfg["op"] == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif cfg["op"] == "thresholds":
-      op = MCSThresholdOp(thresholds = {split_full_name_code(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
+      op = MCSThresholdOp(thresholds = {split_full_name_hash_code(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(cfg["op"]))
     mcs = MultiCurveSink(curves, op)
