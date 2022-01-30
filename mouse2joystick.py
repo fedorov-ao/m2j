@@ -75,10 +75,10 @@ class EvdevJoystick:
     v = clamp(v, *self.limits.get(axis, (0.0, 0.0)))
     self.axes_[axis] = v
     l = self.limits[axis]
-    v = lerp(v, l[0], l[1], -self.nativeLimit_, self.nativeLimit_)
-    v = int(v)
-    #logger.debug("{}: Moving axis {} to {}".format(self, axis, v))
-    self.js.write(ecodes.EV_ABS, code2ecode(axis), v)
+    nv = lerp(v, l[0], l[1], -self.nativeLimit_, self.nativeLimit_)
+    nv = int(nv)
+    #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
+    self.js.write(ecodes.EV_ABS, code2ecode(axis), nv)
     if self.immediateSyn_ == True:
       self.js.syn()
     else:
@@ -143,7 +143,7 @@ class EvdevDevice:
   def __init__(self, dev, source):
     self.dev_, self.sourceName_ = dev, source
     self.sourceHash_ = calc_hash(source)
-    InputEvent.add_source_hash(source, self.sourceHash_)
+    g_hash2source[self.sourceHash_] = source
     self.numEvents_ = 0
 
 
