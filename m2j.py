@@ -194,6 +194,8 @@ def get_object(name, state):
 def calc_hash(s):
   return None if s is None else zlib.adler32(s)
 
+g_hash2source = {}
+
 
 class Derivatives:
   def update(self, f, x):
@@ -296,15 +298,16 @@ def split_full_name_code(s, sep="."):
   """
   r = split_full_name(s, sep)
   return (r[0], name2code(r[1]))
-  
-  
+
+
 def split_full_name_hash_code(s, sep="."):
   """
   'mouse.REL_X' -> (calc_hash('mouse'), codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
   r = split_full_name_code(s, sep)
-  return (calc_hash(r[0]), r[1])  
+  h = calc_hash(r[0])
+  return (h, r[1])
 
 
 def split_full_name_tc(s, sep="."):
@@ -316,11 +319,23 @@ def split_full_name_tc(s, sep="."):
   return (r[0], name2type(r[1]), name2code(r[1]))
 
 
+def split_full_name_htc(s, sep="."):
+  r = split_full_name_tc(s, sep)
+  source = r[0]
+  h = calc_hash(source)
+  return (h, r[1], r[2])
+
+
 def join_full_name_tc(source, type, code, sep="."):
   tcn = typecode2name(type, code)
   if source is not None:
     tcn = sep.join((source, tcn))
   return tcn
+
+
+def join_full_name_htc(sourceHash, type, code, sep="."):
+  s = None if sourceHash is None else str(g_hash2source.get(sourceHash))
+  return join_full_name_tc(s, type, code, sep)
 
 
 def split_full_name_state(s, sep="."):
@@ -355,6 +370,12 @@ def split_full_name_code_state(s, sep="."):
   return (r[0], name2code(r[1]), r[2])
 
 
+def split_full_name_hash_code_state(s, sep="."):
+  r = split_full_name_code_state(s, sep)
+  h = calc_hash(r[0])
+  return (h, r[1], r[2])
+
+
 def split_full_name_tc_state(s, sep="."):
   """
   'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
@@ -370,10 +391,10 @@ def split_full_name_tc_state(s, sep="."):
 
 class ModifierDesc:
   def __init__(self, source, code, state):
-      self.source, self.code, self.state = calc_hash(source), code, state
+      self.source, self.code, self.state = source, code, state
 
 def parse_modifier_desc(s, sep="."):
-  return ModifierDesc(*split_full_name_code_state(s, sep))
+  return ModifierDesc(*split_full_name_hash_code_state(s, sep))
 
 
 class ReloadException(Exception):
@@ -908,12 +929,12 @@ class SensSetSink:
     self.currentSet_ = self.sensSets_[idx]
     self.print_set_()
 
-  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0):
-    self.next_, self.sensSets_, self.keyOp_ = None, sensSets, keyOp
+  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0, makeName=lambda k : join_full_name_tc(*k)):
+    self.next_, self.sensSets_, self.keyOp_, self.makeName_ = None, sensSets, keyOp, makeName
     self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
   def print_set_(self):
-    logger.info("Setting sensitivity set: {}".format({join_full_name_tc(*k):v for k,v in self.currentSet_.items()}))
+    logger.info("Setting sensitivity set: {}".format({self.makeName_(k):v for k,v in self.currentSet_.items()}))
 
 
 class CalibratingSink:
@@ -941,8 +962,9 @@ class CalibratingSink:
     self.sens_ = {}
     logger.info("Calibration reset")
 
-  def __init__(self):
+  def __init__(self, makeName=lambda k : join_full_name_tc(*k)):
     self.next_, self.sens_, self.mode_ = None, {}, 0
+    self.makeName_ = makeName
 
   def process_event_(self, event):
     if self.next_ is not None:
@@ -955,7 +977,7 @@ class CalibratingSink:
 
   def gather_data_(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
-      k = (event.type, event.source, event.code)
+      k = (event.source, event.type, event.code)
       d = self.sens_.get(k, None)
       if d is None:
         class Data:
@@ -971,7 +993,7 @@ class CalibratingSink:
       elif d.curr > d.max: d.max = d.curr
     s = ""
     for k,d in self.sens_.items():
-      s += "{}: ({:+.3f}, {:+.3f}, {:+.3f}); ".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.curr, d.max)
+      s += "{}: ({:+.3f}, {:+.3f}, {:+.3f}); ".format(self.makeName_(k), d.min, d.curr, d.max)
     if len(s):
       logger.info(s[:-2])
     return self.next_(event) if self.next_ is not None else False
@@ -983,7 +1005,7 @@ class CalibratingSink:
       s = 2.0 / delta
       self.sens_[k] = s
       #logger.debug("{}: min:{}, max:{}, delta:{}".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.max, delta))
-      logger.info("Sensitivity for {} is now {:+.5f}".format(join_full_name_tc(k[1], k[0], k[2]), s))
+      logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
 class BindSink:
@@ -3989,7 +4011,6 @@ def make_curve_makers():
           state["output"] = outputName
           r[outputName] = parseAxes(outputData, state)
         return r
-
       groupParsers["curves"] = parseCurvesGroup
 
       def parseSensGroup(cfg, state):
@@ -3998,7 +4019,6 @@ def make_curve_makers():
           inputSourceAndAxisId = split_full_name_code(inputSourceAndAxisName, ".")
           r[inputSourceAndAxisId] = float(inputAxisData)
         return r
-
       groupParsers["sens"] = parseSensGroup
 
       r = {}
@@ -4062,7 +4082,7 @@ def init_main_sink(settings, make_next):
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
-  modifiers = [split_full_name_code(m) for m in modifiers] if modifiers is not None else defaultModifiers
+  modifiers = [split_full_name_hash_code(m) for m in modifiers] if modifiers is not None else defaultModifiers
   modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers))
 
   sens = config.get("sens", None)
@@ -4071,15 +4091,16 @@ def init_main_sink(settings, make_next):
     if sensSet not in sens:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
-    sens = {split_full_name_code(s[0]):s[1] for s in sens.items()}
+    sens = {split_full_name_hash_code(s[0]):s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
+  makeName=lambda k : join_full_name_htc(*k)
   sensSets = config.get("sensSets", None)
   if sensSets is not None:
-    sensSets = [{split_full_name_tc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
-  sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=config.get("sensSetsInitial", 0)))
+    sensSets = [{split_full_name_htc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
+  sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=config.get("sensSetsInitial", 0), makeName=makeName))
 
-  calibratingSink = sensSetSink.set_next(CalibratingSink())
+  calibratingSink = sensSetSink.set_next(CalibratingSink(makeName=makeName))
 
   mainSink = calibratingSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
@@ -4985,7 +5006,7 @@ def make_parser():
   parser.add("sc", scParser)
 
   def parseModifiers(cfg, state):
-    modifiers = [split_full_name_code(m) for m in cfg["modifiers"]]
+    modifiers = [split_full_name_hash_code(m) for m in cfg["modifiers"]]
     modifierSink = ModifierSink(next=None, modifiers=modifiers)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
@@ -5007,7 +5028,7 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    sens = {split_full_name_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
+    sens = {split_full_name_hash_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
     keyOp = lambda event : ((event.source, event.code), (None, event.code))
     scaleSink = ScaleSink2(sens, keyOp)
     class Wrapper:
@@ -5305,12 +5326,10 @@ def make_parser():
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    source, key = split_full_name(get_arg(cfg["key"], state))
-    eventType = name2type(key)
-    key = name2code(key)
+    sourceHash, eventType, key = split_full_name_htc(get_arg(cfg["key"], state))
     r = [("type", eventType), ("code", key), ("value", value)]
-    if source is not None:
-      r.append(("source", calc_hash(source)))
+    if sourceHash is not None:
+      r.append(("source", sourceHash))
     return r
 
   def parseAny(cfg, state):
@@ -5360,12 +5379,10 @@ def make_parser():
   edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
-    source, axis = split_full_name(get_arg(cfg["axis"], state))
-    eventType = name2type(axis)
-    axis = name2code(axis)
+    sourceHash, eventType, axis = split_full_name_htc(get_arg(cfg["axis"], state))
     r = [("type", eventType), ("code", axis)]
-    if source is not None:
-      r.append(("source", calc_hash(source)))
+    if sourceHash is not None:
+      r.append(("source", sourceHash))
     value = cfg.get("value")
     if value is not None:
       value = float("inf") if value == "+" else -float("inf") if value == "-" else float(value)
