@@ -300,8 +300,9 @@ def split_full_name2(s, sep="."):
   return SplitName(state=state, source=source, shash=shash, type=type, code=code)
 
 
-def split_full_name(s, sep="."):
+def fn2sn(s, sep="."):
   """
+  Splits full name into source and name.
   'mouse.REL_X' -> ('mouse', 'REL_X')
   'REL_X' -> (None, 'REL_X')
   """
@@ -309,55 +310,74 @@ def split_full_name(s, sep="."):
   return (None, s) if i == -1 else (s[:i], s[i+1:])
 
 
-def split_full_name_code(s, sep="."):
+def fn2sc(s, sep="."):
   """
+  Splits full name into source and code.
   'mouse.REL_X' -> ('mouse', codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
-  r = split_full_name(s, sep)
+  r = fn2sn(s, sep)
   return (r[0], name2code(r[1]))
 
 
-def split_full_name_hash_code(s, sep="."):
+def fn2hc(s, sep="."):
   """
+  Splits full name into source hash and code.
   'mouse.REL_X' -> (calc_hash('mouse'), codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
-  r = split_full_name_code(s, sep)
+  r = fn2sc(s, sep)
   h = calc_hash(r[0])
   return (h, r[1])
 
 
-def split_full_name_tc(s, sep="."):
+def fn2stc(s, sep="."):
   """
+  Splits full name into source, type and code.
   'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
-  r = split_full_name(s, sep)
+  r = fn2sn(s, sep)
   return (r[0], name2type(r[1]), name2code(r[1]))
 
 
-def split_full_name_htc(s, sep="."):
-  r = split_full_name_tc(s, sep)
+def fn2htc(s, sep="."):
+  """
+  Splits full name into source hash, type and code.
+  'mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X)
+  'REL_X' -> (None, codes.EV_REL, codes.REL_X)
+  """
+  r = fn2stc(s, sep)
   source = r[0]
   h = calc_hash(source)
   return (h, r[1], r[2])
 
 
-def join_full_name_tc(source, type, code, sep="."):
+def stc2fn(source, type, code, sep="."):
+  """
+  Joins source, type and code into full name.
+  'mouse', codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
+  None, codes.EV_REL, codes.REL_X -> 'REL_X'
+  """
   tcn = typecode2name(type, code)
   if source is not None:
     tcn = sep.join((source, tcn))
   return tcn
 
 
-def join_full_name_htc(sourceHash, type, code, sep="."):
-  s = None if sourceHash is None else str(g_hash2source.get(sourceHash))
-  return join_full_name_tc(s, type, code, sep)
-
-
-def split_full_name_state(s, sep="."):
+def htc2fn(sourceHash, type, code, sep="."):
   """
+  Joins source hash, type and code into full name.
+  calc_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
+  None, codes.EV_REL, codes.REL_X -> 'REL_X'
+  """
+  s = None if sourceHash is None else str(g_hash2source.get(sourceHash))
+  return stc2fn(s, type, code, sep)
+
+
+def fn2sne(s, sep="."):
+  """
+  Splits full name into source, name and state.
   'mouse.REL_X' -> ('mouse', 'REL_X', True)
   'REL_X' -> (None, 'REL_X', True)
   '+mouse.REL_X' -> ('mouse', 'REL_X', True)
@@ -375,8 +395,9 @@ def split_full_name_state(s, sep="."):
   return (None, s, state) if i == -1 else (s[:i], s[i+1:], state)
 
 
-def split_full_name_code_state(s, sep="."):
+def fn2sce(s, sep="."):
   """
+  Splits full name into source, code and state.
   'mouse.REL_X' -> ('mouse', codes.REL_X, True)
   'REL_X' -> (None, codes.REL_X, True)
   '+mouse.REL_X' -> ('mouse', codes.REL_X, True)
@@ -384,18 +405,28 @@ def split_full_name_code_state(s, sep="."):
   '-mouse.REL_X' -> ('mouse', codes.REL_X, False)
   '-REL_X' -> (None, codes.REL_X, False)
   """
-  r = split_full_name_state(s, sep)
+  r = fn2sne(s, sep)
   return (r[0], name2code(r[1]), r[2])
 
 
-def split_full_name_hash_code_state(s, sep="."):
-  r = split_full_name_code_state(s, sep)
+def fn2hce(s, sep="."):
+  """
+  Splits full name into source hash, code and state.
+  'mouse.REL_X' -> ('mouse', codes.REL_X, True)
+  'REL_X' -> (None, codes.REL_X, True)
+  '+mouse.REL_X' -> ('mouse', codes.REL_X, True)
+  '+REL_X' -> (None, codes.REL_X, True)
+  '-mouse.REL_X' -> ('mouse', codes.REL_X, False)
+  '-REL_X' -> (None, codes.REL_X, False)
+  """
+  r = fn2sce(s, sep)
   h = calc_hash(r[0])
   return (h, r[1], r[2])
 
 
-def split_full_name_tc_state(s, sep="."):
+def fn2stce(s, sep="."):
   """
+  Splits full name into source, type, code and state.
   'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
   '+mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
@@ -403,8 +434,22 @@ def split_full_name_tc_state(s, sep="."):
   '-mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, False)
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
-  r = split_full_name_state(s, sep)
+  r = fn2sne(s, sep)
   return (r[0], name2type(r[1]), name2code(r[1]), r[2])
+
+
+def fn2htce(s, sep="."):
+  """
+  Splits full name into source hash, type, code and state.
+  'mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
+  '+mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  '+REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
+  '-mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, False)
+  '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
+  """
+  r = fn2stce(s, sep)
+  return (calc_hash(r[0]), r[1], r[2], r[3])
 
 
 class ModifierDesc:
@@ -948,7 +993,7 @@ class SensSetSink:
     self.currentSet_ = self.sensSets_[idx]
     self.print_set_()
 
-  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0, makeName=lambda k : join_full_name_tc(*k)):
+  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0, makeName=lambda k : stc2fn(*k)):
     self.next_, self.sensSets_, self.keyOp_, self.makeName_ = None, sensSets, keyOp, makeName
     self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
@@ -981,7 +1026,7 @@ class CalibratingSink:
     self.sens_ = {}
     logger.info("Calibration reset")
 
-  def __init__(self, makeName=lambda k : join_full_name_tc(*k)):
+  def __init__(self, makeName=lambda k : stc2fn(*k)):
     self.next_, self.sens_, self.mode_ = None, {}, 0
     self.makeName_ = makeName
 
@@ -1023,7 +1068,7 @@ class CalibratingSink:
       if delta == 0.0: delta = 2.0
       s = 2.0 / delta
       self.sens_[k] = s
-      #logger.debug("{}: min:{}, max:{}, delta:{}".format(join_full_name_tc(k[1], k[0], k[2]), d.min, d.max, delta))
+      #logger.debug("{}: min:{}, max:{}, delta:{}".format(stc2fn(k[1], k[0], k[2]), d.min, d.max, delta))
       logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
@@ -4102,7 +4147,7 @@ def init_main_sink(settings, make_next):
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
-  modifiers = [split_full_name_hash_code(m) for m in modifiers] if modifiers is not None else defaultModifiers
+  modifiers = [fn2hc(m) for m in modifiers] if modifiers is not None else defaultModifiers
   modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers))
 
   sens = config.get("sens", None)
@@ -4111,13 +4156,13 @@ def init_main_sink(settings, make_next):
     if sensSet not in sens:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
-    sens = {split_full_name_hash_code(s[0]):s[1] for s in sens.items()}
+    sens = {fn2hc(s[0]):s[1] for s in sens.items()}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
-  makeName=lambda k : join_full_name_htc(*k)
+  makeName=lambda k : htc2fn(*k)
   sensSets = config.get("sensSets", None)
   if sensSets is not None:
-    sensSets = [{split_full_name_htc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
+    sensSets = [{fn2htc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
   sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=config.get("sensSetsInitial", 0), makeName=makeName))
 
   calibratingSink = sensSetSink.set_next(CalibratingSink(makeName=makeName))
@@ -4176,7 +4221,7 @@ def init_main_sink(settings, make_next):
       sensSetSink.set_prev_set()
   sensSetsAxis = config.get("sensSetsAxis", None)
   if sensSetsAxis is not None:
-    sensSetsAxis = split_full_name_code(sensSetsAxis)
+    sensSetsAxis = fn2sc(sensSetsAxis)
   sensSetsModifier = config.get("sensSetsMod", None)
   if sensSetsModifier is not None:
     sensSetsModifier = [parse_modifier_desc(sensSetsModifier)]
@@ -4445,7 +4490,7 @@ class ArgObjSelectParser:
 
 
 def get_axis_by_full_name(fullAxisName, state):
-  outputName, axisName = split_full_name(fullAxisName)
+  outputName, axisName = fn2sn(fullAxisName)
   settings = state["settings"]
   if "axes" not in settings:
     settings["axes"] = {}
@@ -5026,7 +5071,7 @@ def make_parser():
   parser.add("sc", scParser)
 
   def parseModifiers(cfg, state):
-    modifiers = [split_full_name_hash_code(m) for m in cfg["modifiers"]]
+    modifiers = [fn2hc(m) for m in cfg["modifiers"]]
     modifierSink = ModifierSink(next=None, modifiers=modifiers)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
@@ -5048,7 +5093,7 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    sens = {split_full_name_hash_code(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
+    sens = {fn2hc(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
     keyOp = lambda event : ((event.source, event.code), (None, event.code))
     scaleSink = ScaleSink2(sens, keyOp)
     class Wrapper:
@@ -5137,14 +5182,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[split_full_name_hash_code(get_arg(fullInputAxisName, state))] = curve
+      curves[fn2hc(get_arg(fullInputAxisName, state))] = curve
     op = None
     if cfg["op"] == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif cfg["op"] == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif cfg["op"] == "thresholds":
-      op = MCSThresholdOp(thresholds = {split_full_name_hash_code(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
+      op = MCSThresholdOp(thresholds = {fn2hc(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(cfg["op"]))
     mcs = MultiCurveSink(curves, op)
@@ -5193,7 +5238,7 @@ def make_parser():
   actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState_(cfg, state, s):
-    output, key = split_full_name(get_arg(cfg["key"], state))
+    output, key = fn2sn(get_arg(cfg["key"], state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
     return SetButtonState(output, key, s)
@@ -5212,7 +5257,7 @@ def make_parser():
   actionParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    output, key = split_full_name(get_arg(cfg["key"], state))
+    output, key = fn2sn(get_arg(cfg["key"], state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
     n = int(get_arg(cfg.get("numClicks", 1), state))
@@ -5346,7 +5391,7 @@ def make_parser():
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    sourceHash, eventType, key = split_full_name_htc(get_arg(cfg["key"], state))
+    sourceHash, eventType, key = fn2htc(get_arg(cfg["key"], state))
     r = [("type", eventType), ("code", key), ("value", value)]
     if sourceHash is not None:
       r.append(("source", sourceHash))
@@ -5399,7 +5444,7 @@ def make_parser():
   edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
-    sourceHash, eventType, axis = split_full_name_htc(get_arg(cfg["axis"], state))
+    sourceHash, eventType, axis = fn2htc(get_arg(cfg["axis"], state))
     r = [("type", eventType), ("code", axis)]
     if sourceHash is not None:
       r.append(("source", sourceHash))
@@ -5562,7 +5607,7 @@ def make_parser():
     outputs = state["settings"]["outputs"]
     j = MappingJoystick()
     for fromAxis,to in cfg["mapping"].items():
-      toJoystick, toAxis = split_full_name_code(to["to"])
+      toJoystick, toAxis = fn2sc(to["to"])
       factor = to.get("factor", 1.0)
       j.add(name2code(fromAxis), toJoystick, toAxis, factor)
     return j
