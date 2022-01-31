@@ -282,26 +282,22 @@ def typecode2name(type, code):
   return typeCode2Name.get(type, {}).get(code, "")
 
 
-def split_full_name2(s, sep=".", sourceHash=False, code=False, type=False):
-  class Result:
-    pass
-  r = Result()
-  r.state = True
+SplitName = collections.namedtuple("SplitName", "state source shash type code")
+
+def split_full_name2(s, sep="."):
+  state = True
   if s[0] == "+":
     s = s[1:]
   elif s[0] == "-":
     r.state = False
     s = s[1:]
   i = s.find(sep)
-  r.source = None if i == -1 else s[:i]
-  if sourceHash == True:
-    r.sourceHash = None if r.source is None else calc_hash(r.source)
-  r.name = s if i == -1 else s[i+1:]
-  if code == True:
-    r.code = name2code(r.name)
-  if type == True:
-    r.type = name2type(r.name)
-  return r
+  source = None if i == -1 else s[:i]
+  shash = None if source is None else calc_hash(source)
+  name = s if i == -1 else s[i+1:]
+  code = name2code(name)
+  type = name2type(name)
+  return SplitName(state=state, source=source, shash=shash, type=type, code=code)
 
 
 def split_full_name(s, sep="."):
@@ -416,8 +412,8 @@ class ModifierDesc:
       self.source, self.code, self.state = source, code, state
 
 def parse_modifier_desc(s, sep="."):
-  t = split_full_name2(s, sep, sourceHash=True, code=True)
-  return ModifierDesc(source=t.sourceHash, code=t.code, state=t.state)
+  t = split_full_name2(s, sep)
+  return ModifierDesc(source=t.shash, code=t.code, state=t.state)
 
 
 class ReloadException(Exception):
