@@ -143,7 +143,7 @@ class EvdevDevice:
   def __init__(self, dev, source):
     self.dev_, self.sourceName_ = dev, source
     self.sourceHash_ = calc_hash(source)
-    g_hash2source[self.sourceHash_] = source
+    register_source(source)
     self.numEvents_ = 0
 
 

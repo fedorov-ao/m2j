@@ -196,6 +196,11 @@ def calc_hash(s):
 
 g_hash2source = {}
 
+def register_source(source):
+  """Input event source __init__() should call this with the name of source."""
+  h = calc_hash(source)
+  g_hash2source[h] = source
+
 
 class Derivatives:
   def update(self, f, x):
