@@ -305,6 +305,12 @@ def split_full_name2(s, sep="."):
   return SplitName(state=state, source=source, shash=shash, type=type, code=code)
 
 
+SourceName = collections.namedtuple("SourceName", "source name")
+SourceCode = collections.namedtuple("SourceCode", "source code")
+SourceCodeState = collections.namedtuple("SourceCodeState", "source code state")
+SourceTypeCode = collections.namedtuple("SourceTypeCode", "source type code")
+SourceTypeCodeState = collections.namedtuple("SourceTypeCodeState", "source type code state")
+
 def fn2sn(s, sep="."):
   """
   Splits full name into source and name.
@@ -312,7 +318,7 @@ def fn2sn(s, sep="."):
   'REL_X' -> (None, 'REL_X')
   """
   i = s.find(sep)
-  return (None, s) if i == -1 else (s[:i], s[i+1:])
+  return SourceName(None, s) if i == -1 else SourceName(s[:i], s[i+1:])
 
 
 def fn2sc(s, sep="."):
@@ -322,7 +328,7 @@ def fn2sc(s, sep="."):
   'REL_X' -> (None, codes.REL_X)
   """
   r = fn2sn(s, sep)
-  return (r[0], name2code(r[1]))
+  return SourceCode(source=r.source, code=name2code(r.name))
 
 
 def fn2hc(s, sep="."):
@@ -332,8 +338,8 @@ def fn2hc(s, sep="."):
   'REL_X' -> (None, codes.REL_X)
   """
   r = fn2sc(s, sep)
-  h = calc_hash(r[0])
-  return (h, r[1])
+  h = calc_hash(r.source)
+  return SourceCode(source=h, code=r.code)
 
 
 def fn2stc(s, sep="."):
@@ -343,7 +349,7 @@ def fn2stc(s, sep="."):
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
   r = fn2sn(s, sep)
-  return (r[0], name2type(r[1]), name2code(r[1]))
+  return SourceTypeCode(source=r.source, type=name2type(r.name), code=name2code(r.name))
 
 
 def fn2htc(s, sep="."):
@@ -353,9 +359,8 @@ def fn2htc(s, sep="."):
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
   r = fn2stc(s, sep)
-  source = r[0]
-  h = calc_hash(source)
-  return (h, r[1], r[2])
+  h = calc_hash(r.source)
+  return SourceTypeCode(source=h, type=r.type, code=r.code)
 
 
 def stc2fn(source, type, code, sep="."):
@@ -397,7 +402,7 @@ def fn2sne(s, sep="."):
     state = False
     s = s[1:]
   i = s.find(sep)
-  return (None, s, state) if i == -1 else (s[:i], s[i+1:], state)
+  return SourceNameState(source=None, name=s, state=state) if i == -1 else SourceNameState(source=s[:i], name=s[i+1:], state=state)
 
 
 def fn2sce(s, sep="."):
@@ -411,7 +416,7 @@ def fn2sce(s, sep="."):
   '-REL_X' -> (None, codes.REL_X, False)
   """
   r = fn2sne(s, sep)
-  return (r[0], name2code(r[1]), r[2])
+  return SourceCodeState(source=r.source, code=name2code(r.name), state=r.state)
 
 
 def fn2hce(s, sep="."):
@@ -425,8 +430,8 @@ def fn2hce(s, sep="."):
   '-REL_X' -> (None, codes.REL_X, False)
   """
   r = fn2sce(s, sep)
-  h = calc_hash(r[0])
-  return (h, r[1], r[2])
+  h = calc_hash(r.source)
+  return SourceCodeState(source=h, code=r.code, state=r.state)
 
 
 def fn2stce(s, sep="."):
@@ -440,7 +445,7 @@ def fn2stce(s, sep="."):
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
   r = fn2sne(s, sep)
-  return (r[0], name2type(r[1]), name2code(r[1]), r[2])
+  return SourceTypeCodeState(source=r.source, type=name2type(r.name), code=name2code(r.name), state=r.state)
 
 
 def fn2htce(s, sep="."):
@@ -454,7 +459,7 @@ def fn2htce(s, sep="."):
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
   r = fn2stce(s, sep)
-  return (calc_hash(r[0]), r[1], r[2], r[3])
+  return SourceTypeCodeState(source=calc_hash(r.source), type=r.type, code=r.code, state=r.state)
 
 
 class ModifierDesc:
@@ -959,7 +964,7 @@ class ScaleSink2:
     self.next_ = next
     return next
 
-  def __init__(self, sens, keyOp = lambda event : ((event.source, event.code), (None, event.code))):
+  def __init__(self, sens, keyOp = lambda event : (SourceCode(source=event.source, code=event.code), SourceCode(source=None, code=event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
@@ -998,7 +1003,7 @@ class SensSetSink:
     self.currentSet_ = self.sensSets_[idx]
     self.print_set_()
 
-  def __init__(self, sensSets, keyOp = lambda event : ((event.source, event.type, event.code), (None, event.type, event.code)), initial=0, makeName=lambda k : stc2fn(*k)):
+  def __init__(self, sensSets, keyOp = lambda event : (SourceTypeCode(event.source, event.type, event.code), SourceTypeCode(None, event.type, event.code)), initial=0, makeName=lambda k : stc2fn(*k)):
     self.next_, self.sensSets_, self.keyOp_, self.makeName_ = None, sensSets, keyOp, makeName
     self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
