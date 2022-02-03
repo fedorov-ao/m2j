@@ -567,8 +567,8 @@ class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
     fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}, source: {} ({}), modifiers: {}"
-    modifiers = [((s, str(self.hashes_.get(s, ""))), m) for s,m in self.modifiers]
-    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, self.hashes_.get(self.source, ""), modifiers)
+    modifiers = [((s, m), htc2fn(s, codes.EV_KEY, m)) for s,m in self.modifiers]
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, g_hash2source.get(self.source, ""), modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
@@ -582,14 +582,7 @@ class InputEvent(Event):
     #super().__init__(t, code, value, timestamp)
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
     self.source = source
-    self.modifiers = () if modifiers is None else modifiers
-
-
-  @classmethod
-  def add_source_hash(cls, source, hsh):
-    cls.hashes_[hsh] = source
-
-  hashes_ = {}
+    self.modifiers = [] if modifiers is None else modifiers
 
 
 class EventCompressorDevice:
@@ -917,7 +910,11 @@ class ModifierSink:
             pass
 
     if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
-      event.modifiers = self.m_
+      if type(event.modifiers) is not list:
+        event.modifiers = [m for m in event.modifiers]
+      for m in self.m_:
+        if m not in event.modifiers:
+          event.modifiers.append(m)
 
     #logger.debug("{}.__call__(): active modifiers: {}".format(self, self.m_))
     #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
@@ -5086,15 +5083,16 @@ def make_parser():
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
       def __call__(self, event):
-        oldModifiers = event.modifiers if hasattr(event, "modifiers") else None
-        event.modifiers = modifiers
+        oldModifiers = [m for m in event.modifiers] if hasattr(event, "modifiers") else None
         try:
-          #logger.debug("parseModifiersWrapper(): passing event {} to {}".format(event, modifierSink))
+          #logger.debug("parseModifiersWrapper(): event before modifierSink: {}".format(event))
           self.sink_(event)
+          #logger.debug("parseModifiersWrapper(): event after modifierSink: {}".format(event))
           if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
             self.sink_.clear()
         finally:
-          if oldModifiers is not None: event.modifiers = oldModifiers
+          if oldModifiers is not None:
+            event.modifiers = oldModifiers
       def set_next(self, next):
         self.sink_.set_next(next)
       def __init__(self, sink):
