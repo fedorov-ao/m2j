@@ -892,11 +892,14 @@ class HoldSink:
 
 
 class ModifierSink:
+  APPEND = 0
+  OVERWRITE = 1
+
   def __call__(self, event):
     if event.type == codes.EV_KEY:
-      p = (event.source, event.code)
-      #logger.debug("{}.__call__(): got: {}".format(self, p))
       if self.modifiers_ is not None:
+        p = (event.source, event.code)
+        #logger.debug("{}.__call__(): got: {}".format(self, p))
         for m in self.modifiers_:
           #logger.debug("{}.__call__(): checking against: {}".format(self, m))
           if p == m or (m[0] is None and p[1] == m[1]):
@@ -909,16 +912,27 @@ class ModifierSink:
             #logger.debug("{}.__call__(): {} mismatched {}".format(self, p, m))
             pass
 
-    if self.next_ and event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
-      if type(event.modifiers) is not list:
-        event.modifiers = [m for m in event.modifiers]
-      for m in self.m_:
-        if m not in event.modifiers:
-          event.modifiers.append(m)
-
-    #logger.debug("{}.__call__(): active modifiers: {}".format(self, self.m_))
-    #logger.debug("{}: passing event {} to {}".format(self, event, self.next_))
-    return self.next_(event) if self.next_ is not None else False
+    if self.next_:
+      oldModifiers = None
+      try:
+        if event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
+          assert type(event.modifiers) is list
+          if self.saveModifiers_:
+            oldModifiers = [m for m in event.modifiers]
+          if self.mode_ == self.APPEND:
+            for m in self.m_:
+              if m not in event.modifiers:
+                event.modifiers.append(m)
+          elif self.mode_ == self.OVERWRITE:
+            event.modifiers = [m for m in self.m_]
+          else:
+            raise RuntimeError("Bad mode: {}".format(self.mode_))
+        return self.next_(event)
+      finally:
+        if self.saveModifiers_:
+          event.modifiers = oldModifiers
+    else:
+      return False
 
   def set_next(self, next):
     self.next_ = next
@@ -927,9 +941,9 @@ class ModifierSink:
   def clear(self):
     self.m_ = []
 
-  def __init__(self, next = None, modifiers = None):
+  def __init__(self, next = None, modifiers = None, saveModifiers = True, mode = 0):
     #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, typecode2name(codes.EV_KEY, m)) for s,m in modifiers]))
-    self.m_, self.next_, self.modifiers_ = [], next, modifiers
+    self.m_, self.next_, self.modifiers_, self.saveModifiers_, self.mode_ = [], next, modifiers, saveModifiers, mode
 
 
 class ScaleSink:
@@ -4155,7 +4169,7 @@ def init_main_sink(settings, make_next):
   ]
   modifiers = config.get("modifiers", None)
   modifiers = [fn2hc(m) for m in modifiers] if modifiers is not None else defaultModifiers
-  modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers))
+  modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers, saveModifiers=False, mode=ModifierSink.OVERWRITE))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -5079,20 +5093,13 @@ def make_parser():
 
   def parseModifiers(cfg, state):
     modifiers = [fn2hc(m) for m in cfg["modifiers"]]
-    modifierSink = ModifierSink(next=None, modifiers=modifiers)
+    modifierSink = ModifierSink(next=None, modifiers=modifiers, saveModifiers=True, mode=ModifierSink.APPEND)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
       def __call__(self, event):
-        oldModifiers = [m for m in event.modifiers] if hasattr(event, "modifiers") else None
-        try:
-          #logger.debug("parseModifiersWrapper(): event before modifierSink: {}".format(event))
-          self.sink_(event)
-          #logger.debug("parseModifiersWrapper(): event after modifierSink: {}".format(event))
-          if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
-            self.sink_.clear()
-        finally:
-          if oldModifiers is not None:
-            event.modifiers = oldModifiers
+        self.sink_(event)
+        if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
+          self.sink_.clear()
       def set_next(self, next):
         self.sink_.set_next(next)
       def __init__(self, sink):
