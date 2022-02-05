@@ -18,8 +18,9 @@ import zlib
 
 logger = logging.getLogger(__name__)
 
-class KeyError2:
+class KeyError2(KeyError):
   def __init__(self, key, keys):
+    KeyError.__init__(self, key)
     self.key, self.keys = key, keys
   def __str__(self):
     return "{} not in {}".format(self.key, self.keys)
@@ -137,21 +138,35 @@ class CfgStack:
   DELETE = 1
 
 
-def get_nested(name, d):
+def get_nested(d, name):
   if len(name) != 0:
     tokens = name.split(".")
     for t in tokens:
       nd = d.get(t)
       if nd is None:
-        path = ".".join(tokens[:tokens.index(t)])
-        token = ".".join((path, t))
-        keys = [".".join((path, k)) for k in d.keys()]
+        path = str(".".join(tokens[:tokens.index(t)]))
+        token = ".".join((path, str(t))) if len(path) != 0 else str(t)
+        keys = [".".join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
         raise KeyError2(token, keys)
       d = nd
     if d is not None:
       return d
   #Fallback
   return None
+
+
+def get_nested_d(d, name, dfault = None):
+  if len(name) != 0:
+    tokens = name.split(".")
+    for t in tokens:
+      nd = d.get(t)
+      if nd is None:
+        return dfault
+      d = nd
+    if d is not None:
+      return d
+  #Fallback
+  return dfault
 
 
 def get_arg(value, state):
@@ -165,7 +180,7 @@ def get_arg(value, state):
       args = state.get("args")
       if args is not None:
         try:
-          return get_nested(argName, args)
+          return get_nested(args, argName)
         except KeyError2 as e:
           raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
       else:
@@ -4072,7 +4087,7 @@ def make_curve_makers():
 
   def make_config_curves(settings):
     def parseAxis(cfg, state):
-      curve = cfg.get("curve", None)
+      curve = get_nested_d(cfg, "curve", None)
       if curve is None:
         #TODO axis not in state anymore
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
@@ -4371,7 +4386,7 @@ def init_config2(settings):
 def add_scale_sink(sink, cfg):
   if "sens" in cfg:
     #cfg["sens"] is already in form {(e.source, e.code) : value}
-    sensSink = ScaleSink2(cfg["sens"], lambda event : ((event.source, event.code), (None, event.code)))
+    sensSink = ScaleSink2(get_nested(cfg, "sens"), lambda event : ((event.source, event.code), (None, event.code)))
     sensSink.set_next(sink)
     return sensSink
   else:
@@ -4391,6 +4406,9 @@ def init_layout_config(settings):
       state = {"settings" : settings, "parser" : parser}
       r = parser("sink", cfg, state)
       return r
+    except KeyError2 as e:
+      logger.error("Error while initializing config layout '{}': cannot find key '{}' in {}".format(layoutName, e.key, e.keys))
+      raise
     except KeyError as e:
       logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, str(e)))
       raise
@@ -4444,10 +4462,10 @@ class SelectParser:
         r = parser(cfg, state)
         return r
       except Exception as e:
-        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
+        #logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
         raise
       except:
-        logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
+        #logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
         raise
 
   def add(self, key, parser):
@@ -4536,7 +4554,7 @@ def get_axis_by_full_name(fullAxisName, state):
 def make_parser():
   parser = SelectParser()
 
-  opParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["op"], parser=ArgObjSelectParser())
+  opParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "op"), parser=ArgObjSelectParser())
   parser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
@@ -4548,14 +4566,14 @@ def make_parser():
       return wrapped
 
   def constant(cfg, state):
-    return ConstantApproximator(get_arg(cfg["value"], state))
+    return ConstantApproximator(get_arg(get_nested(cfg, "value"), state))
   opParser.add("constant", constant)
 
   def segment(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentApproximator(data, 1.0, True, True)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
+    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("segment", segment)
 
   def poly(cfg, state):
@@ -4567,29 +4585,29 @@ def make_parser():
           r += k*x**p
         return r
       return make_symm_wrapper(op, symmetric)
-    return make_op(get_arg(cfg["coeffs"], state), get_arg(cfg.get("symmetric", 0), state))
+    return make_op(get_arg(get_nested(cfg, "coeffs"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("poly", poly)
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
       approx = BezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
+    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentedBezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(cfg["points"], state), get_arg(cfg.get("symmetric", 0), state))
+    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
   def object_op(cfg, state):
-    return get_object(cfg["object"], state)
+    return get_object(get_nested(cfg, "object"), state)
   opParser.add("object", object_op)
 
   #Curves
-  curveParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["curve"], parser=ArgObjSelectParser())
+  curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
@@ -4601,7 +4619,7 @@ def make_parser():
     """Helper"""
     pointParsers = {}
     def parseFixedPoint(cfg, state):
-      p = Point(op=state["parser"]("op", cfg, state), center=cfg.get("center", 0.0))
+      p = Point(op=state["parser"]("op", cfg, state), center=get_nested_d(cfg, "center", 0.0))
       return p
     pointParsers["fixed"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
@@ -4625,10 +4643,10 @@ def make_parser():
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
   def parsePointsOutputBasedCurve(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    points = parsePoints(cfg["points"], state)
-    vpoName = cfg.get("vpo", None)
+    points = parsePoints(get_nested(cfg, "points"), state)
+    vpoName = get_nested_d(cfg, "vpo", None)
     ops = {
       "min" : get_min_op,
       "mul" : multiply_op,
@@ -4646,7 +4664,7 @@ def make_parser():
 
     if "moving" in points:
       point = points["moving"]
-      pointCfg = cfg["points"]["moving"]
+      pointCfg = get_nested(cfg, "points")["moving"]
       def getValueOp(curve):
         return curve.get_axis().get()
       def make_center_op(newRatio, l):
@@ -4679,13 +4697,13 @@ def make_parser():
   curveParser.add("pointsOut", parsePointsOutputBasedCurve)
 
   def parseFixedPointInputBasedCurve(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    points = parsePoints(cfg["points"], state)
+    points = parsePoints(get_nested(cfg, "points"), state)
     fp = points["fixed"]
-    interpolationDistance = cfg.get("interpolationDistance", 0.3)
-    interpolationFactor = cfg.get("interpolationFactor", 1.0)
-    posLimits = cfg.get("posLimits", (-1.1, 1.1))
+    interpolationDistance = get_nested_d(cfg, "interpolationDistance", 0.3)
+    interpolationFactor = get_nested_d(cfg, "interpolationFactor", 1.0)
+    posLimits = get_nested_d(cfg, "posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     axis.add_listener(curve)
@@ -4694,23 +4712,23 @@ def make_parser():
   curveParser.add("fpointIn", parseFixedPointInputBasedCurve)
 
   def parsePointsInputBasedCurve(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    points = parsePoints(cfg["points"], state)
+    points = parsePoints(get_nested(cfg, "points"), state)
     fp = points["fixed"]
     mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
-    interpolationDistance = cfg.get("interpolationDistance", 0.3)
-    interpolationFactor = cfg.get("interpolationFactor", 1.0)
-    resetDistance = 0.0 if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetDistance", 0.4)
-    resetTime = float("inf") if "moving" not in cfg["points"] else cfg["points"]["moving"].get("resetTime", float("inf"))
-    posLimits = cfg.get("posLimits", (-1.1, 1.1))
+    interpolationDistance = get_nested_d(cfg, "interpolationDistance", 0.3)
+    interpolationFactor = get_nested_d(cfg, "interpolationFactor", 1.0)
+    resetDistance = 0.0 if "moving" not in get_nested(cfg, "points") else get_nested(cfg, "points")["moving"].get("resetDistance", 0.4)
+    resetTime = float("inf") if "moving" not in get_nested(cfg, "points") else get_nested(cfg, "points")["moving"].get("resetTime", float("inf"))
+    posLimits = get_nested_d(cfg, "posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     def getValueOp(curve):
       return curve.get_pos()
     centerOp = IterativeCenterOp(point=mp, op=interpolateOp)
-    onReset = parseResetPolicy(cfg.get("onReset", "setToCurrent"), state)
-    onMove = parseResetPolicy(cfg.get("onMove", "setToCurrent"), state)
+    onReset = parseResetPolicy(get_nested_d(cfg, "onReset", "setToCurrent"), state)
+    onMove = parseResetPolicy(get_nested_d(cfg, "onMove", "setToCurrent"), state)
     curve = PointMovingCurve(
       next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
       onReset=onReset, onMove=onMove, resetTime=resetTime)
@@ -4720,13 +4738,13 @@ def make_parser():
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
 
   def parseOutputDeltaLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(cfg["axis"], state)
+    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     sensOp = state["parser"]("op", cfg, state)
     deltaOp = lambda delta, sens : delta*sens
-    fullControllingAxisName = get_arg(cfg["controlling"], state)
+    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
-    radius = cfg.get("radius", float("inf"))
+    radius = get_nested_d(cfg, "radius", float("inf"))
     curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
@@ -4736,13 +4754,13 @@ def make_parser():
   curveParser.add("outDeltaLink", parseOutputDeltaLinkingCurve)
 
   def parseInputDeltaLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(cfg["axis"], state)
+    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = state["parser"]("op", cfg, state)
-    fullControllingAxisName = get_arg(cfg["controlling"], state)
+    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
-    radius = cfg.get("radius", float("inf"))
-    threshold = cfg.get("threshold", 0.0)
+    radius = get_nested_d(cfg, "radius", float("inf"))
+    threshold = get_nested_d(cfg, "threshold", 0.0)
     threshold = None if threshold == "none" else float(threshold)
     curve = InputDeltaLinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
@@ -4753,10 +4771,10 @@ def make_parser():
   curveParser.add("inDeltaLink", parseInputDeltaLinkingCurve)
 
   def parseInputLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(cfg["axis"], state)
+    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = state["parser"]("op", cfg, state)
-    fullControllingAxisName = get_arg(cfg["controlling"], state)
+    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
@@ -4767,10 +4785,10 @@ def make_parser():
   curveParser.add("inLink", parseInputLinkingCurve)
 
   def parseAxisLinker(cfg, state):
-    fullControlledAxisName = get_arg(cfg["follower"], state)
+    fullControlledAxisName = get_arg(get_nested(cfg, "follower"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = state["parser"]("op", cfg, state)
-    fullControllingAxisName = get_arg(cfg["leader"], state)
+    fullControllingAxisName = get_arg(get_nested(cfg, "leader"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     linker = AxisLinker(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(linker)
@@ -4785,8 +4803,8 @@ def make_parser():
     if "refFixed" not in cfg:
       return sensOp
     else:
-      refAxis = get_axis_by_full_name(cfg["refAxis"], state)
-      refApprox = state["parser"]("op", cfg["refFixed"], state)
+      refAxis = get_axis_by_full_name(get_nested(cfg, "refAxis"), state)
+      refApprox = state["parser"]("op", get_nested(cfg, "refFixed"), state)
       class RefDeltaOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
@@ -4797,15 +4815,15 @@ def make_parser():
       return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
 
   def makeIterativeInputOp(cfg, outputOp):
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=cfg.get("eps", 0.001), numSteps=cfg.get("numSteps", 100))
-    inputStep = cfg.get("inputStep", 0.1)
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=get_nested_d(cfg, "eps", 0.001), numSteps=get_nested_d(cfg, "numSteps", 100))
+    inputStep = get_nested_d(cfg, "inputStep", 0.1)
     inputOp = LookupOp(inputOp, outputOp, inputStep)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    movingCfg = cfg["moving"]
+    movingCfg = get_nested(cfg, "moving")
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
@@ -4813,33 +4831,33 @@ def make_parser():
       ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
-    sensOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
+    deltaOp = DeadzoneDeltaOp(deltaOp, get_nested_d(cfg, "deadzone", 0.0))
+    sensOp = ApproxOp(approx=state["parser"]("op", get_nested(cfg, "fixed"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     add_curve_to_state(fullAxisName, curve, state)
     return curve
   curveParser.add("combined", parseCombinedCurve)
 
   def parseInputBasedCurve2(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    movingCfg = cfg["moving"]
+    movingCfg = get_nested(cfg, "moving")
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
       ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = ApproxOp(approx=state["parser"]("op", cfg["fixed"], state))
+    outputOp = ApproxOp(approx=state["parser"]("op", get_nested(cfg, "fixed"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
-    if cfg.get("print", 0) == 1:
-      cb = InputBasedCurve2PrintCB(fullAxisName, cfg.get("deltaOrder", 3), cfg.get("ivOrder", 3), cfg.get("ovOrder", 3))
+    if get_nested_d(cfg, "print", 0) == 1:
+      cb = InputBasedCurve2PrintCB(fullAxisName, get_nested_d(cfg, "deltaOrder", 3), get_nested_d(cfg, "ivOrder", 3), get_nested_d(cfg, "ovOrder", 3))
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    deltaOp = DeadzoneDeltaOp(deltaOp, cfg.get("deadzone", 0.0))
-    resetOpsOnAxisMove = cfg.get("resetOpsOnAxisMove", True)
-    ivLimits = cfg.get("inputLimits", (-1.0, 1.0))
+    deltaOp = DeadzoneDeltaOp(deltaOp, get_nested_d(cfg, "deadzone", 0.0))
+    resetOpsOnAxisMove = get_nested_d(cfg, "resetOpsOnAxisMove", True)
+    ivLimits = get_nested_d(cfg, "inputLimits", (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     add_curve_to_state(fullAxisName, curve, state)
@@ -4849,20 +4867,20 @@ def make_parser():
   def parseOffsetCurve(cfg, state):
     fmax = 1000000.0
     #axis tracker
-    resetOnAxisMove = cfg.get("resetOnAxisMove", True)
+    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", True)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
     curve = top
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(curve)
     #print
-    if get_arg(cfg.get("print", False), state) == True:
-      printCurve = PrintRelChainCurve(None, axis, fullAxisName, cfg.get("avOrder", 3))
+    if get_arg(get_nested_d(cfg, "print", False), state) == True:
+      printCurve = PrintRelChainCurve(None, axis, fullAxisName, get_nested_d(cfg, "avOrder", 3))
       top.set_next(printCurve)
       curve = printCurve
     #accumulate
     #Order of ops should not matter
-    movingCfg = cfg["moving"]
+    movingCfg = get_nested(cfg, "moving")
     valueDDOp = SignDistanceDeltaOp()
     valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaDOp = XDeltaOp()
@@ -4886,7 +4904,7 @@ def make_parser():
     offsetChainCurve = OffsetAbsChainCurve(next=None)
     movingChainCurve.set_next(offsetChainCurve)
     #transform offset
-    fixedCfg = cfg["fixed"]
+    fixedCfg = get_nested(cfg, "fixed")
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
     fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp)
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
@@ -4900,7 +4918,7 @@ def make_parser():
 
   def parsePresetCurve(cfg, state):
     presets = state["settings"]["config"]["presets"]
-    presetName = get_arg(cfg.get("name", None), state)
+    presetName = get_arg(get_nested_d(cfg, "name", None), state)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
     presetCfg = presets.get(presetName, None)
@@ -4910,8 +4928,8 @@ def make_parser():
     if "args" in cfg:
       oldArgs = state.get("args")
       try:
-        args = resolve_args(cfg["args"], state)
-        #logger.debug("{} -> {}".format(cfg["args"], args))
+        args = resolve_args(get_nested(cfg, "args"), state)
+        #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
         state["args"] = args
         curve = state["parser"]("curve", presetCfg, state)
         return curve
@@ -4931,14 +4949,14 @@ def make_parser():
   curveParser.add("preset", parsePresetCurve)
 
   def parseObjectCurve(cfg, state):
-    return get_object(cfg["object"], state)
+    return get_object(get_nested(cfg, "object"), state)
   curveParser.add("object", parseObjectCurve)
 
   def parseNoopCurve(cfg, state):
-    fullAxisName = get_arg(cfg["axis"], state)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     #To init state
     get_axis_by_full_name(fullAxisName, state)
-    curve = NoopCurve(value=get_arg(cfg.get("value", 0.0), state))
+    curve = NoopCurve(value=get_arg(get_nested_d(cfg, "value", 0.0), state))
     add_curve_to_state(fullAxisName, curve, state)
     return curve
   curveParser.add("noop", parseNoopCurve)
@@ -4946,7 +4964,7 @@ def make_parser():
   def parseBases_(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
-      bases = cfg.get("bases", None)
+      bases = get_nested_d(cfg, "bases", None)
       if bases is None:
         return cfg
       else:
@@ -5000,12 +5018,12 @@ def make_parser():
     state["components"] = {}
     oldArgs = state.get("args", None)
     if "args" in cfg:
-      state["args"] = resolve_args(cfg["args"], state)
+      state["args"] = resolve_args(get_nested(cfg, "args"), state)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
     oldObjects = state.get("objects", None)
     if "objects" in cfg:
-      state["objects"] = make_objects(cfg["objects"], state)
+      state["objects"] = make_objects(get_nested(cfg, "objects"), state)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
     def parse_component(name, op=None):
@@ -5038,7 +5056,7 @@ def make_parser():
     def parse_predefined(cfg, state):
       r = None
       for name in ("layout", "preset"):
-        if name in cfg or cfg.get("type", "") == name:
+        if name in cfg or get_nested_d(cfg, "type", "") == name:
           r = state["parser"](name, cfg, state)
           if r is not None:
             break
@@ -5092,7 +5110,7 @@ def make_parser():
   parser.add("sc", scParser)
 
   def parseModifiers(cfg, state):
-    modifiers = [fn2hc(m) for m in cfg["modifiers"]]
+    modifiers = [fn2hc(m) for m in get_nested(cfg, "modifiers")]
     modifierSink = ModifierSink(next=None, modifiers=modifiers, saveModifiers=True, mode=ModifierSink.APPEND)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
@@ -5108,7 +5126,7 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    sens = {fn2hc(fullAxisName):value for fullAxisName,value in cfg["sens"].items()}
+    sens = {fn2hc(fullAxisName):value for fullAxisName,value in get_nested(cfg, "sens").items()}
     keyOp = lambda event : ((event.source, event.code), (None, event.code))
     scaleSink = ScaleSink2(sens, keyOp)
     class Wrapper:
@@ -5126,15 +5144,15 @@ def make_parser():
   scParser.add("sens", parseSens)
 
   def parseMode(cfg, state):
-    name=cfg.get("name", "")
+    name=get_nested_d(cfg, "name", "")
     modeSink = ModeSink(name)
-    for modeName,modeCfg in cfg["modes"].items():
+    for modeName,modeCfg in get_nested(cfg, "modes").items():
       logger.debug("{}: parsing mode:".format(name, modeName))
       child = state["parser"]("sink", modeCfg, state)
       modeSink.add(modeName, child)
     if "initialMode" in cfg:
-      if not modeSink.set_mode(cfg["initialMode"]):
-        logger.warning("Cannot set mode: {}".format(cfg["initialMode"]))
+      if not modeSink.set_mode(get_nested(cfg, "initialMode")):
+        logger.warning("Cannot set mode: {}".format(get_nested(cfg, "initialMode")))
     msmm = ModeSinkModeManager(modeSink)
     msmm.save()
     state["components"]["msmm"] = msmm
@@ -5143,7 +5161,7 @@ def make_parser():
 
   def parseState(cfg, state):
     sink = StateSink()
-    stateCfg = cfg["state"]
+    stateCfg = get_nested(cfg, "state")
     if "next" in stateCfg:
       next = state["parser"]("sink", stateCfg["next"], state)
       sink.set_next(next)
@@ -5154,30 +5172,30 @@ def make_parser():
 
   def parseNext(cfg, state):
     parser = state["parser"]
-    r = parser("sink", cfg["next"], state)
+    r = parser("sink", get_nested(cfg, "next"), state)
     if r is None:
       logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
-      r = parser("action", cfg["next"], state)
+      r = parser("action", get_nested(cfg, "next"), state)
     return r
   scParser.add("next", parseNext)
 
   #Actions
   #TODO Rename "type" to "action" and update configs
-  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"] if "type" in cfg else cfg["action"])
+  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
   parser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
   actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
-  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(cfg["mode"], cfg.get("current")))
-  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(cfg["mode"], cfg.get("current")))
-  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_swap(cfg["f"], cfg["t"], cfg.get("current")))
-  actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(cfg["modes"], cfg.get("current")))
+  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
+  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
+  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current")))
+  actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current")))
   actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
-  actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(cfg["mode"], nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
-  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(cfg["modes"], cfg.get("step", 1), cfg.get("loop", True), nameToMSMMSavePolicy(cfg.get("savePolicy", "noop"))))
+  actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
+  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
 
   def parseSetState(cfg, state):
-    s = cfg["state"]
+    s = get_nested(cfg, "state")
     #logger.debug("Components: {}".format(state["components"]))
     return SetState(state["components"]["state"], s)
   actionParser.add("setState", parseSetState)
@@ -5193,35 +5211,35 @@ def make_parser():
   actionParser.add("move", parseMove)
 
   def parseMoveOneOf(cfg, state):
-    axesData = cfg["axes"]
+    axesData = get_nested(cfg, "axes")
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
       curves[fn2hc(get_arg(fullInputAxisName, state))] = curve
     op = None
-    if cfg["op"] == "min":
+    if get_nested(cfg, "op") == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
-    elif cfg["op"] == "max":
+    elif get_nested(cfg, "op") == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
-    elif cfg["op"] == "thresholds":
-      op = MCSThresholdOp(thresholds = {fn2hc(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in cfg["thresholds"].items()})
+    elif get_nested(cfg, "op") == "thresholds":
+      op = MCSThresholdOp(thresholds = {fn2hc(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in get_nested(cfg, "thresholds").items()})
     else:
-      raise Exception("parseMoveOneOf(): Unknown op: {}".format(cfg["op"]))
+      raise Exception("parseMoveOneOf(): Unknown op: {}".format(get_nested(cfg, "op")))
     mcs = MultiCurveSink(curves, op)
     state["settings"]["updated"].append(lambda tick,ts : mcs.update(tick, ts))
     return mcs
   actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
-    axis = get_axis_by_full_name(get_arg(cfg["axis"], state), state)
-    value = float(get_arg(cfg["value"], state))
+    axis = get_axis_by_full_name(get_arg(get_nested(cfg, "axis"), state), state)
+    value = float(get_arg(get_nested(cfg, "value"), state))
     r = MoveAxis(axis, value, False)
     return r
   actionParser.add("setAxis", parseSetAxis)
 
   def parseSetAxes(cfg, state):
     allAxes = state["settings"]["axes"]
-    axesAndValues = cfg["axesAndValues"]
+    axesAndValues = get_nested(cfg, "axesAndValues")
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     if type(axesAndValues) in (dict, collections.OrderedDict):
       axesAndValues = axesAndValues.items()
@@ -5240,7 +5258,7 @@ def make_parser():
 
   def parseSetAxesRel(cfg, state):
     allAxes = state["settings"]["axes"]
-    axesAndValues = cfg["axesAndValues"]
+    axesAndValues = get_nested(cfg, "axesAndValues")
     if type(axesAndValues) in (dict, collections.OrderedDict):
       axesAndValues = axesAndValues.items()
     av = []
@@ -5253,13 +5271,13 @@ def make_parser():
   actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState_(cfg, state, s):
-    output, key = fn2sn(get_arg(cfg["key"], state))
+    output, key = fn2sn(get_arg(get_nested(cfg, "key"), state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
     return SetButtonState(output, key, s)
 
   def parseSetKeyState(cfg, state):
-    s = int(get_arg(cfg["state"], state))
+    s = int(get_arg(get_nested(cfg, "state"), state))
     return parseSetKeyState_(cfg, state, s)
   actionParser.add("setKeyState", parseSetKeyState)
 
@@ -5272,10 +5290,10 @@ def make_parser():
   actionParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    output, key = fn2sn(get_arg(cfg["key"], state))
+    output, key = fn2sn(get_arg(get_nested(cfg, "key"), state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    n = int(get_arg(cfg.get("numClicks", 1), state))
+    n = int(get_arg(get_nested_d(cfg, "numClicks", 1), state))
     def op(event):
       for i in range(n):
         for s in (1, 0):
@@ -5289,7 +5307,7 @@ def make_parser():
     allCurves = state.get("curves")
     assert(allCurves is not None)
     if "axes" in cfg:
-      for fullAxisName in cfg["axes"]:
+      for fullAxisName in get_nested(cfg, "axes"):
         curves = allCurves.get(get_arg(fullAxisName, state), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
@@ -5297,7 +5315,7 @@ def make_parser():
           curvesToReset += curves
     elif "objects" in cfg:
       objects = state["objects"]
-      for objectName in cfg["objects"]:
+      for objectName in get_nested(cfg, "objects"):
         curvesToReset.append(objects[objectName]) 
     else:
       raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg)))
@@ -5308,7 +5326,7 @@ def make_parser():
     state.setdefault("snapManager", AxisSnapManager())
     snapManager = state["snapManager"]
     state.setdefault("snapTracker", SnapTracker(snapManager))
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     if not snapManager.has_snap(snapName):
       snaps = state["settings"]["config"]["snaps"]
       fullAxesNamesAndValues = snaps[snapName]
@@ -5320,35 +5338,35 @@ def make_parser():
 
   def parseUpdateSnap(cfg, state):
     createSnap_(cfg, state)
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     snapManager = state["snapManager"]
     return UpdateSnap(snapManager, snapName)
   actionParser.add("updateSnap", parseUpdateSnap)
 
   def parseSnapTo(cfg, state):
     createSnap_(cfg, state)
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     snapManager = state["snapManager"]
     return SnapTo(snapManager, snapName)
   actionParser.add("snapTo", parseSnapTo)
 
   def parseIncSnapCount(cfg, state):
     createSnap_(cfg, state)
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     snapTracker = state["snapTracker"]
     return lambda e : snapTracker.inc(snapName)
   actionParser.add("incSnapCount", parseIncSnapCount)
 
   def parseDecSnapCount(cfg, state):
     createSnap_(cfg, state)
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     snapTracker = state["snapTracker"]
     return lambda e : snapTracker.dec(snapName)
   actionParser.add("decSnapCount", parseDecSnapCount)
 
   def parseResetSnapCount(cfg, state):
     createSnap_(cfg, state)
-    snapName = cfg["snap"]
+    snapName = get_nested(cfg, "snap")
     snapTracker = state["snapTracker"]
     return lambda e : snapTracker.reset(snapName)
   actionParser.add("resetSnapCount", parseResetSnapCount)
@@ -5359,16 +5377,16 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseSetObjectState(cfg, state):
-    obj = get_object(cfg["object"], state)
-    return SetState(obj, cfg["state"])
+    obj = get_object(get_nested(cfg, "object"), state)
+    return SetState(obj, get_nested(cfg, "state"))
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
-    sinks, code, value = state.get("sinks"), int(cfg.get("code", 0)), cfg.get("value")
+    sinks, code, value = state.get("sinks"), int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     if sinks is None or len(sinks) == 0:
       raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
     #depth == 0 - current component sink, depth == 1 - its parent
-    sink = sinks[-(1+cfg.get("depth", 0))]
+    sink = sinks[-(1+get_nested_d(cfg, "depth", 0))]
     if sink is None:
       raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
     def callback(e):
@@ -5379,7 +5397,7 @@ def make_parser():
   actionParser.add("emit", parseEmitCustomEvent)
 
   def parsePrint(cfg, state):
-    message = cfg["message"]
+    message = get_nested(cfg, "message")
     def callback(e):
       print message
       return True
@@ -5394,19 +5412,19 @@ def make_parser():
   actionParser.add("printEvent", parsePrintEvent)
 
   #Event descriptors
-  edParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  edParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("ed", edParser)
 
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(cfg["modifiers"], state)]
+      modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(get_nested(cfg, "modifiers"), state)]
       r.append(("modifiers", modifiers))
     return r
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    sourceHash, eventType, key = fn2htc(get_arg(cfg["key"], state))
+    sourceHash, eventType, key = fn2htc(get_arg(get_nested(cfg, "key"), state))
     r = [("type", eventType), ("code", key), ("value", value)]
     if sourceHash is not None:
       r.append(("source", sourceHash))
@@ -5440,7 +5458,7 @@ def make_parser():
 
   def parseMultiClick(cfg, state):
     r = parseKey_(cfg, state, 3)
-    num = int(cfg["numClicks"])
+    num = int(get_nested(cfg, "numClicks"))
     r.append(("num_clicks", num))
     r = parseEdModifiers_(r, cfg, state)
     return r
@@ -5459,11 +5477,11 @@ def make_parser():
   edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
-    sourceHash, eventType, axis = fn2htc(get_arg(cfg["axis"], state))
+    sourceHash, eventType, axis = fn2htc(get_arg(get_nested(cfg, "axis"), state))
     r = [("type", eventType), ("code", axis)]
     if sourceHash is not None:
       r.append(("source", sourceHash))
-    value = cfg.get("value")
+    value = get_nested_d(cfg, "value")
     if value is not None:
       value = float("inf") if value == "+" else -float("inf") if value == "-" else float(value)
       r.append(("value", value))
@@ -5473,7 +5491,7 @@ def make_parser():
 
   def parseInit(cfg, state):
     r = [("type", codes.EV_BCT), ("code", codes.BCT_INIT)]
-    eventName = cfg.get("event")
+    eventName = get_nested_d(cfg, "event")
     if eventName is not None:
       value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
       assert(value is not None)
@@ -5482,7 +5500,7 @@ def make_parser():
   edParser.add("init", parseInit)
 
   def parseEvent(cfg, state):
-    code, value = cfg["code"], cfg["value"]
+    code, value = get_nested(cfg, "code"), get_nested(cfg, "value")
     r = [("type", codes.EV_CUSTOM), ("code", code), ("value", value)]
     return r
   edParser.add("event", parseEvent)
@@ -5522,7 +5540,7 @@ def make_parser():
 
       return ((i,o) for i in inputs for o in outputs)
 
-    binds = cfg.get("binds", ())
+    binds = get_nested_d(cfg, "binds", ())
     #logger.debug("binds: {}".format(binds))
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
@@ -5549,7 +5567,7 @@ def make_parser():
     def parseExternalOp(cfg, state):
       group = state["settings"]["config"][groupName]
       name = cfg.get(propName, None)
-      if name is None: name = cfg["name"]
+      if name is None: name = get_nested(cfg, "name")
       logger.debug("Parsing {} '{}'".format(propName, name))
       cfg2 = group[name]
       sink = state["parser"]("sink", cfg2, state)
@@ -5559,15 +5577,15 @@ def make_parser():
   parser.add("preset", parseBases_(parseExternal_("preset", "presets")))
   parser.add("layout", parseBases_(parseExternal_("layout", "layouts")))
 
-  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : cfg["type"])
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
 
   @make_reporting_joystick
   def parseNullJoystickOutput(cfg, state):
-    values = cfg.get("values")
+    values = get_nested_d(cfg, "values")
     if values is not None:
       values = {name2code(n) : v for n,v in values.items()}
-    limits = cfg.get("limits")
+    limits = get_nested_d(cfg, "limits")
     if limits is not None:
       limits = {name2code(n) : v for n,v in limits.items()}
     j = NullJoystick(values=values, limits=limits)
@@ -5575,7 +5593,7 @@ def make_parser():
   outputParser.add("null", parseNullJoystickOutput)
 
   def parseExternalOutput(cfg, state):
-    settings, name = state["settings"], cfg["name"]
+    settings, name = state["settings"], get_nested(cfg, "name")
     j = settings["outputs"].get(name, None)
     if j is None:
       j = state["parser"]("output", settings["config"]["outputs"][name], state)
@@ -5585,8 +5603,8 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRateLimitOutput(cfg, state):
-    rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
-    next = state["parser"]("output", cfg["next"], state)
+    rates = {name2code(axisName):value for axisName,value in get_nested(cfg, "rates").items()}
+    next = state["parser"]("output", get_nested(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
@@ -5594,9 +5612,9 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRateSettingOutput(cfg, state):
-    rates = {name2code(axisName):value for axisName,value in cfg["rates"].items()}
-    limits = {name2code(axisName):value for axisName,value in cfg["limits"].items()}
-    next = state["parser"]("output", cfg["next"], state)
+    rates = {name2code(axisName):value for axisName,value in get_nested(cfg, "rates").items()}
+    limits = {name2code(axisName):value for axisName,value in get_nested(cfg, "limits").items()}
+    next = state["parser"]("output", get_nested(cfg, "next"), state)
     j = RateSettingJoystick(next, rates, limits)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
@@ -5604,15 +5622,15 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRelativeOutput(cfg, state):
-    next = state["parser"]("output", cfg["next"], state)
-    j = RelativeHeadMovementJoystick(next=next, r=cfg.get("clampRadius", float("inf")), stick=cfg.get("stick", True))
+    next = state["parser"]("output", get_nested(cfg, "next"), state)
+    j = RelativeHeadMovementJoystick(next=next, r=get_nested_d(cfg, "clampRadius", float("inf")), stick=get_nested_d(cfg, "stick", True))
     return j
   outputParser.add("relative", parseRelativeOutput)
 
   @make_reporting_joystick
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output")
-    children = parse_list(cfg["children"], state, parser)
+    children = parse_list(get_nested(cfg, "children"), state, parser)
     j = CompositeJoystick(children)
     return j
   outputParser.add("composite", parseCompositeOutput)
@@ -5621,7 +5639,7 @@ def make_parser():
   def parseMappingOutput(cfg, state):
     outputs = state["settings"]["outputs"]
     j = MappingJoystick()
-    for fromAxis,to in cfg["mapping"].items():
+    for fromAxis,to in get_nested(cfg, "mapping").items():
       toJoystick, toAxis = fn2sc(to["to"])
       factor = to.get("factor", 1.0)
       j.add(name2code(fromAxis), toJoystick, toAxis, factor)
@@ -5630,7 +5648,7 @@ def make_parser():
 
   @make_reporting_joystick
   def parseOpentrackOutput(cfg, state):
-    j = Opentrack(cfg["ip"], int(cfg["port"]))
+    j = Opentrack(get_nested(cfg, "ip"), int(get_nested(cfg, "port")))
     state["settings"]["updated"].append(lambda tick,ts : j.send())
     return j
   outputParser.add("opentrack", parseOpentrackOutput)
@@ -5642,8 +5660,8 @@ def make_parser():
       "il2_6dof" : make_il2_6dof_packet,
       "opentrack" : make_opentrack_packet
     }
-    j = UdpJoystick(cfg["ip"], int(cfg["port"]), packetMakers[cfg["format"]], int(cfg.get("numPackets", 1)))
-    for a,l in cfg.get("limits", {}).items():
+    j = UdpJoystick(get_nested(cfg, "ip"), int(get_nested(cfg, "port")), packetMakers[get_nested(cfg, "format")], int(get_nested_d(cfg, "numPackets", 1)))
+    for a,l in get_nested_d(cfg, "limits", {}).items():
       j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick,ts : j.send())
     return j
