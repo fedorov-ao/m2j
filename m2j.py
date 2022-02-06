@@ -179,6 +179,15 @@ def get_nested_from_sections_d(d, sectNames, name, dfault = None):
   return dfault if r is None else r
 
 
+def get_nested_from_stack_d(stack, name, dfault = None):
+  r = None
+  for s in stack:
+    r = get_nested_d(s, name, None)
+    if r is not None:
+      break
+  return dfault if r is None else r
+
+
 def get_arg(value, state):
   if type(value) in (str, unicode):
     pa, po = "arg:", "obj:"
@@ -207,12 +216,11 @@ def resolve_args(args, state):
 
 
 def get_object(name, state):
-  objects = state.get("objects")
-  if objects is None:
-    raise RuntimeError("Objects were not created.")
-  obj = objects.get(name)
+  objects = state["objects"]
+  obj = get_nested_from_stack_d(objects, name, None)
   if obj is None:
-    raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), str2(objects.keys())))
+    allObjects = [str2(objs.keys()) for objs in objects]
+    raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
   return obj
 
 
@@ -4165,7 +4173,7 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
-        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"]}
+        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4414,7 +4422,7 @@ def init_layout_config(settings):
   else:
     try:
       parser = settings["parser"]
-      state = {"settings" : settings, "parser" : parser}
+      state = {"settings" : settings, "parser" : parser, "objects" : []}
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -4518,6 +4526,7 @@ class IntrusiveSelectParser:
 
 class ArgObjSelectParser:
   def __call__(self, key, cfg, state):
+    #logger.debug("ArgObjSelectParser.(): state[\"objects\"]: {}".format(str2(state["objects"])))
     pa, po = "arg:", "obj:"
     lpa, lpo = len(pa), len(po)
     if key[:lpo] == po:
@@ -5034,9 +5043,8 @@ def make_parser():
       state["args"] = resolve_args(get_nested(cfg, "args"), state)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
-    oldObjects = state.get("objects", None)
-    if "objects" in cfg:
-      state["objects"] = make_objects(get_nested(cfg, "objects"), state)
+    state["objects"].append(make_objects(get_nested_d(cfg, "objects", {}), state))
+    #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
     def parse_component(name, op=None):
@@ -5112,8 +5120,9 @@ def make_parser():
         state["components"] = oldComponents
       if oldArgs is not None:
         state["args"] = oldArgs
-      if oldObjects is not None:
-        state["objects"] = oldObjects
+      objects = state["objects"]
+      assert len(objects) != 0
+      objects.pop()
       if oldCurves is not None:
         state["curves"] = oldCurves
   parser.add("sink", parseBases_(parseSink))
@@ -5315,6 +5324,7 @@ def make_parser():
   actionParser.add("click", parseClick)
 
   actionParser.add("setKeyState", parseSetKeyState)
+
   def parseResetCurves(cfg, state):
     curvesToReset = []
     allCurves = state.get("curves")
@@ -5329,7 +5339,10 @@ def make_parser():
     elif "objects" in cfg:
       objects = state["objects"]
       for objectName in get_nested(cfg, "objects"):
-        curvesToReset.append(objects[objectName]) 
+        curve = get_nested_from_stack_d(objects, objectName, None)
+        if curve is None:
+          raise RuntimeError("Curve {} not found".format(str2(objectName)))
+        curvesToReset.append(curve)
     else:
       raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg)))
     return ResetCurves(curvesToReset)
