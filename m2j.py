@@ -4640,10 +4640,6 @@ def make_parser():
     return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
-  def object_op(cfg, state):
-    return get_object(get_nested(cfg, "object"), state)
-  opParser.add("object", object_op)
-
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
@@ -4985,10 +4981,6 @@ def make_parser():
       finally:
         presetCfgStack.pop_all()
   curveParser.add("preset", parsePresetCurve)
-
-  def parseObjectCurve(cfg, state):
-    return get_object(get_nested(cfg, "object"), state)
-  curveParser.add("object", parseObjectCurve)
 
   def parseNoopCurve(cfg, state):
     fullAxisName = get_arg(get_nested(cfg, "axis"), state)
