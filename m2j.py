@@ -5076,7 +5076,7 @@ def make_parser():
     #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
     def parse_predefined(cfg, state):
       r = None
-      for name in ("layout", "preset"):
+      for name in ("layout", "preset", "class", "object"):
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           r = state["parser"](name, cfg, state)
           if r is not None:
@@ -5411,8 +5411,12 @@ def make_parser():
     sinks, code, value = state.get("sinks"), int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     if sinks is None or len(sinks) == 0:
       raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
-    #depth == 0 - current component sink, depth == 1 - its parent
-    sink = sinks[-(1+get_nested_d(cfg, "depth", 0))]
+    sink = None
+    if "depth" in cfg:
+      #depth == 0 - current component sink, depth == 1 - its parent
+      sink = sinks[-(1+get_nested_d(cfg, "depth", 0))]
+    elif "object" in cfg:
+      sink = get_object(get_nested(cfg, "object"), state)
     if sink is None:
       raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
     def callback(e):
@@ -5606,6 +5610,15 @@ def make_parser():
   parser.add("preset", parseBases_(parseExternal_("preset", ["presets", "classes"])))
   parser.add("layout", parseBases_(parseExternal_("layout", ["layouts", "classes"])))
   parser.add("class", parseBases_(parseExternal_("class", ["classes", "presets", "layouts"])))
+
+  def parseObjectSink(cfg, state):
+    objects = state["objects"]
+    objectName = get_nested_d(cfg, "object", None)
+    if objectName is None:
+      raise RuntimeError("Object name was not specified in {}".format(str2(cfg)))
+    obj = get_object(objectName, state)
+    return obj
+  parser.add("object", parseObjectSink)
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
