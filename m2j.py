@@ -169,6 +169,16 @@ def get_nested_d(d, name, dfault = None):
   return dfault
 
 
+def get_nested_from_sections_d(d, sectNames, name, dfault = None):
+  sects = (get_nested_d(d, sectName, {}) for sectName in sectNames)
+  r = None
+  for s in sects:
+    r = get_nested_d(s, name, None)
+    if r is not None:
+      break
+  return dfault if r is None else r
+
+
 def get_arg(value, state):
   if type(value) in (str, unicode):
     pa, po = "arg:", "obj:"
@@ -4395,9 +4405,10 @@ def add_scale_sink(sink, cfg):
 
 def init_layout_config(settings):
   config = settings["config"]
-  layoutName = config["layout"]
+  layoutName = get_nested(config, "layout")
   logger.info("Using '{}' layout from config".format(layoutName))
-  cfg = config["layouts"].get(layoutName, None)
+  sectNames = ["layouts", "classes"]
+  cfg = get_nested_from_sections_d(config, sectNames, layoutName, None)
   if cfg is None:
     raise Exception("'{}' layout not found in config".format(layoutName))
   else:
@@ -4917,11 +4928,11 @@ def make_parser():
   curveParser.add("offset", parseOffsetCurve)
 
   def parsePresetCurve(cfg, state):
-    presets = state["settings"]["config"]["presets"]
+    config = state["settings"]["config"]
     presetName = get_arg(get_nested_d(cfg, "name", None), state)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
-    presetCfg = presets.get(presetName, None)
+    presetCfg = get_nested_from_sections_d(config, ("presets", "classes"), presetName, None)
     if presetCfg is None:
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
@@ -4968,13 +4979,15 @@ def make_parser():
       if bases is None:
         return cfg
       else:
-        layouts, full = state["settings"]["config"]["layouts"], {}
-        for b in bases:
-          logger.debug("Parsing base : {}".format(b))
-          layout = layouts.get(b)
-          if layout is None:
-            raise RuntimeError("No layout {}, available layouts are: {}".format(str2(b), str2(layouts.keys())))
-          merge_dicts(full, worker(layouts[b], state))
+        sectNames = ["layouts", "classes"]
+        config = state["settings"]["config"]
+        full = {}
+        for baseName in bases:
+          logger.debug("Parsing base : {}".format(baseName))
+          base = get_nested_from_sections_d(config, sectNames, baseName, None)
+          if base is None:
+            raise RuntimeError("No layout: {}".format(str2(base)))
+          merge_dicts(full, worker(base, state))
         merge_dicts(full, cfg)
         del full["bases"]
         return full
@@ -5563,19 +5576,23 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  def parseExternal_(propName, groupName):
+  def parseExternal_(propName, groupNames):
     def parseExternalOp(cfg, state):
-      group = state["settings"]["config"][groupName]
+      config = state["settings"]["config"]
       name = cfg.get(propName, None)
-      if name is None: name = get_nested(cfg, "name")
+      if name is None:
+        name = get_nested(cfg, "name")
       logger.debug("Parsing {} '{}'".format(propName, name))
-      cfg2 = group[name]
+      cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
+      if cfg2 is None:
+        raise RuntimeError("No class {}".format(str2(name)))
       sink = state["parser"]("sink", cfg2, state)
       return sink
     return parseExternalOp
 
-  parser.add("preset", parseBases_(parseExternal_("preset", "presets")))
-  parser.add("layout", parseBases_(parseExternal_("layout", "layouts")))
+  parser.add("preset", parseBases_(parseExternal_("preset", ["presets", "classes"])))
+  parser.add("layout", parseBases_(parseExternal_("layout", ["layouts", "classes"])))
+  parser.add("class", parseBases_(parseExternal_("class", ["classes", "presets", "layouts"])))
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
