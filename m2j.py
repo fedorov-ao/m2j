@@ -224,6 +224,20 @@ def get_object(name, state):
   return obj
 
 
+def make_objects(objectsCfg, state):
+  parser = state["parser"]
+  r = collections.OrderedDict()
+  for k,v in objectsCfg.items():
+    for n in ("curve", "op"):
+      if n in v:
+        r[k] = parser(n, v, state)
+        #break is needed to avoid executing the "else" block
+        break
+    else:
+      r[k] = parser("sink", v, state)
+  return r
+
+
 def calc_hash(s):
   return None if s is None else zlib.adler32(s)
 
@@ -4173,7 +4187,9 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
+        #make_objects() needs "objects" list to be in state, even if it is empty
         state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
+        state["objects"] = [make_objects(get_nested_d(config, "objects", {}), state)]
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4422,7 +4438,9 @@ def init_layout_config(settings):
   else:
     try:
       parser = settings["parser"]
+      #make_objects() needs "objects" list to be in state, even if it is empty
       state = {"settings" : settings, "parser" : parser, "objects" : []}
+      state["objects"] = [make_objects(get_nested_d(config, "objects", {}), state)]
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -5019,19 +5037,6 @@ def make_parser():
 
     def __init__(self, next=None):
         self.next_ = next
-
-  def make_objects(objectsCfg, state):
-    parser = state["parser"]
-    r = collections.OrderedDict()
-    for k,v in objectsCfg.items():
-      for n in ("curve", "op"):
-        if n in v:
-          r[k] = parser(n, v, state)
-          #break is needed to avoid executing the "else" block
-          break
-      else:
-        r[k] = parser("sink", v, state)
-    return r
 
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
