@@ -215,6 +215,18 @@ def resolve_args(args, state):
   return r
 
 
+def parseArg(cfg, state):
+  argName = get_nested(cfg, "arg")
+  args = state.get("args")
+  if args is not None:
+    try:
+      return get_nested(args, argName)
+    except KeyError2 as e:
+      raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
+  else:
+    raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(argName)))
+
+
 def get_object(name, state):
   objects = state["objects"]
   obj = get_nested_from_stack_d(objects, name, None)
@@ -222,6 +234,10 @@ def get_object(name, state):
     allObjects = [str2(objs.keys()) for objs in objects]
     raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
   return obj
+
+
+def parseObject(cfg, state):
+  return get_object(get_nested(cfg, "object"), state)
 
 
 def make_objects(objectsCfg, state):
@@ -4640,6 +4656,9 @@ def make_parser():
     return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
+  opParser.add("object", parseObject)
+  opParser.add("arg", parseArg)
+
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
@@ -4991,6 +5010,9 @@ def make_parser():
     return curve
   curveParser.add("noop", parseNoopCurve)
 
+  curveParser.add("object", parseObject)
+  curveParser.add("arg", parseArg)
+
   def parseBases_(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
@@ -5073,7 +5095,7 @@ def make_parser():
     #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
     def parse_predefined(cfg, state):
       r = None
-      for name in ("layout", "preset", "class", "object"):
+      for name in ("layout", "preset", "class", "object", "arg"):
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           r = state["parser"](name, cfg, state)
           if r is not None:
@@ -5438,6 +5460,10 @@ def make_parser():
     return callback
   actionParser.add("printEvent", parsePrintEvent)
 
+  actionParser.add("object", parseObject)
+  actionParser.add("arg", parseArg)
+
+
   #Event descriptors
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("ed", edParser)
@@ -5532,6 +5558,9 @@ def make_parser():
     return r
   edParser.add("event", parseEvent)
 
+  edParser.add("object", parseObject)
+  edParser.add("arg", parseArg)
+
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
@@ -5608,14 +5637,8 @@ def make_parser():
   parser.add("layout", parseBases_(parseExternal_("layout", ["layouts", "classes"])))
   parser.add("class", parseBases_(parseExternal_("class", ["classes", "presets", "layouts"])))
 
-  def parseObjectSink(cfg, state):
-    objects = state["objects"]
-    objectName = get_nested_d(cfg, "object", None)
-    if objectName is None:
-      raise RuntimeError("Object name was not specified in {}".format(str2(cfg)))
-    obj = get_object(objectName, state)
-    return obj
-  parser.add("object", parseObjectSink)
+  parser.add("object", parseObject)
+  parser.add("arg", parseArg)
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
