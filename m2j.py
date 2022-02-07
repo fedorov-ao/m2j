@@ -252,17 +252,18 @@ def parseObject(cfg, state):
 
 
 def make_objects(objectsCfg, state):
+  assert "objects" in state
+  objects = collections.OrderedDict()
+  state["objects"].append(objects)
   parser = state["parser"]
-  r = collections.OrderedDict()
   for k,v in objectsCfg.items():
     for n in ("curve", "op"):
       if n in v:
-        r[k] = parser(n, v, state)
+        objects[k] = parser(n, v, state)
         #break is needed to avoid executing the "else" block
         break
     else:
-      r[k] = parser("sink", v, state)
-  return r
+      objects[k] = parser("sink", v, state)
 
 
 def calc_hash(s):
@@ -4216,7 +4217,7 @@ def make_curve_makers():
           return r
         #make_objects() needs "objects" list to be in state, even if it is empty
         state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
-        state["objects"] = [make_objects(get_nested_d(config, "objects", {}), state)]
+        make_objects(get_nested_d(config, "objects", {}), state)
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4467,7 +4468,7 @@ def init_layout_config(settings):
       parser = settings["parser"]
       #make_objects() needs "objects" list to be in state, even if it is empty
       state = {"settings" : settings, "parser" : parser, "objects" : []}
-      state["objects"] = [make_objects(get_nested_d(config, "objects", {}), state)]
+      make_objects(get_nested_d(config, "objects", {}), state)
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -5038,6 +5039,15 @@ def make_parser():
       return wrapped(expandedCfg, state)
     return parseBasesOp
 
+  def parseArgObj_(wrapped):
+    def parseArgObjOp(cfg, state):
+      obj = get_argobj(cfg, state)
+      if obj is not None:
+        return obj
+      else:
+        return wrapped(cfg, state)
+    return parseArgObjOp
+
   class HeadSink:
     def __call__(self, event):
       #Can be actually called during init when next_ is not set yet
@@ -5062,7 +5072,7 @@ def make_parser():
       state["args"] = resolve_args(get_nested(cfg, "args"), state)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
-    state["objects"].append(make_objects(get_nested_d(cfg, "objects", {}), state))
+    make_objects(get_nested_d(cfg, "objects", {}), state)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
@@ -5144,7 +5154,7 @@ def make_parser():
       objects.pop()
       if oldCurves is not None:
         state["curves"] = oldCurves
-  parser.add("sink", parseBases_(parseSink))
+  parser.add("sink", parseArgObj_(parseBases_(parseSink)))
 
   #Sink components
   scParser = SelectParser()
@@ -5573,6 +5583,9 @@ def make_parser():
 
       parser = state["settings"]["parser"]
       def actionParser(cfg, state):
+        obj = get_argobj(cfg, state)
+        if obj is not None:
+          return obj
         try:
           return parser.get("action")(cfg, state)
         except KeyError:
@@ -5594,7 +5607,7 @@ def make_parser():
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
       def checkOutput(o):
-        return 10 if o.get("action", o.get("type", None)) in ("resetCurve", "resetCurves") else 0
+        return 10 if type(o) in (dict, collections.OrderedDict) and o.get("action", o.get("type", None)) in ("resetCurve", "resetCurves") else 0
       r = 0
       if "output" in b:
         r = checkOutput(b["output"])
