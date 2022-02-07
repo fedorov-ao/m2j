@@ -201,7 +201,14 @@ def get_arg2(name, state):
 
 def get_argobj(value, state):
   #logger.debug("get_argobj(): value: {}".format(str2(value)))
-  if type(value) in (str, unicode):
+  if type(value) in (dict, collections.OrderedDict):
+    objName = get_nested_d(value, "obj", None)
+    if objName is not None:
+      return get_object(objName, state)
+    argName = get_nested_d(value, "arg", None)
+    if argName is not None:
+      return get_arg2(argName, state)
+  elif type(value) in (str, unicode):
     pa, po = "arg:", "obj:"
     lpa, lpo = len(pa), len(po)
     if value[:lpo] == po:
@@ -241,7 +248,7 @@ def get_object(name, state):
 
 
 def parseObject(cfg, state):
-  return get_object(get_nested(cfg, "object"), state)
+  return get_object(get_nested(cfg, "obj"), state)
 
 
 def make_objects(objectsCfg, state):
@@ -4542,10 +4549,6 @@ class IntrusiveSelectParser:
   """FreePie does not handle inheritance well, so this class is implemented via composition."""
   def __call__(self, cfg, state):
     key = self.keyOp_(cfg)
-    while type(key) in (dict, collections.OrderedDict):
-      cfg = key
-      key = self.keyOp_(cfg)
-    #logger.debug(cfg)
     return self.p_(key, cfg, state)
 
   def add(self, key, parser):
@@ -5010,7 +5013,7 @@ def make_parser():
     return curve
   curveParser.add("noop", parseNoopCurve)
 
-  curveParser.add("object", parseObject)
+  curveParser.add("obj", parseObject)
   curveParser.add("arg", parseArg)
 
   def parseBases_(wrapped):
@@ -5095,7 +5098,7 @@ def make_parser():
     #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
     def parse_predefined(cfg, state):
       r = None
-      for name in ("layout", "preset", "class", "object", "arg"):
+      for name in ("layout", "preset", "class", "obj", "arg"):
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           r = state["parser"](name, cfg, state)
           if r is not None:
@@ -5460,7 +5463,7 @@ def make_parser():
     return callback
   actionParser.add("printEvent", parsePrintEvent)
 
-  actionParser.add("object", parseObject)
+  actionParser.add("obj", parseObject)
   actionParser.add("arg", parseArg)
 
 
@@ -5558,7 +5561,7 @@ def make_parser():
     return r
   edParser.add("event", parseEvent)
 
-  edParser.add("object", parseObject)
+  edParser.add("obj", parseObject)
   edParser.add("arg", parseArg)
 
   def parseBinds(cfg, state):
@@ -5637,7 +5640,7 @@ def make_parser():
   parser.add("layout", parseBases_(parseExternal_("layout", ["layouts", "classes"])))
   parser.add("class", parseBases_(parseExternal_("class", ["classes", "presets", "layouts"])))
 
-  parser.add("object", parseObject)
+  parser.add("obj", parseObject)
   parser.add("arg", parseArg)
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
