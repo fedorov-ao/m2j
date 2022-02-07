@@ -5013,9 +5013,6 @@ def make_parser():
     return curve
   curveParser.add("noop", parseNoopCurve)
 
-  curveParser.add("obj", parseObject)
-  curveParser.add("arg", parseArg)
-
   def parseBases_(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
@@ -5463,10 +5460,6 @@ def make_parser():
     return callback
   actionParser.add("printEvent", parsePrintEvent)
 
-  actionParser.add("obj", parseObject)
-  actionParser.add("arg", parseArg)
-
-
   #Event descriptors
   edParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("ed", edParser)
@@ -5560,9 +5553,6 @@ def make_parser():
     r = [("type", codes.EV_CUSTOM), ("code", code), ("value", value)]
     return r
   edParser.add("event", parseEvent)
-
-  edParser.add("obj", parseObject)
-  edParser.add("arg", parseArg)
 
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
