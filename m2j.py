@@ -188,24 +188,35 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
-def get_arg(value, state):
+def get_arg2(name, state):
+  args = state.get("args")
+  if args is not None:
+    try:
+      return get_nested(args, name)
+    except KeyError2 as e:
+      raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
+  else:
+    raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
+
+
+def get_argobj(value, state):
+  #logger.debug("get_argobj(): value: {}".format(str2(value)))
   if type(value) in (str, unicode):
     pa, po = "arg:", "obj:"
     lpa, lpo = len(pa), len(po)
     if value[:lpo] == po:
-      return get_object(value[lpo:], state)
+      objName = value[lpo:]
+      return get_object(objName, state)
     elif value[:lpa] == pa:
       argName = value[lpa:]
-      args = state.get("args")
-      if args is not None:
-        try:
-          return get_nested(args, argName)
-        except KeyError2 as e:
-          raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
-      else:
-        raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(argName)))
-  #Fallback
-  return value
+      return get_arg2(argName, state)
+  #Fallback, not in else block!
+  return None
+
+
+def get_arg(value, state):
+  r = get_argobj(value, state)
+  return value if r is None else r
 
 
 def resolve_args(args, state):
@@ -216,15 +227,8 @@ def resolve_args(args, state):
 
 
 def parseArg(cfg, state):
-  argName = get_nested(cfg, "arg")
-  args = state.get("args")
-  if args is not None:
-    try:
-      return get_nested(args, argName)
-    except KeyError2 as e:
-      raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
-  else:
-    raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(argName)))
+  name = get_nested(cfg, "arg")
+  return get_arg2(name, state)
 
 
 def get_object(name, state):
@@ -4561,13 +4565,9 @@ class IntrusiveSelectParser:
 class ArgObjSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("ArgObjSelectParser.(): state[\"objects\"]: {}".format(str2(state["objects"])))
-    pa, po = "arg:", "obj:"
-    lpa, lpo = len(pa), len(po)
-    if key[:lpo] == po:
-      return get_object(key[lpo:], state)
-    elif key[:lpa] == pa:
-      key = get_arg(key, state)
-    return self.p_(key, cfg, state)
+    #logger.debug("ArgObjSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
+    r = get_argobj(key, state)
+    return self.p_(key, cfg, state) if r is None else r
 
   def add(self, key, parser):
     self.p_.add(key, parser)
