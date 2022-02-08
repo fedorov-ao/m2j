@@ -5062,6 +5062,8 @@ def make_parser():
     def __init__(self, next=None):
         self.next_ = next
 
+  @parseArgObj_
+  @parseBases_
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
@@ -5154,7 +5156,7 @@ def make_parser():
       objects.pop()
       if oldCurves is not None:
         state["curves"] = oldCurves
-  parser.add("sink", parseArgObj_(parseBases_(parseSink)))
+  parser.add("sink", parseSink)
 
   #Sink components
   scParser = SelectParser()
@@ -5194,6 +5196,7 @@ def make_parser():
     return Wrapper(scaleSink)
   scParser.add("sens", parseSens)
 
+  @parseBases_
   def parseMode(cfg, state):
     name=get_nested_d(cfg, "name", "")
     modeSink = ModeSink(name)
@@ -5208,7 +5211,7 @@ def make_parser():
     msmm.save()
     state["components"]["msmm"] = msmm
     return modeSink
-  scParser.add("modes", parseBases_(parseMode))
+  scParser.add("modes", parseMode)
 
   def parseState(cfg, state):
     sink = StateSink()
@@ -5625,7 +5628,8 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  def parseExternal_(propName, groupNames):
+  def parseExternal(propName, groupNames):
+    @parseBases_
     def parseExternalOp(cfg, state):
       config = state["settings"]["config"]
       name = cfg.get(propName, None)
@@ -5639,9 +5643,9 @@ def make_parser():
       return sink
     return parseExternalOp
 
-  parser.add("preset", parseBases_(parseExternal_("preset", ["presets", "classes"])))
-  parser.add("layout", parseBases_(parseExternal_("layout", ["layouts", "classes"])))
-  parser.add("class", parseBases_(parseExternal_("class", ["classes", "presets", "layouts"])))
+  parser.add("preset", parseExternal("preset", ["presets", "classes"]))
+  parser.add("layout", parseExternal("layout", ["layouts", "classes"]))
+  parser.add("class", parseExternal("class", ["classes", "presets", "layouts"]))
 
   parser.add("obj", parseObject)
   parser.add("arg", parseArg)
