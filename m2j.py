@@ -233,11 +233,6 @@ def resolve_args(args, state):
   return r
 
 
-def parseArg(cfg, state):
-  name = get_nested(cfg, "arg")
-  return get_arg2(name, state)
-
-
 def get_object(name, state):
   objects = state["objects"]
   obj = get_nested_from_stack_d(objects, name, None)
@@ -245,10 +240,6 @@ def get_object(name, state):
     allObjects = [str2(objs.keys()) for objs in objects]
     raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
   return obj
-
-
-def parseObject(cfg, state):
-  return get_object(get_nested(cfg, "obj"), state)
 
 
 def make_objects(objectsCfg, state):
@@ -4610,7 +4601,7 @@ def get_axis_by_full_name(fullAxisName, state):
   return axis
 
 def make_parser():
-  parser = SelectParser()
+  parser = ArgObjSelectParser()
 
   opParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "op"), parser=ArgObjSelectParser())
   parser.add("op", opParser)
@@ -4659,9 +4650,6 @@ def make_parser():
       return make_symm_wrapper(approx, symmetric)
     return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("sbezier", sbezier)
-
-  opParser.add("object", parseObject)
-  opParser.add("arg", parseArg)
 
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
@@ -5107,7 +5095,7 @@ def make_parser():
     #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
     def parse_predefined(cfg, state):
       r = None
-      for name in ("layout", "preset", "class", "obj", "arg"):
+      for name in ("layout", "preset", "class"):
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           r = state["parser"](name, cfg, state)
           if r is not None:
@@ -5646,9 +5634,6 @@ def make_parser():
   parser.add("preset", parseExternal("preset", ["presets", "classes"]))
   parser.add("layout", parseExternal("layout", ["layouts", "classes"]))
   parser.add("class", parseExternal("class", ["classes", "presets", "layouts"]))
-
-  parser.add("obj", parseObject)
-  parser.add("arg", parseArg)
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
