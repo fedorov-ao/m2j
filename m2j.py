@@ -5036,6 +5036,19 @@ def make_parser():
         return wrapped(cfg, state)
     return parseArgObjOp
 
+  def parsePredefinedDecorator(names):
+    def decorator(wrapped):
+      def op(cfg, state):
+        r = None
+        for name in names:
+          if name in cfg or get_nested_d(cfg, "type", "") == name:
+            r = state["parser"](name, cfg, state)
+            if r is not None:
+              return r
+        return wrapped(cfg, state)
+      return op
+    return decorator
+
   class HeadSink:
     def __call__(self, event):
       #Can be actually called during init when next_ is not set yet
@@ -5051,6 +5064,7 @@ def make_parser():
         self.next_ = next
 
   @parseArgObjDecorator
+  @parsePredefinedDecorator(["layout", "preset", "class"])
   @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
@@ -5091,49 +5105,35 @@ def make_parser():
         #Next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
         sink.add(ED.any(), next, 0)
-    #sinks are grouped in layouts, curves - in presets
-    #TODO Designate type (i.e. "type" : "sink" or "type" : "curve") in config nodes serving as "blueprints"
-    def parse_predefined(cfg, state):
-      r = None
-      for name in ("layout", "preset", "class"):
-        if name in cfg or get_nested_d(cfg, "type", "") == name:
-          r = state["parser"](name, cfg, state)
-          if r is not None:
-            break
-      return r
     try:
       #TODO Refactor
       if len(cfg) == 0:
         def noop(event):
           return False
         return noop
-      s = parse_predefined(cfg, state)
-      if s is not None:
-        return s
-      else:
-        try:
-          headSink = HeadSink()
-          state.setdefault("sinks", [])
-          state["sinks"].append(headSink)
-          if "modes" in cfg and "next" in cfg:
-            raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-          parse_component("next", None)
-          parse_component("modes", None)
-          parse_component("state", set_next)
-          #TODO Split: construct bind sink here and bindings after all other components
-          parse_component("binds", add)
-          #TODO rename to "action" and update configs
-          #parse_component("type", make_action_wrapper)
-          parse_component("sens", set_next)
-          parse_component("modifiers", set_next)
-          if sink[0] is None:
-            logger.debug("Could not make sink out of '{}'".format(cfg))
-            return None
-          else:
-            headSink.set_next(sink[0])
-            return headSink
-        finally:
-          state["sinks"].pop()
+      try:
+        headSink = HeadSink()
+        state.setdefault("sinks", [])
+        state["sinks"].append(headSink)
+        if "modes" in cfg and "next" in cfg:
+          raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+        parse_component("next", None)
+        parse_component("modes", None)
+        parse_component("state", set_next)
+        #TODO Split: construct bind sink here and bindings after all other components
+        parse_component("binds", add)
+        #TODO rename to "action" and update configs
+        #parse_component("type", make_action_wrapper)
+        parse_component("sens", set_next)
+        parse_component("modifiers", set_next)
+        if sink[0] is None:
+          logger.debug("Could not make sink out of '{}'".format(cfg))
+          return None
+        else:
+          headSink.set_next(sink[0])
+          return headSink
+      finally:
+        state["sinks"].pop()
     finally:
       if oldComponents is not None:
         state["components"] = oldComponents
