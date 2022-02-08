@@ -5049,6 +5049,34 @@ def make_parser():
       return op
     return decorator
 
+  def parseExternal(propName, groupNames):
+    @parseArgObjDecorator
+    def parseExternalOp(cfg, state):
+      config = state["settings"]["config"]
+      name = cfg.get(propName, None)
+      if name is None:
+        name = get_nested(cfg, "name")
+      logger.debug("Parsing {} '{}'".format(propName, name))
+      cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
+      if cfg2 is None:
+        raise RuntimeError("No class {}".format(str2(name)))
+      sink = state["parser"]("sink", cfg2, state)
+      return sink
+    return parseExternalOp
+
+  def sinkParserKeyOp(cfg):
+    names = ["layout", "class"]
+    if type(cfg) in (dict, collections.OrderedDict):
+      for name in names:
+        if name in cfg or get_nested_d(cfg, "type", "") == name:
+          return name
+    return "sink"
+
+  sinkParser = IntrusiveSelectParser(keyOp=sinkParserKeyOp)
+  parser.add("sink", sinkParser)
+  sinkParser.add("layout", parseExternal("layout", ["layouts", "classes"]))
+  sinkParser.add("class", parseExternal("class", ["classes", "layouts"]))
+
   class HeadSink:
     def __call__(self, event):
       #Can be actually called during init when next_ is not set yet
@@ -5064,7 +5092,6 @@ def make_parser():
         self.next_ = next
 
   @parseArgObjDecorator
-  @parsePredefinedDecorator(["layout", "preset", "class"])
   @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
@@ -5144,7 +5171,7 @@ def make_parser():
       objects.pop()
       if oldCurves is not None:
         state["curves"] = oldCurves
-  parser.add("sink", parseSink)
+  sinkParser.add("sink", parseSink)
 
   #Sink components
   scParser = SelectParser()
@@ -5615,25 +5642,6 @@ def make_parser():
     return bindingSink
 
   scParser.add("binds", parseBinds)
-
-  def parseExternal(propName, groupNames):
-    @parseBasesDecorator
-    def parseExternalOp(cfg, state):
-      config = state["settings"]["config"]
-      name = cfg.get(propName, None)
-      if name is None:
-        name = get_nested(cfg, "name")
-      logger.debug("Parsing {} '{}'".format(propName, name))
-      cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
-      if cfg2 is None:
-        raise RuntimeError("No class {}".format(str2(name)))
-      sink = state["parser"]("sink", cfg2, state)
-      return sink
-    return parseExternalOp
-
-  parser.add("preset", parseExternal("preset", ["presets", "classes"]))
-  parser.add("layout", parseExternal("layout", ["layouts", "classes"]))
-  parser.add("class", parseExternal("class", ["classes", "presets", "layouts"]))
 
   outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
   parser.add("output", outputParser)
