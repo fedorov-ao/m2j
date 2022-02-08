@@ -5002,7 +5002,7 @@ def make_parser():
     return curve
   curveParser.add("noop", parseNoopCurve)
 
-  def parseBases_(wrapped):
+  def parseBasesDecorator(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
       bases = get_nested_d(cfg, "bases", None)
@@ -5027,7 +5027,7 @@ def make_parser():
       return wrapped(expandedCfg, state)
     return parseBasesOp
 
-  def parseArgObj_(wrapped):
+  def parseArgObjDecorator(wrapped):
     def parseArgObjOp(cfg, state):
       obj = get_argobj(cfg, state)
       if obj is not None:
@@ -5050,8 +5050,8 @@ def make_parser():
     def __init__(self, next=None):
         self.next_ = next
 
-  @parseArgObj_
-  @parseBases_
+  @parseArgObjDecorator
+  @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
@@ -5184,7 +5184,7 @@ def make_parser():
     return Wrapper(scaleSink)
   scParser.add("sens", parseSens)
 
-  @parseBases_
+  @parseBasesDecorator
   def parseMode(cfg, state):
     name=get_nested_d(cfg, "name", "")
     modeSink = ModeSink(name)
@@ -5617,7 +5617,7 @@ def make_parser():
   scParser.add("binds", parseBinds)
 
   def parseExternal(propName, groupNames):
-    @parseBases_
+    @parseBasesDecorator
     def parseExternalOp(cfg, state):
       config = state["settings"]["config"]
       name = cfg.get(propName, None)
