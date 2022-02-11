@@ -1254,6 +1254,27 @@ class BindSink:
       self.dirty_ = False
 
 
+class PropTest:
+  def __call__(self, v):
+    return True
+
+
+class EqPropTest(PropTest):
+  def __call__(self, v):
+    return self.v_ == v
+
+  def __init__(self, v):
+    self.v_ = v
+
+
+class CmpPropTest(PropTest):
+  def __call__(self, v):
+    return self.cmp_(v, self.v_)
+
+  def __init__(self, v, compare):
+    self.v_, self.cmp_ = v, compare
+
+
 def cmp_modifiers(eventValue, attrValue):
   r = False
   if attrValue is None:
@@ -1279,10 +1300,20 @@ def cmp_modifiers(eventValue, attrValue):
   return r
 
 
+class ModifiersPropTest(PropTest):
+  def __call__(self, v):
+    return cmp_modifiers(v, self.v_)
+
+  def __init__(self, v):
+    self.v_ = v
+
+
 class CmpWithModifiers:
   fi = float("inf")
   def __call__(self, name, eventValue, attrValue):
-    if name == "value" and abs(attrValue) == self.fi:
+    if isinstance(attrValue, PropTest):
+      return attrValue(eventValue)
+    elif name == "value" and abs(attrValue) == self.fi:
       return sign(attrValue) == sign(eventValue)
     elif name == "source":
       return (attrValue is None) or (eventValue == attrValue)
@@ -5496,15 +5527,15 @@ def make_parser():
     """Helper"""
     if "modifiers" in cfg:
       modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(get_nested(cfg, "modifiers"), state)]
-      r.append(("modifiers", modifiers))
+      r.append(("modifiers", ModifiersPropTest(modifiers)))
     return r
 
   def parseKey_(cfg, state, value):
     """Helper"""
     sourceHash, eventType, key = fn2htc(get_arg(get_nested(cfg, "key"), state))
-    r = [("type", eventType), ("code", key), ("value", value)]
+    r = [("type", EqPropTest(eventType)), ("code", EqPropTest(key)), ("value", EqPropTest(value))]
     if sourceHash is not None:
-      r.append(("source", sourceHash))
+      r.append(("source", EqPropTest(sourceHash)))
     return r
 
   def parseAny(cfg, state):
@@ -5521,14 +5552,14 @@ def make_parser():
 
   def parseClick(cfg, state):
     r = parseKey_(cfg, state, 3)
-    r.append(("num_clicks", 1))
+    r.append(("num_clicks", EqPropTest(1)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("click", parseClick)
 
   def parseDoubleClick(cfg, state):
     r = parseKey_(cfg, state, 3)
-    r.append(("num_clicks", 2))
+    r.append(("num_clicks", EqPropTest(2)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("doubleclick", parseDoubleClick)
@@ -5536,7 +5567,7 @@ def make_parser():
   def parseMultiClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     num = int(get_nested(cfg, "numClicks"))
-    r.append(("num_clicks", num))
+    r.append(("num_clicks", EqPropTest(num)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("multiclick", parseMultiClick)
@@ -5555,30 +5586,39 @@ def make_parser():
 
   def parseMove(cfg, state):
     sourceHash, eventType, axis = fn2htc(get_arg(get_nested(cfg, "axis"), state))
-    r = [("type", eventType), ("code", axis)]
+    r = [("type", EqPropTest(eventType)), ("code", EqPropTest(axis))]
     if sourceHash is not None:
-      r.append(("source", sourceHash))
+      r.append(("source", EqPropTest(sourceHash)))
     value = get_nested_d(cfg, "value")
     if value is not None:
-      value = float("inf") if value == "+" else -float("inf") if value == "-" else float(value)
-      r.append(("value", value))
+      op = None
+      if value == "+":
+        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) > 0
+        value = 0.0
+      elif value == "-":
+        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) < 0
+        value = 0.0
+      else:
+        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) == 0
+        value = float(value)
+      r.append(("value", CmpPropTest(value, op)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("move", parseMove)
 
   def parseInit(cfg, state):
-    r = [("type", codes.EV_BCT), ("code", codes.BCT_INIT)]
+    r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT))]
     eventName = get_nested_d(cfg, "event")
     if eventName is not None:
       value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
       assert(value is not None)
-      r.append(("value", value))
+      r.append(("value", EqPropTest(value)))
     return r
   edParser.add("init", parseInit)
 
   def parseEvent(cfg, state):
     code, value = get_nested(cfg, "code"), get_nested(cfg, "value")
-    r = [("type", codes.EV_CUSTOM), ("code", code), ("value", value)]
+    r = [("type", EqPropTest(codes.EV_CUSTOM)), ("code", EqPropTest(code)), ("value", EqPropTest(value))]
     return r
   edParser.add("event", parseEvent)
 
