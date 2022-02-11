@@ -1085,7 +1085,13 @@ class SensSetSink:
     self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
   def print_set_(self):
-    logger.info("Setting sensitivity set: {}".format({self.makeName_(k):v for k,v in self.currentSet_.items()}))
+    items = self.currentSet_.items()
+    items.reverse()
+    s = ""
+    for i in items:
+      s += "{}: {}, ".format(self.makeName_(i[0]), i[1])
+    s = s[:-2]
+    logger.info("Setting sensitivity set: {}".format(s))
 
 
 class CalibratingSink:
@@ -4282,7 +4288,11 @@ def init_main_sink(settings, make_next):
   makeName=lambda k : htc2fn(*k)
   sensSets = config.get("sensSets", None)
   if sensSets is not None:
-    sensSets = [{fn2htc(k):v for k,v in sensSet.items()} for sensSet in sensSets]
+    def processSensSet(sensSet):
+      l =[(fn2htc(k), v) for k,v in sensSet.items()]
+      l.reverse()
+      return collections.OrderedDict(l)
+    sensSets = [processSensSet(sensSet) for sensSet in sensSets]
   sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=config.get("sensSetsInitial", 0), makeName=makeName))
 
   calibratingSink = sensSetSink.set_next(CalibratingSink(makeName=makeName))
@@ -4307,12 +4317,12 @@ def init_main_sink(settings, make_next):
   state = None
   toggler = Toggler(stateSink)
   edParser = settings["parser"].get("ed")
-  toggleKey = config.get("toggleKey", None)
+  toggleKey = config.get("toggleOn", None)
   if toggleKey is not None:
     toggleKey = edParser(toggleKey, state)
     mainSink.add(toggleKey, toggler.make_toggle(), 0)
 
-  reloadKey = config.get("reloadKey", None)
+  reloadKey = config.get("reloadOn", None)
   if reloadKey is not None:
     def rld(e):
       settings["initState"] = stateSink.get_state()
@@ -4320,14 +4330,14 @@ def init_main_sink(settings, make_next):
     reloadKey = edParser(reloadKey, state)
     mainSink.add(reloadKey, rld, 0)
 
-  toggleCalibrationKey = config.get("toggleCalibrationKey", None)
+  toggleCalibrationKey = config.get("toggleCalibrationOn", None)
   if toggleCalibrationKey is not None:
     def toggle_calibration(e):
       calibratingSink.toggle()
     toggleCalibrationKey = edParser(toggleCalibrationKey, state)
     mainSink.add(toggleCalibrationKey, toggle_calibration, 0)
 
-  resetCalibrationKey = config.get("resetCalibrationKey", None)
+  resetCalibrationKey = config.get("resetCalibrationOn", None)
   if resetCalibrationKey is not None:
     def reset_calibration(e):
       calibratingSink.reset()
@@ -4339,15 +4349,10 @@ def init_main_sink(settings, make_next):
       sensSetSink.set_next_set()
     else:
       sensSetSink.set_prev_set()
-  sensSetsAxis = config.get("sensSetsAxis", None)
+  sensSetsAxis = config.get("changeSensSetOn", None)
   if sensSetsAxis is not None:
-    sensSetsAxis = fn2sc(sensSetsAxis)
-  sensSetsModifier = config.get("sensSetsMod", None)
-  if sensSetsModifier is not None:
-    sensSetsModifier = [parse_modifier_desc(sensSetsModifier)]
-  if sensSetsAxis is not None:
-    ed = ED2.move(source=sensSetsAxis[0], axis=sensSetsAxis[1], modifiers=sensSetsModifier)
-    mainSink.add(ed, set_sens_set)
+    sensSetsAxis = edParser(sensSetsAxis, state)
+    mainSink.add(sensSetsAxis, set_sens_set)
   def names2inputs(names, settings):
     r = []
     inputs = settings.get("inputs", ())
@@ -4367,12 +4372,12 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  onKey = config.get("onKey", None)
+  onKey = config.get("enableOn", None)
   if onKey is not None:
     onKey = edParser(onKey, state)
     mainSink.add(onKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed)), 0)
 
-  offKey = config.get("offKey", None)
+  offKey = config.get("disableOn", None)
   if offKey is not None:
     offKey = edParser(offKey, state)
     mainSink.add(offKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed)), 0)
