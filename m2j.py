@@ -1060,6 +1060,11 @@ class SensSetSink:
     self.next_ = next
     return next
 
+  def set_set(self, idx):
+    idx = clamp(idx, 0, len(self.sensSets_)-1)
+    self.currentSet_ = self.sensSets_[idx]
+    self.print_set_()
+
   def set_next_set(self):
     if self.sensSets_ is None or len(self.sensSets_) == 0:
       logger.warning("No sensitivity sets")
@@ -4349,10 +4354,27 @@ def init_main_sink(settings, make_next):
       sensSetSink.set_next_set()
     else:
       sensSetSink.set_prev_set()
-  sensSetsAxis = config.get("changeSensSetOn", None)
-  if sensSetsAxis is not None:
-    sensSetsAxis = edParser(sensSetsAxis, state)
-    mainSink.add(sensSetsAxis, set_sens_set)
+  sensSetsChangeAction = config.get("changeSensSetOn", None)
+  if sensSetsChangeAction is not None:
+    sensSetsChangeAction = edParser(sensSetsChangeAction, state)
+    mainSink.add(sensSetsChangeAction, set_sens_set)
+
+  sensSetsNextAction = config.get("nextSensSetOn", None)
+  if sensSetsNextAction is not None:
+    sensSetsNextAction = edParser(sensSetsNextAction, state)
+    mainSink.add(sensSetsNextAction, lambda e : sensSetSink.set_next_set())
+
+  sensSetsPrevAction = config.get("prevSensSetOn", None)
+  if sensSetsPrevAction is not None:
+    sensSetsPrevAction = edParser(sensSetsPrevAction, state)
+    mainSink.add(sensSetsPrevAction, lambda e : sensSetSink.set_prev_set())
+
+  sensSetsResetAction = config.get("resetSensSetOn", None)
+  if sensSetsResetAction is not None:
+    sensSetsResetAction = edParser(sensSetsResetAction, state)
+    initialSensSet = config.get("sensSetsInitial", 0)
+    mainSink.add(sensSetsResetAction, lambda e : sensSetSink.set_set(initialSensSet))
+
   def names2inputs(names, settings):
     r = []
     inputs = settings.get("inputs", ())
