@@ -621,8 +621,10 @@ class CompositeJoystick:
 
 class Event(object):
   def __str__(self):
-    return "type: {}, code: {}, value: {}, timestamp: {}".format(self.type, self.code, self.value, self.timestamp)
+    fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}"
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp)
 
+  __slots__ = ("type", "code", "value", "timestamp", )
   def __init__(self, type, code, value, timestamp=None):
     if timestamp is None:
       timestamp = time.time()
@@ -632,9 +634,9 @@ class Event(object):
 class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
-    fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}, source: {} ({}), modifiers: {}"
+    fmt = ", source: {} ({}), modifiers: {}"
     modifiers = [((s, m), htc2fn(s, codes.EV_KEY, m)) for s,m in self.modifiers]
-    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp, self.source, g_hash2source.get(self.source, ""), modifiers)
+    return Event.__str__(self) + fmt.format(self.source, g_hash2source.get(self.source, ""), modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
@@ -642,13 +644,31 @@ class InputEvent(Event):
     #return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return "source: {}, modifiers: {}".format(self.source, self.modifiers)
 
-  def __init__(self, t, code, value, timestamp, source, modifiers = None):
+  __slots__ = ("source", "modifiers",)
+  def __init__(self, t, code, value, timestamp, source, modifiers=None):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
     #This does not work in FreePie
     #super().__init__(t, code, value, timestamp)
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
     self.source = source
     self.modifiers = [] if modifiers is None else modifiers
+
+
+class ClickEvent(InputEvent):
+  def __str__(self):
+    return InputEvent.__str__(self) + ", num_clicks: {}".format(self.num_clicks)
+
+  __slots__ = ("num_clicks",)
+  def __init__(self, t=None, code=None, timestamp=None, source=None, modifiers=None, num_clicks=0):
+    InputEvent.__init__(self, t, code, 3, timestamp, source, modifiers)
+    self.num_clicks = num_clicks
+
+  @classmethod
+  def from_event(cls, event, num_clicks):
+    ce = ClickEvent()
+    ce.type, ce.code, ce.value, ce.timestamp, ce.modifiers = event.type, event.code, 3, event.timestamp, event.modifiers
+    ce.num_clicks = num_clicks
+    return ce
 
 
 class EventCompressorDevice:
@@ -885,9 +905,7 @@ class ClickSink:
     if event.type == codes.EV_KEY:
       numClicks = self.update_keys(event)
       if numClicks != 0:
-        clickEvent = event
-        clickEvent.value = 3
-        clickEvent.num_clicks = numClicks
+        clickEvent = ClickEvent.from_event(event, numClicks)
         if self.next_:
           self.next_(clickEvent)
 
@@ -1172,6 +1190,7 @@ class CalibratingSink:
 
 class BindSink:
   class ChildrenInfo:
+    __slots__ = ("attrs", "level", "children",)
     def __init__(self, attrs, level, children):
       self.attrs, self.level, self.children = attrs, level, [cc for cc in children]
 
@@ -1233,6 +1252,7 @@ class BindSink:
   def clear(self):
     del self.children_[:]
 
+  __slots__ = ("children_", "cmp_", "sortEDs_", "dirty_",)
   def __init__(self, cmp = lambda a, b, c : b == c, children = None, sortEDs = True):
     if children is None:
       children = []
