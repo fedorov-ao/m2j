@@ -904,10 +904,9 @@ class ClickSink:
     numClicks = 0
     if event.type == codes.EV_KEY:
       numClicks = self.update_keys(event)
-      if numClicks != 0:
+      if self.next_ and numClicks != 0:
         clickEvent = ClickEvent.from_event(event, numClicks)
-        if self.next_:
-          self.next_(clickEvent)
+        self.next_(clickEvent)
 
   #returns number of clicks
   def update_keys(self, event):
