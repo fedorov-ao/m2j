@@ -939,17 +939,17 @@ class ClickSink:
 
 
 class HoldSink:
+  class D:
+    pass
+
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       if event.value == 0:
         if event.code in self.keys_:
           del self.keys_[event.code]
       elif event.value == 1:
-        class D:
-          pass
-        d = D()
-        #TODO No modifiers?
-        d.source, d.timestamp = event.source, event.timestamp
+        d = HoldSink.D()
+        d.source, d.timestamp, d.modifiers = event.source, event.timestamp, [m for m in event.modifiers]
         self.keys_[event.code] = d
     if self.next_:
       self.next_(event)
@@ -958,7 +958,7 @@ class HoldSink:
     for k,d in self.keys_.items():
       if d.timestamp is not None and timestamp - d.timestamp >= self.holdTime_:
         if self.next_:
-          event = InputEvent(codes.EV_KEY, k, self.value_, timestamp, d.source)
+          event = InputEvent(codes.EV_KEY, k, self.value_, timestamp, d.source, d.modifiers)
           self.next_(event)
         self.keys_[k].timestamp = None if self.fireOnce_ else timestamp
 
