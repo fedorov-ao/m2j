@@ -664,10 +664,10 @@ class ClickEvent(InputEvent):
     self.num_clicks = num_clicks
 
   @classmethod
-  def from_event(cls, event, num_clicks):
+  def from_event(cls, event, numClicks):
     ce = ClickEvent()
-    ce.type, ce.code, ce.value, ce.timestamp, ce.modifiers = event.type, event.code, 3, event.timestamp, event.modifiers
-    ce.num_clicks = num_clicks
+    ce.type, ce.code, ce.value, ce.timestamp, ce.source, ce.modifiers = event.type, event.code, 3, event.timestamp, event.source, event.modifiers
+    ce.num_clicks = numClicks
     return ce
 
 
