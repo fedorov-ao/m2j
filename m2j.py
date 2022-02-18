@@ -5137,8 +5137,15 @@ def make_parser():
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
-      sink = state["parser"]("sink", cfg2, state)
-      return sink
+      oldArgs = state.get("args", None)
+      try:
+        if "args" in cfg:
+          state["args"] = resolve_args(get_nested(cfg, "args"), state)
+        sink = state["parser"]("sink", cfg2, state)
+        return sink
+      finally:
+        if oldArgs is not None:
+          state["args"] = oldArgs
     return parseExternalOp
 
   def sinkParserKeyOp(cfg):
