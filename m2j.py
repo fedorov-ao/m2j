@@ -5299,13 +5299,14 @@ def make_parser():
   def parseMode(cfg, state):
     name=get_nested_d(cfg, "name", "")
     modeSink = ModeSink(name)
-    for modeName,modeCfg in get_nested(cfg, "modes").items():
+    for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
       logger.debug("{}: parsing mode:".format(name, modeName))
       child = state["parser"]("sink", modeCfg, state)
       modeSink.add(modeName, child)
-    if "initialMode" in cfg:
-      if not modeSink.set_mode(get_nested(cfg, "initialMode")):
-        logger.warning("Cannot set mode: {}".format(get_nested(cfg, "initialMode")))
+    initialMode = get_arg(get_nested_d(cfg, "initialMode", None), state)
+    if initialMode is not None:
+      if not modeSink.set_mode(initialMode):
+        logger.warning("Cannot set mode: {}".format(initialMode))
     msmm = ModeSinkModeManager(modeSink)
     msmm.save()
     state["components"]["msmm"] = msmm
