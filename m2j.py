@@ -5536,11 +5536,11 @@ def make_parser():
     if sinks is None or len(sinks) == 0:
       raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
     sink = None
-    if "depth" in cfg:
+    if "object" in cfg:
+      sink = get_object(get_nested(cfg, "object"), state)
+    else:
       #depth == 0 - current component sink, depth == 1 - its parent
       sink = sinks[-(1+get_nested_d(cfg, "depth", 0))]
-    elif "object" in cfg:
-      sink = get_object(get_nested(cfg, "object"), state)
     if sink is None:
       raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
     def callback(e):
