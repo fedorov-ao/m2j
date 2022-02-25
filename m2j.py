@@ -188,6 +188,17 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
+def push_in_state(n, v, state):
+  state.setdefault(n, [])
+  state[n].append(v)
+
+
+def pop_in_state(n, state):
+  assert n in state
+  assert len(state[n]) > 0
+  state[n].pop()
+
+
 def get_arg2(name, state):
   args = state.get("args")
   if args is not None:
@@ -234,14 +245,12 @@ def resolve_args(args, state):
   return r
 
 
-def push_args(args, state):
-  state.setdefault("args", [])
-  state["args"].append(resolve_args(args, state))
+def push_args(argsCfg, state):
+  push_in_state("args", resolve_args(argsCfg, state), state)
 
 
 def pop_args(state):
-  assert "args" in state
-  state["args"].pop()
+  pop_in_state("args", state)
 
 
 def get_object(name, state):
@@ -253,10 +262,8 @@ def get_object(name, state):
   return obj
 
 
-def make_objects(objectsCfg, state):
-  assert "objects" in state
+def push_objects(objectsCfg, state):
   objects = collections.OrderedDict()
-  state["objects"].append(objects)
   parser = state["parser"]
   for k,v in objectsCfg.items():
     for n in ("curve", "op"):
@@ -266,6 +273,11 @@ def make_objects(objectsCfg, state):
         break
     else:
       objects[k] = parser("sink", v, state)
+  push_in_state("objects", objects, state)
+
+
+def pop_objects(state):
+  pop_in_state("objects", state)
 
 
 def calc_hash(s):
@@ -4164,9 +4176,9 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
-        #make_objects() needs "objects" list to be in state, even if it is empty
+        #push_objects() needs "objects" list to be in state, even if it is empty
         state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
-        make_objects(get_nested_d(config, "objects", {}), state)
+        push_objects(get_nested_d(config, "objects", {}), state)
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4431,9 +4443,9 @@ def init_layout_config(settings):
   else:
     try:
       parser = settings["parser"]
-      #make_objects() needs "objects" list to be in state, even if it is empty
+      #push_objects() needs "objects" list to be in state, even if it is empty
       state = {"settings" : settings, "parser" : parser, "objects" : []}
-      make_objects(get_nested_d(config, "objects", {}), state)
+      push_objects(get_nested_d(config, "objects", {}), state)
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -5074,7 +5086,7 @@ def make_parser():
     push_args(get_nested_d(cfg, "args", {}), state)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
-    make_objects(get_nested_d(cfg, "objects", {}), state)
+    push_objects(get_nested_d(cfg, "objects", {}), state)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     sink = [None]
@@ -5136,9 +5148,7 @@ def make_parser():
       if oldComponents is not None:
         state["components"] = oldComponents
       pop_args(state)
-      objects = state["objects"]
-      assert len(objects) != 0
-      objects.pop()
+      pop_objects(state)
       if oldCurves is not None:
         state["curves"] = oldCurves
   sinkParser.add("sink", parseSink)
