@@ -191,10 +191,11 @@ def get_nested_from_stack_d(stack, name, dfault = None):
 def get_arg2(name, state):
   args = state.get("args")
   if args is not None:
-    try:
-      return get_nested(args, name)
-    except KeyError2 as e:
-      raise RuntimeError("No such arg: {} (available args are: {})".format(str2(e.key), str2(e.keys)))
+    r = get_nested_from_stack_d(args, name, None)
+    if r is None:
+      raise RuntimeError("No such arg: {}".format(str2(name)))
+    else:
+      return r
   else:
     raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
 
@@ -231,6 +232,16 @@ def resolve_args(args, state):
   for n,a in args.items():
     r[n] = get_arg(a, state)
   return r
+
+
+def push_args(args, state):
+  state.setdefault("args", [])
+  state["args"].append(resolve_args(args, state))
+
+
+def pop_args(state):
+  assert "args" in state
+  state["args"].pop()
 
 
 def get_object(name, state):
@@ -4934,16 +4945,12 @@ def make_parser():
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
-      oldArgs = state.get("args")
+      push_args(get_nested_d(cfg, "args", {}), state)
       try:
-        args = resolve_args(get_nested(cfg, "args"), state)
         #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
-        state["args"] = args
-        curve = state["parser"]("curve", presetCfg, state)
-        return curve
+        return state["parser"]("curve", presetCfg, state)
       finally:
-        if oldArgs:
-          state["args"] = oldArgs
+        pop_args(state)
     else:
       presetCfgStack = CfgStack(presetCfg)
       try:
@@ -5023,15 +5030,11 @@ def make_parser():
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
-      oldArgs = state.get("args", None)
+      push_args(get_nested_d(cfg, "args", {}), state)
       try:
-        if "args" in cfg:
-          state["args"] = resolve_args(get_nested(cfg, "args"), state)
-        sink = state["parser"]("sink", cfg2, state)
-        return sink
+        return state["parser"]("sink", cfg2, state)
       finally:
-        if oldArgs is not None:
-          state["args"] = oldArgs
+        pop_args(state)
     return parseExternalOp
 
   def sinkParserKeyOp(cfg):
@@ -5068,9 +5071,7 @@ def make_parser():
     parser = state["parser"].get("sc")
     oldComponents = state.get("components", None)
     state["components"] = {}
-    oldArgs = state.get("args", None)
-    if "args" in cfg:
-      state["args"] = resolve_args(get_nested(cfg, "args"), state)
+    push_args(get_nested_d(cfg, "args", {}), state)
     oldCurves = state.get("curves", None)
     state["curves"] = {}
     make_objects(get_nested_d(cfg, "objects", {}), state)
@@ -5134,8 +5135,7 @@ def make_parser():
     finally:
       if oldComponents is not None:
         state["components"] = oldComponents
-      if oldArgs is not None:
-        state["args"] = oldArgs
+      pop_args(state)
       objects = state["objects"]
       assert len(objects) != 0
       objects.pop()
