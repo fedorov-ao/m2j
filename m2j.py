@@ -264,8 +264,11 @@ def get_object(name, state):
 
 def push_objects(objectsCfg, state):
   objects = collections.OrderedDict()
+  #Pushing objects dictionary in object stack in state to make "sibling" objects accessible
+  push_in_state("objects", objects, state)
   parser = state["parser"]
   for k,v in objectsCfg.items():
+    #logger.debug("Constructing object: {}".format(k))
     for n in ("curve", "op"):
       if n in v:
         objects[k] = parser(n, v, state)
@@ -273,7 +276,6 @@ def push_objects(objectsCfg, state):
         break
     else:
       objects[k] = parser("sink", v, state)
-  push_in_state("objects", objects, state)
 
 
 def pop_objects(state):
