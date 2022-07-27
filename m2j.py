@@ -1089,7 +1089,7 @@ class ScaleSink2:
   def get_sens(self, sc):
     return self.sens_.get(sc, 0.0)
 
-  def __init__(self, sens, keyOp = lambda event : (SourceCode(source=event.source, code=event.code), SourceCode(source=None, code=event.code))):
+  def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
 
@@ -4223,24 +4223,12 @@ def init_main_sink(settings, make_next):
     if sensSet not in sens:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
-    sens = {fn2hc(s[0]):s[1] for s in sens.items()}
+    sens = {fn2htc(s[0]):s[1] for s in sens.items()}
   else:
     sens = {}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
-  makeName=lambda k : htc2fn(*k)
-  sensSets = config.get("sensSets", None)
-  if sensSets is not None:
-    def processSensSet(sensSet):
-      l =[(fn2htc(k), v) for k,v in sensSet.items()]
-      l.reverse()
-      return collections.OrderedDict(l)
-    sensSets = [processSensSet(sensSet) for sensSet in sensSets]
-  sensSetSink = scaleSink.set_next(SensSetSink(sensSets, initial=config.get("sensSetsInitial", 0), makeName=makeName))
-
-  calibratingSink = sensSetSink.set_next(CalibratingSink(makeName=makeName))
-
-  mainSink = calibratingSink.set_next(BindSink(cmpOp))
+  mainSink = scaleSink.set_next(BindSink(cmpOp))
   stateSink = mainSink.add((), StateSink(), 1)
 
   class Toggler:
@@ -4289,16 +4277,16 @@ def init_main_sink(settings, make_next):
       output = get_nested(bind, "output") 
       action = output["action"]
       if action == "changeSens":
-        def make_sens_op(source, axis, step):
+        def make_sens_op(source, type, axis, step):
           def op(e):
-            sc = SourceCode(source, axis)
-            sens = scaleSink.get_sens(sc) + step
-            scaleSink.set_sens(sc, sens)
-            logger.info("{} sens is now {}".format(stc2fn(sc.source, codes.EV_REL, sc.code), sens))
+            stc = SourceTypeCode(source, type, axis)
+            sens = scaleSink.get_sens(stc) + step
+            scaleSink.set_sens(stc, sens)
+            logger.info("{} sens is now {}".format(stc2fn(stc.source, stc.type, stc.code), sens))
           return op
-        sc = fn2sc(get_nested(output, "axis"))
+        stc = fn2stc(get_nested(output, "axis"))
         delta = get_nested(output, "delta")
-        action = make_sens_op(sc.source, sc.code, delta)
+        action = make_sens_op(stc.source, stc.type, stc.code, delta)
       elif action == "toggle":
         action = toggler.make_toggle()
       elif action == "reload":
@@ -4306,21 +4294,6 @@ def init_main_sink(settings, make_next):
           settings["initState"] = stateSink.get_state()
           raise ReloadException()
         action = rld
-      elif action == "toggleCalibration":
-        def toggle_calibration(e):
-          calibratingSink.toggle()
-        action = toggle_calibration
-      elif action == "resetCalibration":
-        def reset_calibration(e):
-          calibratingSink.reset()
-        action = reset_calibration
-      elif action == "nextSensSet":
-        action = lambda e : sensSetSink.set_next_set()
-      elif action == "prevSensSet":
-        action = lambda e : sensSetSink.set_prev_set()
-      elif action == "resetSensSet":
-        initialSensSet = config.get("sensSetsInitial", 0)
-        action = lambda e : sensSetSink.set_set(initialSensSet)
       elif action == "enable":
         action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed))
       elif action == "disable":
@@ -4426,16 +4399,6 @@ def init_config2(settings):
     config = externalConfig
   settings["config"] = config
   logger.info("Configs loaded successfully")
-
-
-def add_scale_sink(sink, cfg):
-  if "sens" in cfg:
-    #cfg["sens"] is already in form {(e.source, e.code) : value}
-    sensSink = ScaleSink2(get_nested(cfg, "sens"), lambda event : ((event.source, event.code), (None, event.code)))
-    sensSink.set_next(sink)
-    return sensSink
-  else:
-    return sink
 
 
 def init_layout_config(settings):
@@ -5180,9 +5143,8 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    sens = {fn2hc(fullAxisName):value for fullAxisName,value in get_nested(cfg, "sens").items()}
-    keyOp = lambda event : ((event.source, event.code), (None, event.code))
-    scaleSink = ScaleSink2(sens, keyOp)
+    sens = {fn2htc(fullAxisName):value for fullAxisName,value in get_nested(cfg, "sens").items()}
+    scaleSink = ScaleSink2(sens)
     class Wrapper:
       def __call__(self, event):
         oldValue = event.value
