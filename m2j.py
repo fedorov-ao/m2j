@@ -3205,6 +3205,13 @@ class AxisLinker:
       self.reset()
     self.state_ = state
 
+  def set_op(self, op):
+    self.op_ = op
+    self.reset()
+
+  def get_op(self):
+    return self.op_
+
   def on_move_axis(self, axis, old, new):
     if self.state_:
       if not self.busy_ and axis == self.controlledAxis_:
@@ -4929,6 +4936,7 @@ def make_parser():
       raise RuntimeError("Preset name was not specified")
     presetCfg = get_nested_from_sections_d(config, ("presets", "classes"), presetName, None)
     if presetCfg is None:
+      presets = config.get("presets", collections.OrderedDict())
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
@@ -5349,6 +5357,26 @@ def make_parser():
       raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg)))
     return ResetCurves(curvesToReset)
   actionParser.add("resetCurves", parseResetCurves)
+
+  def parseSetOp(cfg, state):
+    curve, op = get_arg(get_nested(cfg, "curve"), state), get_arg(get_nested(cfg, "op"), state)
+    def worker(e):
+      curve.set_op(op)
+    return worker
+  actionParser.add("setOp", parseSetOp)
+
+  def parseCycleOps(cfg, state):
+    curve = get_arg(get_nested(cfg, "curve"), state)
+    ops = [get_arg(op, state) for op in get_arg(get_nested(cfg, "ops"), state)]
+    step = get_arg(get_nested(cfg, "step"), state)
+    def worker(e):
+      current = ops.index(curve.get_op())
+      n = clamp(current + step, 0, len(ops) - 1)
+      if n != current:
+        curve.set_op(ops[n])
+        logger.info("Setting op {}".format(n))
+    return worker
+  actionParser.add("cycleOps", parseCycleOps)
 
   def createSnap_(cfg, state):
     state.setdefault("snapManager", AxisSnapManager())
