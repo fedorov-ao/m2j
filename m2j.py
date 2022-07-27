@@ -4262,75 +4262,7 @@ def init_main_sink(settings, make_next):
   state = None
   toggler = Toggler(stateSink)
   edParser = settings["parser"].get("ed")
-  toggleKey = config.get("toggleOn", None)
-  if toggleKey is not None:
-    toggleKey = edParser(toggleKey, state)
-    mainSink.add(toggleKey, toggler.make_toggle(), 0)
 
-  reloadKey = config.get("reloadOn", None)
-  if reloadKey is not None:
-    def rld(e):
-      settings["initState"] = stateSink.get_state()
-      raise ReloadException()
-    reloadKey = edParser(reloadKey, state)
-    mainSink.add(reloadKey, rld, 0)
-
-  toggleCalibrationKey = config.get("toggleCalibrationOn", None)
-  if toggleCalibrationKey is not None:
-    def toggle_calibration(e):
-      calibratingSink.toggle()
-    toggleCalibrationKey = edParser(toggleCalibrationKey, state)
-    mainSink.add(toggleCalibrationKey, toggle_calibration, 0)
-
-  resetCalibrationKey = config.get("resetCalibrationOn", None)
-  if resetCalibrationKey is not None:
-    def reset_calibration(e):
-      calibratingSink.reset()
-    resetCalibrationKey = edParser(resetCalibrationKey, state)
-    mainSink.add(resetCalibrationKey, reset_calibration, 0)
-
-  def set_sens_set(e):
-    if e.value < 0:
-      sensSetSink.set_next_set()
-    else:
-      sensSetSink.set_prev_set()
-  sensSetsChangeAction = config.get("changeSensSetOn", None)
-  if sensSetsChangeAction is not None:
-    sensSetsChangeAction = edParser(sensSetsChangeAction, state)
-    mainSink.add(sensSetsChangeAction, set_sens_set)
-
-  sensSetsNextAction = config.get("nextSensSetOn", None)
-  if sensSetsNextAction is not None:
-    sensSetsNextAction = edParser(sensSetsNextAction, state)
-    mainSink.add(sensSetsNextAction, lambda e : sensSetSink.set_next_set())
-
-  sensSetsPrevAction = config.get("prevSensSetOn", None)
-  if sensSetsPrevAction is not None:
-    sensSetsPrevAction = edParser(sensSetsPrevAction, state)
-    mainSink.add(sensSetsPrevAction, lambda e : sensSetSink.set_prev_set())
-
-  sensSetsResetAction = config.get("resetSensSetOn", None)
-  if sensSetsResetAction is not None:
-    sensSetsResetAction = edParser(sensSetsResetAction, state)
-    initialSensSet = config.get("sensSetsInitial", 0)
-    mainSink.add(sensSetsResetAction, lambda e : sensSetSink.set_set(initialSensSet))
-
-#Temp
-  def make_sens_op(source, axis, step):
-    def op(e):
-      sc = SourceCode(source, axis)
-      sens = scaleSink.get_sens(sc)
-      scaleSink.set_sens(sc, sens + step)
-    return op
-
-  sensBinds = config.get("sensBinds", None)
-  if sensBinds is not None:
-    for sb in sensBinds:
-      action = edParser(get_nested(sb, "input"), state)
-      assert(get_nested(sb, "output.action") == "changeSens")
-      sc = fn2sc(get_nested(sb, "output.axis"))
-      delta = get_nested(sb, "output.delta")
-      mainSink.add(action, make_sens_op(sc.source, sc.code, delta))
 
   def names2inputs(names, settings):
     r = []
@@ -4351,15 +4283,52 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  onKey = config.get("enableOn", None)
-  if onKey is not None:
-    onKey = edParser(onKey, state)
-    mainSink.add(onKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed)), 0)
-
-  offKey = config.get("disableOn", None)
-  if offKey is not None:
-    offKey = edParser(offKey, state)
-    mainSink.add(offKey, If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed)), 0)
+  binds = config.get("binds", None)
+  if binds is not None:
+    for bind in binds:
+      inpt = edParser(get_nested(bind, "input"), state)
+      output = get_nested(bind, "output") 
+      action = output["action"]
+      if action == "changeSens":
+        def make_sens_op(source, axis, step):
+          def op(e):
+            sc = SourceCode(source, axis)
+            sens = scaleSink.get_sens(sc)
+            scaleSink.set_sens(sc, sens + step)
+          return op
+        sc = fn2sc(get_nested(output, "axis"))
+        delta = get_nested(output, "delta")
+        action = make_sens_op(sc.source, sc.code, delta)
+      elif action == "toggle":
+        action = toggler.make_toggle()
+      elif action == "reload":
+        def rld(e):
+          settings["initState"] = stateSink.get_state()
+          raise ReloadException()
+        action = rld
+      elif action == "toggleCalibration":
+        def toggle_calibration(e):
+          calibratingSink.toggle()
+        action = toggle_calibration
+      elif action == "resetCalibration":
+        def reset_calibration(e):
+          calibratingSink.reset()
+        action = reset_calibration
+      elif action == "nextSensSet":
+        action = lambda e : sensSetSink.set_next_set()
+      elif action == "prevSensSet":
+        action = lambda e : sensSetSink.set_prev_set()
+      elif action == "resetSensSet":
+        initialSensSet = config.get("sensSetsInitial", 0)
+        action = lambda e : sensSetSink.set_set(initialSensSet)
+      elif action == "enable":
+        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed))
+      elif action == "disable":
+        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed))
+      else:
+        logger.error("Unknown action: {}", action)
+        continue
+      mainSink.add(inpt, action, 0)
 
   namesOfGrabbed = config.get("grabbed", ())
   namesOfGrabbedStr = ", ".join(namesOfGrabbed)
