@@ -4261,10 +4261,11 @@ def init_main_sink(settings, make_next):
   toggler = Toggler(stateSink)
   edParser = settings["parser"].get("ed")
 
+  allInputs = [p[1] for p in settings.get("inputs", {}).iteritems()]
 
   def names2inputs(names, settings):
     r = []
-    inputs = settings.get("inputs", ())
+    inputs = settings.get("inputs", {})
     for d in names:
       if d in inputs:
         r.append(inputs[d])
@@ -4324,6 +4325,14 @@ def init_main_sink(settings, make_next):
         action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed))
       elif action == "disable":
         action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed))
+      elif action == "grab":
+        inputs = get_nested_d(output, "inputs", None)
+        inputs = allInputs if inputs is None else names2inputs(inputs, settings)
+        action = SwallowDevices(inputs, True)
+      elif action == "ungrab":
+        inputs = get_nested_d(output, "inputs", None)
+        inputs = allInputs if inputs is None else names2inputs(inputs, settings)
+        action = SwallowDevices(inputs, False)
       else:
         logger.error("Unknown action: {}", action)
         continue
