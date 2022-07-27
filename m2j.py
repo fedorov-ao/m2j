@@ -1085,8 +1085,6 @@ class ScaleSink2:
 
   def set_sens(self, sc, sens):
     self.sens_[sc] = sens
-    #FIXME Axis type can be EV_ABS
-    logger.info("{} sens is now {}".format(stc2fn(sc.source, codes.EV_REL, sc.code), sens))
 
   def get_sens(self, sc):
     return self.sens_.get(sc, 0.0)
@@ -4293,8 +4291,9 @@ def init_main_sink(settings, make_next):
         def make_sens_op(source, axis, step):
           def op(e):
             sc = SourceCode(source, axis)
-            sens = scaleSink.get_sens(sc)
-            scaleSink.set_sens(sc, sens + step)
+            sens = scaleSink.get_sens(sc) + step
+            scaleSink.set_sens(sc, sens)
+            logger.info("{} sens is now {}".format(stc2fn(sc.source, codes.EV_REL, sc.code), sens))
           return op
         sc = fn2sc(get_nested(output, "axis"))
         delta = get_nested(output, "delta")
