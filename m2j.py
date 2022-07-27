@@ -4606,6 +4606,12 @@ def make_parser():
     return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
   opParser.add("sbezier", sbezier)
 
+  def get_op(cfg, state):
+    op = get_arg(get_nested(cfg, "op"), state)
+    if type(op) in (str, unicode):
+      op = state["parser"]("op", cfg, state)
+    return op
+
   #Curves
   curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
@@ -4619,11 +4625,11 @@ def make_parser():
     """Helper"""
     pointParsers = {}
     def parseFixedPoint(cfg, state):
-      p = Point(op=state["parser"]("op", cfg, state), center=get_nested_d(cfg, "center", 0.0))
+      p = Point(op=get_op(cfg, state), center=get_nested_d(cfg, "center", 0.0))
       return p
     pointParsers["fixed"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
-      p = Point(op=state["parser"]("op", cfg, state), center=None)
+      p = Point(op=get_op(cfg, state), center=None)
       return p
     pointParsers["moving"] = parseMovingPoint
     r = {}
@@ -4740,7 +4746,7 @@ def make_parser():
   def parseOutputDeltaLinkingCurve(cfg, state):
     fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
-    sensOp = state["parser"]("op", cfg, state)
+    sensOp = get_op(cfg, state)
     deltaOp = lambda delta, sens : delta*sens
     fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
@@ -4756,7 +4762,7 @@ def make_parser():
   def parseInputDeltaLinkingCurve(cfg, state):
     fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
-    op = state["parser"]("op", cfg, state)
+    op = get_op(cfg, state)
     fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     radius = get_nested_d(cfg, "radius", float("inf"))
@@ -4773,7 +4779,7 @@ def make_parser():
   def parseInputLinkingCurve(cfg, state):
     fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
-    op = state["parser"]("op", cfg, state)
+    op = get_op(cfg, state)
     fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
@@ -4787,7 +4793,7 @@ def make_parser():
   def parseAxisLinker(cfg, state):
     fullControlledAxisName = get_arg(get_nested(cfg, "follower"), state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
-    op = state["parser"]("op", cfg, state)
+    op = get_op(cfg, state)
     fullControllingAxisName = get_arg(get_nested(cfg, "leader"), state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     linker = AxisLinker(controllingAxis, controlledAxis, op)
