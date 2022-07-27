@@ -1083,6 +1083,14 @@ class ScaleSink2:
     self.next_ = next
     return next
 
+  def set_sens(self, sc, sens):
+    self.sens_[sc] = sens
+    #FIXME Axis type can be EV_ABS
+    logger.info("{} sens is now {}".format(stc2fn(sc.source, codes.EV_REL, sc.code), sens))
+
+  def get_sens(self, sc):
+    return self.sens_.get(sc, 0.0)
+
   def __init__(self, sens, keyOp = lambda event : (SourceCode(source=event.source, code=event.code), SourceCode(source=None, code=event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
 
@@ -4218,6 +4226,8 @@ def init_main_sink(settings, make_next):
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sens = sens[sensSet]
     sens = {fn2hc(s[0]):s[1] for s in sens.items()}
+  else:
+    sens = {}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
   makeName=lambda k : htc2fn(*k)
@@ -4304,6 +4314,23 @@ def init_main_sink(settings, make_next):
     sensSetsResetAction = edParser(sensSetsResetAction, state)
     initialSensSet = config.get("sensSetsInitial", 0)
     mainSink.add(sensSetsResetAction, lambda e : sensSetSink.set_set(initialSensSet))
+
+#Temp
+  def make_sens_op(source, axis, step):
+    def op(e):
+      sc = SourceCode(source, axis)
+      sens = scaleSink.get_sens(sc)
+      scaleSink.set_sens(sc, sens + step)
+    return op
+
+  sensBinds = config.get("sensBinds", None)
+  if sensBinds is not None:
+    for sb in sensBinds:
+      action = edParser(get_nested(sb, "input"), state)
+      assert(get_nested(sb, "output.action") == "changeSens")
+      sc = fn2sc(get_nested(sb, "output.axis"))
+      delta = get_nested(sb, "output.delta")
+      mainSink.add(action, make_sens_op(sc.source, sc.code, delta))
 
   def names2inputs(names, settings):
     r = []
