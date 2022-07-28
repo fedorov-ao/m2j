@@ -4284,16 +4284,15 @@ def init_main_sink(settings, make_next):
       output = get_nested(bind, "output") 
       action = output["action"]
       if action == "changeSens":
-        def make_sens_op(source, type, axis, step):
+        def make_sens_op(htc, step):
           def op(e):
-            stc = SourceTypeCode(source, type, axis)
-            sens = scaleSink.get_sens(stc) + step
-            scaleSink.set_sens(stc, sens)
-            logger.info("{} sens is now {}".format(stc2fn(stc.source, stc.type, stc.code), sens))
+            sens = scaleSink.get_sens(htc) + step
+            scaleSink.set_sens(htc, sens)
+            logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
           return op
-        stc = fn2stc(get_nested(output, "axis"))
+        htc = fn2htc(get_nested(output, "axis"))
         delta = get_nested(output, "delta")
-        action = make_sens_op(stc.source, stc.type, stc.code, delta)
+        action = make_sens_op(htc, delta)
       elif action == "toggle":
         action = toggler.make_toggle()
       elif action == "reload":
