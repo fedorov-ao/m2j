@@ -1021,9 +1021,12 @@ class ModifierSink:
             pass
 
     if self.next_:
-      oldModifiers = None
-      try:
-        if event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS):
+      eventWithModifiers = event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS)
+      if not eventWithModifiers:
+        return self.next_(event)
+      else:
+        oldModifiers = None
+        try:
           assert type(event.modifiers) is list
           if self.saveModifiers_:
             oldModifiers = [m for m in event.modifiers]
@@ -1035,10 +1038,10 @@ class ModifierSink:
             event.modifiers = [m for m in self.m_]
           else:
             raise RuntimeError("Bad mode: {}".format(self.mode_))
-        return self.next_(event)
-      finally:
-        if self.saveModifiers_:
-          event.modifiers = oldModifiers
+          return self.next_(event)
+        finally:
+          if self.saveModifiers_:
+            event.modifiers = oldModifiers
     else:
       return False
 
