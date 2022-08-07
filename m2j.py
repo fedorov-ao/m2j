@@ -385,7 +385,7 @@ def split_full_name2(s, sep="."):
   if s[0] == "+":
     s = s[1:]
   elif s[0] == "-":
-    r.state = False
+    state = False
     s = s[1:]
   i = s.find(sep)
   source = None if i == -1 else s[:i]
