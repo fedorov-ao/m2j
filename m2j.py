@@ -1339,7 +1339,7 @@ class CmpPropTest(PropTest):
     self.v_, self.cmp_ = v, compare
 
 
-def cmp_modifiers(eventValue, attrValue):
+def cmp_modifiers(eventValue, attrValue, allowExtraModifiers=False):
   r = False
   if attrValue is None:
     r = eventValue is None
@@ -1347,7 +1347,7 @@ def cmp_modifiers(eventValue, attrValue):
     r = False
   elif len(attrValue) == 0:
     r = len(eventValue) == 0
-  elif len(attrValue) == len(eventValue):
+  elif len(attrValue) == len(eventValue) if allowExtraModifiers == False else len(attrValue) <= len(eventValue):
     r = True
     for m in attrValue:
       found = False
@@ -1366,10 +1366,10 @@ def cmp_modifiers(eventValue, attrValue):
 
 class ModifiersPropTest(PropTest):
   def __call__(self, v):
-    return cmp_modifiers(v, self.v_)
+    return cmp_modifiers(v, self.v_, self.allowExtraModifiers_)
 
-  def __init__(self, v):
-    self.v_ = v
+  def __init__(self, v, allowExtraModifiers=False):
+    self.v_, self.allowExtraModifiers_ = v, allowExtraModifiers
 
 
 class CmpWithModifiers:
@@ -1382,9 +1382,12 @@ class CmpWithModifiers:
     elif name == "source":
       return (attrValue is None) or (eventValue == attrValue)
     elif name == "modifiers":
-      return cmp_modifiers(eventValue, attrValue)
+      return cmp_modifiers(eventValue, attrValue, self.allowExtraModifiers_)
     else:
       return eventValue == attrValue
+
+  def __init__(self, allowExtraModifiers=False):
+    self.allowExtraModifiers_ = allowExtraModifiers
 
 
 class ED:
@@ -5481,7 +5484,8 @@ def make_parser():
     """Helper"""
     if "modifiers" in cfg:
       modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(get_nested(cfg, "modifiers"), state)]
-      r.append(("modifiers", ModifiersPropTest(modifiers)))
+      allowExtraModifiers = get_arg(get_nested_d(cfg, "allowExtraModifiers", False), state)
+      r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
     return r
 
   def parseKey_(cfg, state, value):
