@@ -1347,7 +1347,7 @@ def cmp_modifiers(eventValue, attrValue, allowExtraModifiers=False):
     r = False
   elif len(attrValue) == 0:
     r = len(eventValue) == 0
-  elif len(attrValue) == len(eventValue) if allowExtraModifiers == False else len(attrValue) <= len(eventValue):
+  elif allowExtraModifiers or (len(attrValue) == len(eventValue)):
     r = True
     for m in attrValue:
       found = False
