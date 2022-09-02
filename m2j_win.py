@@ -1119,7 +1119,7 @@ def run():
       if oldUpdated is not None:
         settings["updated"] = oldUpdated
 
-  init_log_initial()
+  preinit_log()
   try:
     settings = {"options" : {}, "configNames" : [], "updated" : []}
     options = {}
@@ -1144,7 +1144,7 @@ def run():
 
     settings["reloading"] = False
     init_config2(settings)
-    set_log_level(settings)
+    init_log(settings)
     init_outputs(settings)
 
     while (True):

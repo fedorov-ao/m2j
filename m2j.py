@@ -4351,7 +4351,7 @@ def init_main_sink(settings, make_next):
   return clickSink
 
 
-def init_log_initial(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s"):
+def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s"):
   root = logging.getLogger()
   root.setLevel(level)
   handler.setLevel(logging.NOTSET)
@@ -4359,12 +4359,23 @@ def init_log_initial(level=logging.NOTSET, handler=logging.StreamHandler(sys.std
   root.addHandler(handler)
 
 
-def set_log_level(settings):
-  levelName = settings["config"].get("logLevel", "NOTSET").upper()
-  level = name2loglevel(levelName)
+def init_log(settings):
+  config = settings["config"]
+  logLevelName = config.get("logLevel", "NOTSET").upper()
+  logLevel = name2loglevel(logLevelName)
   root = logging.getLogger()
-  root.setLevel(level)
-  print("Setting log level to {}".format(loglevel2name(level)))
+  root.setLevel(logLevel)
+  print("Setting log level to {}".format(logLevelName))
+  logFileName = config.get("logFile", None)
+  if logFileName is not None:
+    logFileFmt = config.get("logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
+    logFileLevelName = config.get("logFileLevel", "NOTSET").upper()
+    logFileLevel = name2loglevel(logFileLevelName)
+    logFile = open(logFileName, "w")
+    logFileHandler = logging.StreamHandler(logFile)
+    logFileHandler.setLevel(logFileLevel)
+    logFileHandler.setFormatter(logging.Formatter(logFileFmt))
+    root.addHandler(logFileHandler)
 
 
 class ConfigReadError(RuntimeError):
