@@ -147,12 +147,19 @@ class EvdevDevice:
     self.numEvents_ = 0
 
 
+def calc_device_hash(device):
+    caps = device.capabilities(verbose=False, absinfo=False)
+    info = tuple((k, tuple(i for i in v),) for k,v in caps.items())
+    info = (device.name, info,)
+    return hash(info)
+
+
 def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   r = {}
   for s,n in names.items():
     for d in devices:
-      if n in (d.path, d.name.strip(" "), d.phys):
+      if n in (d.path, d.name.strip(" "), d.phys, "{:X}".format(calc_device_hash(d))):
         r[s] = makeDevice(d, s)
         logger.info("Found device {} ({})".format(s, n))
         break
@@ -170,7 +177,7 @@ def print_devices():
       keyName = k[0]
       codeNames = ", ".join((str(i[0]) for i in v))
       capsInfo += " {}: {}\n".format(keyName, codeNames)
-    print "name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq)
+    print "name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d))
 
 
 @make_reporting_joystick
