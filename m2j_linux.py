@@ -17,6 +17,8 @@ import getopt
 import traceback
 import m2j
 from m2j import *
+import collections
+import re
 import evdev
 from evdev import UInput, AbsInfo, ecodes
 
@@ -155,21 +157,39 @@ def calc_device_hash(device):
 
 
 def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
+  """
+  Initializes input devices.
+  Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
+  """
+  Info = collections.namedtuple("Info", "path name phys hash")
+  DeviceInfo = collections.namedtuple("DeviceInfo", "device info")
+  nameRe = re.compile("([^:]*):(.*)")
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
-  deviceInfos = {d : (d.path, d.name.strip(" "), d.phys, "{:X}".format(calc_device_hash(d)),) for d in devices}
+  deviceInfos = [DeviceInfo(device, Info(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))) for device in devices]
   r = {}
-  for s,n in names.items():
-    for d,di in deviceInfos.items():
-      if n in di:
-        r[s] = makeDevice(d, s)
-        logger.info("Found device {} ({})".format(s, n))
-        break
+  for source,name in names.items():
+    m = nameRe.match(name)
+    deviceInfo = None
+    for di in deviceInfos:
+      if m is None:
+        if name in di.info:
+          deviceInfo = di
+          break
+      else:
+        d = {"path" : di.info.path, "name" : di.info.name, "phys" : di.info.phys, "hash" : di.info.hash}
+        if d.get(m.group(1)) == m.group(2):
+          deviceInfo = di
+          break
+    if deviceInfo:
+      r[source] = makeDevice(deviceInfo.device, source)
+      logger.info("Found device {} ({})".format(source, name))
     else:
-      logger.warning("Device {} ({}) not found".format(s, n))
+      logger.warning("Device {} ({}) not found".format(source, name))
   return r
 
 
 def print_devices():
+  """Prints input devices info."""
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:
     caps = d.capabilities(verbose=True, absinfo=False)
