@@ -1044,10 +1044,28 @@ class RawInputEventSource:
     return (InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source),)
 
 
-def print_devices():
+def print_help():
+  print sys.argv[0] + " args"
+  print "args are:\n\
+  -h | --help : this message\n\
+  -p fileName | --print=fileName : print input devices to file fileName (- for stdout)\n\
+  -l layoutName | --layout=layoutName : use layout layoutName\n\
+  -c configFileName | --config=configFileName : use config file configFileName\n\
+  -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
+
+
+def print_devices(fname):
+  r = []
   devices = RawInputEventSource().get_devices()
   for d in devices:
-    print "name: {}\nhandle: {}\ntype: {} ({})\n".format(d.name, d.handle, rimtype2str(d.type), d.type)
+    r.append("name: {}\nhandle: {}\ntype: {} ({})\n".format(d.name, d.handle, rimtype2str(d.type), d.type))
+  if fname == "-":
+    for l in r:
+      print l
+  else:
+    with open(fname, "w") as f:
+      for l in r:
+        f.write(l+"\n")
 
 
 def run():
@@ -1125,10 +1143,13 @@ def run():
     options = {}
     settings["options"] = options
 
-    opts, args = getopt.getopt(sys.argv[1:], "pl:v:c:", ["print", "layout=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "layout=", "logLevel=", "config="])
     for o, a in opts:
-      if o in ("-p", "--print"):
-        print_devices()
+      if o in ("-h", "--help"):
+        print_help()
+        return 0
+      elif o in ("-p", "--print"):
+        print_devices(a)
         return 0
       if o in ("-l", "--layout"):
         options["layout"] = a
