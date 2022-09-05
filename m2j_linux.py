@@ -156,10 +156,11 @@ def calc_device_hash(device):
 
 def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
+  deviceInfos = {d : (d.path, d.name.strip(" "), d.phys, "{:X}".format(calc_device_hash(d)),) for d in devices}
   r = {}
   for s,n in names.items():
-    for d in devices:
-      if n in (d.path, d.name.strip(" "), d.phys, "{:X}".format(calc_device_hash(d))):
+    for d,di in deviceInfos.items():
+      if n in di:
         r[s] = makeDevice(d, s)
         logger.info("Found device {} ({})".format(s, n))
         break
