@@ -188,8 +188,19 @@ def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
   return r
 
 
-def print_devices():
+def print_help():
+  print sys.argv[0] + " args"
+  print "args are:\n\
+  -h | --help : this message\n\
+  -p fileName | --print=fileName : print input devices to file fileName (- for stdout)\n\
+  -l layoutName | --layout=layoutName : use layout layoutName\n\
+  -c configFileName | --config=configFileName : use config file configFileName\n\
+  -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
+
+
+def print_devices(fname):
   """Prints input devices info."""
+  r = []
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:
     caps = d.capabilities(verbose=True, absinfo=False)
@@ -198,7 +209,14 @@ def print_devices():
       keyName = k[0]
       codeNames = ", ".join((str(i[0]) for i in v))
       capsInfo += " {}: {}\n".format(keyName, codeNames)
-    print "name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d))
+    r.append("name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d)))
+  if fname == "-":
+    for l in r:
+      print l
+  else:
+    with open(fname, "w") as f:
+      for l in r:
+        f.write(l+"\n")
 
 
 @make_reporting_joystick
@@ -289,10 +307,13 @@ def run():
     options = {}
     settings["options"] = options
 
-    opts, args = getopt.getopt(sys.argv[1:], "pl:v:c:", ["print", "layout=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "layout=", "logLevel=", "config="])
     for o, a in opts:
-      if o in ("-p", "--print"):
-        print_devices()
+      if o in ("-h", "--help"):
+        print_help()
+        return 0
+      elif o in ("-p", "--print"):
+        print_devices(a)
         return 0
       if o in ("-l", "--layout"):
         options["layout"] = a
