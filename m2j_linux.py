@@ -176,7 +176,7 @@ def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
           deviceInfo = di
           break
       else:
-        d = {"path" : di.info.path, "name" : di.info.name, "phys" : di.info.phys, "hash" : di.info.hash}
+        d = di.info._asdict()
         if d.get(m.group(1)) == m.group(2):
           deviceInfo = di
           break
