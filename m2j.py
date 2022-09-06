@@ -1090,7 +1090,7 @@ class ScaleSink2:
     self.sens_[sc] = sens
 
   def get_sens(self, sc):
-    return self.sens_.get(sc, 0.0)
+    return self.sens_.get(sc, 1.0)
 
   def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
@@ -5129,12 +5129,19 @@ def make_parser():
         parse_component("next", None)
         parse_component("modes", None)
         parse_component("state", set_next)
-        #TODO Split: construct bind sink here and bindings after all other components
-        parse_component("binds", add)
+        #TODO Splitting: constructign bind sink here and bindings after all other components
+        if "binds" in cfg:
+          t = parser("binds", {}, state)
+          if t is not None:
+            state["components"]["binds"] = t
+            add(sink[0], t)
+            sink[0] = t
         #TODO rename to "action" and update configs
         #parse_component("type", make_action_wrapper)
         parse_component("sens", set_next)
         parse_component("modifiers", set_next)
+        if "binds" in cfg:
+          parser("binds", cfg, state)
         if sink[0] is None:
           logger.debug("Could not make sink out of '{}'".format(cfg))
           return None
@@ -5184,6 +5191,8 @@ def make_parser():
           event.value = oldValue
       def set_next(self, next):
         self.sink_.set_next(next)
+      def get_sink(self):
+        return self.sink_
       def __init__(self, sink):
         self.sink_ = sink
     return Wrapper(scaleSink)
@@ -5252,6 +5261,27 @@ def make_parser():
     #logger.debug("Components: {}".format(state["components"]))
     return ToggleState(state["components"]["state"])
   actionParser.add("toggleState", parseToggleState)
+
+  def parseSetSens(cfg, state):
+    htc = fn2htc(get_nested(cfg, "axis"))
+    value = get_nested(cfg, "value")
+    scaleSink = state["components"]["sens"].get_sink()
+    def op(e):
+      scaleSink.set_sens(htc, value)
+      logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
+    return op
+  actionParser.add("setSens", parseSetSens)
+
+  def parseChangeSens(cfg, state):
+    htc = fn2htc(get_nested(cfg, "axis"))
+    delta = get_nested(cfg, "delta")
+    scaleSink = state["components"]["sens"].get_sink()
+    def op(e):
+      sens = scaleSink.get_sens(htc) + delta
+      scaleSink.set_sens(htc, sens)
+      logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
+    return op
+  actionParser.add("changeSens", parseChangeSens)
 
   def parseMove(cfg, state):
     curve = state["parser"]("curve", cfg, state)
@@ -5629,7 +5659,7 @@ def make_parser():
 
       return ((i,o) for i in inputs for o in outputs)
 
-    binds = get_nested_d(cfg, "binds", ())
+    binds = get_nested_d(cfg, "binds", [])
     #logger.debug("binds: {}".format(binds))
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
@@ -5643,8 +5673,7 @@ def make_parser():
           r = max(r, checkOutput(o))
       return r
     binds.sort(key=bindsKey)
-    cmpOp = CmpWithModifiers()
-    bindingSink = BindSink(cmpOp)
+    bindingSink = BindSink(CmpWithModifiers()) if "binds" not in state["components"] else state["components"]["binds"]
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
         bindingSink.add(i, o, bind.get("level", 0))
