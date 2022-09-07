@@ -5172,15 +5172,20 @@ def make_parser():
     scaleSink = ScaleSink2(sens)
     class Wrapper:
       def __call__(self, event):
-        oldValue = event.value
+        oldValue = None
+        if event.type in (codes.EV_REL, codes.EV_ABS):
+          oldValue = event.value
         try:
           self.sink_(event)
         finally:
-          event.value = oldValue
+          if oldValue is not None:
+            event.value = oldValue
       def set_next(self, next):
         self.sink_.set_next(next)
-      def get_sink(self):
-        return self.sink_
+      def get_sens(self, axis):
+        return self.sink_.get_sens(axis)
+      def set_sens(self, axis, sens):
+        self.sink_.set_sens(axis, sens)
       def __init__(self, sink):
         self.sink_ = sink
     return Wrapper(scaleSink)
@@ -5253,7 +5258,7 @@ def make_parser():
   def parseSetSens(cfg, state):
     htc = fn2htc(get_nested(cfg, "axis"))
     value = get_nested(cfg, "value")
-    scaleSink = state["components"]["sens"].get_sink()
+    scaleSink = state["components"]["sens"]
     def op(e):
       scaleSink.set_sens(htc, value)
       logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
@@ -5263,7 +5268,7 @@ def make_parser():
   def parseChangeSens(cfg, state):
     htc = fn2htc(get_nested(cfg, "axis"))
     delta = get_nested(cfg, "delta")
-    scaleSink = state["components"]["sens"].get_sink()
+    scaleSink = state["components"]["sens"]
     def op(e):
       sens = scaleSink.get_sens(htc) + delta
       scaleSink.set_sens(htc, sens)
