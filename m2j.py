@@ -399,6 +399,7 @@ def split_full_name2(s, state, sep="."):
 
 SourceName = collections.namedtuple("SourceName", "source name")
 SourceCode = collections.namedtuple("SourceCode", "source code")
+SourceNameState = collections.namedtuple("SourceNameState", "source name state")
 SourceCodeState = collections.namedtuple("SourceCodeState", "source code state")
 SourceTypeCode = collections.namedtuple("SourceTypeCode", "source type code")
 SourceTypeCodeState = collections.namedtuple("SourceTypeCodeState", "source type code state")
@@ -1011,7 +1012,7 @@ class ModifierSink:
         #logger.debug("{}.__call__(): got: {}".format(self, p))
         for m in self.modifiers_:
           #logger.debug("{}.__call__(): checking against: {}".format(self, m))
-          if p == m or (m[0] is None and p[1] == m[1]):
+          if p[1] == m[1] and (p[0] == m[0] if m[0] is not None else True):
             #logger.debug("{}.__call__(): {} matched {}".format(self, p, m))
             if event.value == 1 and p not in self.m_:
               self.m_.append(p)
@@ -1032,6 +1033,9 @@ class ModifierSink:
           if self.saveModifiers_:
             oldModifiers = [m for m in event.modifiers]
           if self.mode_ == self.APPEND:
+            for m in self.removed_:
+              if m in event.modifiers:
+                event.modifiers.remove(m)    
             for m in self.m_:
               if m not in event.modifiers:
                 event.modifiers.append(m)
@@ -1053,9 +1057,15 @@ class ModifierSink:
   def clear(self):
     self.m_ = []
 
-  def __init__(self, next = None, modifiers = None, saveModifiers = True, mode = 0):
+  def __init__(self, next = None, modifierDescs = None, saveModifiers = True, mode = 0):
     #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, typecode2name(codes.EV_KEY, m)) for s,m in modifiers]))
-    self.m_, self.next_, self.modifiers_, self.saveModifiers_, self.mode_ = [], next, modifiers, saveModifiers, mode
+    self.m_, self.next_, self.modifiers_, self.removed_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
+    if modifierDescs is not None:
+      for md in modifierDescs:
+        if md.state == True:
+          self.modifiers_.append((md.source, md.code,))
+        elif md.state == False:
+          self.removed_.append((md.source, md.code,))
 
 
 class ScaleSink:
@@ -4241,12 +4251,17 @@ def init_main_sink(settings, make_next):
   settings["updated"].append(lambda tick,ts : holdSink.update(tick, ts))
   longPressSink = holdSink.set_next(HoldSink(config.get("longPressTime", 0.75), 5, True))
   settings["updated"].append(lambda tick,ts : longPressSink.update(tick, ts))
-  defaultModifiers = [ (None, m) for m in
+  defaultModifierDescs = [ ModifierDesc(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
-  modifiers = [fn2hc(m) for m in modifiers] if modifiers is not None else defaultModifiers
-  modifierSink = longPressSink.set_next(ModifierSink(modifiers=modifiers, saveModifiers=False, mode=ModifierSink.OVERWRITE))
+  modifierDescs = None
+  if modifiers is None:
+    modifierDescs = defaultModifierDescs
+  else:
+    modifiers = (fn2hce(m) for m in modifiers)
+    modifierDescs = [ModifierDesc(*m) for m in modifiers]
+  modifierSink = longPressSink.set_next(ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -5170,8 +5185,8 @@ def make_parser():
   parser.add("sc", scParser)
 
   def parseModifiers(cfg, state):
-    modifiers = [fn2hc(m) for m in get_nested(cfg, "modifiers")]
-    modifierSink = ModifierSink(next=None, modifiers=modifiers, saveModifiers=True, mode=ModifierSink.APPEND)
+    modifierDescs = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
+    modifierSink = ModifierSink(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierSink.APPEND)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
       def __call__(self, event):
