@@ -1072,28 +1072,45 @@ class ScaleSink:
 
 
 class ScaleSink2:
+  gSens_ = {}
+
   def __call__(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
       if self.sens_ is not None:
         keys = self.keyOp_(event)
-        scale = self.sens_.get(keys[0])
-        if scale is None:
-          scale = self.sens_.get(keys[1], 1.0)
-        event.value *= scale
+        sens = self.sens_.get(keys[0])
+        if sens is None:
+          sens = self.sens_.get(keys[1], 1.0)
+        if type(sens) in (str, unicode):
+          sens = self.gSens_[sens]
+        event.value *= sens
     return self.next_(event) if self.next_ is not None else False
 
   def set_next(self, next):
     self.next_ = next
     return next
 
-  def set_sens(self, sc, sens):
-    self.sens_[sc] = sens
+  def set_sens(self, sc, s):
+    sens = self.sens_[sc]
+    if type(sens) in (str, unicode):
+      self.gSens_[sens] = s
+    else:
+      self.sens_[sc] = s
 
   def get_sens(self, sc):
-    return self.sens_.get(sc, 1.0)
+    sens = self.sens_.get(sc, 1.0)
+    return self.gSens_[sens] if type(sens) in (str, unicode) else sens
 
   def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code))):
     self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
+    for axis,value in self.sens_.items():
+      if type(value) in (str, unicode):
+        idx = value.find(":")
+        var,val = value[:idx],value[idx+1:]
+        val = 1.0 if val == "" else float(val)
+        self.gSens_[var] = val
+        self.sens_[axis] = var
+
 
 
 class SensSetSink:
@@ -5270,7 +5287,9 @@ def make_parser():
     delta = get_nested(cfg, "delta")
     scaleSink = state["components"]["sens"]
     def op(e):
-      sens = scaleSink.get_sens(htc) + delta
+      sens = scaleSink.get_sens(htc)
+      print sens
+      sens += delta
       scaleSink.set_sens(htc, sens)
       logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
     return op
