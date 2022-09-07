@@ -200,6 +200,8 @@ def pop_in_state(n, state):
 
 
 def get_arg2(name, state):
+  if state is None:
+    raise RuntimeError("Need state to get arg {}".format(name))
   args = state.get("args")
   if args is not None:
     r = get_nested_from_stack_d(args, name, None)
@@ -254,6 +256,8 @@ def pop_args(state):
 
 
 def get_object(name, state):
+  if state is None:
+    raise RuntimeError("Need state to get object {}".format(name))
   objects = state["objects"]
   obj = get_nested_from_stack_d(objects, name, None)
   if obj is None:
@@ -4255,12 +4259,7 @@ def init_main_sink(settings, make_next):
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
-  modifierDescs = None
-  if modifiers is None:
-    modifierDescs = defaultModifierDescs
-  else:
-    modifiers = (fn2hce(m) for m in modifiers)
-    modifierDescs = [ModifierDesc(*m) for m in modifiers]
+  modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
   modifierSink = longPressSink.set_next(ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE))
 
   sens = config.get("sens", None)
