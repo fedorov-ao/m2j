@@ -5088,24 +5088,18 @@ def make_parser():
     push_objects(get_nested_d(cfg, "objects", {}), state)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
-    sink = [None]
-    def parse_component(name, op=None):
+    def parse_component(name):
       if name in cfg:
         t = parser(name, cfg, state)
         if t is not None:
           state["components"][name] = t
-          if op is not None:
-            op(sink[0], t)
-          sink[0] = t
-    #TODO Currently unused. Remove?
-    def make_action_wrapper(nextSink, actionSink):
-      def op(event):
-        assert(actionSink is not None)
-        r = actionSink(event)
-        if not r and nextSink is not None:
-          r = nextSink(event)
-        return r
-      return op
+    sink = [None]
+    def link_component(name, op=None):
+      t = state["components"].get(name, None)
+      if t is not None:
+        if op is not None:
+          op(sink[0], t)
+        sink[0] = t
     def set_next(next, sink):
       if next is not None:
         sink.set_next(next)
@@ -5121,27 +5115,21 @@ def make_parser():
           return False
         return noop
       try:
+        #Init headsink
         headSink = HeadSink()
         state.setdefault("sinks", [])
         state["sinks"].append(headSink)
+        #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parse_component("next", None)
-        parse_component("modes", None)
-        parse_component("state", set_next)
-        #TODO Splitting: constructign bind sink here and bindings after all other components
-        if "binds" in cfg:
-          t = parser("binds", {}, state)
-          if t is not None:
-            state["components"]["binds"] = t
-            add(sink[0], t)
-            sink[0] = t
-        #TODO rename to "action" and update configs
-        #parse_component("type", make_action_wrapper)
-        parse_component("sens", set_next)
-        parse_component("modifiers", set_next)
-        if "binds" in cfg:
-          parser("binds", cfg, state)
+        parseOrder = ("next", "modes", "state", "sens", "modifiers", "binds")
+        for name in parseOrder:
+          parse_component(name)
+        #Link components
+        linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
+        for p in linkOrder:
+          link_component(p[0], p[1])  
+        #Check result
         if sink[0] is None:
           logger.debug("Could not make sink out of '{}'".format(cfg))
           return None
@@ -5673,7 +5661,7 @@ def make_parser():
           r = max(r, checkOutput(o))
       return r
     binds.sort(key=bindsKey)
-    bindingSink = BindSink(CmpWithModifiers()) if "binds" not in state["components"] else state["components"]["binds"]
+    bindingSink = BindSink(CmpWithModifiers())
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
         bindingSink.add(i, o, bind.get("level", 0))
