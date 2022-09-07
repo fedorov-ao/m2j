@@ -380,20 +380,21 @@ def typecode2name(type, code):
 
 SplitName = collections.namedtuple("SplitName", "state source shash type code")
 
-def split_full_name2(s, sep="."):
-  state = True
+def split_full_name2(s, state, sep="."):
+  st = True
   if s[0] == "+":
     s = s[1:]
   elif s[0] == "-":
-    state = False
+    st = False
     s = s[1:]
+  s = get_arg(s, state)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else calc_hash(source)
   name = s if i == -1 else s[i+1:]
   code = name2code(name)
   type = name2type(name)
-  return SplitName(state=state, source=source, shash=shash, type=type, code=code)
+  return SplitName(state=st, source=source, shash=shash, type=type, code=code)
 
 
 SourceName = collections.namedtuple("SourceName", "source name")
@@ -557,8 +558,8 @@ class ModifierDesc:
   def __init__(self, source, code, state):
       self.source, self.code, self.state = source, code, state
 
-def parse_modifier_desc(s, sep="."):
-  t = split_full_name2(s, sep)
+def parse_modifier_desc(s, state, sep="."):
+  t = split_full_name2(s, state, sep)
   return ModifierDesc(source=t.shash, code=t.code, state=t.state)
 
 
@@ -4175,7 +4176,7 @@ def make_curve_makers():
       def parseSensGroup(cfg, state):
         r = {}
         for inputSourceAndAxisName,inputAxisData in cfg.items():
-          t = split_full_name2(inputSourceAndAxisName, ".", code=True)
+          t = split_full_name2(inputSourceAndAxisName, state, ".")
           inputSourceAndAxisId = (t.source, t.code)
           r[inputSourceAndAxisId] = float(inputAxisData)
         return r
@@ -5536,7 +5537,7 @@ def make_parser():
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [parse_modifier_desc(get_arg(m, state)) for m in get_arg(get_nested(cfg, "modifiers"), state)]
+      modifiers = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
       allowExtraModifiers = get_arg(get_nested_d(cfg, "allowExtraModifiers", False), state)
       r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
     return r
