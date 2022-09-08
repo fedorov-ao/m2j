@@ -3060,13 +3060,14 @@ class OffsetAbsChainCurve:
     return self.x_
 
   def reset(self):
-    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
     self.next_.reset()
+    self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, self.next_.get_value()
 
   def on_move_axis(self, axis, old, new):
-    self.offset_ += (new - old)
-    #logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+    v = self.next_.get_value()
     self.next_.on_move_axis(axis, old, new)
+    self.offset_ += (self.next_.get_value() - v)
+    #logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
 
   def get_value(self):
     return self.x_
