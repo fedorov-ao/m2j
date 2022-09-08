@@ -4950,10 +4950,13 @@ def make_parser():
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
-        return value
+        return value if self.value_ is None else self.value_
       def reset(self):
         pass
-    inputOp = ResetOp()
+      def __init__(self, value=None):
+        self.value_ = value
+    resetAccumulatedOnAxisMove = get_nested_d(cfg, "resetAccumulatedOnAxisMove", resetOnAxisMove)
+    inputOp = ResetOp(0.0 if resetAccumulatedOnAxisMove else None)
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
