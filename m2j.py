@@ -2896,7 +2896,7 @@ class AccumulateRelChainCurve:
     self.deltaDOp_.reset()
     self.inputOp_.reset()
     self.next_.reset()
-    self.value_ = self.inputOp_.calc(self.next_.get_value())
+    self.value_ = 0.0
     self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
