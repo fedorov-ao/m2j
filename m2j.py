@@ -3030,6 +3030,9 @@ class OffsetAbsChainCurve:
   def move(self, x, timestamp):
     """x is absolute."""
     #logger.debug("{}: x:{:+.3f}".format(self, x))
+    if self.value_ is not None:
+      self.offset_ += (self.next_.get_value() - self.value_)
+      self.value_ = None
     s = sign(x)
     if self.s_ != s:
       if self.s_ != 0:
@@ -3062,11 +3065,12 @@ class OffsetAbsChainCurve:
   def reset(self):
     self.next_.reset()
     self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, self.next_.get_value()
+    self.value_ = None
 
   def on_move_axis(self, axis, old, new):
-    v = self.next_.get_value()
+    if self.value_ is None:
+      self.value_ = self.next_.get_value()
     self.next_.on_move_axis(axis, old, new)
-    self.offset_ += (self.next_.get_value() - v)
     #logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
 
   def get_value(self):
@@ -3077,6 +3081,7 @@ class OffsetAbsChainCurve:
 
   def __init__(self, next):
     self.s_, self.sx_, self.state_, self.x_, self.offset_ = 0, 0, 0, 0.0, 0.0
+    self.value_ = None
     self.next_ = next
 
 
