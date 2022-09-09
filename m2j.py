@@ -2923,8 +2923,13 @@ class AccumulateRelChainCurve:
 
 
 class DeltaRelChainCurve:
+  RMA_NONE = 0
+  RMA_HARD = 1
+  RMA_SOFT = 2
+
   def move_by(self, x, timestamp):
     """x is relative."""
+    self.update_()
     self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
     self.value_ += x
     factor = self.outputOp_.calc(self.value_)
@@ -2941,19 +2946,36 @@ class DeltaRelChainCurve:
     self.outputOp_.reset()
     self.next_.reset()
     self.value_ = 0.0
+    self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
+    self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
+    self.update_()
     return self.value_
 
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, valueDDOp, deltaDOp, outputOp):
-    self.next_, self.valueDDOp_, self.deltaDOp_, self.outputOp_ = next, valueDDOp, deltaDOp, outputOp
+  def __init__(self, next, valueDDOp, deltaDOp, outputOp, resetOnMoveAxis):
+    self.next_, self.valueDDOp_, self.deltaDOp_, self.outputOp_, self.resetOnMoveAxis_ = next, valueDDOp, deltaDOp, outputOp, resetOnMoveAxis
+    self.value_, self.dirty_ = 0.0, False
+
+  def soft_reset_(self):
+    self.valueDDOp_.reset()
+    self.deltaDOp_.reset()
+    self.outputOp_.reset()
     self.value_ = 0.0
+
+  def update_(self):
+    if self.dirty_ == True:
+      if self.resetOnMoveAxis_ == self.RMA_HARD:
+        self.reset()
+      elif self.resetOnMoveAxis_ == self.RMA_SOFT:
+        self.soft_reset_()
+      self.dirty_ = False
 
 
 class TransformAbsChainCurve:
@@ -5021,8 +5043,8 @@ def make_parser():
 
   def parseAccelCurve(cfg, state):
     #axis tracker
-    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", True)
-    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
+    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", 1)
+    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
     fullAxisName = get_arg(get_nested(cfg, "axis"), state)
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(top)
@@ -5035,7 +5057,7 @@ def make_parser():
     deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
     deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp)
+    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
     top.set_next(accelChainCurve)
     #transform
     fixedCfg = get_nested(cfg, "fixed")
