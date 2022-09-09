@@ -2922,6 +2922,40 @@ class AccumulateRelChainCurve:
       self.dirty_ = False
 
 
+class DeltaRelChainCurve:
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
+    self.value_ += x
+    factor = self.outputOp_.calc(self.value_)
+    delta = self.deltaDOp_.calc(x, timestamp)
+    delta *= factor
+    nextValue = self.next_.get_value()
+    nextValue += delta
+    self.next_.move(nextValue, timestamp)
+    return self.value_
+
+  def reset(self):
+    self.valueDDOp_.reset()
+    self.deltaDOp_.reset()
+    self.outputOp_.reset()
+    self.next_.reset()
+    self.value_ = 0.0
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.value_
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, valueDDOp, deltaDOp, outputOp):
+    self.next_, self.valueDDOp_, self.deltaDOp_, self.outputOp_ = next, valueDDOp, deltaDOp, outputOp
+    self.value_ = 0.0
+
+
 class TransformAbsChainCurve:
   def move(self, x, timestamp):
     self.update_()
@@ -4932,7 +4966,6 @@ def make_parser():
   curveParser.add("input2", parseInputBasedCurve2)
 
   def parseOffsetCurve(cfg, state):
-    fmax = 1000000.0
     #axis tracker
     resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", True)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
@@ -4985,6 +5018,37 @@ def make_parser():
     add_curve_to_state(fullAxisName, curve, state)
     return top
   curveParser.add("offset", parseOffsetCurve)
+
+  def parseAccelCurve(cfg, state):
+    #axis tracker
+    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", True)
+    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
+    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    axis = get_axis_by_full_name(fullAxisName, state)
+    axis.add_listener(top)
+    #accelerate
+    #Order of ops should not matter
+    movingCfg = get_nested(cfg, "moving")
+    valueDDOp = SignDistanceDeltaOp()
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    deltaDOp = XDeltaOp()
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
+    deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
+    movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
+    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp)
+    top.set_next(accelChainCurve)
+    #transform
+    fixedCfg = get_nested(cfg, "fixed")
+    fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
+    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp)
+    fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
+    accelChainCurve.set_next(fixedChainCurve)
+    #move axis
+    axisChainCurve = AxisAbsChainCurve(axis=axis)
+    fixedChainCurve.set_next(axisChainCurve)
+    add_curve_to_state(fullAxisName, top, state)
+    return top
+  curveParser.add("accel", parseAccelCurve)
 
   def parsePresetCurve(cfg, state):
     config = state["settings"]["config"]
