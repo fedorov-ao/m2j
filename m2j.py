@@ -5398,7 +5398,6 @@ def make_parser():
     scaleSink = state["components"]["sens"]
     def op(e):
       sens = scaleSink.get_sens(htc)
-      print sens
       sens += delta
       scaleSink.set_sens(htc, sens)
       logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
