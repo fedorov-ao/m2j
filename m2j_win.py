@@ -1038,10 +1038,14 @@ class RawInputEventSource:
     return events
 
   def make_kbd_event_(self, raw, source):
+    #skipping invalid event
+    if raw.keyboard.VKey == 0xFF:
+      return ()
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
     #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
-    return (InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source),)
+    r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source)
+    return (r,)
 
 
 def print_help():
