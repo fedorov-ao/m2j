@@ -189,7 +189,7 @@ def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
 
 
 def print_help():
-  print sys.argv[0] + " args"
+  print "Usage: " + sys.argv[0] + " args"
   print "args are:\n\
   -h | --help : this message\n\
   -p fileName | --print=fileName : print input devices to file fileName (- for stdout)\n\
@@ -306,6 +306,10 @@ def run():
     settings = {"options" : {}, "configNames" : [], "updated" : []}
     options = {}
     settings["options"] = options
+
+    if (len(sys.argv)) == 1:
+      print_help()
+      return 0
 
     opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "layout=", "logLevel=", "config="])
     for o, a in opts:
