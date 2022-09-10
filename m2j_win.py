@@ -1143,6 +1143,10 @@ def run():
     options = {}
     settings["options"] = options
 
+    if (len(sys.argv)) == 1:
+      print_help()
+      return 0
+
     opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "layout=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
