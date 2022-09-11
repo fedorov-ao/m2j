@@ -5749,8 +5749,18 @@ def make_parser():
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
-        #TODO Check that cfg[n2] (if present) is list and cfg[n1] (if present) is dict/OrderedDict
-        cfgs = cfg[n2] if n2 in cfg else (cfg[n1],) if n1 in cfg else ()
+        cfgs = cfg.get(n2, None)
+        if cfgs is not None:
+          if type(cfgs) not in (list, tuple):
+            raise RuntimeError("'{}' in must be a list of dictionaries (encountered while parsing {})".format(n2, str2(cfg)))
+        else:
+          c = cfg.get(n1, None)
+          if c is not None:
+            if type(c) not in (dict, collections.OrderedDict):
+              raise RuntimeError("'{}' must be a dictionary (encountered while parsing {})".format(n1, str2(cfg)))
+            cfgs = (c,)
+          else:
+            cfgs = ()
         r, t = [], None
         for c in cfgs:
           try:
