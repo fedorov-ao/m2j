@@ -139,20 +139,24 @@ class CfgStack:
 
 
 def get_nested(d, name):
-  if len(name) != 0:
-    tokens = name.split(".")
-    for t in tokens:
-      nd = d.get(t)
-      if nd is None:
-        path = str(".".join(tokens[:tokens.index(t)]))
-        token = ".".join((path, str(t))) if len(path) != 0 else str(t)
-        keys = [".".join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
-        raise KeyError2(token, keys)
-      d = nd
-    if d is not None:
-      return d
-  #Fallback
-  return None
+  try:
+    if len(name) != 0:
+      tokens = name.split(".")
+      for t in tokens:
+        nd = d.get(t)
+        if nd is None:
+          path = str(".".join(tokens[:tokens.index(t)]))
+          token = ".".join((path, str(t))) if len(path) != 0 else str(t)
+          keys = [".".join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
+          raise KeyError2(token, keys)
+        d = nd
+      if d is not None:
+        return d
+    #Fallback
+    return None
+  except:
+    logger.error("get_nested(): Error while getting '{}' from '{}'".format(name, d))
+    raise
 
 
 def get_nested_d(d, name, dfault = None):
@@ -5745,6 +5749,7 @@ def make_parser():
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
+        #TODO Check that cfg[n2] (if present) is list and cfg[n1] (if present) is dict/OrderedDict
         cfgs = cfg[n2] if n2 in cfg else (cfg[n1],) if n1 in cfg else ()
         r, t = [], None
         for c in cfgs:
@@ -5753,6 +5758,9 @@ def make_parser():
           except RuntimeError as e:
             logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
             continue
+          except Exception as e:
+            logger.error("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
+            raise
           if t is None:
             logger.warning("Could not parse {} '{}')".format(n1, str2(c)))
             continue
