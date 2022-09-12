@@ -1094,16 +1094,22 @@ class ScaleSink2:
   gSens_ = {}
 
   def __call__(self, event):
-    if event.type in (codes.EV_REL, codes.EV_ABS):
-      if self.sens_ is not None:
-        keys = self.keyOp_(event)
-        sens = self.sens_.get(keys[0])
-        if sens is None:
-          sens = self.sens_.get(keys[1], 1.0)
-        if type(sens) in (str, unicode):
-          sens = self.gSens_[sens]
-        event.value *= sens
-    return self.next_(event) if self.next_ is not None else False
+    oldValue = None
+    try:
+      if event.type in (codes.EV_REL, codes.EV_ABS):
+        if self.sens_ is not None:
+          keys = self.keyOp_(event)
+          sens = self.sens_.get(keys[0])
+          if sens is None:
+            sens = self.sens_.get(keys[1], 1.0)
+          if type(sens) in (str, unicode):
+            sens = self.gSens_[sens]
+          oldValue = event.value
+          event.value *= sens
+      return self.next_(event) if self.next_ is not None else False
+    finally:
+      if oldValue is not None:
+        event.value = oldValue
 
   def set_next(self, next):
     self.next_ = next
@@ -1120,8 +1126,14 @@ class ScaleSink2:
     sens = self.sens_.get(sc, 1.0)
     return self.gSens_[sens] if type(sens) in (str, unicode) else sens
 
-  def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code))):
-    self.next_, self.sens_, self.keyOp_ = None, sens, keyOp
+  def get_name(self):
+    return "" if self.name_ is None else self.name_
+
+  def set_name(self, name):
+    self.name_ = name
+
+  def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code)), name = None):
+    self.next_, self.sens_, self.keyOp_, self.name_ = None, sens, keyOp, name
     for axis,value in self.sens_.items():
       if type(value) in (str, unicode):
         idx = value.find(":")
@@ -5299,27 +5311,11 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    sens = {fn2htc(fullAxisName):value for fullAxisName,value in get_nested(cfg, "sens").items()}
-    scaleSink = ScaleSink2(sens)
-    class Wrapper:
-      def __call__(self, event):
-        oldValue = None
-        if event.type in (codes.EV_REL, codes.EV_ABS):
-          oldValue = event.value
-        try:
-          self.sink_(event)
-        finally:
-          if oldValue is not None:
-            event.value = oldValue
-      def set_next(self, next):
-        self.sink_.set_next(next)
-      def get_sens(self, axis):
-        return self.sink_.get_sens(axis)
-      def set_sens(self, axis, sens):
-        self.sink_.set_sens(axis, sens)
-      def __init__(self, sink):
-        self.sink_ = sink
-    return Wrapper(scaleSink)
+    name = get_arg(get_nested_d(cfg, "name", None), state)
+    sens = get_arg(get_nested(cfg, "sens"), state)
+    sens = {fn2htc(fullAxisName):value for fullAxisName,value in sens.items()}
+    scaleSink = ScaleSink2(sens=sens, name=name)
+    return scaleSink
   scParser.add("sens", parseSens)
 
   @parseBasesDecorator
@@ -5392,7 +5388,8 @@ def make_parser():
     scaleSink = state["components"]["sens"]
     def op(e):
       scaleSink.set_sens(htc, value)
-      logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
+      name = scaleSink.get_name()
+      logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
     return op
   actionParser.add("setSens", parseSetSens)
 
@@ -5404,7 +5401,8 @@ def make_parser():
       sens = scaleSink.get_sens(htc)
       sens += delta
       scaleSink.set_sens(htc, sens)
-      logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
+      name = scaleSink.get_name()
+      logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
     return op
   actionParser.add("changeSens", parseChangeSens)
 
