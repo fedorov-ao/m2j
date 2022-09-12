@@ -1574,7 +1574,7 @@ class ModeSink:
   def set_mode(self, mode):
     if mode == self.mode_:
       return True
-    logger.info("{}: Setting mode: {}".format(self.name_, mode))
+    logger.debug("{}: Setting mode: {}".format(self.name_, mode))
     #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
@@ -5634,6 +5634,14 @@ def make_parser():
       return True
     return callback
   actionParser.add("print", parsePrint)
+
+  def parseLog(cfg, state):
+    message, level = get_nested(cfg, "message"), get_nested(cfg, "level")
+    def callback(e):
+      logger.log(name2loglevel(level), message)
+      return True
+    return callback
+  actionParser.add("log", parseLog)
 
   def parsePrintEvent(cfg, state):
     def callback(e):
