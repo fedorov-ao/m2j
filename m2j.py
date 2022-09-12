@@ -1586,7 +1586,7 @@ class ModeSink:
   def set_mode(self, mode):
     if mode == self.mode_:
       return True
-    logger.debug("{}: Setting mode: {}".format(self.name_, mode))
+    logger.info("{}: Setting mode: {}".format(self.name_, mode))
     #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
@@ -2047,7 +2047,7 @@ class ReportingAxis:
   def __init__(self, next):
     assert(next is not None)
     self.next_, self.listeners_ = next, []
-    #logger.debug("{}: Created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
   #logger.debug("{}: Deleted".format(self))
@@ -3347,10 +3347,10 @@ class AxisLinker:
   def __init__(self, controllingAxis, controlledAxis, op):
     self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
     self.offset_, self.busy_, self.state_  = 0.0, False, False
-    logger.debug("{}: Created".format(self))
+    logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{}: Deleted".format(self))
+    logger.debug("{} destroyed".format(self))
 
 
 class SetAxisLinkerState:
@@ -3885,10 +3885,10 @@ class ReportingJoystickAxis:
 
   def __init__(self, joystick, axis):
     self.joystick_, self.axis_, self.listeners_ = joystick, axis, []
-    logger.debug("{}: Created".format(self))
+    logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{}: Deleted".format(self))
+    logger.debug("{} destroyed".format(self))
     pass
 
   def cleanup_(self):
