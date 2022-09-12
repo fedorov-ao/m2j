@@ -5223,10 +5223,10 @@ def make_parser():
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
-    oldComponents = state.get("components", None)
+    push_in_state("componentsStack", state.get("components", {}), state)
     state["components"] = {}
     push_args(get_nested_d(cfg, "args", {}), state)
-    oldCurves = state.get("curves", None)
+    push_in_state("curvesStack", state.get("curves", {}), state)
     state["curves"] = {}
     push_objects(get_nested_d(cfg, "objects", {}), state)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
@@ -5282,12 +5282,12 @@ def make_parser():
       finally:
         state["sinks"].pop()
     finally:
-      if oldComponents is not None:
-        state["components"] = oldComponents
+      state["components"] = state["componentsStack"][-1] if len(state["componentsStack"]) > 0 else None
+      pop_in_state("componentsStack", state)
       pop_args(state)
       pop_objects(state)
-      if oldCurves is not None:
-        state["curves"] = oldCurves
+      state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
+      pop_in_state("curvesStack", state)
   sinkParser.add("sink", parseSink)
 
   #Sink components
