@@ -1670,7 +1670,7 @@ class ModeSinkModeManager:
       self.sink_.set_mode(self.mode_.pop())
 
   def add(self, mode, current):
-    if current is None or self.sink_.get_mode() == current:
+    if current is None or self.sink_.get_mode() in current:
       self.mode_.append(mode)
       self.sink_.set_mode(mode)
       return True
@@ -1678,7 +1678,7 @@ class ModeSinkModeManager:
       return False
 
   def remove(self, mode, current):
-    if current is None or self.sink_.get_mode() == current:
+    if current is None or self.sink_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == mode:
           self.mode_.pop(i)
@@ -1689,7 +1689,7 @@ class ModeSinkModeManager:
       return False
 
   def swap(self, f, t, current):
-    if current is None or self.sink_.get_mode() == current:
+    if current is None or self.sink_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == f:
           self.mode_[i] = t
@@ -1700,7 +1700,7 @@ class ModeSinkModeManager:
       return False
 
   def cycle_swap(self, modes, current):
-    if current is None or self.sink_.get_mode() == current:
+    if current is None or self.sink_.get_mode() in current:
       lm = len(modes)
       for i in range(len(self.mode_)-1, -1, -1):
         for j in range(0, lm):
@@ -1750,18 +1750,26 @@ class ModeSinkModeManager:
       return self.restore()
     return op
   def make_add(self, mode, current=None):
+    if type(current) not in (tuple, list):
+      current = [current]
     def op(event):
       return self.add(mode, current)
     return op
   def make_remove(self, mode, current=None):
+    if type(current) not in (tuple, list):
+      current = [current]
     def op(event):
       return self.remove(mode, current)
     return op
   def make_swap(self, f, t, current=None):
+    if type(current) not in (tuple, list):
+      current = [current]
     def op(event):
       return self.swap(f, t, current)
     return op
   def make_cycle_swap(self, modes, current=None):
+    if type(current) not in (tuple, list):
+      current = [current]
     def op(event):
       return self.cycle_swap(modes, current)
     return op
