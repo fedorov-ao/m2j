@@ -1673,6 +1673,9 @@ class ModeSinkModeManager:
     if current is None or self.sink_.get_mode() == current:
       self.mode_.append(mode)
       self.sink_.set_mode(mode)
+      return True
+    else:
+      return False
 
   def remove(self, mode, current):
     if current is None or self.sink_.get_mode() == current:
@@ -1681,6 +1684,9 @@ class ModeSinkModeManager:
           self.mode_.pop(i)
           break;
       self.set_top_mode_()
+      return True
+    else:
+      return False
 
   def swap(self, f, t, current):
     if current is None or self.sink_.get_mode() == current:
@@ -1689,6 +1695,9 @@ class ModeSinkModeManager:
           self.mode_[i] = t
           break;
       self.set_top_mode_()
+      return True
+    else:
+      return False
 
   def cycle_swap(self, modes, current):
     if current is None or self.sink_.get_mode() == current:
@@ -1699,14 +1708,17 @@ class ModeSinkModeManager:
             j = j+1 if j < lm-1 else 0
             self.mode_[i] = modes[j]
             self.set_top_mode_()
-            return
+            return True
+    return False
 
   def clear(self):
     self.mode_ = []
+    return True
 
   def set(self, mode, save):
     self.save_(save)
     self.sink_.set_mode(mode)
+    return True
 
   def cycle(self, modes, step, loop, save):
     self.save_(save)
@@ -1724,54 +1736,46 @@ class ModeSinkModeManager:
     else:
       m = modes[0]
     self.sink_.set_mode(m)
+    return True
 
   def __init__(self, sink):
     self.sink_, self.mode_ = sink, []
 
   def make_save(self):
     def op(event):
-      self.save()
-      return True
+      return self.save()
     return op
   def make_restore(self):
     def op(event):
-      self.restore()
-      return True
+      return self.restore()
     return op
   def make_add(self, mode, current=None):
     def op(event):
-      self.add(mode, current)
-      return True
+      return self.add(mode, current)
     return op
   def make_remove(self, mode, current=None):
     def op(event):
-      self.remove(mode, current)
-      return True
+      return self.remove(mode, current)
     return op
   def make_swap(self, f, t, current=None):
     def op(event):
-      self.swap(f, t, current)
-      return True
+      return self.swap(f, t, current)
     return op
   def make_cycle_swap(self, modes, current=None):
     def op(event):
-      self.cycle_swap(modes, current)
-      return True
+      return self.cycle_swap(modes, current)
     return op
   def make_clear(self):
     def op(event):
-      self.clear()
-      return True
+      return self.clear()
     return op
   def make_set(self, mode, save):
     def op(event):
-      self.set(mode, save)
-      return True
+      return self.set(mode, save)
     return op
   def make_cycle(self, modes, step, loop, save):
     def op(event):
-      self.cycle(modes, step, loop, save)
-      return True
+      return self.cycle(modes, step, loop, save)
     return op
 
   def save_(self, save):
