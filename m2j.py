@@ -1750,25 +1750,25 @@ class ModeSinkModeManager:
       return self.restore()
     return op
   def make_add(self, mode, current=None):
-    if type(current) not in (tuple, list):
+    if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
       return self.add(mode, current)
     return op
   def make_remove(self, mode, current=None):
-    if type(current) not in (tuple, list):
+    if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
       return self.remove(mode, current)
     return op
   def make_swap(self, f, t, current=None):
-    if type(current) not in (tuple, list):
+    if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
       return self.swap(f, t, current)
     return op
   def make_cycle_swap(self, modes, current=None):
-    if type(current) not in (tuple, list):
+    if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
       return self.cycle_swap(modes, current)
