@@ -5396,29 +5396,37 @@ def make_parser():
   actionParser.add("toggleState", parseToggleState)
 
   def parseSetSens(cfg, state):
-    htc = fn2htc(get_nested(cfg, "axis"))
-    value = get_nested(cfg, "value")
-    depth = -(1+get_nested_d(cfg, "depth", 0))
-    scaleSink = state["componentsStack"][depth]["sens"]
-    def op(e):
-      scaleSink.set_sens(htc, value)
-      name = scaleSink.get_name()
-      logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
-    return op
+    try:
+      htc = fn2htc(get_nested(cfg, "axis"))
+      value = get_nested(cfg, "value")
+      depth = -(1+get_nested_d(cfg, "depth", 0))
+      scaleSink = state["componentsStack"][depth]["sens"]
+      def op(e):
+        scaleSink.set_sens(htc, value)
+        name = scaleSink.get_name()
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
+      return op
+    except Exception as e:
+      logger.error(e)
+      raise
   actionParser.add("setSens", parseSetSens)
 
   def parseChangeSens(cfg, state):
-    htc = fn2htc(get_nested(cfg, "axis"))
-    delta = get_nested(cfg, "delta")
-    depth = -(1+get_nested_d(cfg, "depth", 0))
-    scaleSink = state["componentsStack"][depth]["sens"]
-    def op(e):
-      sens = scaleSink.get_sens(htc)
-      sens += delta
-      scaleSink.set_sens(htc, sens)
-      name = scaleSink.get_name()
-      logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
-    return op
+    try:
+      htc = fn2htc(get_nested(cfg, "axis"))
+      delta = get_nested(cfg, "delta")
+      depth = -(1+get_nested_d(cfg, "depth", 0))
+      scaleSink = state["componentsStack"][depth]["sens"]
+      def op(e):
+        sens = scaleSink.get_sens(htc)
+        sens += delta
+        scaleSink.set_sens(htc, sens)
+        name = scaleSink.get_name()
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
+      return op
+    except Exception as e:
+      logger.error(e)
+      raise
   actionParser.add("changeSens", parseChangeSens)
 
   def parseMove(cfg, state):
