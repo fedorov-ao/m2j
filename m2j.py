@@ -5733,15 +5733,24 @@ def make_parser():
       r.append(("source", EqPropTest(sourceHash)))
     value = get_nested_d(cfg, "value")
     if value is not None:
+      gt = lambda eventValue, attrValue : cmp(eventValue, attrValue) > 0
+      lt = lambda eventValue, attrValue : cmp(eventValue, attrValue) < 0
+      eq = lambda eventValue, attrValue : cmp(eventValue, attrValue) == 0
       op = None
       if value == "+":
-        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) > 0
+        op = gt
         value = 0.0
       elif value == "-":
-        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) < 0
+        op = lt
         value = 0.0
+      elif value[0] == ">":
+        op = gt
+        value = float(value[1:])
+      elif value[0] == "<":
+        op = lt
+        value = float(value[1:])
       else:
-        op = lambda eventValue, attrValue : cmp(eventValue, attrValue) == 0
+        op = eq
         value = float(value)
       r.append(("value", CmpPropTest(value, op)))
     r = parseEdModifiers_(r, cfg, state)
