@@ -1041,9 +1041,10 @@ class ModifierSink:
           if self.saveModifiers_:
             oldModifiers = [m for m in event.modifiers]
           if self.mode_ == self.APPEND:
-            for m in self.removed_:
-              if m in event.modifiers:
-                event.modifiers.remove(m)    
+            for rm in self.removed_:
+              for em in event.modifiers:
+                if rm[1] == em[1] and (rm[0] == em[0] if rm[0] is not None else True):
+                  event.modifiers.remove(em)
             for m in self.m_:
               if m not in event.modifiers:
                 event.modifiers.append(m)
