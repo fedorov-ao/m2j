@@ -5236,11 +5236,11 @@ def make_parser():
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
-    push_in_state("componentsStack", state.get("components", {}), state)
-    state["components"] = {}
+    push_in_state("componentsStack", {}, state)
+    state["components"] = state["componentsStack"][-1]
     push_args(get_nested_d(cfg, "args", {}), state)
-    push_in_state("curvesStack", state.get("curves", {}), state)
-    state["curves"] = {}
+    push_in_state("curvesStack", {}, state)
+    state["curves"] = state["curvesStack"][-1]
     push_objects(get_nested_d(cfg, "objects", {}), state)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
@@ -5295,12 +5295,12 @@ def make_parser():
       finally:
         state["sinks"].pop()
     finally:
-      state["components"] = state["componentsStack"][-1] if len(state["componentsStack"]) > 0 else None
       pop_in_state("componentsStack", state)
+      state["components"] = state["componentsStack"][-1] if len(state["componentsStack"]) > 0 else None
       pop_args(state)
       pop_objects(state)
-      state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
       pop_in_state("curvesStack", state)
+      state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
   sinkParser.add("sink", parseSink)
 
   #Sink components
@@ -5398,7 +5398,8 @@ def make_parser():
   def parseSetSens(cfg, state):
     htc = fn2htc(get_nested(cfg, "axis"))
     value = get_nested(cfg, "value")
-    scaleSink = state["components"]["sens"]
+    depth = -(1+get_nested_d(cfg, "depth", 0))
+    scaleSink = state["componentsStack"][depth]["sens"]
     def op(e):
       scaleSink.set_sens(htc, value)
       name = scaleSink.get_name()
@@ -5409,7 +5410,8 @@ def make_parser():
   def parseChangeSens(cfg, state):
     htc = fn2htc(get_nested(cfg, "axis"))
     delta = get_nested(cfg, "delta")
-    scaleSink = state["components"]["sens"]
+    depth = -(1+get_nested_d(cfg, "depth", 0))
+    scaleSink = state["componentsStack"][depth]["sens"]
     def op(e):
       sens = scaleSink.get_sens(htc)
       sens += delta
