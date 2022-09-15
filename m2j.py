@@ -5517,12 +5517,38 @@ def make_parser():
     output, key = fn2sn(get_arg(get_nested(cfg, "key"), state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    n = int(get_arg(get_nested_d(cfg, "numClicks", 1), state))
-    def op(event):
-      for i in range(n):
-        for s in (1, 0):
-          output.set_button_state(key, s)
-    return op
+    numClicks = int(get_arg(get_nested_d(cfg, "numClicks", 1), state))
+    delay = float(get_arg(get_nested_d(cfg, "delay", 0.0), state))
+    class Clicker:
+      def on_event(self, event):
+        if self.delay_ == 0.0:
+          for i in range(self.numClicks_):
+            for s in (1, 0):
+              self.output_.set_button_state(self.key_, s)
+        else:
+          self.timestamp_ = event.timestamp
+          self.s_, self.i_ = 1, self.numClicks_
+          self.output_.set_button_state(self.key_, self.s_)
+        return True
+      def on_update(self, tick, ts):
+        if self.i_ == 0:
+          return
+        if ts - self.timestamp_ > self.delay_:
+          self.timestamp_ = ts
+          if self.s_ == 1:
+            self.s_ = 0
+            self.i_ -= 1
+          else:
+            self.s_ = 1
+          self.output_.set_button_state(self.key_, self.s_)
+      def __init__(self, output, key, numClicks, delay):
+        self.output_, self.key_, self.numClicks_, self.delay_ = output, key, numClicks, delay
+        self.timestamp_, self.i_ = None, 0
+    clicker = Clicker(output, key, numClicks, delay)
+    eventOp = lambda e : clicker.on_event(e)
+    updateOp = lambda tick,ts : clicker.on_update(tick, ts)
+    state["settings"]["updated"].append(updateOp)
+    return eventOp
   actionParser.add("click", parseClick)
 
   actionParser.add("setKeyState", parseSetKeyState)
