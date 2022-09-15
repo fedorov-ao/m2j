@@ -15,6 +15,8 @@ import weakref
 import re
 import collections
 import zlib
+import Tkinter as tk
+import ttk
 
 logger = logging.getLogger(__name__)
 
@@ -4336,7 +4338,29 @@ def make_curve_makers():
 
 curveMakers = make_curve_makers()
 
+class Info:
+  def set_state(self, s):
+    if s == True and self.w_ is None:
+      self.w_ = tk.Tk()
+      self.w_.title("Info")
+      self.w_.geometry('300x200+50+50')
+      pb = ttk.Progressbar(self.w_, orient="horizontal", mode="determinate")
+      pb.pack()
+    elif s == False and self.w_ is not None:
+      self.w_.destroy()
+      self.w_ = None
+  def get_state(self):
+    return self.w_ is not None
+  def update(self, tick, ts):
+    if self.w_ is not None:
+      self.w_.update()
+  def __init__(self):
+    self.w_ = None
+
 def init_main_sink(settings, make_next):
+  info = Info()
+  settings["updated"].append(lambda tick,ts : info.update(tick, ts))
+
   #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
   config = settings["config"]
@@ -4441,6 +4465,12 @@ def init_main_sink(settings, make_next):
         inputs = get_nested_d(output, "inputs", None)
         inputs = allInputs if inputs is None else names2inputs(inputs, settings)
         action = SwallowDevices(inputs, False)
+      elif action == "showInfo":
+        action = lambda e : info.set_state(True)
+      elif action == "hideInfo":
+        action = lambda e : info.set_state(False)
+      elif action == "toggleInfo":
+        action = lambda e : info.set_state(not info.get_state())
       else:
         logger.error("Unknown action: {}", action)
         continue
