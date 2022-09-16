@@ -4338,46 +4338,92 @@ def make_curve_makers():
 
 curveMakers = make_curve_makers()
 
+class AxisAccumulator:
+  def on_event(self, e):
+    key = (e.source, e.code)
+    if self.state_ and e.type == codes.EV_REL and key in self.scales_:
+      v = self.values_.get(key, 0.0)
+      v += e.value / self.scales_[key]
+      v = clamp(v, -1.0, 1.0)
+      self.values_[key] = v
+    return False
+
+  def get_axis_value(self, source, axisId):
+    return self.values_.get((source, axisId), 0.0)
+
+  def reset(self):
+    for k in self.values_.keys():
+      self.values_[k] = 0.0
+
+  def set_state(self, s):
+    self.state_ = s
+
+  def get_state(self):
+    return self.state_
+
+  def __init__(self, scales, state=False):
+    self.scales_ = scales
+    self.values_ = {}
+    self.state_ = state
+
+
 class Info:
   class Marker:
     def update(self):
       canvas = self.a_.canvas_
       cw, ch = float(canvas["width"]), float(canvas["height"])
-      sc = canvas.coords(self.shape_)
-      sw, sh = sc[2] - sc[0], sc[3] - sc[1]
-      sx = 0.5*(self.vpx_() + 1)*cw
-      sy = 0.5*(self.vpy_() + 1)*ch
-      dx, dy = sx - sc[0], sy - sc[1]
-      x0, y0, x1, y1 = sc[0] + dx, sc[1] + dy, sc[2] + dx, sc[3] + dy
-      canvas.coords(self.shape_, x0, y0, x1, y1)
-    def __init__(self, area, vpx, vpy, shape):
-      self.a_, self.vpx_, self.vpy_, self.shape_ = area, vpx, vpy, shape
+      for shape in self.shapes_:
+        sc = canvas.coords(shape)
+        sw, sh = sc[2] - sc[0], sc[3] - sc[1]
+        sx = 0.5*(self.vpx_() + 1)*cw - 0.5*sw
+        sy = 0.5*(self.vpy_() + 1)*ch - 0.5*sh
+        dx, dy = sx - sc[0], sy - sc[1]
+        x0, y0, x1, y1 = sx, sy, sc[2] + dx, sc[3] + dy
+        canvas.coords(shape, x0, y0, x1, y1)
+    def __init__(self, area, vpx, vpy, shapes):
+      self.a_, self.vpx_, self.vpy_, self.shapes_ = area, vpx, vpy, shapes
   class Area:
     def add_marker(self, vpx, vpy, shapeType, color):
-      shape = self.create_shape_(shapeType, 10, color)
-      marker = Info.Marker(self, vpx, vpy, shape)
+      shapes = self.create_shapes_(shapeType, 11, color)
+      marker = Info.Marker(self, vpx, vpy, shapes)
       marker.update()
       self.markers_.append(marker)
       return marker
     def update(self):
       for marker in self.markers_:
         marker.update()
-    def __init__(self, canvas):
+    def __init__(self, window, name, type, r, c):
+      frame = tk.Frame(window)
+      frame.pack_propagate(True)
+      frame.grid(row=r, column=c, rowspan=1, columnspan=1)
+      nameLabel = tk.Label(frame, text=name)
+      nameLabel.pack()
+      canvas = tk.Canvas(frame, bg="black")
+      if type == "box":
+        canvas["width"], canvas["height"] = 100, 100
+      elif type == "h":
+        canvas["width"], canvas["height"] = 100, 20
+      elif type == "v":
+        canvas["width"], canvas["height"] = 20, 100
+      canvas.pack()
       self.canvas_ = canvas
       self.markers_ = []
-    def create_shape_(self, shapeType, size, color):
+    def create_shapes_(self, shapeType, size, color):
       if shapeType == "circle":
-        return self.canvas_.create_oval(0,0,size,size, fill=color)
+        return [self.canvas_.create_oval(0,0,size,size, fill=color)]
       elif shapeType == "quad":
-        return self.canvas_.create_rectangle(0,0,size,size, fill=color)
-  def add_area(self):
-    canvas = tk.Canvas(self.w_, borderwidth=2, bg="black")
-    canvas.grid(row=self.r_, column=self.c_, rowspan=1, columnspan=1, ipadx=2, ipady=2)
-    self.c_ += 1
-    if self.c_ == self.numColumns_:
-      self.c_ = 0
-      self.r_ += 1
-    area = self.Area(canvas)
+        return [self.canvas_.create_rectangle(0,0,size,size, fill=color)]
+      elif shapeType == "cross":
+        return [
+          self.canvas_.create_line(0,0.5*size,size,0.5*size, fill=color),
+          self.canvas_.create_line(0.5*size,0,0.5*size,size, fill=color),
+        ]
+      elif shapeType == "hline":
+        return [self.canvas_.create_line(0,0,size,0, fill=color)]
+      elif shapeType == "hline":
+        return [self.canvas_.create_line(0,0,0,size, fill=color)]
+  def add_area(self, name, type, r, c):
+    area = self.Area(self.w_, name, type, r, c)
     self.areas_.append(area)
     return area
   def set_state(self, s):
@@ -4400,32 +4446,42 @@ class Info:
       for area in self.areas_:
         area.update()
       self.w_.update()
-  def __init__(self, numColumns=4):
-    self.numColumns_ = numColumns
-    self.state_, self.r_, self.c_, self.areas_ = False, 0, 0, []
+  def __init__(self):
+    self.state_, self.areas_ = False, []
     self.w_ = tk.Tk()
     self.w_.title("Info")
     self.w_.propagate(True)
+    self.w_.grid_propagate(True)
     self.w_.withdraw()
 
 
-def init_main_sink(settings, make_next):
+def init_info(settings, sink, axisAccumulator):
   info = Info()
   settings["updated"].append(lambda tick,ts : info.update())
+  sink.add((), lambda e : info.on_event(e))
 
   joystick = settings["outputs"]["joystick"]
-  area = info.add_area()
+  area = info.add_area("jx jy jz", "box", 0, 0)
   jx = lambda : joystick.get_axis_value(codes.ABS_X)
   jy = lambda : joystick.get_axis_value(codes.ABS_Y)
   jz = lambda : joystick.get_axis_value(codes.ABS_Z)
-  area.add_marker(jx, jy, "quad", "white")
+  area.add_marker(jx, jy, "cross", "white")
   area.add_marker(jz, lambda : 1.0, "circle", "red")
+  hm = calc_hash("mouse")
+  mx = lambda : axisAccumulator.get_axis_value(hm, codes.REL_X)
+  my = lambda : axisAccumulator.get_axis_value(hm, codes.REL_Y)
+  area.add_marker(mx, my, "cross", "green")
   jrx = lambda : -joystick.get_axis_value(codes.ABS_RX)
+  area = info.add_area("jrx", "v", 0, 1)
+  area.add_marker(lambda : 0.0, jrx, "hline", "white")
   jry = lambda : -joystick.get_axis_value(codes.ABS_RY)
-  area = info.add_area()
-  area.add_marker(lambda : 0.0, jrx, "quad", "white")
-  area.add_marker(lambda : 0.1, jry, "quad", "white")
+  area = info.add_area("jry", "v", 0, 2)
+  area.add_marker(lambda : 0.0, jry, "hline", "white")
 
+  return info
+
+
+def init_main_sink(settings, make_next):
   #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
   config = settings["config"]
@@ -4495,7 +4551,9 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  mainSink.add((), lambda e : info.on_event(e))
+  axisAccumulator = AxisAccumulator({(calc_hash("mouse"), codes.REL_X) : 1.0, (calc_hash("mouse"), codes.REL_Y) : 1.0}, state=False)
+  mainSink.add((), lambda e : axisAccumulator.on_event(e))
+  info = init_info(settings, mainSink, axisAccumulator)
 
   binds = config.get("binds", None)
   if binds is not None:
@@ -4533,11 +4591,28 @@ def init_main_sink(settings, make_next):
         inputs = allInputs if inputs is None else names2inputs(inputs, settings)
         action = SwallowDevices(inputs, False)
       elif action == "showInfo":
-        action = lambda e : info.set_state(True)
+        def op(e):
+          info.set_state(True)
+        action = op
       elif action == "hideInfo":
-        action = lambda e : info.set_state(False)
+        def op(e):
+          info.set_state(False)
+        action = op
       elif action == "toggleInfo":
-        action = lambda e : info.set_state(not info.get_state())
+        def op(e):
+          s = not info.get_state()
+          info.set_state(s)
+        action = op
+      elif action == "resetAxisAccumulator":
+        def op(e):
+          axisAccumulator.reset()
+        action = op
+      elif action == "toggleAxisAccumulator":
+        def op(e):
+          s = not axisAccumulator.get_state()
+          axisAccumulator.reset()
+          axisAccumulator.set_state(s)
+        action = op
       else:
         logger.error("Unknown action: {}", action)
         continue
