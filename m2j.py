@@ -4339,27 +4339,92 @@ def make_curve_makers():
 curveMakers = make_curve_makers()
 
 class Info:
+  class Marker:
+    def update(self):
+      canvas = self.a_.canvas_
+      cw, ch = float(canvas["width"]), float(canvas["height"])
+      sc = canvas.coords(self.shape_)
+      sw, sh = sc[2] - sc[0], sc[3] - sc[1]
+      sx = 0.5*(self.vpx_() + 1)*cw
+      sy = 0.5*(self.vpy_() + 1)*ch
+      dx, dy = sx - sc[0], sy - sc[1]
+      x0, y0, x1, y1 = sc[0] + dx, sc[1] + dy, sc[2] + dx, sc[3] + dy
+      canvas.coords(self.shape_, x0, y0, x1, y1)
+    def __init__(self, area, vpx, vpy, shape):
+      self.a_, self.vpx_, self.vpy_, self.shape_ = area, vpx, vpy, shape
+  class Area:
+    def add_marker(self, vpx, vpy, shapeType, color):
+      shape = self.create_shape_(shapeType, 10, color)
+      marker = Info.Marker(self, vpx, vpy, shape)
+      marker.update()
+      self.markers_.append(marker)
+      return marker
+    def update(self):
+      for marker in self.markers_:
+        marker.update()
+    def __init__(self, canvas):
+      self.canvas_ = canvas
+      self.markers_ = []
+    def create_shape_(self, shapeType, size, color):
+      if shapeType == "circle":
+        return self.canvas_.create_oval(0,0,size,size, fill=color)
+      elif shapeType == "quad":
+        return self.canvas_.create_rectangle(0,0,size,size, fill=color)
+  def add_area(self):
+    canvas = tk.Canvas(self.w_, borderwidth=2, bg="black")
+    canvas.grid(row=self.r_, column=self.c_, rowspan=1, columnspan=1, ipadx=2, ipady=2)
+    self.c_ += 1
+    if self.c_ == self.numColumns_:
+      self.c_ = 0
+      self.r_ += 1
+    area = self.Area(canvas)
+    self.areas_.append(area)
+    return area
   def set_state(self, s):
-    if s == True and self.w_ is None:
-      self.w_ = tk.Tk()
-      self.w_.title("Info")
-      self.w_.geometry('300x200+50+50')
-      pb = ttk.Progressbar(self.w_, orient="horizontal", mode="determinate")
-      pb.pack()
-    elif s == False and self.w_ is not None:
-      self.w_.destroy()
-      self.w_ = None
+    if self.state_ == s:
+      return
+    else:
+      self.state_ = s
+    if s == True:
+      self.w_.deiconify()
+    elif s == False:
+      self.w_.withdraw()
   def get_state(self):
-    return self.w_ is not None
-  def update(self, tick, ts):
-    if self.w_ is not None:
+    return self.state_
+  def on_event(self, e):
+    if self.state_:
+      pass
+    return False
+  def update(self):
+    if self.state_:
+      for area in self.areas_:
+        area.update()
       self.w_.update()
-  def __init__(self):
-    self.w_ = None
+  def __init__(self, numColumns=4):
+    self.numColumns_ = numColumns
+    self.state_, self.r_, self.c_, self.areas_ = False, 0, 0, []
+    self.w_ = tk.Tk()
+    self.w_.title("Info")
+    self.w_.propagate(True)
+    self.w_.withdraw()
+
 
 def init_main_sink(settings, make_next):
   info = Info()
-  settings["updated"].append(lambda tick,ts : info.update(tick, ts))
+  settings["updated"].append(lambda tick,ts : info.update())
+
+  joystick = settings["outputs"]["joystick"]
+  area = info.add_area()
+  jx = lambda : joystick.get_axis_value(codes.ABS_X)
+  jy = lambda : joystick.get_axis_value(codes.ABS_Y)
+  jz = lambda : joystick.get_axis_value(codes.ABS_Z)
+  area.add_marker(jx, jy, "quad", "white")
+  area.add_marker(jz, lambda : 1.0, "circle", "red")
+  jrx = lambda : -joystick.get_axis_value(codes.ABS_RX)
+  jry = lambda : -joystick.get_axis_value(codes.ABS_RY)
+  area = info.add_area()
+  area.add_marker(lambda : 0.0, jrx, "quad", "white")
+  area.add_marker(lambda : 0.1, jry, "quad", "white")
 
   #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
@@ -4429,6 +4494,8 @@ def init_main_sink(settings, make_next):
     logger.info("{} ungrabbed".format(namesOfReleasedStr))
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
+
+  mainSink.add((), lambda e : info.on_event(e))
 
   binds = config.get("binds", None)
   if binds is not None:
