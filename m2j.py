@@ -4419,6 +4419,7 @@ class Info:
       elif type == "v":
         canvas["width"], canvas["height"] = 20, 100
         fill = "y"
+      self.add_grid_(canvas, type)
       canvas.pack()
       canvas.pack_configure(expand=True, fill=fill)
       self.canvas_ = canvas
@@ -4437,6 +4438,15 @@ class Info:
         return [self.canvas_.create_line(0,0,size,0, fill=color)]
       elif shapeType == "vline":
         return [self.canvas_.create_line(0,0,0,size, fill=color)]
+    def add_grid_(self, canvas, type):
+      if type == "box":
+        cw, ch = canvas.winfo_width(), canvas.winfo_height()
+        vline = canvas.create_line(0.5*cw, 0.0, 0.5*cw, ch, fill="grey"),
+        hline = canvas.create_line(0.0, 0.5*ch, cw, 0.5*ch, fill="grey")
+        def resize_lines(event):
+          canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
+          canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
+        canvas.bind("<Configure>", resize_lines)
   def add_area(self, name, type, r, c):
     area = self.Area(self.w_, name, type, r, c)
     self.areas_.append(area)
