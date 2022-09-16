@@ -4371,7 +4371,7 @@ class Info:
   class Marker:
     def update(self):
       canvas = self.a_.canvas_
-      cw, ch = float(canvas["width"]), float(canvas["height"])
+      cw, ch = canvas.winfo_width(), canvas.winfo_height()
       for shape in self.shapes_:
         sc = canvas.coords(shape)
         sw, sh = sc[2] - sc[0], sc[3] - sc[1]
@@ -4396,16 +4396,31 @@ class Info:
       frame = tk.Frame(window)
       frame.pack_propagate(True)
       frame.grid(row=r, column=c, rowspan=1, columnspan=1)
+      frame.grid_configure(sticky="nsew")
+      wr, wc = 0, 0
+      if type == "box":
+        wr, wc = 1, 1
+      elif type == "h":
+        wr, wc = 0, 1
+      elif type == "v":
+        wr, wc = 1, 0
+      window.grid_rowconfigure(r, weight=wr)
+      window.grid_columnconfigure(c, weight=wc)
       nameLabel = tk.Label(frame, text=name)
       nameLabel.pack()
       canvas = tk.Canvas(frame, bg="black")
+      fill = "both"
       if type == "box":
         canvas["width"], canvas["height"] = 100, 100
+        fill = "both"
       elif type == "h":
         canvas["width"], canvas["height"] = 100, 20
+        fill = "x"
       elif type == "v":
         canvas["width"], canvas["height"] = 20, 100
+        fill = "y"
       canvas.pack()
+      canvas.pack_configure(expand=True, fill=fill)
       self.canvas_ = canvas
       self.markers_ = []
     def create_shapes_(self, shapeType, size, color):
