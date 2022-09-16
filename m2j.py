@@ -4491,6 +4491,15 @@ def init_info(settings, sink, axisAccumulator):
   jry = lambda : -joystick.get_axis_value(codes.ABS_RY)
   area = info.add_area("jry", "v", 0, 2)
   area.add_marker(lambda : 0.0, jry, "hline", "white")
+  jrz = lambda : -joystick.get_axis_value(codes.ABS_RZ)
+  area = info.add_area("jrz", "v", 0, 3)
+  area.add_marker(lambda : 0.0, jrz, "hline", "white")
+  jrudder = lambda : -joystick.get_axis_value(codes.ABS_RUDDER)
+  area = info.add_area("jr", "v", 0, 4)
+  area.add_marker(lambda : 0.0, jrudder, "hline", "white")
+  jthrottle = lambda : -joystick.get_axis_value(codes.ABS_THROTTLE)
+  area = info.add_area("jt", "v", 0, 5)
+  area.add_marker(lambda : 0.0, jthrottle, "hline", "white")
 
   return info
 
