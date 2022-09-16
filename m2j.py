@@ -4348,8 +4348,8 @@ class AxisAccumulator:
       self.values_[key] = v
     return False
 
-  def get_axis_value(self, source, axisId):
-    return self.values_.get((source, axisId), 0.0)
+  def get_axis_value(self, fullAxisName):
+    return self.values_.get(fn2hc(fullAxisName), 0.0)
 
   def reset(self):
     for k in self.values_.keys():
@@ -4362,7 +4362,7 @@ class AxisAccumulator:
     return self.state_
 
   def __init__(self, scales, state=False):
-    self.scales_ = scales
+    self.scales_ = { fn2hc(n) : v for n,v in scales.items() }
     self.values_ = {}
     self.state_ = state
 
@@ -4420,7 +4420,7 @@ class Info:
         ]
       elif shapeType == "hline":
         return [self.canvas_.create_line(0,0,size,0, fill=color)]
-      elif shapeType == "hline":
+      elif shapeType == "vline":
         return [self.canvas_.create_line(0,0,0,size, fill=color)]
   def add_area(self, name, type, r, c):
     area = self.Area(self.w_, name, type, r, c)
@@ -4467,9 +4467,8 @@ def init_info(settings, sink, axisAccumulator):
   jz = lambda : joystick.get_axis_value(codes.ABS_Z)
   area.add_marker(jx, jy, "cross", "white")
   area.add_marker(jz, lambda : 1.0, "circle", "red")
-  hm = calc_hash("mouse")
-  mx = lambda : axisAccumulator.get_axis_value(hm, codes.REL_X)
-  my = lambda : axisAccumulator.get_axis_value(hm, codes.REL_Y)
+  mx = lambda : axisAccumulator.get_axis_value("mouse.REL_X")
+  my = lambda : axisAccumulator.get_axis_value("mouse.REL_Y")
   area.add_marker(mx, my, "cross", "green")
   jrx = lambda : -joystick.get_axis_value(codes.ABS_RX)
   area = info.add_area("jrx", "v", 0, 1)
@@ -4551,7 +4550,7 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  axisAccumulator = AxisAccumulator({(calc_hash("mouse"), codes.REL_X) : 1.0, (calc_hash("mouse"), codes.REL_Y) : 1.0}, state=False)
+  axisAccumulator = AxisAccumulator({"mouse.REL_X" : 1.0, "mouse.REL_Y" : 1.0}, state=False)
   mainSink.add((), lambda e : axisAccumulator.on_event(e))
   info = init_info(settings, mainSink, axisAccumulator)
 
