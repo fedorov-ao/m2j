@@ -4383,8 +4383,8 @@ class Info:
     def __init__(self, area, vpx, vpy, shapes):
       self.a_, self.vpx_, self.vpy_, self.shapes_ = area, vpx, vpy, shapes
   class Area:
-    def add_marker(self, vpx, vpy, shapeType, color):
-      shapes = self.create_shapes_(shapeType, 11, color)
+    def add_marker(self, vpx, vpy, shapeType, **kwargs):
+      shapes = self.create_shapes_(self.canvas_, shapeType, size=kwargs.get("size", 11), color=kwargs.get("color", "white"), width=kwargs.get("width", 1))
       marker = Info.Marker(self, vpx, vpy, shapes)
       marker.update()
       self.markers_.append(marker)
@@ -4392,7 +4392,7 @@ class Info:
     def update(self):
       for marker in self.markers_:
         marker.update()
-    def __init__(self, window, name, type, r, c):
+    def __init__(self, window, type, r, c, **kwargs):
       frame = tk.Frame(window)
       frame.pack_propagate(True)
       frame.grid(row=r, column=c, rowspan=1, columnspan=1)
@@ -4406,49 +4406,55 @@ class Info:
         wr, wc = 1, 0
       window.grid_rowconfigure(r, weight=wr)
       window.grid_columnconfigure(c, weight=wc)
-      nameLabel = tk.Label(frame, text=name)
+      nameLabel = tk.Label(frame, text=kwargs.get("name", ""))
       nameLabel.pack()
-      canvas = tk.Canvas(frame, bg="black")
+      canvas = tk.Canvas(frame, bg=kwargs.get("canvasBg", "black"))
+      canvasSize = kwargs.get("canvasSize", (100, 20))
       fill = "both"
       if type == "box":
-        canvas["width"], canvas["height"] = 100, 100
+        canvas["width"], canvas["height"] = canvasSize[0], canvasSize[0]
         fill = "both"
       elif type == "h":
-        canvas["width"], canvas["height"] = 100, 20
+        canvas["width"], canvas["height"] = canvasSize[0], canvasSize[1]
         fill = "x"
       elif type == "v":
-        canvas["width"], canvas["height"] = 20, 100
+        canvas["width"], canvas["height"] = canvasSize[1], canvasSize[0]
         fill = "y"
-      self.add_grid_(canvas, type)
+      self.add_grid_(canvas, type, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
       canvas.pack()
       canvas.pack_configure(expand=True, fill=fill)
       self.canvas_ = canvas
       self.markers_ = []
-    def create_shapes_(self, shapeType, size, color):
+    def create_shapes_(self, canvas, shapeType, **kwargs):
+      size = kwargs.get("size", 11)
+      color = kwargs.get("color", "white")
+      width = kwargs.get("width", 1)
       if shapeType == "circle":
-        return [self.canvas_.create_oval(0,0,size,size, fill=color)]
+        return [canvas.create_oval(0,0,size,size, fill=color)]
       elif shapeType == "quad":
-        return [self.canvas_.create_rectangle(0,0,size,size, fill=color)]
+        return [canvas.create_rectangle(0,0,size,size, fill=color)]
       elif shapeType == "cross":
         return [
-          self.canvas_.create_line(0,0.5*size,size,0.5*size, fill=color),
-          self.canvas_.create_line(0.5*size,0,0.5*size,size, fill=color),
+          canvas.create_line(0,0.5*size,size,0.5*size, fill=color),
+          canvas.create_line(0.5*size,0,0.5*size,size, fill=color),
         ]
       elif shapeType == "hline":
-        return [self.canvas_.create_line(0,0,size,0, fill=color)]
+        return [canvas.create_line(0,0,size,0, fill=color, width=width)]
       elif shapeType == "vline":
-        return [self.canvas_.create_line(0,0,0,size, fill=color)]
-    def add_grid_(self, canvas, type):
+        return [canvas.create_line(0,0,0,size, fill=color, width=width)]
+    def add_grid_(self, canvas, type, **kwargs):
+      width = kwargs.get("width", 1)
+      color = kwargs.get("color", "white")
       if type == "box":
         cw, ch = canvas.winfo_width(), canvas.winfo_height()
-        vline = canvas.create_line(0.5*cw, 0.0, 0.5*cw, ch, fill="grey"),
-        hline = canvas.create_line(0.0, 0.5*ch, cw, 0.5*ch, fill="grey")
+        vline = canvas.create_line(0.5*cw, 0.0, 0.5*cw, ch, fill=color, width=width),
+        hline = canvas.create_line(0.0, 0.5*ch, cw, 0.5*ch, fill=color, width=width)
         def resize_lines(event):
           canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
-  def add_area(self, name, type, r, c):
-    area = self.Area(self.w_, name, type, r, c)
+  def add_area(self, name, type, r, c, **kwargs):
+    area = self.Area(self.w_, type, r, c, name=name, **kwargs)
     self.areas_.append(area)
     return area
   def set_state(self, s):
@@ -4486,30 +4492,30 @@ def init_info(settings, sink, axisAccumulator):
   sink.add((), lambda e : info.on_event(e))
 
   joystick = settings["outputs"]["joystick"]
-  area = info.add_area("jx jy jz", "box", 0, 0)
+  area = info.add_area("jx jy jz", "box", 0, 0, gridColor="grey", gridWidth=1)
   jx = lambda : joystick.get_axis_value(codes.ABS_X)
   jy = lambda : joystick.get_axis_value(codes.ABS_Y)
   jz = lambda : joystick.get_axis_value(codes.ABS_Z)
-  area.add_marker(jx, jy, "cross", "white")
-  area.add_marker(jz, lambda : 1.0, "circle", "red")
+  area.add_marker(jx, jy, "cross", color="white")
+  area.add_marker(jz, lambda : 1.0, "circle", color="red")
   mx = lambda : axisAccumulator.get_axis_value("mouse.REL_X")
   my = lambda : axisAccumulator.get_axis_value("mouse.REL_Y")
-  area.add_marker(mx, my, "cross", "green")
+  area.add_marker(mx, my, "cross", color="green")
   jrx = lambda : -joystick.get_axis_value(codes.ABS_RX)
   area = info.add_area("jrx", "v", 0, 1)
-  area.add_marker(lambda : 0.0, jrx, "hline", "white")
+  area.add_marker(lambda : 0.0, jrx, "hline", color="white", width=3)
   jry = lambda : -joystick.get_axis_value(codes.ABS_RY)
   area = info.add_area("jry", "v", 0, 2)
-  area.add_marker(lambda : 0.0, jry, "hline", "white")
+  area.add_marker(lambda : 0.0, jry, "hline", color="white", width=3)
   jrz = lambda : -joystick.get_axis_value(codes.ABS_RZ)
   area = info.add_area("jrz", "v", 0, 3)
-  area.add_marker(lambda : 0.0, jrz, "hline", "white")
+  area.add_marker(lambda : 0.0, jrz, "hline", color="white", width=3)
   jrudder = lambda : -joystick.get_axis_value(codes.ABS_RUDDER)
   area = info.add_area("jr", "v", 0, 4)
-  area.add_marker(lambda : 0.0, jrudder, "hline", "white")
+  area.add_marker(lambda : 0.0, jrudder, "hline", color="white", width=3)
   jthrottle = lambda : -joystick.get_axis_value(codes.ABS_THROTTLE)
   area = info.add_area("jt", "v", 0, 5)
-  area.add_marker(lambda : 0.0, jthrottle, "hline", "white")
+  area.add_marker(lambda : 0.0, jthrottle, "hline", color="white", width=3)
 
   return info
 
