@@ -16,7 +16,6 @@ import re
 import collections
 import zlib
 import Tkinter as tk
-import ttk
 
 logger = logging.getLogger(__name__)
 
@@ -4493,6 +4492,25 @@ class Info:
       self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = area, vpx, vpy, shapes, size
   class Area:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
+      def make_vp(vp):
+        if type(vp) in (str, unicode):
+          factor = 1.0
+          if vp[0] == "-":
+            vp, factor = vp[1:], -1.0
+          elif vp[0] == "+":
+            vp = vp[1:]
+          outputName, axisId = fn2sc(vp)
+          if self.get_output_ is None:
+            raise RuntimeError("Outputs locator is not set")
+          output = self.get_output_(outputName)
+          if output is None:
+            raise RuntimeError("Cannot get output '{}'".format(outputName))
+          return lambda : factor*output.get_axis_value(axisId)
+        elif type(vp) in (int, float):
+          return lambda : vp
+        else:
+          return vp
+      vpx, vpy = make_vp(vpx), make_vp(vpy)
       size = kwargs.get("size", (11, 11))
       shapes = self.create_shapes_(self.canvas_, shapeType, **kwargs)
       marker = Info.Marker(self, vpx, vpy, shapes, size)
@@ -4521,7 +4539,7 @@ class Info:
         nameLabel = tk.Label(frame, text=name)
         nameLabel.pack()
       canvas = tk.Canvas(frame, bg=kwargs.get("canvasBg", "black"))
-      canvasSize = kwargs.get("canvasSize", (100, 20))
+      canvasSize = kwargs.get("canvasSize", (200, 20))
       fill = "both"
       if type == "box":
         canvas["width"], canvas["height"] = canvasSize[0], canvasSize[0]
@@ -4537,6 +4555,7 @@ class Info:
       canvas.pack_configure(expand=True, fill=fill)
       self.canvas_ = canvas
       self.markers_ = []
+      self.get_output_ = kwargs.get("getOutput", None)
     def create_shapes_(self, canvas, shapeType, **kwargs):
       size = kwargs.get("size", (11, 11))
       color = kwargs.get("color", "white")
@@ -4568,6 +4587,7 @@ class Info:
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
   def add_area(self, type, r, c, **kwargs):
+    kwargs["getOutput"] = self.get_output_
     area = self.Area(self.w_, type, r, c, **kwargs)
     self.areas_.append(area)
     return area
@@ -4582,54 +4602,47 @@ class Info:
       self.w_.withdraw()
   def get_state(self):
     return self.state_
-  def on_event(self, e):
-    if self.state_:
-      pass
-    return False
   def update(self):
     if self.state_:
       for area in self.areas_:
         area.update()
       self.w_.update()
-  def __init__(self):
+  def __init__(self, **kwargs):
     self.state_, self.areas_ = False, []
+    self.get_output_ = kwargs.get("getOutput")
     self.w_ = tk.Tk()
-    self.w_.title("Info")
+    self.w_.title(kwargs.get("title", ""))
     self.w_.propagate(True)
     self.w_.grid_propagate(True)
     self.w_.withdraw()
 
 
-def init_info(settings, sink, axisAccumulator):
-  info = Info()
+def init_info(**kwargs):
+  settings = kwargs["settings"]
+  axisAccumulator = kwargs["axisAccumulator"]
+  outputs = settings["outputs"]
+  getOutput = lambda name : outputs.get(name, None)
+  title = "Info"
+  info = Info(title=title, getOutput=getOutput)
   settings["updated"].append(lambda tick,ts : info.update())
-  sink.add((), lambda e : info.on_event(e))
 
   joystick = settings["outputs"]["joystick"]
   area = info.add_area("box", 0, 0, name="jx jy jz", gridColor="grey", gridWidth=1)
-  jx = lambda : joystick.get_axis_value(codes.ABS_X)
-  jy = lambda : joystick.get_axis_value(codes.ABS_Y)
-  jz = lambda : joystick.get_axis_value(codes.ABS_Z)
-  area.add_marker(jx, jy, "rect", color="white", size=(13,13))
-  area.add_marker(jz, lambda : 1.0, "oval", color="red")
+  area.add_marker("joystick.ABS_X", "joystick.ABS_Y", "rect", color="white", size=(13,13))
+  area.add_marker("joystick.ABS_Z", 1.0, "oval", color="red")
   mx = lambda : axisAccumulator.get_axis_value("mouse.REL_X")
   my = lambda : axisAccumulator.get_axis_value("mouse.REL_Y")
   area.add_marker(mx, my, "rect", color="green", size=(9,9))
-  jrx = lambda : -joystick.get_axis_value(codes.ABS_RX)
   area = info.add_area("v", 0, 1, name="jrx")
-  area.add_marker(lambda : 0.0, jrx, "hline", color="white", size=(13,3), width=3)
-  jry = lambda : -joystick.get_axis_value(codes.ABS_RY)
+  area.add_marker(0.0, "-joystick.ABS_RX", "hline", color="white", size=(13,3), width=3)
   area = info.add_area("v", 0, 2, name="jry")
-  area.add_marker(lambda : 0.0, jry, "hline", color="white", size=(13,3), width=3)
-  jrz = lambda : -joystick.get_axis_value(codes.ABS_RZ)
+  area.add_marker(0.0, "-joystick.ABS_RY", "hline", color="white", size=(13,3), width=3)
   area = info.add_area("v", 0, 3, name="jrz")
-  area.add_marker(lambda : 0.0, jrz, "hline", color="white", size=(13,3), width=3)
-  jrudder = lambda : -joystick.get_axis_value(codes.ABS_RUDDER)
+  area.add_marker(0.0, "-joystick.ABS_RZ", "hline", color="white", size=(13,3), width=3)
   area = info.add_area("v", 0, 4, name="jr")
-  area.add_marker(lambda : 0.0, jrudder, "hline", color="white", size=(13,3), width=3)
-  jthrottle = lambda : -joystick.get_axis_value(codes.ABS_THROTTLE)
+  area.add_marker(0.0, "-joystick.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
   area = info.add_area("v", 0, 5, name="jt")
-  area.add_marker(lambda : 0.0, jthrottle, "hline", color="white", size=(13,3), width=3)
+  area.add_marker(0.0, "-joystick.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
 
   return info
 
@@ -4706,7 +4719,7 @@ def init_main_sink(settings, make_next):
 
   axisAccumulator = AxisAccumulator({"mouse.REL_X" : 1.0, "mouse.REL_Y" : 1.0}, state=False)
   mainSink.add((), lambda e : axisAccumulator.on_event(e))
-  info = init_info(settings, mainSink, axisAccumulator)
+  info = init_info(settings=settings, axisAccumulator=axisAccumulator)
 
   binds = config.get("binds", None)
   if binds is not None:
