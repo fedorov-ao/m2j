@@ -4490,7 +4490,7 @@ class Info:
         canvas.coords(shape, x0, y0, x1, y1)
     def __init__(self, area, vpx, vpy, shapes, size):
       self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = area, vpx, vpy, shapes, size
-  class Area:
+  class AxisArea:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
       def make_vp(vp):
         if type(vp) in (str, unicode):
@@ -4586,9 +4586,47 @@ class Info:
           canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
+  class ButtonsArea:
+    def update(self):
+      for button,buttonData in self.data_.items():
+        state = self.output_.get_button_state(button)
+        if state == buttonData[1]:
+          continue
+        else:
+          buttonData[1] = state
+          buttonData[0]["foreground"] = "red" if state == True else "black"
+    def __init__(self, window, r, c, **kwargs):
+      frame = tk.Frame(window)
+      frame.pack_propagate(True)
+      frame.grid(row=r, column=c, rowspan=1, columnspan=1)
+      frame.grid_configure(sticky="nsew")
+      name = kwargs.get("name", None)
+      if name is not None:
+        nameLabel = tk.Label(frame, text=name)
+        nameLabel.pack()
+      buttonsFrame = tk.Frame(frame)
+      buttonsFrame.pack()
+      self.data_ = {}
+      self.output_ = kwargs["output"]
+      buttons = self.output_.get_supported_buttons()
+      numButtonsPerColumn = 8
+      br, bc = 0, 0
+      for button in buttons:
+        text=typecode2name(codes.EV_KEY, button).strip("BTN_")
+        buttonLabel = tk.Label(buttonsFrame, text=text)
+        buttonLabel.grid(row=br, column=bc, rowspan=1, columnspan=1)
+        br += 1
+        if br == numButtonsPerColumn:
+          br = 0
+          bc += 1
+        self.data_[button] = [buttonLabel, self.output_.get_button_state(button)]
   def add_area(self, type, r, c, **kwargs):
     kwargs["getOutput"] = self.get_output_
-    area = self.Area(self.w_, type, r, c, **kwargs)
+    area = None
+    if type == "buttons":
+      area = self.ButtonsArea(self.w_, r, c, **kwargs)
+    else:
+      area = self.AxisArea(self.w_, type, r, c, **kwargs)
     self.areas_.append(area)
     return area
   def set_state(self, s):
@@ -4643,6 +4681,7 @@ def init_info(**kwargs):
   area.add_marker(0.0, "-joystick.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
   area = info.add_area("v", 0, 5, name="jt")
   area.add_marker(0.0, "-joystick.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
+  area = info.add_area("buttons", 0, 6, name="jbuttons", output=joystick)
 
   return info
 
