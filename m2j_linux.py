@@ -110,6 +110,9 @@ class EvdevJoystick:
       raise RuntimeError("Button not supported: {}".format(button))
     return self.buttons_[button]
 
+  def get_supported_buttons(self):
+    return self.buttons_.keys()
+
   def update(self, tick, ts):
     if self.immediateSyn_ == False and self.dirty_ == True:
       self.js.syn()

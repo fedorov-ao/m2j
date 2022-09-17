@@ -66,6 +66,9 @@ class PPJoystick:
       raise RuntimeError("Button not supported: {}".format(button))
     return self.d_[n]
 
+  def get_supported_buttons(self):
+    return [n+256 for n in range(self.numButtons_)]
+
   def update(self):
     if not self.dirty_:
       return

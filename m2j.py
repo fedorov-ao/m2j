@@ -580,7 +580,7 @@ class ReloadException(Exception):
 
 class NullJoystick:
   """Placeholder joystick class."""
-  def __init__(self, values=None, limits=None):
+  def __init__(self, values=None, limits=None, buttons=None):
     self.v_ = {}
     if values is not None:
       for a,v in values.items():
@@ -589,6 +589,10 @@ class NullJoystick:
     if limits is not None:
       for a,l in limits.items():
         self.limits_[a] = l
+    self.b_ = {}
+    if buttons is not None:
+      for b,s in buttons.limits():
+        self.b_[b] = s
     logger.debug("{} created".format(self))
 
   def __del__(self):
@@ -616,7 +620,13 @@ class NullJoystick:
     return self.v_.keys()
 
   def set_button_state(self, button, state):
-    pass
+    self.b_[button] = state
+
+  def get_button_state(self, button):
+    return self.b_.get(button, False)
+
+  def get_supported_buttons(self):
+    return self.b_.keys()
 
 
 class CompositeJoystick:
@@ -651,6 +661,24 @@ class CompositeJoystick:
     for c in self.children_:
       axes.update(set(c.get_supported_axes()))
     return list(axes)
+
+  def set_button_state(self, button, state):
+    for c in self.children_:
+      if button in c.get_supported_buttons():
+        c.set_button_state(button, state)
+
+  def get_button_state(self, button):
+    for c in self.children_:
+      if button in c.get_supported_buttons():
+        return c.get_button_state(button)
+    else:
+      return False
+
+  def get_supported_buttons(self):
+    buttons = set()
+    for c in self.children_:
+      buttons.update(set(c.get_supported_buttons()))
+    return list(buttons)
 
   def __init__(self, children):
     self.children_ = children
@@ -3504,10 +3532,22 @@ class UdpJoystick:
   def get_supported_axes(self):
     return self.axes_
 
+  def set_button_state(self, button, state):
+    if button not in self.buttons_:
+      return
+    self.b_[button] = state
+    self.dirty_ = True
+
+  def get_button_state(self, button):
+    return self.b_.get(button, False)
+
+  def get_supported_buttons(self):
+    return self.buttons_
+
   def send(self):
     if self.dirty_ == True:
       self.dirty_ = False
-      packet = self.make_packet_(self.v_)
+      packet = self.make_packet_(axes=self.v_, buttons=self.b_)
       #Need to resend packet several times to make lateral head movement work correctly
       #UDP packets are lost? Even on local machine?
       for i in range(0, self.numPackets_):
@@ -3521,14 +3561,17 @@ class UdpJoystick:
     self.v_ = {}
     for a in self.axes_:
       v = 0.0
-      self.v_[a] = v
       self.move_axis(a, v, False)
+    self.b_ = {}
+    for b in self.buttons_:
+      self.set_button_state(b, False)
 
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
+  buttons_ = tuple(b for b in range (codes.BTN_0, codes.BTN_16+1))
 
 
 #TODO Needs verifying
-def make_opentrack_packet(v):
+def make_opentrack_packet(**kwargs):
   d = (
     (codes.ABS_X, 1.0),
     (codes.ABS_Y, -1.0),
@@ -3537,12 +3580,13 @@ def make_opentrack_packet(v):
     (codes.ABS_RY, -90.0),
     (codes.ABS_RZ, 90.0)
   )
+  v = kwargs["axes"]
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   packet = struct.pack("<dddddd", *values)
   return packet
 
 
-def make_il2_packet(v):
+def make_il2_packet(**kwargs):
   #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L919
   #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f", d->h, -d->p, d->r);
   d = (
@@ -3550,12 +3594,13 @@ def make_il2_packet(v):
     (codes.ABS_RY, 1.0),
     (codes.ABS_RZ, 1.0)
   )
+  v = kwargs["axes"]
   values = [dd[1]*v.get(dd[0], 0.0) for dd in d]
   result = "R/11\\{:f}\\{:f}\\{:f}".format(*values)
   return result
 
 
-def make_il2_6dof_packet(v):
+def make_il2_6dof_packet(**kwargs):
   #https://github.com/uglyDwarf/linuxtrack/blob/1f405ea1a3a478163afb1704072480cf7a2955c2/src/ltr_pipe.c#L938
   #r = snprintf(buf, sizeof(buf), "R/11\\%f\\%f\\%f\\%f\\%f\\%f", d->h, -d->p, d->r, -d->z/300, -d->x/1000, d->y/1000);
   d = (
@@ -3566,6 +3611,7 @@ def make_il2_6dof_packet(v):
     (codes.ABS_X, -1.0),
     (codes.ABS_Y, -1.0)
   )
+  v = kwargs["axes"]
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
   result = "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
   return result
@@ -3676,27 +3722,50 @@ class MappingJoystick:
   """Forwards calls to contained joysticks with axis mapping"""
 
   def move_axis(self, axis, value, relative):
-    d = self.data_[axis]
+    d = self.adata_[axis]
     d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
 
   def get_axis_value(self, axis):
-    d = self.data_[axis]
+    d = self.adata_[axis]
     value = d.toJoystick.get_axis_value(d.toAxis)
     return d.factor*value
 
   def get_limits(self, axis):
-    d = self.data_[axis]
+    d = self.adata_[axis]
     return (d.factor*l for l in d.toJoystick.get_limits(d.toAxis))
 
-  def add(self, fromAxis, toJoystick, toAxis, factor=1.0):
+  def get_supported_axes(self):
+    return self.adata_.keys()
+
+  def set_button_state(self, button, state):
+    d = self.bdata_[button]
+    d.toJoystick.set_button_state(d.toButton, state if d.negate == False else not state)
+
+  def get_button_state(self, button):
+    d = self.bdata_[button]
+    state = d.toJoystick.set_button_state(t.toButton)
+    return state if d.negate == False else not state
+
+  def get_supported_buttons(self):
+    return self.bdata_.keys()
+
+  def add_axis(self, fromAxis, toJoystick, toAxis, factor=1.0):
     class D:
       pass
     d = D()
     d.toJoystick, d.toAxis, d.factor = toJoysitick, toAxis, factor
-    self.data_[fromAxis] = d
+    self.adata_[fromAxis] = d
+
+  def add_button(self, fromButton, toJoystick, toButton, negate=False):
+    class D:
+      pass
+    d = D()
+    d.toJoystick, d.toButton, d.negate = toJoysitick, toAxis, negate
+    self.bdata_[fromButton] = d
 
   def __init__(self):
-    self.data_ = dict()
+    self.adata_, self.bdata_ = {}, {}
+
 
 class NodeJoystick(object):
   def move_axis(self, axis, value, relative):
@@ -3714,6 +3783,12 @@ class NodeJoystick(object):
 
   def set_button_state(self, button, state):
     self.next_.set_button_state(button, state)
+
+  def get_button_state(self, button):
+    return self.next_.get_button_state(button)
+
+  def get_supported_buttons(self):
+    return self.next_.get_supported_buttons()
 
   def set_next(self, next):
     self.next_ = next
@@ -3740,6 +3815,12 @@ class RateLimititngJoystick:
   def set_button_state(self, button, state):
     if self.next_ is not None:
       self.next_.set_button_state(button, state)
+
+  def get_button_state(self, button):
+    return self.next_.get_button_state(button) if self.next_ is not None else False
+
+  def get_supported_buttons(self):
+    return self.next_.get_supported_buttons() if self.next_ is not None else ()
 
   def set_next(self, next):
     self.next_ = next
@@ -3779,6 +3860,16 @@ class RateSettingJoystick:
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ else ()
+
+  def set_button_state(self, button, state):
+    if self.next_ is not None:
+      self.next_.set_button_state(button, state)
+
+  def get_button_state(self, button):
+    return self.next_.get_button_state(button) if self.next_ is not None else False
+
+  def get_supported_buttons(self):
+    return self.next_.get_supported_buttons() if self.next_ is not None else ()
 
   def set_next(self, next):
     self.next_ = next
@@ -3833,6 +3924,15 @@ class MetricsJoystick:
 
   def get_limits(self, axis):
     return (-1.0, 1.0)
+
+  def set_button_state(self, button, state):
+    pass
+
+  def get_button_state(self, button):
+    return False
+
+  def get_supported_buttons(self):
+    return ()
 
   def check(self):
     for a in self.data_:
@@ -4149,7 +4249,14 @@ class RelativeHeadMovementJoystick:
     return self.next_.get_supported_axes() if self.next_ is not None else ()
 
   def set_button_state(self, button, state):
-    self.next_.set_button_state(button, state) if self.next_ is not None else None
+    if self.next_ is not None:
+      self.next_.set_button_state(button, state)
+
+  def get_button_state(self, button):
+    return self.next_.get_button_state(button) if self.next_ is not None else False
+
+  def get_supported_buttons(self):
+    return self.next_.get_supported_buttons() if self.next_ is not None else ()
 
   def set_next(self, next):
     self.next_ = next
@@ -6164,10 +6271,14 @@ def make_parser():
   def parseMappingOutput(cfg, state):
     outputs = state["settings"]["outputs"]
     j = MappingJoystick()
-    for fromAxis,to in get_nested(cfg, "mapping").items():
+    for fromAxis,to in get_nested(cfg, "axisMapping").items():
       toJoystick, toAxis = fn2sc(to["to"])
       factor = to.get("factor", 1.0)
-      j.add(name2code(fromAxis), toJoystick, toAxis, factor)
+      j.add_axis(name2code(fromAxis), toJoystick, toAxis, factor)
+    for fromButton,to in get_nested(cfg, "buttonMapping").items():
+      toJoystick, toButton = fn2sc(to["to"])
+      negate = to.get("negate", False)
+      j.add_button(name2code(fromButton), toJoystick, toButton, negate)
     return j
   outputParser.add("mapping", parseMappingOutput)
 
