@@ -774,10 +774,14 @@ class EventSource:
     events =[]
     event = None
     for d in self.devices_:
-      event = d.read_one()
-      while event is not None:
-        events.append(event)
+      try:
         event = d.read_one()
+        while event is not None:
+          events.append(event)
+          event = d.read_one()
+      except RuntimeError as e:
+        logger.error(e)
+        continue
     events.sort(key = lambda e : e.timestamp)
     for event in events:
       #logger.debug("{}: Sending event: {}".format(self, event))

@@ -125,31 +125,50 @@ def translate_evdev_event(evdevEvent, source):
 
 class EvdevDevice:
   def read_one(self):
-    assert(self.dev_)
-    evdevEvent = self.dev_.read_one()
-    while (evdevEvent is not None) and (evdevEvent.type == 0):
+    if not self.is_ready_():
+      return
+    try:
       evdevEvent = self.dev_.read_one()
-    event = translate_evdev_event(evdevEvent, self.sourceHash_)
-    if event is None:
-      if self.numEvents_ != 0:
-        #logger.debug("{}: {} got {} events".format(self, self.sourceName_, self.numEvents_))
-        self.numEvents_ = 0
-    else:
-      #logger.debug("{}: {} read event: {}".format(self, self.sourceName_, event))
-      self.numEvents_ += 1
-    return event
+      while (evdevEvent is not None) and (evdevEvent.type == 0):
+        evdevEvent = self.dev_.read_one()
+      event = translate_evdev_event(evdevEvent, self.sourceHash_)
+      if event is None:
+        if self.numEvents_ != 0:
+          #logger.debug("{}: {} got {} events".format(self, self.sourceName_, self.numEvents_))
+          self.numEvents_ = 0
+      else:
+        #logger.debug("{}: {} read event: {}".format(self, self.sourceName_, event))
+        self.numEvents_ += 1
+      return event
+    except IOError as e:
+      self.numEvents_ = 0
+      self.dev_ = None
+      logger.error("{}: device is not ready: {}".format(self.sourceName_, e))
 
   def swallow(self, s):
+    if not self.is_ready_():
+      return
     if s:
       self.dev_.grab()
     else:
       self.dev_.ungrab()
 
-  def __init__(self, dev, source):
-    self.dev_, self.sourceName_ = dev, source
+  def __init__(self, dev, source, recreateOp=lambda : None):
+    self.dev_, self.sourceName_, self.recreateOp_ = dev, source, recreateOp
     self.sourceHash_ = calc_hash(source)
     register_source(source)
     self.numEvents_ = 0
+
+  def is_ready_(self):
+    if self.dev_ is not None:
+      return True
+    dev = self.recreateOp_()
+    if dev is not None:
+      self.dev_ = dev
+      logger.info("{}: device is ready again".format(self.sourceName_))
+      return True
+    else:
+      return False
 
 
 def calc_device_hash(device):
@@ -159,23 +178,20 @@ def calc_device_hash(device):
     return hash(info)
 
 
-def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
-  """
-  Initializes input devices.
-  Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
-  """
+def make_evdev_devices(inputsData):
+  """{source : identifier (name, path, hash, phys)} -> {source : native evdev device}"""
   Info = collections.namedtuple("Info", "path name phys hash")
   DeviceInfo = collections.namedtuple("DeviceInfo", "device info")
-  nameRe = re.compile("([^:]*):(.*)")
+  identifierRe = re.compile("([^:]*):(.*)")
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   deviceInfos = [DeviceInfo(device, Info(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))) for device in devices]
-  r = {}
-  for source,name in names.items():
-    m = nameRe.match(name)
+
+  def find_device(identifier):
+    m = identifierRe.match(identifier)
     deviceInfo = None
     for di in deviceInfos:
       if m is None:
-        if name in di.info:
+        if identifier in di.info:
           deviceInfo = di
           break
       else:
@@ -183,11 +199,38 @@ def init_inputs(names, makeDevice=lambda d,s : EvdevDevice(d, s)):
         if d.get(m.group(1)) == m.group(2):
           deviceInfo = di
           break
-    if deviceInfo:
-      r[source] = makeDevice(deviceInfo.device, source)
-      logger.info("Found device {} ({})".format(source, name))
+    return  deviceInfo.device if deviceInfo else None
+
+  idType = type(inputsData)
+  if idType in (str, unicode):
+    return find_device(inputsData)
+  elif idType in (dict, collections.OrderedDict):
+    r = {}
+    for source,identifier in inputsData.items():
+      r[source] = find_device(identifier)
+    return r
+  else:
+    raise RuntimeError("make_evdev_devices(): bad inputsData type: {} (can be string or dict)".format(idType))
+
+
+def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp)):
+  """
+  Initializes input devices.
+  Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
+  """
+  def make_recreate(identifier):
+    def op():
+      return make_evdev_devices(identifier)
+    return op
+  r = {}
+  natives = make_evdev_devices(inputsData)
+  for source,native in natives.items():
+    identifier = inputsData[source]
+    if native:
+      r[source] = makeDevice(native, source, recreateOp=make_recreate(inputsData[source]))
+      logger.info("Found device {} ({})".format(source, identifier))
     else:
-      logger.warning("Device {} ({}) not found".format(source, name))
+      logger.warning("Device {} ({}) not found".format(source, identifier))
   return r
 
 
@@ -248,8 +291,8 @@ def run():
   def init_source(settings):
       config = settings["config"]
       compressEvents = config.get("compressEvents", False)
-      def makeDevice(d,s):
-        dev = EvdevDevice(d, s)
+      def makeDevice(native, source, recreateOp):
+        dev = EvdevDevice(native, source, recreateOp)
         if compressEvents:
           dev = EventCompressorDevice(dev)
         return dev
