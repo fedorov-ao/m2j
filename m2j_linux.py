@@ -125,10 +125,16 @@ def translate_evdev_event(evdevEvent, source):
 
 class EvdevDevice:
   def read_one(self):
-    assert(self.dev_)
-    evdevEvent = self.dev_.read_one()
-    while (evdevEvent is not None) and (evdevEvent.type == 0):
+    if self.dev_ is None:
+      return None
+    try:
       evdevEvent = self.dev_.read_one()
+      while (evdevEvent is not None) and (evdevEvent.type == 0):
+          evdevEvent = self.dev_.read_one()
+    except IOError as e:
+      self.numEvents_ = 0
+      self.dev_ = None
+      raise RuntimeError("{}: error while reading event: {}".format(self.sourceName_, e))
     event = translate_evdev_event(evdevEvent, self.sourceHash_)
     if event is None:
       if self.numEvents_ != 0:
@@ -140,6 +146,8 @@ class EvdevDevice:
     return event
 
   def swallow(self, s):
+    if self.dev_ is None:
+      return
     if s:
       self.dev_.grab()
     else:
