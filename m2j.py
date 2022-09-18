@@ -1305,18 +1305,30 @@ class CalibratingSink:
 
 class BindSink:
   class ChildrenInfo:
-    __slots__ = ("attrs", "level", "children",)
-    def __init__(self, attrs, level, children):
-      self.attrs, self.level, self.children = attrs, level, [cc for cc in children]
+    __slots__ = ("op", "level", "children",)
+    def __init__(self, op, level, children):
+      self.op, self.level, self.children = op, level, [cc for cc in children]
+
+  class AttrsTestOp:
+    __slots__ = ("attrs_", "cmp_",)
+    def __call__(self, event):
+      for attrName, attrValue in self.attrs_:
+        eventValue = getattr(event, attrName, None)
+        if eventValue is None:
+          #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
+          return False
+        if not self.cmp_(attrName, eventValue, attrValue):
+          #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
+          return False
+      return True
+    def __init__(self, attrs, cmp):
+      self.attrs_, self.cmp_ = attrs, cmp
 
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
     self.update_()
-
     if len(self.children_) == 0:
       return False
-
-    assert(self.cmp_)
     level, processed = self.children_[0].level, False
     for c in self.children_:
       if c.level > level:
@@ -1324,57 +1336,38 @@ class BindSink:
           return True
         else:
           level = c.level
-      for attrName, attrValue in c.attrs:
-        eventValue = getattr(event, attrName, None)
-        if eventValue is None:
-          #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
-          break
-        if not self.cmp_(attrName, eventValue, attrValue):
-          #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
-          break
-      else:
+      if c.op(event) == True:
         #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
-        if c.children is not None:
-          #logger.debug("Processing event {}".format(str(event)))
-          for cc in c.children:
-            #logger.debug("Sending event {} to {}".format(str(event), cc))
-            processed = cc(event) or processed
-
+        for cc in c.children:
+          #logger.debug("Sending event {} to {}".format(str(event), cc))
+          processed = cc(event) or processed
     return processed
 
-  def add(self, attrs, child, level = 0):
-    #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrs, level))
+  def add(self, attrsOrOp, child, level=0):
+    #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
-    c = next((x for x in self.children_ if level == x.level and attrs == x.attrs), None)
-    if c is not None:
-      c.children.append(child)
-    else:
-      self.children_.append(self.ChildrenInfo(attrs, level, [child]))
+    if type(attrsOrOp) in (list, tuple):
+      attrsOrOp = self.AttrsTestOp(attrsOrOp, self.cmp_)
+    self.children_.append(self.ChildrenInfo(attrsOrOp, level, [child]))
     self.dirty_ = True
     return child
 
-  def add_several(self, attrs, childSeq, level = 0):
-    for a in attrs:
-      c = next((x for x in self.children_ if level == x.level and a == x.attrs), None)
-      if c is not None:
-        assert(isinstance(c.children, list))
-        c.children += childSeq
-      else:
-        self.children_.append(ChildrenInfo(a, level, childSeq))
+  def add_several(self, attrsOrOps, childSeq, level=0):
+    for attrsOrOp in attrsOrOps:
+      if type(attrsOrOp) in (list, tuple):
+        attrsOrOp = self.AttrsTestOp(attrsOrOp, self.cmp_)
+      self.children_.append(self.ChildrenInfo(attrsOrOp, level, [c for c in childSeq]))
     self.dirty_ = True
     return childSeq
 
   def clear(self):
     del self.children_[:]
 
-  __slots__ = ("children_", "cmp_", "sortEDs_", "dirty_",)
-  def __init__(self, cmp = lambda a, b, c : b == c, children = None, sortEDs = True):
-    if children is None:
-      children = []
-    self.children_ = children
+  __slots__ = ("children_", "cmp_", "dirty_")
+  def __init__(self, cmp=lambda a, b, c : b == c):
+    self.children_ = []
     self.cmp_ = cmp
-    self.sortEDs_ = sortEDs
-    self.dirty_ = True
+    self.dirty_ = False
     logger.debug("{} created".format(self))
 
   def __del__(self):
@@ -1383,20 +1376,6 @@ class BindSink:
   def update_(self):
     if self.dirty_ == True:
       self.children_.sort(key=lambda c : c.level)
-      if self.sortEDs_ == True:
-        attrFreq = {}
-        for c in self.children_:
-          for attrName, attrValue in c.attrs:
-            attrFreq.setdefault(attrName, set())
-            if type(attrValue) not in (list, dict, collections.OrderedDict):
-              attrFreq[attrName].add(attrValue)
-        for k,v in attrFreq.items():
-          attrFreq[k] = len(v)
-        for c in self.children_:
-          if type(c.attrs) is not list:
-            c.attrs = [a for a in c.attrs]
-          c.attrs.sort(key=lambda a : attrFreq[a[0]], reverse=True)
-        #logger.debug("{}: level: {}, attrFreq: {}, sorted attrs: {}".format(self, c.level, attrFreq, c.attrs))
       self.dirty_ = False
 
 
@@ -6213,6 +6192,7 @@ def make_parser():
     return r
   edParser.add("init", parseInit)
 
+  #TODO Refactor to check any events by any properties, change configs
   def parseEvent(cfg, state):
     code, value = get_nested(cfg, "code"), get_nested(cfg, "value")
     r = [("type", EqPropTest(codes.EV_CUSTOM)), ("code", EqPropTest(code)), ("value", EqPropTest(value))]
