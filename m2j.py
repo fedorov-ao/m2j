@@ -4613,8 +4613,9 @@ class Info:
         class D:
           pass
         d = D()
-        d.output, d.label, d.state, d.style = output, buttonLabel, output.get_button_state(button), style
+        d.output, d.label, d.state, d.style = output, buttonLabel, None, style
         self.data_[button] = d
+      self.update()
     def update(self):
       for button,buttonData in self.data_.items():
         state = buttonData.output.get_button_state(button)
@@ -4622,7 +4623,10 @@ class Info:
           continue
         else:
           buttonData.state = state
-          buttonData.label["foreground"] = buttonData.style["pressed" if state == True else "released"]["fg"] 
+          styleName = "pressed" if state == True else "released"
+          style = buttonData.style[styleName]
+          for p in (("foreground", "fg"), ("background", "bg")):
+            self.set_prop_(buttonData.label, p[0], style, p[1])
     def __init__(self, window, r, c, **kwargs):
       frame = tk.Frame(window)
       frame.pack_propagate(True)
@@ -4638,7 +4642,11 @@ class Info:
       self.frame_ = buttonsFrame
       self.data_ = {}
       self.get_output_ = kwargs.get("getOutput", None)
-      self.style_ = kwargs.get("style", {"released" : {"fg" : "black"}, "pressed" : {"fg" : "red"}})
+      self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
+    def set_prop_(self, label, propName, style, stylePropName):
+      p = style.get(stylePropName, None) 
+      label[propName] = p 
+
   def add_area(self, type, r, c, **kwargs):
     kwargs["getOutput"] = self.get_output_
     area = None
