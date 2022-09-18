@@ -1303,26 +1303,34 @@ class CalibratingSink:
       logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
+class AttrsEventTestOp:
+  __slots__ = ("attrs_", "cmp_",)
+  def __call__(self, event):
+    for attrName, attrValue in self.attrs_:
+      eventValue = getattr(event, attrName, None)
+      if eventValue is None:
+        #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
+        return False
+      if not self.cmp_(attrName, eventValue, attrValue):
+        #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
+        return False
+    return True
+  def __init__(self, attrs, cmp):
+    self.attrs_, self.cmp_ = attrs, cmp
+
+
+def make_event_test_op(attrsOrOp, cmp):
+  if type(attrsOrOp) in (list, tuple):
+    return AttrsEventTestOp(attrsOrOp, cmp)
+  else:
+    return attrsOrOp
+
+
 class BindSink:
   class ChildrenInfo:
     __slots__ = ("op", "level", "children",)
     def __init__(self, op, level, children):
       self.op, self.level, self.children = op, level, [cc for cc in children]
-
-  class AttrsTestOp:
-    __slots__ = ("attrs_", "cmp_",)
-    def __call__(self, event):
-      for attrName, attrValue in self.attrs_:
-        eventValue = getattr(event, attrName, None)
-        if eventValue is None:
-          #logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
-          return False
-        if not self.cmp_(attrName, eventValue, attrValue):
-          #logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
-          return False
-      return True
-    def __init__(self, attrs, cmp):
-      self.attrs_, self.cmp_ = attrs, cmp
 
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
@@ -1346,16 +1354,14 @@ class BindSink:
   def add(self, attrsOrOp, child, level=0):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
-    if type(attrsOrOp) in (list, tuple):
-      attrsOrOp = self.AttrsTestOp(attrsOrOp, self.cmp_)
+    attrsOrOp = make_event_test_op(attrsOrOp, self.cmp_)
     self.children_.append(self.ChildrenInfo(attrsOrOp, level, [child]))
     self.dirty_ = True
     return child
 
   def add_several(self, attrsOrOps, childSeq, level=0):
     for attrsOrOp in attrsOrOps:
-      if type(attrsOrOp) in (list, tuple):
-        attrsOrOp = self.AttrsTestOp(attrsOrOp, self.cmp_)
+      attrsOrOp = make_event_test_op(attrsOrOp, self.cmp_)
       self.children_.append(self.ChildrenInfo(attrsOrOp, level, [c for c in childSeq]))
     self.dirty_ = True
     return childSeq
@@ -6198,6 +6204,35 @@ def make_parser():
     r = [("type", EqPropTest(codes.EV_CUSTOM)), ("code", EqPropTest(code)), ("value", EqPropTest(value))]
     return r
   edParser.add("event", parseEvent)
+
+  def parseSequence(cfg, state):
+    class SequenceTest:
+      def __call__(self, event):
+        if self.resetOn_(event) == True:
+          self.i_ = 0
+          return False
+        else:
+          t = self.inputs_[self.i_](event)
+          if t == True:
+            self.i_ += 1
+            if self.i_ == len(self.inputs_):
+              self.i_ = 0
+              return True
+          return False
+      __slots__ = ("inputs_", "resetOn_", "i_")
+      def __init__(self, inputs, resetOn=lambda event : False):
+        self.inputs_, self.resetOn_ = inputs, resetOn
+        self.i_ = 0
+    cmp = CmpWithModifiers()
+    inputs = get_arg(get_nested(cfg, "inputs"), state)
+    inputs = [make_event_test_op(edParser(inpt, state), cmp) for inpt in inputs]
+    resetOn = get_arg(get_nested_d(cfg, "resetOn", None), state)
+    if resetOn is not None:
+      resetOn = make_event_test_op(edParser(resetOn, state), cmp)
+    else:
+      resetOn = lambda event : False
+    return SequenceTest(inputs, resetOn)
+  edParser.add("sequence", parseSequence)
 
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
