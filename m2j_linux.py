@@ -165,7 +165,7 @@ class EvdevDevice:
     dev = self.recreateOp_()
     if dev is not None:
       self.dev_ = dev
-      logger.info("{}: device is ready again".format(self.sourceName_))
+      logger.info("{}: device is ready".format(self.sourceName_))
       return True
     else:
       return False
@@ -218,16 +218,27 @@ def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDe
   Initializes input devices.
   Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
   """
-  def make_recreate(identifier):
+  def make_recreate(identifier, **kwargs):
+    deviceUpdatePeriod = kwargs.get("deviceUpdatePeriod", 0)
+    ts = [None]
     def op():
+      t = time.time()
+      if ts[0] is None:
+        ts[0] = t
+      else:
+        dt = t - ts[0]
+        if dt < deviceUpdatePeriod:
+          return None
+        else:
+          ts[0] = t
       return make_evdev_devices(identifier)
     return op
   r = {}
   natives = make_evdev_devices(inputsData)
   for source,native in natives.items():
     identifier = inputsData[source]
+    r[source] = makeDevice(native, source, recreateOp=make_recreate(inputsData[source], deviceUpdatePeriod=2))
     if native:
-      r[source] = makeDevice(native, source, recreateOp=make_recreate(inputsData[source]))
       logger.info("Found device {} ({})".format(source, identifier))
     else:
       logger.warning("Device {} ({}) not found".format(source, identifier))
