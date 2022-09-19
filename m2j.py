@@ -1331,6 +1331,8 @@ class BindSink:
     __slots__ = ("op", "level", "children",)
     def __init__(self, op, level, children):
       self.op, self.level, self.children = op, level, [cc for cc in children]
+    def __str__(self):
+      return "<op:{}; level:{}; children:{}>".format(self.op, self.level, self.children)
 
   def __call__(self, event):
     #logger.debug("{}: processing {})".format(self, event))
@@ -1344,35 +1346,42 @@ class BindSink:
           return True
         else:
           level = c.level
-      if c.op(event) == True:
+      if c.op is None or c.op(event) == True:
         #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
         for cc in c.children:
           #logger.debug("Sending event {} to {}".format(str(event), cc))
           processed = cc(event) or processed
     return processed
 
-  def add(self, attrsOrOp, child, level=0):
+  def add(self, op, child, level=0):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
-    attrsOrOp = make_event_test_op(attrsOrOp, self.cmp_)
-    self.children_.append(self.ChildrenInfo(attrsOrOp, level, [child]))
+    for ci in self.children_:
+      if op == ci.op:
+        ci.children.append(child)
+        break
+    else:
+      self.children_.append(self.ChildrenInfo(op, level, [child]))
     self.dirty_ = True
     return child
 
-  def add_several(self, attrsOrOps, childSeq, level=0):
-    for attrsOrOp in attrsOrOps:
-      attrsOrOp = make_event_test_op(attrsOrOp, self.cmp_)
-      self.children_.append(self.ChildrenInfo(attrsOrOp, level, [c for c in childSeq]))
+  def add_several(self, ops, children, level=0):
+    for op in ops:
+      for ci in self.children_:
+        if op == ci.op:
+          ci.children += [c for c in children]
+          break
+      else:
+        self.children_.append(self.ChildrenInfo(op, level, [c for c in children]))
     self.dirty_ = True
-    return childSeq
+    return children
 
   def clear(self):
     del self.children_[:]
 
-  __slots__ = ("children_", "cmp_", "dirty_")
-  def __init__(self, cmp=lambda a, b, c : b == c):
+  __slots__ = ("children_", "dirty_")
+  def __init__(self):
     self.children_ = []
-    self.cmp_ = cmp
     self.dirty_ = False
     logger.debug("{} created".format(self))
 
@@ -4731,8 +4740,8 @@ def init_main_sink(settings, make_next):
     sens = {}
   scaleSink = modifierSink.set_next(ScaleSink2(sens))
 
-  mainSink = scaleSink.set_next(BindSink(cmpOp))
-  stateSink = mainSink.add((), StateSink(), 1)
+  mainSink = scaleSink.set_next(BindSink())
+  stateSink = mainSink.add(None, StateSink(), 1)
 
   class Toggler:
     def make_toggle(self):
@@ -4774,13 +4783,13 @@ def init_main_sink(settings, make_next):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
   axisAccumulator = AxisAccumulator({"mouse.REL_X" : 1.0, "mouse.REL_Y" : 1.0}, state=False)
-  mainSink.add((), lambda e : axisAccumulator.on_event(e))
+  mainSink.add(None, lambda e : axisAccumulator.on_event(e))
   info = init_info(settings=settings, axisAccumulator=axisAccumulator)
 
   binds = config.get("binds", None)
   if binds is not None:
     for bind in binds:
-      inpt = edParser(get_nested(bind, "input"), state)
+      inpt = make_event_test_op(edParser(get_nested(bind, "input"), state), cmpOp)
       output = get_nested(bind, "output") 
       action = output["action"]
       if action == "changeSens":
@@ -4849,9 +4858,9 @@ def init_main_sink(settings, make_next):
   def print_disabled(event):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
-  grabSink = filterSink.set_next(BindSink(cmpOp))
-  grabSink.add(ED.init(1), Call(SwallowDevices(grabbed, True), print_enabled), 0)
-  grabSink.add(ED.init(0), Call(SwallowDevices(grabbed, False), print_disabled), 0)
+  grabSink = filterSink.set_next(BindSink())
+  grabSink.add(make_event_test_op(ED.init(1), cmpOp), Call(SwallowDevices(grabbed, True), print_enabled), 0)
+  grabSink.add(make_event_test_op(ED.init(0), cmpOp), Call(SwallowDevices(grabbed, False), print_disabled), 0)
 
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
@@ -4859,7 +4868,7 @@ def init_main_sink(settings, make_next):
     for axisId, axis in oAxes.items():
       axis.remove_all_listeners()
 
-  grabSink.add(ED.any(), make_next(settings), 1)
+  grabSink.add(None, make_next(settings), 1)
   settings.setdefault("initState", config.get("initState", False))
   stateSink.set_state(settings["initState"])
   toggler.s_ = stateSink.get_state()
@@ -5657,7 +5666,7 @@ def make_parser():
       if next is not None:
         #Next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
-        sink.add(ED.any(), next, 0)
+        sink.add(None, next, 0)
     try:
       #TODO Refactor
       if len(cfg) == 0:
@@ -6300,9 +6309,11 @@ def make_parser():
           r = max(r, checkOutput(o))
       return r
     binds.sort(key=bindsKey)
-    bindingSink = BindSink(CmpWithModifiers())
+    bindingSink = BindSink()
+    cmpOp = CmpWithModifiers()
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
+        i = make_event_test_op(i, cmpOp)
         bindingSink.add(i, o, bind.get("level", 0))
     return bindingSink
 
