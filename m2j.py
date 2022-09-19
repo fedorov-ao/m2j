@@ -6207,10 +6207,16 @@ def make_parser():
     return r
   edParser.add("init", parseInit)
 
-  #TODO Refactor to check any events by any properties, change configs
   def parseEvent(cfg, state):
-    code, value = get_nested(cfg, "code"), get_nested(cfg, "value")
-    r = [("type", EqPropTest(codes.EV_CUSTOM)), ("code", EqPropTest(code)), ("value", EqPropTest(value))]
+    propValue = get_nested_d(cfg, "etype", None)
+    propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
+    r = [("type", EqPropTest(propValue))]
+    for p in (("source", calc_hash), ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x), ("value", lambda x : x)):
+      propName, propOp = p[0], p[1]
+      propValue = get_nested_d(cfg, propName, None)
+      if propValue is not None:
+        propValue = propOp(propValue)
+        r.append((propName, EqPropTest(propValue)))
     return r
   edParser.add("event", parseEvent)
 
