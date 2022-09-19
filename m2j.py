@@ -6217,9 +6217,10 @@ def make_parser():
   def parseSequence(cfg, state):
     class SequenceTest:
       def __call__(self, event):
-        if self.resetOn_(event) == True:
-          self.i_ = 0
-          return False
+        for op in self.resetOn_:
+          if op(event) == True:
+            self.i_ = 0
+            return False
         else:
           t = self.inputs_[self.i_](event)
           if t == True:
@@ -6229,17 +6230,14 @@ def make_parser():
               return True
           return False
       __slots__ = ("inputs_", "resetOn_", "i_")
-      def __init__(self, inputs, resetOn=lambda event : False):
+      def __init__(self, inputs, resetOn=[lambda event : False]):
         self.inputs_, self.resetOn_ = inputs, resetOn
         self.i_ = 0
-    cmp = CmpWithModifiers()
+    cmpOp = CmpWithModifiers()
     inputs = get_arg(get_nested(cfg, "inputs"), state)
-    inputs = [make_event_test_op(edParser(inpt, state), cmp) for inpt in inputs]
-    resetOn = get_arg(get_nested_d(cfg, "resetOn", None), state)
-    if resetOn is not None:
-      resetOn = make_event_test_op(edParser(resetOn, state), cmp)
-    else:
-      resetOn = lambda event : False
+    inputs = [make_event_test_op(edParser(inpt, state), cmpOp) for inpt in inputs]
+    resetOn = get_arg(get_nested_d(cfg, "resetOn", []), state)
+    resetOn = [make_event_test_op(edParser(rst, state), cmpOp) for rst in resetOn]
     return SequenceTest(inputs, resetOn)
   edParser.add("sequence", parseSequence)
 
