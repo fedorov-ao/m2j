@@ -5628,11 +5628,14 @@ def make_parser():
       else:
         self.next_(event)
 
+    def get_component(self, name):
+      return self.components_[name]
+
     def set_next(self, next):
         self.next_ = next
 
-    def __init__(self, next=None):
-        self.next_ = next
+    def __init__(self, next=None, components=None):
+        self.next_, self.components_ = next, components if components is not None else {}
 
   @parseArgObjDecorator
   @parseBasesDecorator
@@ -5675,7 +5678,7 @@ def make_parser():
         return noop
       try:
         #Init headsink
-        headSink = HeadSink()
+        headSink = HeadSink(components=state["components"])
         state.setdefault("sinks", [])
         state["sinks"].append(headSink)
         #Parse components
@@ -5777,14 +5780,6 @@ def make_parser():
     """Helper."""
     return -(1+get_nested_d(cfg, "depth", 0))
 
-  #TODO Refactor. Store components dict in corresponding HeadSink and get components from there. Remove componentsStack from state, leave sinks stack only.
-  def get_component(name, cfg, state):
-    """Helper. Retrieves component from components stack by depth.
-       depth: 0 - current component sink, 1 - its parent, etc
-    """
-    depth = get_depth(cfg)
-    return state["componentsStack"][depth][name]
-
   def get_sink(cfg, state):
     """Helper. Retrieves sink from sinks stack by depth.
        depth: 0 - current component sink, 1 - its parent, etc
@@ -5793,6 +5788,12 @@ def make_parser():
     if sinks is None or len(sinks) == 0:
       raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
     return sinks[get_depth(cfg)]
+
+  def get_component(name, cfg, state):
+    """Helper. Retrieves component by depth.
+       depth: 0 - current component sink, 1 - its parent, etc
+    """
+    return get_sink(cfg, state).get_component(name)
 
   #TODO Rename "type" to "action" and update configs
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
