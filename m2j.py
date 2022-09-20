@@ -5628,8 +5628,11 @@ def make_parser():
       else:
         self.next_(event)
 
-    def get_component(self, name):
-      return self.components_[name]
+    def get_component(self, name, dfault=None):
+      return self.components_.get(name, dfault)
+
+    def set_component(self, name, component):
+      self.components_[name] = component
 
     def set_next(self, next):
         self.next_ = next
@@ -5642,22 +5645,27 @@ def make_parser():
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
-    push_in_state("componentsStack", {}, state)
-    state["components"] = state["componentsStack"][-1]
     push_args(get_nested_d(cfg, "args", {}), state)
     push_in_state("curvesStack", {}, state)
     state["curves"] = state["curvesStack"][-1]
     push_objects(get_nested_d(cfg, "objects", {}), state)
+    #Init headsink
+    headSink = HeadSink()
+    state.setdefault("sinks", [])
+    state["sinks"].append(headSink)
     #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
+    #logger.debug("parsing sink {}".format(cfg))
     def parse_component(name):
+      #logger.debug("parsing component '{}'".format(name))
       if name in cfg:
         t = parser(name, cfg, state)
         if t is not None:
-          state["components"][name] = t
+          headSink.set_component(name, t)
     sink = [None]
     def link_component(name, op=None):
-      t = state["components"].get(name, None)
+      #logger.debug("linking component '{}'".format(name))
+      t = headSink.get_component(name, None)
       if t is not None:
         if op is not None:
           op(sink[0], t)
@@ -5677,10 +5685,6 @@ def make_parser():
           return False
         return noop
       try:
-        #Init headsink
-        headSink = HeadSink(components=state["components"])
-        state.setdefault("sinks", [])
-        state["sinks"].append(headSink)
         #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
@@ -5701,8 +5705,6 @@ def make_parser():
       finally:
         state["sinks"].pop()
     finally:
-      pop_in_state("componentsStack", state)
-      state["components"] = state["componentsStack"][-1] if len(state["componentsStack"]) > 0 else None
       pop_args(state)
       pop_objects(state)
       pop_in_state("curvesStack", state)
@@ -5751,7 +5753,7 @@ def make_parser():
         logger.warning("Cannot set mode: {}".format(initialMode))
     msmm = ModeSinkModeManager(modeSink)
     msmm.save()
-    state["components"]["msmm"] = msmm
+    get_sink(cfg, state).set_component("msmm", msmm)
     return modeSink
   scParser.add("modes", parseMode)
 
@@ -5816,12 +5818,10 @@ def make_parser():
 
   def parseSetState(cfg, state):
     s = get_nested(cfg, "state")
-    #logger.debug("Components: {}".format(state["components"]))
     return SetState(get_component("state", cfg, state), s)
   actionParser.add("setState", parseSetState)
 
   def parseToggleState(cfg, state):
-    #logger.debug("Components: {}".format(state["components"]))
     return ToggleState(get_component("state", cfg, state))
   actionParser.add("toggleState", parseToggleState)
 
