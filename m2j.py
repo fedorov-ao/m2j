@@ -5773,37 +5773,57 @@ def make_parser():
   scParser.add("next", parseNext)
 
   #Actions
+  def get_depth(cfg):
+    """Helper."""
+    return -(1+get_nested_d(cfg, "depth", 0))
+
+  #TODO Refactor. Store components dict in corresponding HeadSink and get components from there. Remove componentsStack from state, leave sinks stack only.
+  def get_component(name, cfg, state):
+    """Helper. Retrieves component from components stack by depth.
+       depth: 0 - current component sink, 1 - its parent, etc
+    """
+    depth = get_depth(cfg)
+    return state["componentsStack"][depth][name]
+
+  def get_sink(cfg, state):
+    """Helper. Retrieves sink from sinks stack by depth.
+       depth: 0 - current component sink, 1 - its parent, etc
+    """
+    sinks = state.get("sinks")
+    if sinks is None or len(sinks) == 0:
+      raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
+    return sinks[get_depth(cfg)]
+
   #TODO Rename "type" to "action" and update configs
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
   parser.add("action", actionParser)
 
-  actionParser.add("saveMode", lambda cfg, state : state["components"]["msmm"].make_save())
-  actionParser.add("restoreMode", lambda cfg, state : state["components"]["msmm"].make_restore())
-  actionParser.add("addMode", lambda cfg, state : state["components"]["msmm"].make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
-  actionParser.add("removeMode", lambda cfg, state : state["components"]["msmm"].make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
-  actionParser.add("swapMode", lambda cfg, state : state["components"]["msmm"].make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current")))
-  actionParser.add("cycleSwapMode", lambda cfg, state : state["components"]["msmm"].make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current")))
-  actionParser.add("clearMode", lambda cfg, state : state["components"]["msmm"].make_clear())
-  actionParser.add("setMode", lambda cfg, state : state["components"]["msmm"].make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
-  actionParser.add("cycleMode", lambda cfg, state : state["components"]["msmm"].make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
+  actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
+  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore())
+  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
+  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
+  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current")))
+  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current")))
+  actionParser.add("clearMode", lambda cfg, state : get_component("msmm", cfg, state).make_clear())
+  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
+  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
 
   def parseSetState(cfg, state):
     s = get_nested(cfg, "state")
     #logger.debug("Components: {}".format(state["components"]))
-    return SetState(state["components"]["state"], s)
+    return SetState(get_component("state", cfg, state), s)
   actionParser.add("setState", parseSetState)
 
   def parseToggleState(cfg, state):
     #logger.debug("Components: {}".format(state["components"]))
-    return ToggleState(state["components"]["state"])
+    return ToggleState(get_component("state", cfg, state))
   actionParser.add("toggleState", parseToggleState)
 
   def parseSetSens(cfg, state):
     try:
       htc = fn2htc(get_nested(cfg, "axis"))
       value = get_nested(cfg, "value")
-      depth = -(1+get_nested_d(cfg, "depth", 0))
-      scaleSink = state["componentsStack"][depth]["sens"]
+      scaleSink = get_component("sens", cfg, state)
       def op(e):
         scaleSink.set_sens(htc, value)
         name = scaleSink.get_name()
@@ -5818,8 +5838,7 @@ def make_parser():
     try:
       htc = fn2htc(get_nested(cfg, "axis"))
       delta = get_nested(cfg, "delta")
-      depth = -(1+get_nested_d(cfg, "depth", 0))
-      scaleSink = state["componentsStack"][depth]["sens"]
+      scaleSink = get_component("sens", cfg, state)
       def op(e):
         sens = scaleSink.get_sens(htc)
         sens += delta
@@ -6059,15 +6078,13 @@ def make_parser():
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
-    sinks, code, value = state.get("sinks"), int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
-    if sinks is None or len(sinks) == 0:
-      raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
+    code, value = int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     sink = None
     if "object" in cfg:
       sink = get_object(get_nested(cfg, "object"), state)
     else:
       #depth == 0 - current component sink, depth == 1 - its parent
-      sink = sinks[-(1+get_nested_d(cfg, "depth", 0))]
+      sink = get_sink(cfg, state)
     if sink is None:
       raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
     def callback(e):
