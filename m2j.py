@@ -5748,7 +5748,6 @@ def make_parser():
     headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
-    msmm.save()
     headSink.set_component("msmm", msmm)
     try:
       for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
@@ -5759,6 +5758,8 @@ def make_parser():
       if initialMode is not None:
         if not modeSink.set_mode(initialMode):
           logger.warning("Cannot set mode: {}".format(initialMode))
+      #Saving initial mode in msmm afer modeSink was initialized
+      msmm.save()
       return modeSink
     except:
       headSink.remove_component("msmm")
