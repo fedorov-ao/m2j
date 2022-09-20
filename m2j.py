@@ -5781,16 +5781,21 @@ def make_parser():
     return -(1+get_nested_d(cfg, "depth", 0))
 
   def get_sink(cfg, state):
-    """Helper. Retrieves sink from sinks stack by depth.
+    """Helper. Retrieves sink from sinks stack by depth or by object name.
        depth: 0 - current component sink, 1 - its parent, etc
     """
-    sinks = state.get("sinks")
-    if sinks is None or len(sinks) == 0:
-      raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
-    return sinks[get_depth(cfg)]
+    sink = None
+    if "object" in cfg:
+      sink = get_object(get_nested(cfg, "object"), state)
+    else:
+      sinks = state.get("sinks")
+      if sinks is None or len(sinks) == 0:
+        raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
+      sink = sinks[get_depth(cfg)]
+    return sink
 
   def get_component(name, cfg, state):
-    """Helper. Retrieves component by depth.
+    """Helper. Retrieves component by depth or by object name.
        depth: 0 - current component sink, 1 - its parent, etc
     """
     return get_sink(cfg, state).get_component(name)
@@ -6080,14 +6085,7 @@ def make_parser():
 
   def parseEmitCustomEvent(cfg, state):
     code, value = int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
-    sink = None
-    if "object" in cfg:
-      sink = get_object(get_nested(cfg, "object"), state)
-    else:
-      #depth == 0 - current component sink, depth == 1 - its parent
-      sink = get_sink(cfg, state)
-    if sink is None:
-      raise RuntimeError("Sink is None, encountered while parsing '{}'".format(cfg))
+    sink = get_sink(cfg, state)
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
       sink(event)
