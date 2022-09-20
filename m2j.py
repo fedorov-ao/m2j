@@ -5634,6 +5634,9 @@ def make_parser():
     def set_component(self, name, component):
       self.components_[name] = component
 
+    def remove_component(self, name):
+      del self.components_[name]
+
     def set_next(self, next):
         self.next_ = next
 
@@ -5742,19 +5745,24 @@ def make_parser():
   @parseBasesDecorator
   def parseMode(cfg, state):
     name=get_nested_d(cfg, "name", "")
+    headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
-    for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
-      logger.debug("{}: parsing mode:".format(name, modeName))
-      child = state["parser"]("sink", modeCfg, state)
-      modeSink.add(modeName, child)
-    initialMode = get_arg(get_nested_d(cfg, "initialMode", None), state)
-    if initialMode is not None:
-      if not modeSink.set_mode(initialMode):
-        logger.warning("Cannot set mode: {}".format(initialMode))
     msmm = ModeSinkModeManager(modeSink)
     msmm.save()
-    get_sink(cfg, state).set_component("msmm", msmm)
-    return modeSink
+    headSink.set_component("msmm", msmm)
+    try:
+      for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
+        logger.debug("{}: parsing mode:".format(name, modeName))
+        child = state["parser"]("sink", modeCfg, state)
+        modeSink.add(modeName, child)
+      initialMode = get_arg(get_nested_d(cfg, "initialMode", None), state)
+      if initialMode is not None:
+        if not modeSink.set_mode(initialMode):
+          logger.warning("Cannot set mode: {}".format(initialMode))
+      return modeSink
+    except:
+      headSink.remove_component("msmm")
+      raise
   scParser.add("modes", parseMode)
 
   def parseState(cfg, state):
@@ -5800,7 +5808,11 @@ def make_parser():
     """Helper. Retrieves component by depth or by object name.
        depth: 0 - current component sink, 1 - its parent, etc
     """
-    return get_sink(cfg, state).get_component(name)
+    sink = get_sink(cfg, state)
+    component = sink.get_component(name)
+    if component is None:
+      raise RuntimeError("No component '{}', available components are: {}".format(name, sink.components_))
+    return component
 
   #TODO Rename "type" to "action" and update configs
   actionParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
