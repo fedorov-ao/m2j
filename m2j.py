@@ -5797,7 +5797,7 @@ def make_parser():
     """
     sink = None
     if "object" in cfg:
-      sink = get_arg(get_nested(cfg, "object"), state)
+      sink = get_object(get_arg(get_nested(cfg, "object"), state), state)
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
