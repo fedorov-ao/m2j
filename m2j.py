@@ -5787,9 +5787,9 @@ def make_parser():
   scParser.add("next", parseNext)
 
   #Actions
-  def get_depth(cfg):
+  def get_depth(cfg, state):
     """Helper."""
-    return -(1+get_nested_d(cfg, "depth", 0))
+    return -(1+get_arg(get_nested_d(cfg, "depth", 0), state))
 
   def get_sink(cfg, state):
     """Helper. Retrieves sink from sinks stack by depth or by object name.
@@ -5797,12 +5797,12 @@ def make_parser():
     """
     sink = None
     if "object" in cfg:
-      sink = get_object(get_nested(cfg, "object"), state)
+      sink = get_arg(get_nested(cfg, "object"), state)
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
         raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
-      sink = sinks[get_depth(cfg)]
+      sink = sinks[get_depth(cfg, state)]
     return sink
 
   def get_component(name, cfg, state):
