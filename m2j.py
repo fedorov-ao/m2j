@@ -5853,8 +5853,11 @@ def make_parser():
        depth: 0 - current component sink, 1 - its parent, etc
     """
     sink = None
-    if "object" in cfg:
-      sink = get_object(get_arg(get_nested(cfg, "object"), state), state)
+    sinkName = get_nested_d(cfg, "sink", None)
+    if sinkName is not None:
+      sink = get_argobj(sinkName, state)
+      if sink is None:
+        raise RuntimeError("Cannot get target sink by '{}'".format(objectName))
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
@@ -6149,7 +6152,10 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseSetObjectState(cfg, state):
-    obj = get_object(get_nested(cfg, "object"), state)
+    objectName = get_nested(cfg, "object")
+    obj = get_argobj(objectName, state)
+    if obj is None:
+      raise RuntimeError("Cannot get object by '{}'".format(objectName))
     return SetState(obj, get_nested(cfg, "state"))
   actionParser.add("setObjectState", parseSetObjectState)
 
