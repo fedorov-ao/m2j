@@ -5749,7 +5749,7 @@ def make_parser():
   def parseObjects(cfg, state):
     class ObjectsProxy:
       def get(self, name):
-        self.sink_.get_object(name)
+        return self.sink_.get_object(name)
       def __init__(self, sink):
         self.sink_ = sink
     objectsCfg = cfg.get("objects", None)
