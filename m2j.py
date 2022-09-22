@@ -263,18 +263,18 @@ def pop_args(state):
 def get_object(name, state):
   if state is None:
     raise RuntimeError("Need state to get object {}".format(name))
-  objects = state["objects"]
-  obj = get_nested_from_stack_d(objects, name, None)
+  sink = state["sinks"][-1]
+  obj = sink.get_object(name)
   if obj is None:
-    allObjects = [str2(objs.keys()) for objs in objects]
+    allObjects = []
+    while sink is not None:
+      allObjects += [str2(sink.objects_.keys())]
+      sink = sink.get_parent()
     raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
   return obj
 
 
-def push_objects(objectsCfg, state):
-  objects = collections.OrderedDict()
-  #Pushing objects dictionary in object stack in state to make "sibling" objects accessible
-  push_in_state("objects", objects, state)
+def init_objects(objects, objectsCfg, state):
   parser = state["parser"]
   for k,v in objectsCfg.items():
     #logger.debug("Constructing object: {}".format(k))
@@ -287,8 +287,21 @@ def push_objects(objectsCfg, state):
       objects[k] = parser("sink", v, state)
 
 
-def pop_objects(state):
-  pop_in_state("objects", state)
+def init_objects_in_sink(sink, objectsCfg, state):
+  parser = state["parser"]
+  for k,v in objectsCfg.items():
+    o = None
+    #logger.debug("Constructing object: {}".format(k))
+    for n in ("curve", "op"):
+      if n in v:
+        o = parser(n, v, state)
+        #break is needed to avoid executing the "else" block
+        break
+    else:
+      o = parser("sink", v, state)
+    if o is None:
+      raise RuntimeError("Could not create object from: {}".format(objectsCfg))
+    sink.set_object(k, o)
 
 
 def calc_hash(s):
@@ -4426,9 +4439,7 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
-        #push_objects() needs "objects" list to be in state, even if it is empty
-        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
-        push_objects(get_nested_d(config, "objects", {}), state)
+        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"]}
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4961,9 +4972,7 @@ def init_layout_config(settings):
   else:
     try:
       parser = settings["parser"]
-      #push_objects() needs "objects" list to be in state, even if it is empty
-      state = {"settings" : settings, "parser" : parser, "objects" : []}
-      push_objects(get_nested_d(config, "objects", {}), state)
+      state = {"settings" : settings, "parser" : parser}
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -5063,7 +5072,6 @@ class IntrusiveSelectParser:
 
 class ArgObjSelectParser:
   def __call__(self, key, cfg, state):
-    #logger.debug("ArgObjSelectParser.(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #logger.debug("ArgObjSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
     r = get_argobj(key, state)
     return self.p_(key, cfg, state) if r is None else r
@@ -5637,11 +5645,32 @@ def make_parser():
     def remove_component(self, name):
       del self.components_[name]
 
+    def get_object(self, k):
+      o = get_nested_d(self.objects_, k, None)
+      if o is None:
+        sink = self.parent_
+        while sink is not None:
+          o = sink.get_object(k)
+          if o is None:
+            sink = sink.get_parent()
+          else:
+            break
+      return o
+
+    def set_object(self, name, obj):
+      self.objects_[name] = obj
+
+    def set_objects(self, objects):
+      self.objects_ = objects
+
     def set_next(self, next):
         self.next_ = next
 
-    def __init__(self, next=None, components=None):
-        self.next_, self.components_ = next, components if components is not None else {}
+    def get_parent(self):
+      return self.parent_
+
+    def __init__(self, next=None, components=None, parent=None, objects=None):
+        self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
 
   @parseArgObjDecorator
   @parseBasesDecorator
@@ -5651,12 +5680,12 @@ def make_parser():
     push_args(get_nested_d(cfg, "args", {}), state)
     push_in_state("curvesStack", {}, state)
     state["curves"] = state["curvesStack"][-1]
-    push_objects(get_nested_d(cfg, "objects", {}), state)
     #Init headsink
-    headSink = HeadSink()
     state.setdefault("sinks", [])
+    sinks = state["sinks"]
+    parent = sinks[-1] if len(sinks) > 0 else None
+    headSink = HeadSink(parent=parent)
     state["sinks"].append(headSink)
-    #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     #logger.debug("parsing sink {}".format(cfg))
     def parse_component(name):
@@ -5691,7 +5720,7 @@ def make_parser():
         #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parseOrder = ("next", "modes", "state", "sens", "modifiers", "binds")
+        parseOrder = ("objects", "next", "modes", "state", "sens", "modifiers", "binds")
         for name in parseOrder:
           parse_component(name)
         #Link components
@@ -5709,7 +5738,6 @@ def make_parser():
         state["sinks"].pop()
     finally:
       pop_args(state)
-      pop_objects(state)
       pop_in_state("curvesStack", state)
       state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
   sinkParser.add("sink", parseSink)
@@ -5717,6 +5745,22 @@ def make_parser():
   #Sink components
   scParser = SelectParser()
   parser.add("sc", scParser)
+
+  def parseObjects(cfg, state):
+    class ObjectsProxy:
+      def get(self, name):
+        self.sink_.get_object(name)
+      def __init__(self, sink):
+        self.sink_ = sink
+    objectsCfg = cfg.get("objects", None)
+    #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
+    if objectsCfg is not None:
+      headSink=state["sinks"][-1]
+      init_objects_in_sink(headSink, objectsCfg, state)
+      return ObjectsProxy(headSink)
+    else:
+      return None
+  scParser.add("objects", parseObjects)
 
   def parseModifiers(cfg, state):
     modifierDescs = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
@@ -6006,9 +6050,9 @@ def make_parser():
         else:
           curvesToReset += curves
     elif "objects" in cfg:
-      objects = state["objects"]
+      sink = state["sinks"][-1]
       for objectName in get_nested(cfg, "objects"):
-        curve = get_nested_from_stack_d(objects, objectName, None)
+        curve = sink.get_object(objectName)
         if curve is None:
           raise RuntimeError("Curve {} not found".format(str2(objectName)))
         curvesToReset.append(curve)
