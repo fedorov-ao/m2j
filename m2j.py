@@ -5841,7 +5841,7 @@ def make_parser():
     """
     sink = None
     if "object" in cfg:
-      sink = get_arg(get_nested(cfg, "object"), state)
+      sink = get_object(get_arg(get_nested(cfg, "object"), state), state)
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
@@ -6145,6 +6145,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
+      if type(sink) is unicode: print sink
       sink(event)
       return True
     return callback
