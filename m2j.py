@@ -260,17 +260,24 @@ def pop_args(state):
   pop_in_state("args", state)
 
 
-def get_object(name, state):
+def get_object(name, state, nameSep=None, memberSep=None):
   if state is None:
     raise RuntimeError("Need state to get object {}".format(name))
   sink = state["sinks"][-1]
-  obj = sink.get_object(name)
+  nameSep, memberSep = ":" if nameSep is None else nameSep, "." if memberSep is None else memberSep
+  objectName = name.split(nameSep)
+  obj = sink.get_object(objectName[0])
   if obj is None:
     allObjects = []
     while sink is not None:
       allObjects += [str2(sink.objects_.keys())]
       sink = sink.get_parent()
     raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
+  if len(objectName) > 1:
+    for s in objectName[1].split(memberSep):
+      obj = obj.get(s)
+      if obj is None:
+        raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
   return obj
 
 
@@ -5644,6 +5651,12 @@ def make_parser():
 
     def remove_component(self, name):
       del self.components_[name]
+
+    def get(self, name, dfault=None):
+      return self.get_component(name, dfault)
+
+    def set(self, name, component):
+      self.set_component(name, component)
 
     def get_object(self, k):
       o = get_nested_d(self.objects_, k, None)
