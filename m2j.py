@@ -1347,6 +1347,10 @@ def make_event_test_op(attrsOrOp, cmp):
 
 
 class BindSink:
+  class ChildInfo:
+    __slots__ = ("child", "name",)
+    def __init__(self, child, name=None):
+      self.child, self.name = child, name
   class ChildrenInfo:
     __slots__ = ("op", "level", "children",)
     def __init__(self, op, level, children):
@@ -1368,36 +1372,41 @@ class BindSink:
           level = c.level
       if c.op is None or c.op(event) == True:
         #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
-        for cc in c.children:
+        for ci in c.children:
           #logger.debug("Sending event {} to {}".format(str(event), cc))
-          processed = cc(event) or processed
+          processed = ci.child(event) or processed
     return processed
 
-  def add(self, op, child, level=0):
+  def add(self, op, child, level=0, name=None):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
     for ci in self.children_:
       if op == ci.op:
-        ci.children.append(child)
+        ci.children.append(self.ChildInfo(child, name))
         break
     else:
-      self.children_.append(self.ChildrenInfo(op, level, [child]))
+      self.children_.append(self.ChildrenInfo(op, level, [self.ChildInfo(child, name)]))
     self.dirty_ = True
     return child
 
-  def add_several(self, ops, children, level=0):
-    for op in ops:
-      for ci in self.children_:
-        if op == ci.op:
-          ci.children += [c for c in children]
-          break
-      else:
-        self.children_.append(self.ChildrenInfo(op, level, [c for c in children]))
-    self.dirty_ = True
-    return children
-
   def clear(self):
     del self.children_[:]
+
+  def get(self, name):
+    """Returns binding proxy that returns ed op on .get("input") and output action or sink on .get("output").
+       Since ed can be chared among several outputs, changing given ed will affect other bindings!
+    """
+    class BindingProxy:
+      def get(self, propName):
+        return self.m_.get(propName, None)
+      __slots__ = ("m_",)
+      def __init__(self, i, o):
+        self.m_ = {"input" : i, "output" : o}
+    for childrenInfo in self.children_:
+      for childInfo in childrenInfo.children:
+        if childInfo.name == name:
+          return BindingProxy(childrenInfo.op, childInfo.child)
+    return None
 
   __slots__ = ("children_", "dirty_")
   def __init__(self):
@@ -1654,6 +1663,9 @@ class ModeSink:
     self.children_[mode] = child
     child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if mode == self.mode_ else 0, time.time()))
     return child
+
+  def get(self, modeName):
+    return self.children_.get(modeName, None)
 
   def set_active_child_state_(self, state):
     if self.mode_ in self.children_:
@@ -6411,7 +6423,7 @@ def make_parser():
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
         i = make_event_test_op(i, cmpOp)
-        bindingSink.add(i, o, bind.get("level", 0))
+        bindingSink.add(i, o, bind.get("level", 0), bind.get("name", None))
     return bindingSink
 
   scParser.add("binds", parseBinds)
