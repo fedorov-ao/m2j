@@ -1036,6 +1036,8 @@ class HoldSink:
         if event.code in self.keys_:
           del self.keys_[event.code]
       elif event.value == 1:
+        if event.code in self.keys_:
+          return
         d = HoldSink.D()
         d.source, d.timestamp, d.modifiers = event.source, event.timestamp, [m for m in event.modifiers]
         self.keys_[event.code] = d
