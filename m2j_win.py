@@ -925,6 +925,7 @@ class RawInputEventSource:
               pass
             if events is not None:
               for e in events:
+                #logger.debug("{}: sending event: {}".format(self, e))
                 self.sink_(e)
       else:
         windll.user32.DispatchMessageA(byref(msg))

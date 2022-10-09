@@ -260,21 +260,28 @@ def pop_args(state):
   pop_in_state("args", state)
 
 
-def get_object(name, state):
+def get_object(name, state, nameSep=None, memberSep=None):
   if state is None:
     raise RuntimeError("Need state to get object {}".format(name))
-  objects = state["objects"]
-  obj = get_nested_from_stack_d(objects, name, None)
+  sink = state["sinks"][-1]
+  nameSep, memberSep = ":" if nameSep is None else nameSep, "." if memberSep is None else memberSep
+  objectName = name.split(nameSep)
+  obj = sink.get_object(objectName[0])
   if obj is None:
-    allObjects = [str2(objs.keys()) for objs in objects]
+    allObjects = []
+    while sink is not None:
+      allObjects += [str2(sink.objects_.keys())]
+      sink = sink.get_parent()
     raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
+  if len(objectName) > 1:
+    for s in objectName[1].split(memberSep):
+      obj = obj.get(s)
+      if obj is None:
+        raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
   return obj
 
 
-def push_objects(objectsCfg, state):
-  objects = collections.OrderedDict()
-  #Pushing objects dictionary in object stack in state to make "sibling" objects accessible
-  push_in_state("objects", objects, state)
+def init_objects(objects, objectsCfg, state):
   parser = state["parser"]
   for k,v in objectsCfg.items():
     #logger.debug("Constructing object: {}".format(k))
@@ -287,8 +294,21 @@ def push_objects(objectsCfg, state):
       objects[k] = parser("sink", v, state)
 
 
-def pop_objects(state):
-  pop_in_state("objects", state)
+def init_objects_in_sink(sink, objectsCfg, state):
+  parser = state["parser"]
+  for k,v in objectsCfg.items():
+    o = None
+    #logger.debug("Constructing object: {}".format(k))
+    for n in ("curve", "op"):
+      if n in v:
+        o = parser(n, v, state)
+        #break is needed to avoid executing the "else" block
+        break
+    else:
+      o = parser("sink", v, state)
+    if o is None:
+      raise RuntimeError("Could not create object from: {}".format(objectsCfg))
+    sink.set_object(k, o)
 
 
 def calc_hash(s):
@@ -1016,6 +1036,8 @@ class HoldSink:
         if event.code in self.keys_:
           del self.keys_[event.code]
       elif event.value == 1:
+        if event.code in self.keys_:
+          return
         d = HoldSink.D()
         d.source, d.timestamp, d.modifiers = event.source, event.timestamp, [m for m in event.modifiers]
         self.keys_[event.code] = d
@@ -1327,6 +1349,10 @@ def make_event_test_op(attrsOrOp, cmp):
 
 
 class BindSink:
+  class ChildInfo:
+    __slots__ = ("child", "name",)
+    def __init__(self, child, name=None):
+      self.child, self.name = child, name
   class ChildrenInfo:
     __slots__ = ("op", "level", "children",)
     def __init__(self, op, level, children):
@@ -1348,36 +1374,41 @@ class BindSink:
           level = c.level
       if c.op is None or c.op(event) == True:
         #logger.debug("{}: Event [{}] matched attrs {}".format(self, event, c.attrs))
-        for cc in c.children:
+        for ci in c.children:
           #logger.debug("Sending event {} to {}".format(str(event), cc))
-          processed = cc(event) or processed
+          processed = ci.child(event) or processed
     return processed
 
-  def add(self, op, child, level=0):
+  def add(self, op, child, level=0, name=None):
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
     for ci in self.children_:
       if op == ci.op:
-        ci.children.append(child)
+        ci.children.append(self.ChildInfo(child, name))
         break
     else:
-      self.children_.append(self.ChildrenInfo(op, level, [child]))
+      self.children_.append(self.ChildrenInfo(op, level, [self.ChildInfo(child, name)]))
     self.dirty_ = True
     return child
 
-  def add_several(self, ops, children, level=0):
-    for op in ops:
-      for ci in self.children_:
-        if op == ci.op:
-          ci.children += [c for c in children]
-          break
-      else:
-        self.children_.append(self.ChildrenInfo(op, level, [c for c in children]))
-    self.dirty_ = True
-    return children
-
   def clear(self):
     del self.children_[:]
+
+  def get(self, name):
+    """Returns binding proxy that returns ed op on .get("input") and output action or sink on .get("output").
+       Since ed can be chared among several outputs, changing given ed will affect other bindings!
+    """
+    class BindingProxy:
+      def get(self, propName):
+        return self.m_.get(propName, None)
+      __slots__ = ("m_",)
+      def __init__(self, i, o):
+        self.m_ = {"input" : i, "output" : o}
+    for childrenInfo in self.children_:
+      for childInfo in childrenInfo.children:
+        if childInfo.name == name:
+          return BindingProxy(childrenInfo.op, childInfo.child)
+    return None
 
   __slots__ = ("children_", "dirty_")
   def __init__(self):
@@ -1634,6 +1665,9 @@ class ModeSink:
     self.children_[mode] = child
     child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if mode == self.mode_ else 0, time.time()))
     return child
+
+  def get(self, modeName):
+    return self.children_.get(modeName, None)
 
   def set_active_child_state_(self, state):
     if self.mode_ in self.children_:
@@ -4426,9 +4460,7 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
-        #push_objects() needs "objects" list to be in state, even if it is empty
-        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"], "objects" : []}
-        push_objects(get_nested_d(config, "objects", {}), state)
+        state = {"settings" : settings, "curves" : configCurves, "parser" : settings["parser"]}
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -4961,9 +4993,7 @@ def init_layout_config(settings):
   else:
     try:
       parser = settings["parser"]
-      #push_objects() needs "objects" list to be in state, even if it is empty
-      state = {"settings" : settings, "parser" : parser, "objects" : []}
-      push_objects(get_nested_d(config, "objects", {}), state)
+      state = {"settings" : settings, "parser" : parser}
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
@@ -5063,7 +5093,6 @@ class IntrusiveSelectParser:
 
 class ArgObjSelectParser:
   def __call__(self, key, cfg, state):
-    #logger.debug("ArgObjSelectParser.(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #logger.debug("ArgObjSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
     r = get_argobj(key, state)
     return self.p_(key, cfg, state) if r is None else r
@@ -5637,11 +5666,38 @@ def make_parser():
     def remove_component(self, name):
       del self.components_[name]
 
+    def get(self, name, dfault=None):
+      return self.get_component(name, dfault)
+
+    def set(self, name, component):
+      self.set_component(name, component)
+
+    def get_object(self, k):
+      o = get_nested_d(self.objects_, k, None)
+      if o is None:
+        sink = self.parent_
+        while sink is not None:
+          o = sink.get_object(k)
+          if o is None:
+            sink = sink.get_parent()
+          else:
+            break
+      return o
+
+    def set_object(self, name, obj):
+      self.objects_[name] = obj
+
+    def set_objects(self, objects):
+      self.objects_ = objects
+
     def set_next(self, next):
         self.next_ = next
 
-    def __init__(self, next=None, components=None):
-        self.next_, self.components_ = next, components if components is not None else {}
+    def get_parent(self):
+      return self.parent_
+
+    def __init__(self, next=None, components=None, parent=None, objects=None):
+        self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
 
   @parseArgObjDecorator
   @parseBasesDecorator
@@ -5651,12 +5707,12 @@ def make_parser():
     push_args(get_nested_d(cfg, "args", {}), state)
     push_in_state("curvesStack", {}, state)
     state["curves"] = state["curvesStack"][-1]
-    push_objects(get_nested_d(cfg, "objects", {}), state)
     #Init headsink
-    headSink = HeadSink()
     state.setdefault("sinks", [])
+    sinks = state["sinks"]
+    parent = sinks[-1] if len(sinks) > 0 else None
+    headSink = HeadSink(parent=parent)
     state["sinks"].append(headSink)
-    #logger.debug("parseSink(): state[\"objects\"]: {}".format(str2(state["objects"])))
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     #logger.debug("parsing sink {}".format(cfg))
     def parse_component(name):
@@ -5691,7 +5747,7 @@ def make_parser():
         #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parseOrder = ("next", "modes", "state", "sens", "modifiers", "binds")
+        parseOrder = ("objects", "next", "modes", "state", "sens", "modifiers", "binds")
         for name in parseOrder:
           parse_component(name)
         #Link components
@@ -5709,7 +5765,6 @@ def make_parser():
         state["sinks"].pop()
     finally:
       pop_args(state)
-      pop_objects(state)
       pop_in_state("curvesStack", state)
       state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
   sinkParser.add("sink", parseSink)
@@ -5717,6 +5772,22 @@ def make_parser():
   #Sink components
   scParser = SelectParser()
   parser.add("sc", scParser)
+
+  def parseObjects(cfg, state):
+    class ObjectsProxy:
+      def get(self, name):
+        return self.sink_.get_object(name)
+      def __init__(self, sink):
+        self.sink_ = sink
+    objectsCfg = cfg.get("objects", None)
+    #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
+    if objectsCfg is not None:
+      headSink=state["sinks"][-1]
+      init_objects_in_sink(headSink, objectsCfg, state)
+      return ObjectsProxy(headSink)
+    else:
+      return None
+  scParser.add("objects", parseObjects)
 
   def parseModifiers(cfg, state):
     modifierDescs = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
@@ -5796,8 +5867,11 @@ def make_parser():
        depth: 0 - current component sink, 1 - its parent, etc
     """
     sink = None
-    if "object" in cfg:
-      sink = get_object(get_arg(get_nested(cfg, "object"), state), state)
+    sinkName = get_nested_d(cfg, "sink", None)
+    if sinkName is not None:
+      sink = get_argobj(sinkName, state)
+      if sink is None:
+        raise RuntimeError("Cannot get target sink by '{}'".format(objectName))
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
@@ -6006,9 +6080,9 @@ def make_parser():
         else:
           curvesToReset += curves
     elif "objects" in cfg:
-      objects = state["objects"]
+      sink = state["sinks"][-1]
       for objectName in get_nested(cfg, "objects"):
-        curve = get_nested_from_stack_d(objects, objectName, None)
+        curve = sink.get_object(objectName)
         if curve is None:
           raise RuntimeError("Curve {} not found".format(str2(objectName)))
         curvesToReset.append(curve)
@@ -6092,7 +6166,10 @@ def make_parser():
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
   def parseSetObjectState(cfg, state):
-    obj = get_object(get_nested(cfg, "object"), state)
+    objectName = get_nested(cfg, "object")
+    obj = get_argobj(objectName, state)
+    if obj is None:
+      raise RuntimeError("Cannot get object by '{}'".format(objectName))
     return SetState(obj, get_nested(cfg, "state"))
   actionParser.add("setObjectState", parseSetObjectState)
 
@@ -6101,6 +6178,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
+      if type(sink) is unicode: print sink
       sink(event)
       return True
     return callback
@@ -6347,7 +6425,7 @@ def make_parser():
     for bind in binds:
       for i,o in parseInputsOutputs(bind, state):
         i = make_event_test_op(i, cmpOp)
-        bindingSink.add(i, o, bind.get("level", 0))
+        bindingSink.add(i, o, bind.get("level", 0), bind.get("name", None))
     return bindingSink
 
   scParser.add("binds", parseBinds)
