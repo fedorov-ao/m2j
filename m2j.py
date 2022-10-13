@@ -5977,7 +5977,6 @@ def make_parser():
   actionParser.add("setAxis", parseSetAxis)
 
   def parseSetAxes(cfg, state):
-    allAxes = state["settings"]["axes"]
     axesAndValues = get_nested(cfg, "axesAndValues")
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     if type(axesAndValues) in (dict, collections.OrderedDict):
@@ -5996,7 +5995,6 @@ def make_parser():
   actionParser.add("setAxes", parseSetAxes)
 
   def parseSetAxesRel(cfg, state):
-    allAxes = state["settings"]["axes"]
     axesAndValues = get_nested(cfg, "axesAndValues")
     if type(axesAndValues) in (dict, collections.OrderedDict):
       axesAndValues = axesAndValues.items()
