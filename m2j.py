@@ -5042,10 +5042,24 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update):
   return d
 
 
+class ParseError(RuntimeError):
+  def __init__(self, cfg):
+    self.cfg = cfg
+  def __str__(self):
+    return "Could not parse {}".format(str2(self.cfg))
+
+
+class ParserNotFoundError(KeyError2):
+  def __init__(self, requestedParser, availableParsers):
+    KeyError2.__init__(self, requestedParser, availableParsers)
+  def __str__(self):
+    return "Parser {} not found, available parsers are: {}".format(self.key, self.keys)
+
+
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
-      raise KeyError("Parser for '{}' not found, available parsers are: {}".format(key, self.parsers_.keys()))
+      raise ParserNotFoundError(key, self.parsers_.keys())
     else:
       parser = self.parsers_[key]
       try:
@@ -6376,7 +6390,7 @@ def make_parser():
             continue
           except Exception as e:
             logger.error("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
-            raise
+            raise ParseError(c)
           if t is None:
             logger.warning("Could not parse {} '{}')".format(n1, str2(c)))
             continue
@@ -6390,7 +6404,7 @@ def make_parser():
           return obj
         try:
           return parser.get("action")(cfg, state)
-        except KeyError:
+        except ParserNotFoundError:
           logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
           return parser.get("sink")(cfg, state)
 
