@@ -6193,9 +6193,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
-      if type(sink) is unicode: print sink
-      sink(event)
-      return True
+      return sink(event)
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
 
