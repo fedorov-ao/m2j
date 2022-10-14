@@ -1777,10 +1777,13 @@ class ModeSinkModeManager:
     self.mode_ = []
     return True
 
-  def set(self, mode, save):
-    self.save_(save)
-    self.sink_.set_mode(mode)
-    return True
+  def set(self, mode, save, current):
+    if current is None or self.sink_.get_mode() in current:
+      self.save_(save)
+      self.sink_.set_mode(mode)
+      return True
+    else:
+      return False
 
   def cycle(self, modes, step, loop, save):
     self.save_(save)
@@ -1839,9 +1842,9 @@ class ModeSinkModeManager:
     def op(event):
       return self.clear()
     return op
-  def make_set(self, mode, save):
+  def make_set(self, mode, save, current):
     def op(event):
-      return self.set(mode, save)
+      return self.set(mode, save, current)
     return op
   def make_cycle(self, modes, step, loop, save):
     def op(event):
@@ -5911,10 +5914,10 @@ def make_parser():
   actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore())
   actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
   actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
-  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current")))
+  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current", None)))
   actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current")))
   actionParser.add("clearMode", lambda cfg, state : get_component("msmm", cfg, state).make_clear())
-  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
+  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "current")))
   actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
 
   def parseSetState(cfg, state):
