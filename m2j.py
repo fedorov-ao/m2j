@@ -1642,10 +1642,11 @@ class ModeSink:
     else:
       return False
 
-  def set_mode(self, mode):
+  def set_mode(self, mode, report=True):
     if mode == self.mode_:
       return True
-    logger.info("{}: Setting mode: {}".format(self.name_, mode))
+    if report:
+      self.reportModeSwitchCb_(self.name_, self.mode_, mode)
     #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
@@ -1676,8 +1677,13 @@ class ModeSink:
         #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
 
-  def __init__(self, name=""):
+  def __init__(self, name="", reportModeSwitchCb=None):
     self.children_, self.mode_, self.name_ = {}, None, name
+    if reportModeSwitchCb is None:
+      def smc(name, old, new):
+        logger.info("{}: Setting mode: {}".format(name, new))
+      reportModeSwitchCb = smc
+    self.reportModeSwitchCb_ = reportModeSwitchCb
 
 
 class CycleMode:
@@ -1727,41 +1733,41 @@ class ModeSinkModeManager:
   def save(self):
     self.mode_.append(self.sink_.get_mode())
 
-  def restore(self):
+  def restore(self, report=True):
     if len(self.mode_):
-      self.sink_.set_mode(self.mode_.pop())
+      self.sink_.set_mode(self.mode_.pop(), report)
 
-  def add(self, mode, current):
+  def add(self, mode, current, report=True):
     if current is None or self.sink_.get_mode() in current:
       self.mode_.append(mode)
-      self.sink_.set_mode(mode)
+      self.sink_.set_mode(mode, report)
       return True
     else:
       return False
 
-  def remove(self, mode, current):
+  def remove(self, mode, current, report=True):
     if current is None or self.sink_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == mode:
           self.mode_.pop(i)
           break;
-      self.set_top_mode_()
+      self.set_top_mode_(report)
       return True
     else:
       return False
 
-  def swap(self, f, t, current):
+  def swap(self, f, t, current, report=True):
     if current is None or self.sink_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == f:
           self.mode_[i] = t
           break;
-      self.set_top_mode_()
+      self.set_top_mode_(report)
       return True
     else:
       return False
 
-  def cycle_swap(self, modes, current):
+  def cycle_swap(self, modes, current, report=True):
     if current is None or self.sink_.get_mode() in current:
       lm = len(modes)
       for i in range(len(self.mode_)-1, -1, -1):
@@ -1769,7 +1775,7 @@ class ModeSinkModeManager:
           if self.mode_[i] == modes[j]:
             j = j+1 if j < lm-1 else 0
             self.mode_[i] = modes[j]
-            self.set_top_mode_()
+            self.set_top_mode_(report)
             return True
     return False
 
@@ -1777,15 +1783,15 @@ class ModeSinkModeManager:
     self.mode_ = []
     return True
 
-  def set(self, mode, save, current):
+  def set(self, mode, save, current, report=True):
     if current is None or self.sink_.get_mode() in current:
       self.save_(save)
-      self.sink_.set_mode(mode)
+      self.sink_.set_mode(mode, report)
       return True
     else:
       return False
 
-  def cycle(self, modes, step, loop, save):
+  def cycle(self, modes, step, loop, save, report=True):
     self.save_(save)
     m = self.sink_.get_mode()
     assert(len(modes))
@@ -1800,7 +1806,7 @@ class ModeSinkModeManager:
       m = modes[i]
     else:
       m = modes[0]
-    self.sink_.set_mode(m)
+    self.sink_.set_mode(m, report)
     return True
 
   def __init__(self, sink):
@@ -1810,45 +1816,45 @@ class ModeSinkModeManager:
     def op(event):
       return self.save()
     return op
-  def make_restore(self):
+  def make_restore(self, report=True):
     def op(event):
-      return self.restore()
+      return self.restore(report)
     return op
-  def make_add(self, mode, current=None):
+  def make_add(self, mode, current=None, report=True):
     if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
-      return self.add(mode, current)
+      return self.add(mode, current, report)
     return op
-  def make_remove(self, mode, current=None):
+  def make_remove(self, mode, current=None, report=True):
     if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
-      return self.remove(mode, current)
+      return self.remove(mode, current, report)
     return op
-  def make_swap(self, f, t, current=None):
+  def make_swap(self, f, t, current=None, report=True):
     if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
-      return self.swap(f, t, current)
+      return self.swap(f, t, current, report)
     return op
-  def make_cycle_swap(self, modes, current=None):
+  def make_cycle_swap(self, modes, current=None, report=True):
     if current is not None and type(current) not in (tuple, list):
       current = [current]
     def op(event):
-      return self.cycle_swap(modes, current)
+      return self.cycle_swap(modes, current, report)
     return op
   def make_clear(self):
     def op(event):
       return self.clear()
     return op
-  def make_set(self, mode, save, current):
+  def make_set(self, mode, save, current, report=True):
     def op(event):
-      return self.set(mode, save, current)
+      return self.set(mode, save, current, report)
     return op
-  def make_cycle(self, modes, step, loop, save):
+  def make_cycle(self, modes, step, loop, save, report=True):
     def op(event):
-      return self.cycle(modes, step, loop, save)
+      return self.cycle(modes, step, loop, save, report)
     return op
 
   def save_(self, save):
@@ -1864,11 +1870,11 @@ class ModeSinkModeManager:
     else:
       assert(False)
 
-  def set_top_mode_(self):
+  def set_top_mode_(self, report):
     if len(self.mode_):
       m = self.mode_[-1]
       if m != self.sink_.get_mode():
-        self.sink_.set_mode(m)
+        self.sink_.set_mode(m, report)
 
 
 class MultiCurveSink:
@@ -5832,7 +5838,7 @@ def make_parser():
 
   @parseBasesDecorator
   def parseMode(cfg, state):
-    name=get_nested_d(cfg, "name", "")
+    name = get_nested_d(cfg, "name", "")
     headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
@@ -5911,14 +5917,14 @@ def make_parser():
   parser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
-  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore())
-  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
-  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current")))
-  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current", None)))
-  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current")))
+  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(get_nested_d(cfg, "report", True)))
+  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
+  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
+  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current", None), get_nested_d(cfg, "report", True)))
+  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
   actionParser.add("clearMode", lambda cfg, state : get_component("msmm", cfg, state).make_clear())
-  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "current")))
-  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop"))))
+  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
+  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "report", True)))
 
   def parseSetState(cfg, state):
     s = get_nested(cfg, "state")
