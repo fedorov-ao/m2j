@@ -1821,26 +1821,22 @@ class ModeSinkModeManager:
       return self.restore(report)
     return op
   def make_add(self, mode, current=None, report=True):
-    if current is not None and type(current) not in (tuple, list):
-      current = [current]
+    current = self.make_current_(current)
     def op(event):
       return self.add(mode, current, report)
     return op
   def make_remove(self, mode, current=None, report=True):
-    if current is not None and type(current) not in (tuple, list):
-      current = [current]
+    current = self.make_current_(current)
     def op(event):
       return self.remove(mode, current, report)
     return op
   def make_swap(self, f, t, current=None, report=True):
-    if current is not None and type(current) not in (tuple, list):
-      current = [current]
+    current = self.make_current_(current)
     def op(event):
       return self.swap(f, t, current, report)
     return op
   def make_cycle_swap(self, modes, current=None, report=True):
-    if current is not None and type(current) not in (tuple, list):
-      current = [current]
+    current = self.make_current_(current)
     def op(event):
       return self.cycle_swap(modes, current, report)
     return op
@@ -1849,6 +1845,7 @@ class ModeSinkModeManager:
       return self.clear()
     return op
   def make_set(self, mode, save, current, report=True):
+    current = self.make_current_(current)
     def op(event):
       return self.set(mode, save, current, report)
     return op
@@ -1875,6 +1872,12 @@ class ModeSinkModeManager:
       m = self.mode_[-1]
       if m != self.sink_.get_mode():
         self.sink_.set_mode(m, report)
+
+  def make_current_(self, current):
+    if current is not None and type(current) not in (tuple, list):
+      return [current]
+    else:
+      return current
 
 
 class MultiCurveSink:
