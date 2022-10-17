@@ -3414,6 +3414,12 @@ class AxisLinker:
   def get_op(self):
     return self.op_
 
+  def set_offset(self, offset):
+    self.offset_ = offset
+
+  def get_offset(self):
+    return self.offset_
+
   def on_move_axis(self, axis, old, new):
     if self.state_:
       if not self.busy_ and axis == self.controlledAxis_:
@@ -6188,6 +6194,15 @@ def make_parser():
     linker = state["parser"]("curve", cfg, state)
     return SetAxisLinkerState(linker)
   actionParser.add("setStateOnInit", parseSetStateOnInit)
+
+  def parseSetOffset(cfg, state):
+    curve = get_argobj(get_nested(cfg, "object"), state)
+    offset = get_nested(cfg, "offset")
+    def op(event):
+      curve.set_offset(offset)
+      return True
+    return op
+  actionParser.add("setOffset", parseSetOffset)
 
   def parseSetObjectState(cfg, state):
     objectName = get_nested(cfg, "object")
