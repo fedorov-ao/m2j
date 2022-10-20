@@ -5065,7 +5065,7 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update):
   return d
 
 
-class ParseError(RuntimeError):
+class ParserError(RuntimeError):
   def __init__(self, cfg):
     self.cfg = cfg
   def __str__(self):
@@ -6423,7 +6423,7 @@ def make_parser():
             continue
           except Exception as e:
             logger.error("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
-            raise ParseError(c)
+            raise ParserError(c)
           if t is None:
             logger.warning("Could not parse {} '{}')".format(n1, str2(c)))
             continue
