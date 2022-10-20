@@ -1192,12 +1192,17 @@ class ScaleSink2:
     self.next_, self.sens_, self.keyOp_, self.name_ = None, sens, keyOp, name
     for axis,value in self.sens_.items():
       if type(value) in (str, unicode):
-        idx = value.find(":")
-        var,val = value[:idx],value[idx+1:]
-        val = 1.0 if val == "" else float(val)
-        self.gSens_[var] = val
-        self.sens_[axis] = var
-
+        try:
+          idx = value.find(":")
+          if idx == -1:
+            self.sens_[axis] = float(value)
+          else:
+            var,val = value[:idx],value[idx+1:]
+            val = 1.0 if val == "" else float(val)
+            self.gSens_[var] = val
+            self.sens_[axis] = var
+        except ValueError as e:
+          raise RuntimeError("Bad sens value '{}' for axis '{}'".format(value, htc2fn(*axis)))
 
 
 class SensSetSink:
@@ -5838,11 +5843,14 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
-    name = get_arg(get_nested_d(cfg, "name", None), state)
-    sens = get_arg(get_nested(cfg, "sens"), state)
-    sens = {fn2htc(fullAxisName):value for fullAxisName,value in sens.items()}
-    scaleSink = ScaleSink2(sens=sens, name=name)
-    return scaleSink
+    try:
+      name = get_arg(get_nested_d(cfg, "name", None), state)
+      sens = get_arg(get_nested(cfg, "sens"), state)
+      sens2 = {fn2htc(fullAxisName):value for fullAxisName,value in sens.items()}
+      scaleSink = ScaleSink2(sens=sens2, name=name)
+      return scaleSink
+    except RuntimeError as e:
+      raise RuntimeError("'{}' (encountered when parsing '{}')".format(e, str2(sens)))
   scParser.add("sens", parseSens)
 
   @parseBasesDecorator
