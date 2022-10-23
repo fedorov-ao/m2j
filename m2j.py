@@ -612,10 +612,11 @@ class NullJoystick:
     if buttons is not None:
       for b,s in buttons.limits():
         self.b_[b] = s
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
   def move_axis(self, axis, v, relative):
     if relative:
@@ -809,10 +810,11 @@ class EventSource:
 
   def __init__(self, devices, sink):
     self.devices_, self.sink_ = devices, sink
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
 
 class Loop:
@@ -889,10 +891,11 @@ class MoveCurve:
 class SetJoystickAxis:
   def __init__(self, joystick, axis, value):
     self.js_, self.axis_, self.value_ = joystick, axis, value
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
   def __call__(self, event):
     self.js_.move_axis(self.axis_, self.value_, False)
@@ -1020,10 +1023,11 @@ class ClickSink:
 
   def __init__(self, clickTime):
     self.next_, self.keys_, self.clickTime_ = None, {}, clickTime
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
 
 class HoldSink:
@@ -1058,10 +1062,11 @@ class HoldSink:
 
   def __init__(self, holdTime, value, fireOnce):
     self.next_, self.keys_, self.holdTime_, self.value_, self.fireOnce_ = None, {}, holdTime, value, fireOnce
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
 
 class ModifierSink:
@@ -1419,10 +1424,11 @@ class BindSink:
   def __init__(self):
     self.children_ = []
     self.dirty_ = False
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
   def update_(self):
     if self.dirty_ == True:
@@ -3444,10 +3450,11 @@ class AxisLinker:
   def __init__(self, controllingAxis, controlledAxis, op):
     self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
     self.offset_, self.busy_, self.state_  = 0.0, False, False
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
 
 class SetAxisLinkerState:
@@ -3511,10 +3518,11 @@ class SwallowDevices:
 
   def __init__(self, devices, mode):
     self.mode_, self.devices_ = mode, devices
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
+    pass
 
   def set_mode_(self, mode):
     for d in self.devices_:
@@ -3692,7 +3700,7 @@ class JoystickSnapManager:
     #logger.debug("snap_to({})".format(i))
     snap = self.snaps_.get(i, None)
     if snap is None:
-      logger.debug("{}: no snap {}".format(self, i))
+      #logger.debug("{}: no snap {}".format(self, i))
       return False
     else:
       for p in snap:
@@ -3712,7 +3720,7 @@ class AxisSnapManager:
     #logger.debug("{}: updating snap {}".format(self, i))
     snap = self.snaps_.get(i, None)
     if snap is None:
-      logger.debug("{}: no snap {}".format(self, i))
+      #logger.debug("{}: no snap {}".format(self, i))
       return False
     else:
       for p in snap:
@@ -3723,7 +3731,7 @@ class AxisSnapManager:
     #logger.debug("{}: snapping to {}".format(self, i))
     snap = self.snaps_.get(i, None)
     if snap is None:
-      logger.debug("{}: no snap {}".format(self, i))
+      #logger.debug("{}: no snap {}".format(self, i))
       return False
     else:
       for p in snap:
@@ -4027,7 +4035,7 @@ class ReportingJoystickAxis:
 
   def add_listener(self, listener):
     self.listeners_.append(weakref.ref(listener))
-    logger.debug("{}: Adding listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
+    #logger.debug("{}: Adding listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
 
   def remove_listener(self, listener):
     try:
@@ -4038,7 +4046,7 @@ class ReportingJoystickAxis:
 
   def remove_all_listeners(self):
     self.listeners_ = []
-    logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
+    #logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
 
   def on_move(self, old, new):
     dirty = False
@@ -4054,10 +4062,10 @@ class ReportingJoystickAxis:
 
   def __init__(self, joystick, axis):
     self.joystick_, self.axis_, self.listeners_ = joystick, axis, []
-    logger.debug("{} created".format(self))
+    #logger.debug("{} created".format(self))
 
   def __del__(self):
-    logger.debug("{} destroyed".format(self))
+    #logger.debug("{} destroyed".format(self))
     pass
 
   def cleanup_(self):
@@ -4067,7 +4075,7 @@ class ReportingJoystickAxis:
         self.listeners_.pop(i)
       else:
         i += 1
-    logger.debug("{}: listeners after cleanup {}".format(self, self.listeners_))
+    #logger.debug("{}: listeners after cleanup {}".format(self, self.listeners_))
 
 
 class ReportingJoystick(NodeJoystick):
@@ -4103,7 +4111,7 @@ class ReportingJoystick(NodeJoystick):
           axes.pop(i)
         else:
           i += 1
-    logger.debug("{}: axes after cleanup {}".format(self, self.axes_))
+    #logger.debug("{}: axes after cleanup {}".format(self, self.axes_))
 
 
 def make_reporting_joystick(f):
@@ -4487,7 +4495,7 @@ def make_curve_makers():
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
-        logger.debug("Error while parsing {}: {}".format(path, e))
+        #logger.debug("Error while parsing {}: {}".format(path, e))
         raise ParseError(path, e)
     return r
 
@@ -5619,7 +5627,7 @@ def make_parser():
         config = state["settings"]["config"]
         full = {}
         for baseName in bases:
-          logger.debug("Parsing base : {}".format(baseName))
+          #logger.debug("Parsing base : {}".format(baseName))
           base = get_nested_from_sections_d(config, sectNames, baseName, None)
           if base is None:
             raise RuntimeError("No layout: {}".format(str2(base)))
@@ -5662,7 +5670,7 @@ def make_parser():
       name = cfg.get(propName, None)
       if name is None:
         name = get_nested(cfg, "name")
-      logger.debug("Parsing {} '{}'".format(propName, name))
+      #logger.debug("Parsing {} '{}'".format(propName, name))
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
@@ -5690,7 +5698,8 @@ def make_parser():
     def __call__(self, event):
       #Can be actually called during init when next_ is not set yet
       if self.next_ is None:
-        logger.debug("{}: next sink is not set".format(self))
+        #logger.debug("{}: next sink is not set".format(self))
+        pass
       else:
         self.next_(event)
 
@@ -5793,7 +5802,7 @@ def make_parser():
           link_component(p[0], p[1])  
         #Check result
         if sink[0] is None:
-          logger.debug("Could not make sink out of '{}'".format(cfg))
+          #logger.debug("Could not make sink out of '{}'".format(cfg))
           return None
         else:
           headSink.set_next(sink[0])
@@ -5862,7 +5871,7 @@ def make_parser():
     headSink.set_component("msmm", msmm)
     try:
       for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
-        logger.debug("{}: parsing mode:".format(name, modeName))
+        #logger.debug("{}: parsing mode:".format(name, modeName))
         child = state["parser"]("sink", modeCfg, state)
         modeSink.add(modeName, child)
       initialMode = get_arg(get_nested_d(cfg, "initialMode", None), state)
@@ -5892,7 +5901,7 @@ def make_parser():
     parser = state["parser"]
     r = parser("sink", get_nested(cfg, "next"), state)
     if r is None:
-      logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
+      #logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
       r = parser("action", get_nested(cfg, "next"), state)
     return r
   scParser.add("next", parseNext)
@@ -6438,7 +6447,7 @@ def make_parser():
         try:
           return parser.get("action")(cfg, state)
         except ParserNotFoundError:
-          logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
+          #logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
           return parser.get("sink")(cfg, state)
 
       inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
