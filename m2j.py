@@ -267,11 +267,10 @@ def pop_args(state):
   pop_in_state("args", state)
 
 
-def get_obj(name, state, nameSep=None, memberSep=None):
+def get_obj(name, state, nameSep=":", memberSep="."):
   if state is None:
     raise RuntimeError("Need state to get object '{}'".format(name))
   sink = state["sinks"][-1]
-  nameSep, memberSep = ":" if nameSep is None else nameSep, "." if memberSep is None else memberSep
   objectName = name.split(nameSep)
   obj = sink.get_object(objectName[0])
   if obj is None:
@@ -314,7 +313,7 @@ def init_objects_in_sink(sink, objectsCfg, state):
     else:
       o = parser("sink", v, state)
     if o is None:
-      raise RuntimeError("Could not create object from: {}".format(objectsCfg))
+      raise RuntimeError("Could not create object from: {}".format(str2(objectsCfg)))
     sink.set_object(k, o)
 
 
@@ -5649,12 +5648,12 @@ def make_parser():
     return parseBasesOp
 
   def parseArgObjDecorator(wrapped):
-    def parseArgObjOp(cfg, state):
-      obj = get_var(cfg, state, None)
+    def parseArgObjOp(cfgOrName, state):
+      obj = get_var(cfgOrName, state, None)
       if obj is not None:
         return obj
       else:
-        return wrapped(cfg, state)
+        return wrapped(cfgOrName, state)
     return parseArgObjOp
 
   def parsePredefinedDecorator(names):
