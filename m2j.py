@@ -5131,7 +5131,7 @@ class SelectParser:
 class IntrusiveSelectParser:
   """FreePie does not handle inheritance well, so this class is implemented via composition."""
   def __call__(self, cfg, state):
-    key = self.keyOp_(cfg)
+    key = self.keyOp_(cfg, state)
     return self.p_(key, cfg, state)
 
   def add(self, key, parser):
@@ -5193,7 +5193,7 @@ def get_axis_by_full_name(fullAxisName, state):
 def make_parser():
   parser = ArgObjSelectParser()
 
-  opParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "op"), parser=ArgObjSelectParser())
+  opParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "op"), parser=ArgObjSelectParser())
   parser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
@@ -5248,7 +5248,7 @@ def make_parser():
     return op
 
   #Curves
-  curveParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
+  curveParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
   parser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
@@ -5693,7 +5693,7 @@ def make_parser():
         pop_args(state)
     return parseExternalOp
 
-  def sinkParserKeyOp(cfg):
+  def sinkParserKeyOp(cfg, state):
     names = ["layout", "class"]
     if type(cfg) in (dict, collections.OrderedDict):
       for name in names:
@@ -5947,7 +5947,7 @@ def make_parser():
     return component
 
   #TODO Rename "type" to "action" and update configs
-  actionParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
+  actionParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
   parser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
@@ -6269,7 +6269,7 @@ def make_parser():
   actionParser.add("printEvent", parsePrintEvent)
 
   #Event descriptors
-  edParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
+  edParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"))
   parser.add("ed", edParser)
 
   def parseEdModifiers_(r, cfg, state):
@@ -6491,7 +6491,7 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  outputParser = IntrusiveSelectParser(keyOp=lambda cfg : get_nested(cfg, "type"))
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"))
   parser.add("output", outputParser)
 
   @make_reporting_joystick
