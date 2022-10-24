@@ -291,7 +291,7 @@ def init_objects(objects, objectsCfg, state):
   parser = state["parser"]
   for k,v in objectsCfg.items():
     #logger.debug("Constructing object: {}".format(k))
-    for n in ("curve", "op"):
+    for n in ("curve", "op", "literal"):
       if n in v:
         objects[k] = parser(n, v, state)
         #break is needed to avoid executing the "else" block
@@ -305,7 +305,7 @@ def init_objects_in_sink(sink, objectsCfg, state):
   for k,v in objectsCfg.items():
     o = None
     #logger.debug("Constructing object: {}".format(k))
-    for n in ("curve", "op"):
+    for n in ("curve", "op", "literal"):
       if n in v:
         o = parser(n, v, state)
         #break is needed to avoid executing the "else" block
@@ -5186,6 +5186,10 @@ def get_axis_by_full_name(fullAxisName, state):
 
 def make_parser():
   parser = ArgObjSelectParser()
+
+  def literalParser(cfg, state):
+    return cfg["literal"]
+  parser.add("literal", literalParser)
 
   opParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "op"), parser=ArgObjSelectParser())
   parser.add("op", opParser)
