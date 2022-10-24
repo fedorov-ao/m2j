@@ -204,7 +204,7 @@ def pop_in_state(n, state):
   state[n].pop()
 
 
-def get_arg2(name, state):
+def get_arg(name, state):
   if state is None:
     raise RuntimeError("Need state to get arg {}".format(name))
   args = state.get("args")
@@ -218,49 +218,44 @@ def get_arg2(name, state):
     raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
 
 
-def get_argobj(value, state):
-  #logger.debug("get_argobj(): value: {}".format(str2(value)))
-  if type(value) in (dict, collections.OrderedDict):
-    objName = get_nested_d(value, "obj", None)
+def get_var(name, state, dfault=None):
+  if type(name) in (dict, collections.OrderedDict):
+    objName = get_nested_d(name, "obj", None)
     if objName is not None:
-      return get_object(objName, state)
-    argName = get_nested_d(value, "arg", None)
+      return get_obj(objName, state)
+    argName = get_nested_d(name, "arg", None)
     if argName is not None:
-      return get_arg2(argName, state)
-  elif type(value) in (str, unicode):
+      return get_arg(argName, state)
+  elif type(name) in (str, unicode):
     pa, po = "arg:", "obj:"
     lpa, lpo = len(pa), len(po)
-    if value[:lpo] == po:
-      objName = value[lpo:]
-      return get_object(objName, state)
-    elif value[:lpa] == pa:
-      argName = value[lpa:]
-      return get_arg2(argName, state)
+    if name[:lpo] == po:
+      objName = name[lpo:]
+      return get_obj(objName, state)
+    elif name[:lpa] == pa:
+      argName = name[lpa:]
+      return get_arg(argName, state)
   #Fallback, not in else block!
-  return None
-
-
-def get_arg(value, state):
-  r = get_argobj(value, state)
-  return value if r is None else r
+  return dfault
 
 
 def resolve_d(d, name, state, dfault=None):
-  return get_arg(get_nested_d(d, name, dfault), state)
+  v = get_nested_d(d, name, dfault)
+  return get_var(v, state, v)
 
 
 def resolve(d, name, state):
   r = resolve_d(d, name, state, None)
   if r is None:
     #TODO Use more appropriate exception
-    raise RuntimeError("Cannot get {} from {}".format(name, d))
+    raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d)))
   return r
 
 
 def resolve_args(args, state):
   r = collections.OrderedDict()
   for n,a in args.items():
-    r[n] = get_arg(a, state)
+    r[n] = get_var(a, state, a)
   return r
 
 
@@ -272,9 +267,9 @@ def pop_args(state):
   pop_in_state("args", state)
 
 
-def get_object(name, state, nameSep=None, memberSep=None):
+def get_obj(name, state, nameSep=None, memberSep=None):
   if state is None:
-    raise RuntimeError("Need state to get object {}".format(name))
+    raise RuntimeError("Need state to get object '{}'".format(name))
   sink = state["sinks"][-1]
   nameSep, memberSep = ":" if nameSep is None else nameSep, "." if memberSep is None else memberSep
   objectName = name.split(nameSep)
@@ -282,9 +277,9 @@ def get_object(name, state, nameSep=None, memberSep=None):
   if obj is None:
     allObjects = []
     while sink is not None:
-      allObjects += [str2(sink.objects_.keys())]
+      allObjects.append(str2(sink.objects_.keys()))
       sink = sink.get_parent()
-    raise RuntimeError("Object {} was not created (available objects are: {}).".format(str2(name), allObjects))
+    raise RuntimeError("Object '{}' was not created (available objects are: '{}').".format(str2(name), allObjects))
   if len(objectName) > 1:
     for s in objectName[1].split(memberSep):
       obj = obj.get(s)
@@ -428,7 +423,7 @@ def split_full_name2(s, state, sep="."):
   elif s[0] == "-":
     st = False
     s = s[1:]
-  s = get_arg(s, state)
+  s = get_var(s, state, s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else calc_hash(source)
@@ -5151,7 +5146,7 @@ class IntrusiveSelectParser:
 class ArgObjSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("ArgObjSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
-    r = get_argobj(key, state)
+    r = get_var(key, state, None)
     return self.p_(key, cfg, state) if r is None else r
 
   def add(self, key, parser):
@@ -5655,7 +5650,7 @@ def make_parser():
 
   def parseArgObjDecorator(wrapped):
     def parseArgObjOp(cfg, state):
-      obj = get_argobj(cfg, state)
+      obj = get_var(cfg, state, None)
       if obj is not None:
         return obj
       else:
@@ -6011,14 +6006,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[fn2hc(get_arg(fullInputAxisName, state))] = curve
+      curves[fn2hc(get_var(fullInputAxisName, state, fullInputAxisName))] = curve
     op = None
     if resolve(cfg, "op", state) == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif resolve(cfg, "op", state) == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif resolve(cfg, "op", state) == "thresholds":
-      op = MCSThresholdOp(thresholds = {fn2hc(get_arg(fullInputAxisName, state)):get_arg(threshold, state) for fullInputAxisName,threshold in resolve(cfg, "thresholds", state).items()})
+      op = MCSThresholdOp(thresholds = {fn2hc(get_var(fullInputAxisName, state, fullInputAxisName)):get_var(threshold, state, threshold) for fullInputAxisName,threshold in resolve(cfg, "thresholds", state).items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(resolve(cfg, "op", state)))
     mcs = MultiCurveSink(curves, op)
@@ -6042,8 +6037,8 @@ def make_parser():
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = get_axis_by_full_name(get_arg(fullAxisName, state), state)
-      value = float(get_arg(value, state))
+      axis = get_axis_by_full_name(get_var(fullAxisName, state, fullAxisName), state)
+      value = float(get_var(value, state, value))
       av.append([axis, value, False])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
@@ -6057,8 +6052,8 @@ def make_parser():
       axesAndValues = axesAndValues.items()
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = get_axis_by_full_name(get_arg(fullAxisName, state), state)
-      value = float(get_arg(value, state))
+      axis = get_axis_by_full_name(get_var(fullAxisName, state, fullAxisName), state)
+      value = float(get_var(value, state, value))
       av.append([axis, value, True])
     r = MoveAxes(av)
     return r
@@ -6129,7 +6124,7 @@ def make_parser():
     assert(allCurves is not None)
     if "axes" in cfg:
       for fullAxisName in resolve(cfg, "axes", state):
-        curves = allCurves.get(get_arg(fullAxisName, state), None)
+        curves = allCurves.get(get_var(fullAxisName, state, fullAxisName), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
         else:
@@ -6155,7 +6150,7 @@ def make_parser():
 
   def parseCycleOps(cfg, state):
     curve = resolve(cfg, "curve", state)
-    ops = [get_arg(op, state) for op in resolve(cfg, "ops", state)]
+    ops = [get_var(op, state, op) for op in resolve(cfg, "ops", state)]
     step = resolve(cfg, "step", state)
     def worker(e):
       current = ops.index(curve.get_op())
@@ -6448,7 +6443,7 @@ def make_parser():
 
       parser = state["settings"]["parser"]
       def actionParser(cfg, state):
-        obj = get_argobj(cfg, state)
+        obj = get_var(cfg, state, None)
         if obj is not None:
           return obj
         try:
