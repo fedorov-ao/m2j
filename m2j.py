@@ -5927,13 +5927,9 @@ def make_parser():
     """Helper. Retrieves sink from sinks stack by depth or by object name.
        depth: 0 - current component sink, 1 - its parent, etc
     """
-    sink = None
-    sinkName = get_nested_d(cfg, "sink", None)
-    if sinkName is not None:
-      sink = get_argobj(sinkName, state)
-      if sink is None:
-        raise RuntimeError("Cannot get target sink by '{}'".format(sinkName))
-    else:
+    sink = resolve_d(cfg, "sink", state, None)
+    if sink is None:
+      #logger.debug("Cannot get target sink by '{}'".format(sinkName))
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
         raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
