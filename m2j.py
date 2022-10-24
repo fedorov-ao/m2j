@@ -245,6 +245,18 @@ def get_arg(value, state):
   return value if r is None else r
 
 
+def resolve_d(d, name, state, dfault=None):
+  return get_arg(get_nested_d(d, name, dfault), state)
+
+
+def resolve(d, name, state):
+  r = resolve_d(d, name, state, None)
+  if r is None:
+    #TODO Use more appropriate exception
+    raise RuntimeError("Cannot get {} from {}".format(name, d))
+  return r
+
+
 def resolve_args(args, state):
   r = collections.OrderedDict()
   for n,a in args.items():
@@ -4423,7 +4435,7 @@ def make_curve_makers():
 
   def make_config_curves(settings):
     def parseAxis(cfg, state):
-      curve = get_nested_d(cfg, "curve", None)
+      curve = resolve_d(cfg, "curve", state, None)
       if curve is None:
         #TODO axis not in state anymore
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
@@ -5193,14 +5205,14 @@ def make_parser():
       return wrapped
 
   def constant(cfg, state):
-    return ConstantApproximator(get_arg(get_nested(cfg, "value"), state))
+    return ConstantApproximator(resolve(cfg, "value", state))
   opParser.add("constant", constant)
 
   def segment(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentApproximator(data, 1.0, True, True)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
+    return make_op(resolve(cfg, "points", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("segment", segment)
 
   def poly(cfg, state):
@@ -5212,25 +5224,25 @@ def make_parser():
           r += k*x**p
         return r
       return make_symm_wrapper(op, symmetric)
-    return make_op(get_arg(get_nested(cfg, "coeffs"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
+    return make_op(resolve(cfg, "coeffs", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("poly", poly)
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
       approx = BezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
+    return make_op(resolve(cfg, "points", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
     def make_op(data, symmetric):
       approx = SegmentedBezierApproximator(data)
       return make_symm_wrapper(approx, symmetric)
-    return make_op(get_arg(get_nested(cfg, "points"), state), get_arg(get_nested_d(cfg, "symmetric", 0), state))
+    return make_op(resolve(cfg, "points", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("sbezier", sbezier)
 
   def get_op(cfg, state):
-    op = get_arg(get_nested(cfg, "op"), state)
+    op = resolve(cfg, "op", state)
     if type(op) in (str, unicode):
       op = state["parser"]("op", cfg, state)
     return op
@@ -5248,7 +5260,7 @@ def make_parser():
     """Helper"""
     pointParsers = {}
     def parseFixedPoint(cfg, state):
-      p = Point(op=get_op(cfg, state), center=get_nested_d(cfg, "center", 0.0))
+      p = Point(op=get_op(cfg, state), center=resolve_d(cfg, "center", state, 0.0))
       return p
     pointParsers["fixed"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
@@ -5272,10 +5284,10 @@ def make_parser():
     return d.get(cfg, PointMovingCurveResetPolicy.DONT_TOUCH)
 
   def parsePointsOutputBasedCurve(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     points = parsePoints(get_nested(cfg, "points"), state)
-    vpoName = get_nested_d(cfg, "vpo", None)
+    vpoName = resolve_d(cfg, "vpo", state, None)
     ops = {
       "min" : get_min_op,
       "mul" : multiply_op,
@@ -5326,13 +5338,13 @@ def make_parser():
   curveParser.add("pointsOut", parsePointsOutputBasedCurve)
 
   def parseFixedPointInputBasedCurve(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     points = parsePoints(get_nested(cfg, "points"), state)
     fp = points["fixed"]
-    interpolationDistance = get_nested_d(cfg, "interpolationDistance", 0.3)
-    interpolationFactor = get_nested_d(cfg, "interpolationFactor", 1.0)
-    posLimits = get_nested_d(cfg, "posLimits", (-1.1, 1.1))
+    interpolationDistance = resolve_d(cfg, "interpolationDistance", state, 0.3)
+    interpolationFactor = resolve_d(cfg, "interpolationFactor", state, 1.0)
+    posLimits = resolve_d(cfg, "posLimits", state, (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     axis.add_listener(curve)
@@ -5341,23 +5353,23 @@ def make_parser():
   curveParser.add("fpointIn", parseFixedPointInputBasedCurve)
 
   def parsePointsInputBasedCurve(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     points = parsePoints(get_nested(cfg, "points"), state)
     fp = points["fixed"]
     mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
-    interpolationDistance = get_nested_d(cfg, "interpolationDistance", 0.3)
-    interpolationFactor = get_nested_d(cfg, "interpolationFactor", 1.0)
+    interpolationDistance = resolve_d(cfg, "interpolationDistance", state, 0.3)
+    interpolationFactor = resolve_d(cfg, "interpolationFactor", state, 1.0)
     resetDistance = 0.0 if "moving" not in get_nested(cfg, "points") else get_nested(cfg, "points")["moving"].get("resetDistance", 0.4)
     resetTime = float("inf") if "moving" not in get_nested(cfg, "points") else get_nested(cfg, "points")["moving"].get("resetTime", float("inf"))
-    posLimits = get_nested_d(cfg, "posLimits", (-1.1, 1.1))
+    posLimits = resolve_d(cfg, "posLimits", state, (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     def getValueOp(curve):
       return curve.get_pos()
     centerOp = IterativeCenterOp(point=mp, op=interpolateOp)
-    onReset = parseResetPolicy(get_nested_d(cfg, "onReset", "setToCurrent"), state)
-    onMove = parseResetPolicy(get_nested_d(cfg, "onMove", "setToCurrent"), state)
+    onReset = parseResetPolicy(resolve_d(cfg, "onReset", state, "setToCurrent"), state)
+    onMove = parseResetPolicy(resolve_d(cfg, "onMove", state, "setToCurrent"), state)
     curve = PointMovingCurve(
       next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
       onReset=onReset, onMove=onMove, resetTime=resetTime)
@@ -5367,13 +5379,13 @@ def make_parser():
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
 
   def parseOutputDeltaLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullControlledAxisName = resolve(cfg, "axis", state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     sensOp = get_op(cfg, state)
     deltaOp = lambda delta, sens : delta*sens
-    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
+    fullControllingAxisName = resolve(cfg, "controlling", state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
-    radius = get_nested_d(cfg, "radius", float("inf"))
+    radius = resolve_d(cfg, "radius", state, float("inf"))
     curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
@@ -5383,13 +5395,13 @@ def make_parser():
   curveParser.add("outDeltaLink", parseOutputDeltaLinkingCurve)
 
   def parseInputDeltaLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullControlledAxisName = resolve(cfg, "axis", state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = get_op(cfg, state)
-    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
+    fullControllingAxisName = resolve(cfg, "controlling", state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
-    radius = get_nested_d(cfg, "radius", float("inf"))
-    threshold = get_nested_d(cfg, "threshold", 0.0)
+    radius = resolve_d(cfg, "radius", state, float("inf"))
+    threshold = resolve_d(cfg, "threshold", state, 0.0)
     threshold = None if threshold == "none" else float(threshold)
     curve = InputDeltaLinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
@@ -5400,10 +5412,10 @@ def make_parser():
   curveParser.add("inDeltaLink", parseInputDeltaLinkingCurve)
 
   def parseInputLinkingCurve(cfg, state):
-    fullControlledAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullControlledAxisName = resolve(cfg, "axis", state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = get_op(cfg, state)
-    fullControllingAxisName = get_arg(get_nested(cfg, "controlling"), state)
+    fullControllingAxisName = resolve(cfg, "controlling", state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
@@ -5414,10 +5426,10 @@ def make_parser():
   curveParser.add("inLink", parseInputLinkingCurve)
 
   def parseAxisLinker(cfg, state):
-    fullControlledAxisName = get_arg(get_nested(cfg, "follower"), state)
+    fullControlledAxisName = resolve(cfg, "follower", state)
     controlledAxis = get_axis_by_full_name(fullControlledAxisName, state)
     op = get_op(cfg, state)
-    fullControllingAxisName = get_arg(get_nested(cfg, "leader"), state)
+    fullControllingAxisName = resolve(cfg, "leader", state)
     controllingAxis = get_axis_by_full_name(fullControllingAxisName, state)
     linker = AxisLinker(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(linker)
@@ -5443,14 +5455,14 @@ def make_parser():
           self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
       return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
 
-  def makeIterativeInputOp(cfg, outputOp):
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=get_nested_d(cfg, "eps", 0.001), numSteps=get_nested_d(cfg, "numSteps", 100))
-    inputStep = get_nested_d(cfg, "inputStep", 0.1)
+  def makeIterativeInputOp(cfg, outputOp, state):
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=resolve_d(cfg, "eps", state, 0.001), numSteps=resolve_d(cfg, "numSteps", state, 100))
+    inputStep = resolve_d(cfg, "inputStep", state, 0.1)
     inputOp = LookupOp(inputOp, outputOp, inputStep)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     movingCfg = get_nested(cfg, "moving")
     signDDOp = SignDistanceDeltaOp()
@@ -5460,7 +5472,7 @@ def make_parser():
       ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    deltaOp = DeadzoneDeltaOp(deltaOp, get_nested_d(cfg, "deadzone", 0.0))
+    deltaOp = DeadzoneDeltaOp(deltaOp, resolve_d(cfg, "deadzone", state, 0.0))
     sensOp = ApproxOp(approx=state["parser"]("op", get_nested(cfg, "fixed"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     add_curve_to_state(fullAxisName, curve, state)
@@ -5468,7 +5480,7 @@ def make_parser():
   curveParser.add("combined", parseCombinedCurve)
 
   def parseInputBasedCurve2(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     movingCfg = get_nested(cfg, "moving")
     signDDOp = SignDistanceDeltaOp()
@@ -5478,15 +5490,15 @@ def make_parser():
       ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
     outputOp = ApproxOp(approx=state["parser"]("op", get_nested(cfg, "fixed"), state))
-    inputOp = makeIterativeInputOp(cfg, outputOp)
+    inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
-    if get_nested_d(cfg, "print", 0) == 1:
-      cb = InputBasedCurve2PrintCB(fullAxisName, get_nested_d(cfg, "deltaOrder", 3), get_nested_d(cfg, "ivOrder", 3), get_nested_d(cfg, "ovOrder", 3))
+    if resolve_d(cfg, "print", state, 0) == 1:
+      cb = InputBasedCurve2PrintCB(fullAxisName, resolve_d(cfg, "deltaOrder", state, 3), resolve_d(cfg, "ivOrder", state, 3), resolve_d(cfg, "ovOrder", state, 3))
     deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
-    deltaOp = DeadzoneDeltaOp(deltaOp, get_nested_d(cfg, "deadzone", 0.0))
-    resetOpsOnAxisMove = get_nested_d(cfg, "resetOpsOnAxisMove", True)
-    ivLimits = get_nested_d(cfg, "inputLimits", (-1.0, 1.0))
+    deltaOp = DeadzoneDeltaOp(deltaOp, resolve_d(cfg, "deadzone", state, 0.0))
+    resetOpsOnAxisMove = resolve_d(cfg, "resetOpsOnAxisMove", state, True)
+    ivLimits = resolve_d(cfg, "inputLimits", state, (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     add_curve_to_state(fullAxisName, curve, state)
@@ -5495,15 +5507,15 @@ def make_parser():
 
   def parseOffsetCurve(cfg, state):
     #axis tracker
-    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", True)
+    resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, True)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
     curve = top
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(curve)
     #print
-    if get_arg(get_nested_d(cfg, "print", False), state) == True:
-      printCurve = PrintRelChainCurve(None, axis, fullAxisName, get_nested_d(cfg, "avOrder", 3))
+    if resolve_d(cfg, "print", state, False) == True:
+      printCurve = PrintRelChainCurve(None, axis, fullAxisName, resolve_d(cfg, "avOrder", state, 3))
       top.set_next(printCurve)
       curve = printCurve
     #accumulate
@@ -5522,13 +5534,13 @@ def make_parser():
         pass
       def __init__(self, value=None):
         self.value_ = value
-    resetAccumulatedOnAxisMove = get_nested_d(cfg, "resetAccumulatedOnAxisMove", resetOnAxisMove)
+    resetAccumulatedOnAxisMove = resolve_d(cfg, "resetAccumulatedOnAxisMove", state, resetOnAxisMove)
     inputOp = ResetOp(0.0 if resetAccumulatedOnAxisMove else None)
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    movingInputOp = makeIterativeInputOp(cfg, movingOutputOp)
+    movingInputOp = makeIterativeInputOp(cfg, movingOutputOp, state)
     movingChainCurve = TransformAbsChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
     accumulateChainCurve.set_next(movingChainCurve)
     #offset transformed
@@ -5537,7 +5549,7 @@ def make_parser():
     #transform offset
     fixedCfg = get_nested(cfg, "fixed")
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp)
+    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.set_next(fixedChainCurve)
     #move axis
@@ -5549,9 +5561,9 @@ def make_parser():
 
   def parseAccelCurve(cfg, state):
     #axis tracker
-    resetOnAxisMove = get_nested_d(cfg, "resetOnAxisMove", 1)
+    resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, 1)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(top)
     #accelerate
@@ -5568,7 +5580,7 @@ def make_parser():
     #transform
     fixedCfg = get_nested(cfg, "fixed")
     fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp)
+    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     accelChainCurve.set_next(fixedChainCurve)
     #move axis
@@ -5580,7 +5592,7 @@ def make_parser():
 
   def parsePresetCurve(cfg, state):
     config = state["settings"]["config"]
-    presetName = get_arg(get_nested_d(cfg, "name", None), state)
+    presetName = resolve_d(cfg, "name", state, None)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
     presetCfg = get_nested_from_sections_d(config, ("presets", "classes"), presetName, None)
@@ -5589,7 +5601,7 @@ def make_parser():
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
-      push_args(get_nested_d(cfg, "args", {}), state)
+      push_args(resolve_d(cfg, "args", state, {}), state)
       try:
         #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
         return state["parser"]("curve", presetCfg, state)
@@ -5608,10 +5620,10 @@ def make_parser():
   curveParser.add("preset", parsePresetCurve)
 
   def parseNoopCurve(cfg, state):
-    fullAxisName = get_arg(get_nested(cfg, "axis"), state)
+    fullAxisName = resolve(cfg, "axis", state)
     #To init state
     get_axis_by_full_name(fullAxisName, state)
-    curve = NoopCurve(value=get_arg(get_nested_d(cfg, "value", 0.0), state))
+    curve = NoopCurve(value=resolve_d(cfg, "value", state, 0.0))
     add_curve_to_state(fullAxisName, curve, state)
     return curve
   curveParser.add("noop", parseNoopCurve)
@@ -5619,7 +5631,7 @@ def make_parser():
   def parseBasesDecorator(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
-      bases = get_nested_d(cfg, "bases", None)
+      bases = resolve_d(cfg, "bases", state, None)
       if bases is None:
         return cfg
       else:
@@ -5655,7 +5667,7 @@ def make_parser():
       def op(cfg, state):
         r = None
         for name in names:
-          if name in cfg or get_nested_d(cfg, "type", "") == name:
+          if name in cfg or resolve_d(cfg, "type", state, "") == name:
             r = state["parser"](name, cfg, state)
             if r is not None:
               return r
@@ -5674,7 +5686,7 @@ def make_parser():
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
-      push_args(get_nested_d(cfg, "args", {}), state)
+      push_args(resolve_d(cfg, "args", state, {}), state)
       try:
         return state["parser"]("sink", cfg2, state)
       finally:
@@ -5750,7 +5762,7 @@ def make_parser():
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
     parser = state["parser"].get("sc")
-    push_args(get_nested_d(cfg, "args", {}), state)
+    push_args(resolve_d(cfg, "args", state, {}), state)
     push_in_state("curvesStack", {}, state)
     state["curves"] = state["curvesStack"][-1]
     #Init headsink
@@ -5782,7 +5794,7 @@ def make_parser():
       if next is not None:
         #By default next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
-        sink.add(None, next, get_nested_d(cfg, "bindsNextLevel", 0))
+        sink.add(None, next, resolve_d(cfg, "bindsNextLevel", state, 0))
     try:
       #TODO Refactor
       if len(cfg) == 0:
@@ -5836,7 +5848,7 @@ def make_parser():
   scParser.add("objects", parseObjects)
 
   def parseModifiers(cfg, state):
-    modifierDescs = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
+    modifierDescs = [parse_modifier_desc(m, state) for m in resolve(cfg, "modifiers", state)]
     modifierSink = ModifierSink(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierSink.APPEND)
     #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
     class Wrapper:
@@ -5853,8 +5865,8 @@ def make_parser():
 
   def parseSens(cfg, state):
     try:
-      name = get_arg(get_nested_d(cfg, "name", None), state)
-      sens = get_arg(get_nested(cfg, "sens"), state)
+      name = resolve_d(cfg, "name", state, None)
+      sens = resolve(cfg, "sens", state)
       sens2 = {fn2htc(fullAxisName):value for fullAxisName,value in sens.items()}
       scaleSink = ScaleSink2(sens=sens2, name=name)
       return scaleSink
@@ -5864,17 +5876,17 @@ def make_parser():
 
   @parseBasesDecorator
   def parseMode(cfg, state):
-    name = get_nested_d(cfg, "name", "")
+    name = resolve_d(cfg, "name", state, "")
     headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
     headSink.set_component("msmm", msmm)
     try:
-      for modeName,modeCfg in get_arg(get_nested(cfg, "modes"), state).items():
+      for modeName,modeCfg in resolve(cfg, "modes", state).items():
         #logger.debug("{}: parsing mode:".format(name, modeName))
         child = state["parser"]("sink", modeCfg, state)
         modeSink.add(modeName, child)
-      initialMode = get_arg(get_nested_d(cfg, "initialMode", None), state)
+      initialMode = resolve_d(cfg, "initialMode", state, None)
       if initialMode is not None:
         if not modeSink.set_mode(initialMode):
           logger.warning("Cannot set mode: {}".format(initialMode))
@@ -5909,7 +5921,7 @@ def make_parser():
   #Actions
   def get_depth(cfg, state):
     """Helper."""
-    return -(1+get_arg(get_nested_d(cfg, "depth", 0), state))
+    return -(1+resolve_d(cfg, "depth", state, 0))
 
   def get_sink(cfg, state):
     """Helper. Retrieves sink from sinks stack by depth or by object name.
@@ -5920,7 +5932,7 @@ def make_parser():
     if sinkName is not None:
       sink = get_argobj(sinkName, state)
       if sink is None:
-        raise RuntimeError("Cannot get target sink by '{}'".format(objectName))
+        raise RuntimeError("Cannot get target sink by '{}'".format(sinkName))
     else:
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
@@ -5943,14 +5955,14 @@ def make_parser():
   parser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
-  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(get_nested_d(cfg, "report", True)))
-  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), get_nested_d(cfg, "current", None), get_nested_d(cfg, "report", True)))
-  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
+  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(resolve_d(cfg, "report", state, True)))
+  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(get_nested(cfg, "mode"), resolve_d(cfg, "current", state), get_nested_d(cfg, "report", True)))
+  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(get_nested(cfg, "mode"), resolve_d(cfg, "current", state), get_nested_d(cfg, "report", True)))
+  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(get_nested(cfg, "f"), get_nested(cfg, "t"), resolve_d(cfg, "current", state, None), resolve_d(cfg, "report", state, True)))
+  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(get_nested(cfg, "modes"), resolve_d(cfg, "current", state), get_nested_d(cfg, "report", True)))
   actionParser.add("clearMode", lambda cfg, state : get_component("msmm", cfg, state).make_clear())
-  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), get_nested_d(cfg, "step", 1), get_nested_d(cfg, "loop", True), nameToMSMMSavePolicy(get_nested_d(cfg, "savePolicy", "noop")), get_nested_d(cfg, "report", True)))
+  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(get_nested(cfg, "mode"), nameToMSMMSavePolicy(resolve_d(cfg, "savePolicy", state, "noop")), resolve_d(cfg, "current", state), get_nested_d(cfg, "report", True)))
+  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(get_nested(cfg, "modes"), resolve_d(cfg, "step", state, 1), resolve_d(cfg, "loop", state, True), nameToMSMMSavePolicy(resolve_d(cfg, "savePolicy", state, "noop")), resolve_d(cfg, "report", state, True)))
 
   def parseSetState(cfg, state):
     s = get_nested(cfg, "state")
@@ -6019,8 +6031,8 @@ def make_parser():
   actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
-    axis = get_axis_by_full_name(get_arg(get_nested(cfg, "axis"), state), state)
-    value = float(get_arg(get_nested(cfg, "value"), state))
+    axis = get_axis_by_full_name(resolve(cfg, "axis", state), state)
+    value = float(resolve(cfg, "value", state))
     r = MoveAxis(axis, value, False)
     return r
   actionParser.add("setAxis", parseSetAxis)
@@ -6057,13 +6069,13 @@ def make_parser():
   actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState_(cfg, state, s):
-    output, key = fn2sn(get_arg(get_nested(cfg, "key"), state))
+    output, key = fn2sn(resolve(cfg, "key", state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
     return SetButtonState(output, key, s)
 
   def parseSetKeyState(cfg, state):
-    s = int(get_arg(get_nested(cfg, "state"), state))
+    s = int(resolve(cfg, "state", state))
     return parseSetKeyState_(cfg, state, s)
   actionParser.add("setKeyState", parseSetKeyState)
 
@@ -6076,11 +6088,11 @@ def make_parser():
   actionParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    output, key = fn2sn(get_arg(get_nested(cfg, "key"), state))
+    output, key = fn2sn(resolve(cfg, "key", state))
     output = state["settings"]["outputs"][output]
     key = name2code(key)
-    numClicks = int(get_arg(get_nested_d(cfg, "numClicks", 1), state))
-    delay = float(get_arg(get_nested_d(cfg, "delay", 0.0), state))
+    numClicks = int(resolve_d(cfg, "numClicks", state, 1))
+    delay = float(resolve_d(cfg, "delay", state, 0.0))
     class Clicker:
       def on_event(self, event):
         if self.delay_ == 0.0:
@@ -6139,16 +6151,16 @@ def make_parser():
   actionParser.add("resetCurves", parseResetCurves)
 
   def parseSetOp(cfg, state):
-    curve, op = get_arg(get_nested(cfg, "curve"), state), get_arg(get_nested(cfg, "op"), state)
+    curve, op = resolve(cfg, "curve", state), resolve(cfg, "op", state)
     def worker(e):
       curve.set_op(op)
     return worker
   actionParser.add("setOp", parseSetOp)
 
   def parseCycleOps(cfg, state):
-    curve = get_arg(get_nested(cfg, "curve"), state)
-    ops = [get_arg(op, state) for op in get_arg(get_nested(cfg, "ops"), state)]
-    step = get_arg(get_nested(cfg, "step"), state)
+    curve = resolve(cfg, "curve", state)
+    ops = [get_arg(op, state) for op in resolve(cfg, "ops", state)]
+    step = resolve(cfg, "step", state)
     def worker(e):
       current = ops.index(curve.get_op())
       n = clamp(current + step, 0, len(ops) - 1)
@@ -6230,7 +6242,7 @@ def make_parser():
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
-    code, value = int(get_nested_d(cfg, "code", 0)), get_nested_d(cfg, "value")
+    code, value = int(resolve_d(cfg, "code", state, 0)), get_nested_d(cfg, "value")
     sink = get_sink(cfg, state)
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
@@ -6268,14 +6280,14 @@ def make_parser():
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
     if "modifiers" in cfg:
-      modifiers = [parse_modifier_desc(m, state) for m in get_arg(get_nested(cfg, "modifiers"), state)]
-      allowExtraModifiers = get_arg(get_nested_d(cfg, "allowExtraModifiers", False), state)
+      modifiers = [parse_modifier_desc(m, state) for m in resolve(cfg, "modifiers", state)]
+      allowExtraModifiers = resolve_d(cfg, "allowExtraModifiers", state, False)
       r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
     return r
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    sourceHash, eventType, key = fn2htc(get_arg(get_nested(cfg, "key"), state))
+    sourceHash, eventType, key = fn2htc(resolve(cfg, "key", state))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(key)), ("value", EqPropTest(value))]
     if sourceHash is not None:
       r.append(("source", EqPropTest(sourceHash)))
@@ -6328,7 +6340,7 @@ def make_parser():
   edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
-    sourceHash, eventType, axis = fn2htc(get_arg(get_nested(cfg, "axis"), state))
+    sourceHash, eventType, axis = fn2htc(resolve(cfg, "axis", state))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(axis))]
     if sourceHash is not None:
       r.append(("source", EqPropTest(sourceHash)))
@@ -6369,12 +6381,12 @@ def make_parser():
   edParser.add("init", parseInit)
 
   def parseEvent(cfg, state):
-    propValue = get_nested_d(cfg, "etype", None)
+    propValue = resolve_d(cfg, "etype", state, None)
     propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
     r = [("type", EqPropTest(propValue))]
     for p in (("source", calc_hash), ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x), ("value", lambda x : x)):
       propName, propOp = p[0], p[1]
-      propValue = get_nested_d(cfg, propName, None)
+      propValue = resolve_d(cfg, propName, state, None)
       if propValue is not None:
         propValue = propOp(propValue)
         r.append((propName, EqPropTest(propValue)))
@@ -6401,9 +6413,9 @@ def make_parser():
         self.inputs_, self.resetOn_ = inputs, resetOn
         self.i_ = 0
     cmpOp = CmpWithModifiers()
-    inputs = get_arg(get_nested(cfg, "inputs"), state)
+    inputs = resolve(cfg, "inputs", state)
     inputs = [make_event_test_op(edParser(inpt, state), cmpOp) for inpt in inputs]
-    resetOn = get_arg(get_nested_d(cfg, "resetOn", []), state)
+    resetOn = resolve_d(cfg, "resetOn", state, [])
     resetOn = [make_event_test_op(edParser(rst, state), cmpOp) for rst in resetOn]
     return SequenceTest(inputs, resetOn)
   edParser.add("sequence", parseSequence)
@@ -6460,7 +6472,7 @@ def make_parser():
 
       return ((i,o) for i in inputs for o in outputs)
 
-    binds = get_nested_d(cfg, "binds", [])
+    binds = resolve_d(cfg, "binds", state, [])
     #logger.debug("binds: {}".format(binds))
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
@@ -6530,7 +6542,7 @@ def make_parser():
   @make_reporting_joystick
   def parseRelativeOutput(cfg, state):
     next = state["parser"]("output", get_nested(cfg, "next"), state)
-    j = RelativeHeadMovementJoystick(next=next, r=get_nested_d(cfg, "clampRadius", float("inf")), stick=get_nested_d(cfg, "stick", True))
+    j = RelativeHeadMovementJoystick(next=next, r=resolve_d(cfg, "clampRadius", state, float("inf")), stick=resolve_d(cfg, "stick", state, True))
     return j
   outputParser.add("relative", parseRelativeOutput)
 
@@ -6571,8 +6583,8 @@ def make_parser():
       "il2_6dof" : make_il2_6dof_packet,
       "opentrack" : make_opentrack_packet
     }
-    j = UdpJoystick(get_nested(cfg, "ip"), int(get_nested(cfg, "port")), packetMakers[get_nested(cfg, "format")], int(get_nested_d(cfg, "numPackets", 1)))
-    for a,l in get_nested_d(cfg, "limits", {}).items():
+    j = UdpJoystick(get_nested(cfg, "ip"), int(get_nested(cfg, "port")), packetMakers[get_nested(cfg, "format")], int(resolve_d(cfg, "numPackets", state, 1)))
+    for a,l in resolve_d(cfg, "limits", state, {}).items():
       j.set_limits(name2code(a), l)
     state["settings"]["updated"].append(lambda tick,ts : j.send())
     return j
