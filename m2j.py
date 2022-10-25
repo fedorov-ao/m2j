@@ -218,7 +218,7 @@ def get_arg(name, state):
     raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
 
 
-def get_var(name, state, dfault=None):
+def deref(name, state, dfault=None):
   if type(name) in (dict, collections.OrderedDict):
     objName = get_nested_d(name, "obj", None)
     if objName is not None:
@@ -241,7 +241,7 @@ def get_var(name, state, dfault=None):
 
 def resolve_d(d, name, state, dfault=None):
   v = get_nested_d(d, name, dfault)
-  return get_var(v, state, v)
+  return deref(v, state, v)
 
 
 def resolve(d, name, state):
@@ -255,7 +255,7 @@ def resolve(d, name, state):
 def resolve_args(args, state):
   r = collections.OrderedDict()
   for n,a in args.items():
-    r[n] = get_var(a, state, a)
+    r[n] = deref(a, state, a)
   return r
 
 
@@ -422,7 +422,7 @@ def split_full_name2(s, state, sep="."):
   elif s[0] == "-":
     st = False
     s = s[1:]
-  s = get_var(s, state, s)
+  s = deref(s, state, s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else calc_hash(source)
@@ -5142,10 +5142,10 @@ class IntrusiveSelectParser:
     self.p_ = SelectParser() if parser is None else parser
 
 
-class ArgObjSelectParser:
+class DerefSelectParser:
   def __call__(self, key, cfg, state):
-    #logger.debug("ArgObjSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
-    r = get_var(key, state, None)
+    #logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
+    r = deref(key, state, None)
     return self.p_(key, cfg, state) if r is None else r
 
   def add(self, key, parser):
@@ -5185,14 +5185,14 @@ def get_axis_by_full_name(fullAxisName, state):
   return axis
 
 def make_parser():
-  parser = ArgObjSelectParser()
+  mainParser = DerefSelectParser()
 
   def literalParser(cfg, state):
-    return cfg["literal"]
-  parser.add("literal", literalParser)
+    return resolve(cfg, "literal")
+  mainParser.add("literal", literalParser)
 
-  opParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "op"), parser=ArgObjSelectParser())
-  parser.add("op", opParser)
+  opParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "op"), parser=DerefSelectParser())
+  mainParser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
     if symm == 1:
@@ -5246,8 +5246,8 @@ def make_parser():
     return op
 
   #Curves
-  curveParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "curve"), parser=ArgObjSelectParser())
-  parser.add("curve", curveParser)
+  curveParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "curve"), parser=DerefSelectParser())
+  mainParser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
       assert("curves" in state)
@@ -5653,7 +5653,7 @@ def make_parser():
 
   def parseArgObjDecorator(wrapped):
     def parseArgObjOp(cfgOrName, state):
-      obj = get_var(cfgOrName, state, None)
+      obj = deref(cfgOrName, state, None)
       if obj is not None:
         return obj
       else:
@@ -5699,8 +5699,8 @@ def make_parser():
           return name
     return "sink"
 
-  sinkParser = IntrusiveSelectParser(keyOp=sinkParserKeyOp)
-  parser.add("sink", sinkParser)
+  sinkParser = IntrusiveSelectParser(keyOp=sinkParserKeyOp, parser=DerefSelectParser())
+  mainParser.add("sink", sinkParser)
   sinkParser.add("layout", parseExternal("layout", ["layouts", "classes"]))
   sinkParser.add("class", parseExternal("class", ["classes", "layouts"]))
 
@@ -5826,8 +5826,8 @@ def make_parser():
   sinkParser.add("sink", parseSink)
 
   #Sink components
-  scParser = SelectParser()
-  parser.add("sc", scParser)
+  scParser = DerefSelectParser()
+  mainParser.add("sc", scParser)
 
   def parseObjects(cfg, state):
     class ObjectsProxy:
@@ -5945,8 +5945,8 @@ def make_parser():
     return component
 
   #TODO Rename "type" to "action" and update configs
-  actionParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested_d(cfg, "action", get_nested_d(cfg, "type")))
-  parser.add("action", actionParser)
+  actionParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested_d(cfg, "action", get_nested_d(cfg, "type")), parser=DerefSelectParser())
+  mainParser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
   actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(resolve_d(cfg, "report", state, True)))
@@ -6009,14 +6009,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[fn2hc(get_var(fullInputAxisName, state, fullInputAxisName))] = curve
+      curves[fn2hc(deref(fullInputAxisName, state, fullInputAxisName))] = curve
     op = None
     if resolve(cfg, "op", state) == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif resolve(cfg, "op", state) == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif resolve(cfg, "op", state) == "thresholds":
-      op = MCSThresholdOp(thresholds = {fn2hc(get_var(fullInputAxisName, state, fullInputAxisName)):get_var(threshold, state, threshold) for fullInputAxisName,threshold in resolve(cfg, "thresholds", state).items()})
+      op = MCSThresholdOp(thresholds = {fn2hc(deref(fullInputAxisName, state, fullInputAxisName)):deref(threshold, state, threshold) for fullInputAxisName,threshold in resolve(cfg, "thresholds", state).items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(resolve(cfg, "op", state)))
     mcs = MultiCurveSink(curves, op)
@@ -6040,8 +6040,8 @@ def make_parser():
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = get_axis_by_full_name(get_var(fullAxisName, state, fullAxisName), state)
-      value = float(get_var(value, state, value))
+      axis = get_axis_by_full_name(deref(fullAxisName, state, fullAxisName), state)
+      value = float(deref(value, state, value))
       av.append([axis, value, False])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
@@ -6055,8 +6055,8 @@ def make_parser():
       axesAndValues = axesAndValues.items()
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = get_axis_by_full_name(get_var(fullAxisName, state, fullAxisName), state)
-      value = float(get_var(value, state, value))
+      axis = get_axis_by_full_name(deref(fullAxisName, state, fullAxisName), state)
+      value = float(deref(value, state, value))
       av.append([axis, value, True])
     r = MoveAxes(av)
     return r
@@ -6127,7 +6127,7 @@ def make_parser():
     assert(allCurves is not None)
     if "axes" in cfg:
       for fullAxisName in resolve(cfg, "axes", state):
-        curves = allCurves.get(get_var(fullAxisName, state, fullAxisName), None)
+        curves = allCurves.get(deref(fullAxisName, state, fullAxisName), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
         else:
@@ -6153,7 +6153,7 @@ def make_parser():
 
   def parseCycleOps(cfg, state):
     curve = resolve(cfg, "curve", state)
-    ops = [get_var(op, state, op) for op in resolve(cfg, "ops", state)]
+    ops = [deref(op, state, op) for op in resolve(cfg, "ops", state)]
     step = resolve(cfg, "step", state)
     def worker(e):
       current = ops.index(curve.get_op())
@@ -6267,8 +6267,8 @@ def make_parser():
   actionParser.add("printEvent", parsePrintEvent)
 
   #Event descriptors
-  edParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"))
-  parser.add("ed", edParser)
+  edParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"), parser=DerefSelectParser())
+  mainParser.add("ed", edParser)
 
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
@@ -6444,22 +6444,20 @@ def make_parser():
           r.append(t)
         return r
 
-      parser = state["settings"]["parser"]
-      def actionParser(cfg, state):
-        obj = get_var(cfg, state, None)
-        if obj is not None:
-          return obj
+      def parseActionOrSink(cfg, state):
+        mainParser = state["parser"]
         try:
-          return parser.get("action")(cfg, state)
+          return mainParser("action", cfg, state)
         except ParserNotFoundError:
           #logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
-          return parser.get("sink")(cfg, state)
+          return mainParser("sink", cfg, state)
 
-      inputs = parseGroup("input", "inputs", parser.get("ed"), cfg, state)
+      mainParser = state["parser"]
+      inputs = parseGroup("input", "inputs", mainParser.get("ed"), cfg, state)
       if len(inputs) == 0:
         logger.warning("No inputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
-      outputs = parseGroup("output", "outputs", actionParser, cfg, state)
+      outputs = parseGroup("output", "outputs", parseActionOrSink, cfg, state)
       if len(outputs) == 0:
         logger.warning("No outputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
@@ -6489,8 +6487,8 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  outputParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"))
-  parser.add("output", outputParser)
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"), parser=DerefSelectParser())
+  mainParser.add("output", outputParser)
 
   @make_reporting_joystick
   def parseNullJoystickOutput(cfg, state):
@@ -6583,4 +6581,4 @@ def make_parser():
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
-  return parser
+  return mainParser
