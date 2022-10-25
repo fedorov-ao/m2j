@@ -287,25 +287,13 @@ def get_obj(name, state, nameSep=":", memberSep="."):
   return obj
 
 
-def init_objects(objects, objectsCfg, state):
+def init_objects(cfg, cb, state):
   parser = state["parser"]
-  for k,v in objectsCfg.items():
-    #logger.debug("Constructing object: {}".format(k))
-    for n in ("curve", "op", "literal"):
-      if n in v:
-        objects[k] = parser(n, v, state)
-        #break is needed to avoid executing the "else" block
-        break
-    else:
-      objects[k] = parser("sink", v, state)
-
-
-def init_objects_in_sink(sink, objectsCfg, state):
-  parser = state["parser"]
-  for k,v in objectsCfg.items():
+  for k,v in cfg.items():
     o = None
     #logger.debug("Constructing object: {}".format(k))
-    for n in ("curve", "op", "literal"):
+    #TODO Add other classes(ed, action, etc., see mainParser.add() calls) Problem: keys that are used to define classes are ambiguous, i.e. "type" is used both in "ed" and "output".
+    for n in ("literal", "op", "curve"):
       if n in v:
         o = parser(n, v, state)
         #break is needed to avoid executing the "else" block
@@ -314,7 +302,7 @@ def init_objects_in_sink(sink, objectsCfg, state):
       o = parser("sink", v, state)
     if o is None:
       raise RuntimeError("Could not create object from: {}".format(str2(objectsCfg)))
-    sink.set_object(k, o)
+    cb(k, o)
 
 
 def calc_hash(s):
@@ -5839,7 +5827,7 @@ def make_parser():
     #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
     if objectsCfg is not None:
       headSink=state["sinks"][-1]
-      init_objects_in_sink(headSink, objectsCfg, state)
+      init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
       return ObjectsProxy(headSink)
     else:
       return None
