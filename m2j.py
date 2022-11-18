@@ -292,8 +292,8 @@ def init_objects(cfg, cb, state):
   for k,v in cfg.items():
     o = None
     #logger.debug("Constructing object: {}".format(k))
-    #TODO Add other classes(ed, action, etc., see mainParser.add() calls) Problem: keys that are used to define classes are ambiguous, i.e. "type" is used both in "ed" and "output".
-    for n in ("literal", "op", "curve"):
+    #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
+    for n in ("literal", "op", "curve", "action", "ed", "output"):
       if n in v:
         o = parser(n, v, state)
         #break is needed to avoid executing the "else" block
@@ -6255,7 +6255,7 @@ def make_parser():
   actionParser.add("printEvent", parsePrintEvent)
 
   #Event descriptors
-  edParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"), parser=DerefSelectParser())
+  edParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested_d(cfg, "ed", get_nested_d(cfg, "type")), parser=DerefSelectParser())
   mainParser.add("ed", edParser)
 
   def parseEdModifiers_(r, cfg, state):
@@ -6475,7 +6475,7 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  outputParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested(cfg, "type"), parser=DerefSelectParser())
+  outputParser = IntrusiveSelectParser(keyOp=lambda cfg,state : get_nested_d(cfg, "output", get_nested_d(cfg, "type")), parser=DerefSelectParser())
   mainParser.add("output", outputParser)
 
   @make_reporting_joystick
