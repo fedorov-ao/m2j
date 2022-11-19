@@ -4638,30 +4638,27 @@ class Info:
     def add_buttons_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       buttons = output.get_supported_buttons()
-      numButtonsPerGroup = kwargs.get("numButtonsPerGroup", 8)
-      orientation = kwargs.get("orientation", "v")
-      style = kwargs.get("style", self.style_)
       br, bc = 0, 0
       for button in buttons:
         text=typecode2name(codes.EV_KEY, button).strip("BTN_")
         buttonLabel = tk.Label(self.frame_, text=text)
         buttonLabel.grid(row=br, column=bc, rowspan=1, columnspan=1)
-        if orientation == "v":
+        if self.orientation_ == "v":
           br += 1
-          if br == numButtonsPerGroup:
+          if br == self.numButtonsPerGroup_:
             br = 0
             bc += 1
-        elif orientation == "h":
+        elif self.orientation_ == "h":
           bc += 1
-          if bc == numButtonsPerGroup:
+          if bc == self.numButtonsPerGroup_:
             bc = 0
             br += 1
         else:
-          raise RuntimeError("Bad orientation: '{}'".format(orientation))
+          raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
         class D:
           pass
         d = D()
-        d.output, d.label, d.state, d.style = output, buttonLabel, None, style
+        d.output, d.label, d.state, d.style = output, buttonLabel, None, self.style_
         self.data_[button] = d
       self.update()
     def update(self):
@@ -4692,6 +4689,8 @@ class Info:
       self.frame_ = buttonsFrame
       self.data_ = {}
       self.get_output_ = kwargs.get("getOutput", None)
+      self.numButtonsPerGroup_ = kwargs.get("numButtonsPerGroup", 8)
+      self.orientation_ = kwargs.get("orientation", "v")
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
     def set_prop_(self, label, propName, style, stylePropName):
       p = style.get(stylePropName, None) 
@@ -4760,8 +4759,8 @@ def init_info(**kwargs):
     area.add_marker(0.0, "-joystick.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 0, 5, name="jt")
     area.add_marker(0.0, "-joystick.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 0, 6, name="jbuttons")
-    area.add_buttons_from("joystick", orientation="h", numButtonsPerGroup=4)
+    area = info.add_area("buttons", 0, 6, name="jbuttons", orientation="h", numButtonsPerGroup=4)
+    area.add_buttons_from("joystick")
 
   head = outputs.get("head")
   if head is not None:
@@ -4775,8 +4774,8 @@ def init_info(**kwargs):
     area.add_marker(0.0, "-head.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 1, 5, name="ht")
     area.add_marker(0.0, "-head.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 1, 6, name="hbuttons")
-    area.add_buttons_from("head", orientation="h", numButtonsPerGroup=4)
+    area = info.add_area("buttons", 1, 6, name="hbuttons", orientation="h", numButtonsPerGroup=4)
+    area.add_buttons_from("head")
 
   joystick2 = outputs.get("joystick2")
   if joystick2 is not None:
@@ -4790,8 +4789,8 @@ def init_info(**kwargs):
     area.add_marker(0.0, "-joystick2.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 2, 5, name="j2t")
     area.add_marker(0.0, "-joystick2.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 2, 6, name="j2buttons")
-    area.add_buttons_from("joystick2", orientation="h", numButtonsPerGroup=4)
+    area = info.add_area("buttons", 2, 6, name="j2buttons", orientation="h", numButtonsPerGroup=4)
+    area.add_buttons_from("joystick2")
 
   return info
 
