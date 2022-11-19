@@ -4579,16 +4579,9 @@ class Info:
       frame = tk.Frame(window)
       frame.pack_propagate(True)
       frame.grid(row=r, column=c, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
-      frame.grid_configure(sticky="nsew")
-      wr, wc = 0, 0
-      if type == "box":
-        wr, wc = 1, 1
-      elif type == "h":
-        wr, wc = 0, 1
-      elif type == "v":
-        wr, wc = 1, 0
-      window.grid_rowconfigure(r, weight=wr)
-      window.grid_columnconfigure(c, weight=wc)
+      frame.grid_configure(sticky=kwargs.get("sticky", "nsew"))
+      window.grid_rowconfigure(r, weight=kwargs.get("rw", 1))
+      window.grid_columnconfigure(c, weight=kwargs.get("cw", 1))
       name = kwargs.get("name", None)
       if name is not None:
         nameLabel = tk.Label(frame, text=name)
@@ -4685,8 +4678,10 @@ class Info:
     def __init__(self, window, r, c, **kwargs):
       frame = tk.Frame(window)
       frame.pack_propagate(True)
-      frame.grid(row=r, column=c, rowspan=1, columnspan=1)
-      frame.grid_configure(sticky="nsew")
+      frame.grid(row=r, column=c, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
+      frame.grid_configure(sticky=kwargs.get("sticky", "nsew"))
+      window.grid_rowconfigure(r, weight=kwargs.get("rw", 1))
+      window.grid_columnconfigure(c, weight=kwargs.get("cw", 1))
       name = kwargs.get("name", None)
       if name is not None:
         nameLabel = tk.Label(frame, text=name)
@@ -4755,11 +4750,11 @@ def init_info(**kwargs):
     mx = lambda : axisAccumulator.get_axis_value("mouse.REL_X")
     my = lambda : axisAccumulator.get_axis_value("mouse.REL_Y")
     area.add_marker(mx, my, "rect", color="green", size=(9,9))
-    area = info.add_area("v", 0, 1, name="jrx")
+    area = info.add_area("v", 0, 1, name="jrx", sticky="e", cw=1)
     area.add_marker(0.0, "-joystick.ABS_RX", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 2, name="jry")
+    area = info.add_area("v", 0, 2, name="jry", cw=0)
     area.add_marker(0.0, "-joystick.ABS_RY", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 3, name="jrz")
+    area = info.add_area("v", 0, 3, name="jrz", sticky="w", cw=1)
     area.add_marker(0.0, "-joystick.ABS_RZ", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 0, 4, name="jr")
     area.add_marker(0.0, "-joystick.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
