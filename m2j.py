@@ -4654,16 +4654,16 @@ class Info:
             bc = 0
             br += 1
         else:
-          raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
+          assert(False)
         class D:
           pass
         d = D()
-        d.output, d.label, d.state, d.style = output, buttonLabel, None, self.style_
-        self.data_[button] = d
+        d.output, d.button, d.label, d.state, d.style = output, button, buttonLabel, None, self.style_
+        self.data_.append(d)
       self.update()
     def update(self):
-      for button,buttonData in self.data_.items():
-        state = buttonData.output.get_button_state(button)
+      for buttonData in self.data_:
+        state = buttonData.output.get_button_state(buttonData.button)
         if state == buttonData.state:
           continue
         else:
@@ -4687,10 +4687,12 @@ class Info:
       buttonsFrame.pack()
       buttonsFrame.pack_configure(expand=True, fill="both")
       self.frame_ = buttonsFrame
-      self.data_ = {}
+      self.data_ = []
       self.get_output_ = kwargs.get("getOutput", None)
       self.numButtonsPerGroup_ = kwargs.get("numButtonsPerGroup", 8)
       self.orientation_ = kwargs.get("orientation", "v")
+      if self.orientation_ not in ("h", "v"):
+        raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
     def set_prop_(self, label, propName, style, stylePropName):
       p = style.get(stylePropName, None) 
