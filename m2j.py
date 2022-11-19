@@ -3623,7 +3623,7 @@ class UdpJoystick:
       self.set_button_state(b, False)
 
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
-  buttons_ = tuple(b for b in range (codes.BTN_0, codes.BTN_16+1))
+  buttons_ = tuple(b for b in range (codes.BTN_0, codes.BTN_15+1))
 
 
 #TODO Needs verifying
