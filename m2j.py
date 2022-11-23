@@ -1032,7 +1032,7 @@ class HoldEvent(InputEvent):
 
 class HoldSink:
   KeyData = collections.namedtuple("KeyData", "source code modifiers")
-  HT = collections.namedtuple("HT", "source code modifiers holdTime value fireOnce")
+  HT = collections.namedtuple("HT", "keyData holdTime value fireOnce")
   class Times:
     pass
 
@@ -1040,8 +1040,10 @@ class HoldSink:
     if event.type == codes.EV_KEY:
       keyData = HoldSink.KeyData(event.source, event.code, tuple(m for m in event.modifiers))
       if event.value == 0:
-        if keyData in self.keys_:
-          del self.keys_[keyData]
+        for keyData in self.keys_.keys():
+          #ignore modifiers to correctly process key release if the key is modifier itself
+          if keyData.source == event.source and keyData.code == event.code:
+            del self.keys_[keyData]
       elif event.value == 1:
         if keyData in self.keys_:
           return
@@ -1054,8 +1056,9 @@ class HoldSink:
   def update(self, tick, timestamp):
     for keyData,times in self.keys_.items():
       for ht in self.holdTimes_:
-        if not self.match_(keyData, ht):
+        if not self.match_(keyData, ht.keyData):
           continue
+        #logger.debug("{}: {} {}".format(self, keyData, ht))
         initialTimestamp = times.initialTimestamp
         previousTimestamp = times.timestamps.get(ht, initialTimestamp)
         if previousTimestamp is None:
@@ -1070,7 +1073,9 @@ class HoldSink:
           times.timestamps[ht] = None if ht.fireOnce else timestamp
 
   def add(self, source, code, modifiers, holdTime, value, fireOnce):
-    ht = HoldSink.HT(source, code, tuple(m for m in modifiers) if modifiers is not None else None, holdTime, value, fireOnce)
+    modifiers = tuple(m for m in modifiers) if modifiers is not None else None
+    keyData = HoldSink.KeyData(source, code, modifiers)
+    ht = HoldSink.HT(keyData, holdTime, value, fireOnce)
     self.holdTimes_.append(ht)
 
   def set_next(self, next):
@@ -4828,7 +4833,15 @@ def init_main_sink(settings, make_next):
   cmpOp = CmpWithModifiers()
   config = settings["config"]
 
-  clickSink = ClickSink(config.get("clickTime", 0.5))
+  defaultModifierDescs = [
+    ModifierDesc(None, m, True) for m in
+    (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
+  ]
+  modifiers = config.get("modifiers", None)
+  modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
+  modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
+  topSink = modifierSink
+  clickSink = modifierSink.set_next(ClickSink(config.get("clickTime", 0.5)))
   holdTimesCfg = config.get("holdTimes", [])
   holdSink = clickSink.set_next(HoldSink())
   for ht in holdTimesCfg:
@@ -4839,13 +4852,6 @@ def init_main_sink(settings, make_next):
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
     holdSink.add(keySource, keyCode, modifiers, ht.get("holdTime"), ht.get("value"), ht.get("fireOnce"))
   settings["updated"].append(lambda tick,ts : holdSink.update(tick, ts))
-  defaultModifierDescs = [
-    ModifierDesc(None, m, True) for m in
-    (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
-  ]
-  modifiers = config.get("modifiers", None)
-  modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
-  modifierSink = holdSink.set_next(ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -4856,7 +4862,7 @@ def init_main_sink(settings, make_next):
     sens = {fn2htc(s[0]):s[1] for s in sens.items()}
   else:
     sens = {}
-  scaleSink = modifierSink.set_next(ScaleSink2(sens))
+  scaleSink = holdSink.set_next(ScaleSink2(sens))
 
   mainSink = scaleSink.set_next(BindSink())
   stateSink = mainSink.add(None, StateSink(), 1)
@@ -4992,7 +4998,7 @@ def init_main_sink(settings, make_next):
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
 
-  return clickSink
+  return topSink
 
 
 def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s"):
