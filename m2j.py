@@ -6371,7 +6371,7 @@ def make_parser():
 
   def parseHold(cfg, state):
     r = parseKey_(cfg, state, 4)
-    holdTime = resolve_d(cfg, "holdTime", None)
+    holdTime = resolve_d(cfg, "holdTime", state, None)
     if holdTime is not None:
       holdTime = float(holdTime)
       r.append(("holdTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
