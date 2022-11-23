@@ -1024,6 +1024,12 @@ class ClickSink:
     pass
 
 
+class HoldEvent(InputEvent):
+  def __init__(self, k, value, timestamp, source, modifiers, holdTime):
+    InputEvent.__init__(self, codes.EV_KEY, k, value, timestamp, source, modifiers)
+    self.holdTime = holdTime
+
+
 class HoldSink:
   class D:
     pass
@@ -1037,18 +1043,21 @@ class HoldSink:
         if event.code in self.keys_:
           return
         d = HoldSink.D()
-        d.source, d.timestamp, d.modifiers = event.source, event.timestamp, [m for m in event.modifiers]
+        d.source, d.timestamp, d.initialTimestamp, d.modifiers = event.source, event.timestamp, event.timestamp, [m for m in event.modifiers]
         self.keys_[event.code] = d
     if self.next_:
       self.next_(event)
 
   def update(self, tick, timestamp):
     for k,d in self.keys_.items():
-      if d.timestamp is not None and timestamp - d.timestamp >= self.holdTime_:
-        if self.next_:
-          event = InputEvent(codes.EV_KEY, k, self.value_, timestamp, d.source, d.modifiers)
-          self.next_(event)
-        self.keys_[k].timestamp = None if self.fireOnce_ else timestamp
+      if d.timestamp is not None:
+        holdTime = timestamp - d.timestamp
+        if holdTime >= self.holdTime_:
+          if self.next_:
+            totalHoldTime = timestamp - d.initialTimestamp
+            event = HoldEvent(k, self.value_, timestamp, d.source, d.modifiers, totalHoldTime)
+            self.next_(event)
+          self.keys_[k].timestamp = None if self.fireOnce_ else timestamp
 
   def set_next(self, next):
     self.next_ = next
@@ -6362,6 +6371,10 @@ def make_parser():
 
   def parseHold(cfg, state):
     r = parseKey_(cfg, state, 4)
+    holdTime = resolve_d(cfg, "holdTime", None)
+    if holdTime is not None:
+      holdTime = float(holdTime)
+      r.append(("holdTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("hold", parseHold)
