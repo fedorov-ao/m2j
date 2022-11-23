@@ -1025,51 +1025,68 @@ class ClickSink:
 
 
 class HoldEvent(InputEvent):
-  def __init__(self, k, value, timestamp, source, modifiers, holdTime):
+  def __init__(self, k, value, timestamp, source, modifiers, heldTime):
     InputEvent.__init__(self, codes.EV_KEY, k, value, timestamp, source, modifiers)
-    self.holdTime = holdTime
+    self.heldTime = heldTime
 
 
 class HoldSink:
-  class D:
+  KeyData = collections.namedtuple("KeyData", "source code modifiers")
+  HT = collections.namedtuple("HT", "source code modifiers holdTime value fireOnce")
+  class Times:
     pass
 
   def __call__(self, event):
     if event.type == codes.EV_KEY:
+      keyData = HoldSink.KeyData(event.source, event.code, tuple(m for m in event.modifiers))
       if event.value == 0:
-        if event.code in self.keys_:
-          del self.keys_[event.code]
+        if keyData in self.keys_:
+          del self.keys_[keyData]
       elif event.value == 1:
-        if event.code in self.keys_:
+        if keyData in self.keys_:
           return
-        d = HoldSink.D()
-        d.source, d.timestamp, d.initialTimestamp, d.modifiers = event.source, event.timestamp, event.timestamp, [m for m in event.modifiers]
-        self.keys_[event.code] = d
+        times = HoldSink.Times()
+        times.timestamps, times.initialTimestamp = {}, event.timestamp
+        self.keys_[keyData] = times
     if self.next_:
       self.next_(event)
 
   def update(self, tick, timestamp):
-    for k,d in self.keys_.items():
-      if d.timestamp is not None:
-        holdTime = timestamp - d.timestamp
-        if holdTime >= self.holdTime_:
-          if self.next_:
-            totalHoldTime = timestamp - d.initialTimestamp
-            event = HoldEvent(k, self.value_, timestamp, d.source, d.modifiers, totalHoldTime)
+    for keyData,times in self.keys_.items():
+      for ht in self.holdTimes_:
+        if not self.match_(keyData, ht):
+          continue
+        initialTimestamp = times.initialTimestamp
+        previousTimestamp = times.timestamps.get(ht, initialTimestamp)
+        if previousTimestamp is None:
+          continue
+        currentHoldTime = timestamp - previousTimestamp
+        if currentHoldTime >= ht.holdTime:
+          if self.next_ is not None:
+            heldTime = timestamp - initialTimestamp
+            event = HoldEvent(keyData.code, ht.value, timestamp, keyData.source, list(keyData.modifiers), heldTime)
+            #logger.debug("{}: {}".format(self, event))
             self.next_(event)
-          self.keys_[k].timestamp = None if self.fireOnce_ else timestamp
+          times.timestamps[ht] = None if ht.fireOnce else timestamp
+
+  def add(self, source, code, modifiers, holdTime, value, fireOnce):
+    ht = HoldSink.HT(source, code, tuple(m for m in modifiers) if modifiers is not None else None, holdTime, value, fireOnce)
+    self.holdTimes_.append(ht)
 
   def set_next(self, next):
     self.next_ = next
     return next
 
-  def __init__(self, holdTime, value, fireOnce):
-    self.next_, self.keys_, self.holdTime_, self.value_, self.fireOnce_ = None, {}, holdTime, value, fireOnce
+  def __init__(self):
+    self.next_, self.keys_, self.holdTimes_ = None, {}, []
     #logger.debug("{} created".format(self))
 
   def __del__(self):
     #logger.debug("{} destroyed".format(self))
     pass
+
+  def match_(self, keyData, ht):
+    return (ht.source is None or (ht.source == keyData.source)) and (ht.code is None or (ht.code == keyData.code)) and (ht.modifiers is None or (ht.modifiers == keyData.modifiers))
 
 
 class ModifierSink:
@@ -4812,16 +4829,23 @@ def init_main_sink(settings, make_next):
   config = settings["config"]
 
   clickSink = ClickSink(config.get("clickTime", 0.5))
-  holdSink = clickSink.set_next(HoldSink(config.get("holdTime", 0.75), 4, False))
+  holdTimesCfg = config.get("holdTimes", [])
+  holdSink = clickSink.set_next(HoldSink())
+  for ht in holdTimesCfg:
+    keyFullName = ht.get("key", None)
+    keySource, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
+    modifiers = ht.get("modifiers", None)
+    if modifiers is not None:
+      modifiers = (parse_modifier_desc(m, state) for m in modifiers)
+    holdSink.add(keySource, keyCode, modifiers, ht.get("holdTime"), ht.get("value"), ht.get("fireOnce"))
   settings["updated"].append(lambda tick,ts : holdSink.update(tick, ts))
-  longPressSink = holdSink.set_next(HoldSink(config.get("longPressTime", 0.75), 5, True))
-  settings["updated"].append(lambda tick,ts : longPressSink.update(tick, ts))
-  defaultModifierDescs = [ ModifierDesc(None, m, True) for m in
+  defaultModifierDescs = [
+    ModifierDesc(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
-  modifierSink = longPressSink.set_next(ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE))
+  modifierSink = holdSink.set_next(ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -6370,20 +6394,14 @@ def make_parser():
   edParser.add("multiclick", parseMultiClick)
 
   def parseHold(cfg, state):
-    r = parseKey_(cfg, state, 4)
-    holdTime = resolve_d(cfg, "holdTime", state, None)
+    r = parseKey_(cfg, state, resolve_d(cfg, "value", state, 4))
+    holdTime = resolve_d(cfg, "heldTime", state, None)
     if holdTime is not None:
       holdTime = float(holdTime)
-      r.append(("holdTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
+      r.append(("heldTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
     r = parseEdModifiers_(r, cfg, state)
     return r
   edParser.add("hold", parseHold)
-
-  def parseLongPress(cfg, state):
-    r = parseKey_(cfg, state, 5)
-    r = parseEdModifiers_(r, cfg, state)
-    return r
-  edParser.add("longPress", parseLongPress)
 
   def parseMove(cfg, state):
     sourceHash, eventType, axis = fn2htc(resolve(cfg, "axis", state))
