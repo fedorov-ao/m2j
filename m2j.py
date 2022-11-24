@@ -5732,23 +5732,15 @@ def make_parser():
       return wrapped(expandedCfg, state)
     return parseBasesOp
 
-  def parseArgObjDecorator(wrapped):
-    def parseArgObjOp(cfgOrName, state):
-      obj = deref(cfgOrName, state, None)
-      if obj is not None:
-        return obj
-      else:
-        return wrapped(cfgOrName, state)
-    return parseArgObjOp
-
   def parseExternal(propName, groupNames):
-    @parseArgObjDecorator
     def parseExternalOp(cfg, state):
       config = state["settings"]["config"]
       name = cfg.get(propName, None)
       if name is None:
         name = resolve(cfg, "name", state)
       #logger.debug("Parsing {} '{}'".format(propName, name))
+      #layout or class name can be specified by arg, so need to deref it here
+      name = deref(name, state, name)
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
@@ -5767,7 +5759,7 @@ def make_parser():
           return name
     return "sink"
 
-  sinkParser = make_double_deref_parser(keyOp=sinkParserKeyOp)
+  sinkParser = make_outer_deref_parser(keyOp=sinkParserKeyOp)
   mainParser.add("sink", sinkParser)
   sinkParser.add("layout", parseExternal("layout", ["layouts", "classes"]))
   sinkParser.add("class", parseExternal("class", ["classes", "layouts"]))
@@ -5823,7 +5815,6 @@ def make_parser():
     def __init__(self, next=None, components=None, parent=None, objects=None):
         self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
 
-  @parseArgObjDecorator
   @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
@@ -5894,6 +5885,7 @@ def make_parser():
   sinkParser.add("sink", parseSink)
 
   #Sink components
+  #Sink components cfgs are supposed to be specified in sink cfg, they cannot be referenced as args or objs, so using regular SelectParser.
   scParser = SelectParser()
   mainParser.add("sc", scParser)
 
