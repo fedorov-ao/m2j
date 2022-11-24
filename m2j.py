@@ -587,7 +587,11 @@ def parse_modifier_desc(s, state, sep="."):
   return ModifierDesc(source=t.shash, code=t.code, state=t.state)
 
 
-class ReloadException(Exception):
+class ReloadException:
+  pass
+
+
+class ExitException:
   pass
 
 
@@ -4929,10 +4933,14 @@ def init_main_sink(settings, make_next):
       elif action == "toggle":
         action = toggler.make_toggle()
       elif action == "reload":
-        def rld(e):
+        def op(e):
           settings["initState"] = stateSink.get_state()
           raise ReloadException()
-        action = rld
+        action = op
+      elif action == "exit":
+        def op(e):
+          raise ExitException()
+        action = op
       elif action == "enable":
         action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowDevices(released, True),  print_grabbed))
       elif action == "disable":

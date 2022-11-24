@@ -1193,6 +1193,9 @@ def run():
   except KeyboardInterrupt:
     logger.info("Exiting normally")
     return 0
+  except ExitException:
+    logger.info("Exiting normally")
+    return 0
   except ConfigReadError as e:
     logger.error(e)
     return 1
