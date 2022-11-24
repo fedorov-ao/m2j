@@ -5257,17 +5257,20 @@ def get_axis_by_full_name(fullAxisName, state):
   return axis
 
 def make_parser():
-  def make_intrusive_parser(keyOp):
+  def make_double_deref_parser(keyOp):
     return DerefParser(parser=IntrusiveSelectParser(keyOp=keyOp, parser=DerefSelectParser()))
 
-  mainParser = DerefSelectParser()
+  def make_outer_deref_parser(keyOp):
+    return DerefParser(parser=IntrusiveSelectParser(keyOp=keyOp, parser=SelectParser()))
+
+  mainParser = SelectParser()
 
   def literalParser(cfg, state):
     return resolve(cfg, "literal")
   mainParser.add("literal", literalParser)
 
   opParserKeyOp = lambda cfg,state : get_nested(cfg, "op")
-  opParser = make_intrusive_parser(keyOp=opParserKeyOp)
+  opParser = make_double_deref_parser(keyOp=opParserKeyOp)
   mainParser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
@@ -5323,7 +5326,8 @@ def make_parser():
 
   #Curves
   curveParserKeyOp=lambda cfg,state : get_nested(cfg, "curve")
-  curveParser = make_intrusive_parser(keyOp=curveParserKeyOp)
+  #needs to be double deref parser to process '"curve" : "obj:..."'
+  curveParser = make_double_deref_parser(keyOp=curveParserKeyOp)
   mainParser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
@@ -5737,19 +5741,6 @@ def make_parser():
         return wrapped(cfgOrName, state)
     return parseArgObjOp
 
-  def parsePredefinedDecorator(names):
-    def decorator(wrapped):
-      def op(cfg, state):
-        r = None
-        for name in names:
-          if name in cfg or resolve_d(cfg, "type", state, "") == name:
-            r = state["parser"](name, cfg, state)
-            if r is not None:
-              return r
-        return wrapped(cfg, state)
-      return op
-    return decorator
-
   def parseExternal(propName, groupNames):
     @parseArgObjDecorator
     def parseExternalOp(cfg, state):
@@ -5769,14 +5760,14 @@ def make_parser():
     return parseExternalOp
 
   def sinkParserKeyOp(cfg, state):
-    names = ["layout", "class"]
+    names = ("layout", "class",)
     if type(cfg) in (dict, collections.OrderedDict):
       for name in names:
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           return name
     return "sink"
 
-  sinkParser = make_intrusive_parser(keyOp=sinkParserKeyOp)
+  sinkParser = make_double_deref_parser(keyOp=sinkParserKeyOp)
   mainParser.add("sink", sinkParser)
   sinkParser.add("layout", parseExternal("layout", ["layouts", "classes"]))
   sinkParser.add("class", parseExternal("class", ["classes", "layouts"]))
@@ -6023,7 +6014,7 @@ def make_parser():
 
   #TODO Rename "type" to "action" and update configs
   actionParserKeyOp = lambda cfg,state : get_nested_d(cfg, "action", get_nested_d(cfg, "type"))
-  actionParser = make_intrusive_parser(keyOp=actionParserKeyOp)
+  actionParser = make_double_deref_parser(keyOp=actionParserKeyOp)
   mainParser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
@@ -6346,7 +6337,7 @@ def make_parser():
 
   #Event descriptors
   edParserKeyOp=lambda cfg,state : get_nested_d(cfg, "ed", get_nested_d(cfg, "type"))
-  edParser = make_intrusive_parser(keyOp=edParserKeyOp)
+  edParser = make_double_deref_parser(keyOp=edParserKeyOp)
   mainParser.add("ed", edParser)
 
   def parseEdModifiers_(r, cfg, state):
@@ -6565,7 +6556,7 @@ def make_parser():
   scParser.add("binds", parseBinds)
 
   outputParserKeyOp=lambda cfg,state : get_nested_d(cfg, "output", get_nested_d(cfg, "type"))
-  outputParser = make_intrusive_parser(keyOp=outputParserKeyOp)
+  outputParser = make_double_deref_parser(keyOp=outputParserKeyOp)
   mainParser.add("output", outputParser)
 
   @make_reporting_joystick
