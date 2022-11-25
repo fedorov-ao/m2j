@@ -4514,7 +4514,7 @@ def make_curve_makers():
     config = settings["config"]
     configCurves = config["configCurves"]
     logger.info("Using '{}' curves from config".format(configCurves))
-    sets = config["layouts"].get(configCurves, None)
+    sets = config["presets"].get(configCurves, None)
     if sets is None:
       raise Exception("'{}' curves not found in config".format(configCurves))
     else:
@@ -5086,14 +5086,14 @@ def init_config2(settings):
   logger.info("Configs loaded successfully")
 
 
-def init_layout_config(settings):
+def init_preset_config(settings):
   config = settings["config"]
-  layoutName = get_nested(config, "layout")
-  logger.info("Using '{}' layout from config".format(layoutName))
-  sectNames = ("layouts",)
-  cfg = get_nested_from_sections_d(config, sectNames, layoutName, None)
+  presetName = get_nested(config, "preset")
+  logger.info("Using '{}' preset from config".format(presetName))
+  sectNames = ("presets",)
+  cfg = get_nested_from_sections_d(config, sectNames, presetName, None)
   if cfg is None:
-    raise Exception("'{}' layout not found in config".format(layoutName))
+    raise Exception("'{}' preset not found in config".format(presetName))
   else:
     try:
       parser = settings["parser"]
@@ -5101,13 +5101,13 @@ def init_layout_config(settings):
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
-      logger.error("Error while initializing config layout '{}': cannot find key '{}' in {}".format(layoutName, e.key, e.keys))
+      logger.error("Error while initializing config preset '{}': cannot find key '{}' in {}".format(presetName, e.key, e.keys))
       raise
     except KeyError as e:
-      logger.error("Error while initializing config layout '{}': cannot find key '{}'".format(layoutName, str(e)))
+      logger.error("Error while initializing config preset '{}': cannot find key '{}'".format(presetName, str(e)))
       raise
     except Exception as e:
-      logger.error("Error while initializing config layout '{}': {}".format(layoutName, e))
+      logger.error("Error while initializing config preset '{}': {}".format(presetName, e))
       raise
 
 
@@ -5726,14 +5726,14 @@ def make_parser():
       if bases is None:
         return cfg
       else:
-        sectNames = ("layouts",)
+        sectNames = ("presets",)
         config = state["settings"]["config"]
         full = {}
         for baseName in bases:
           #logger.debug("Parsing base : {}".format(baseName))
           base = get_nested_from_sections_d(config, sectNames, baseName, None)
           if base is None:
-            raise RuntimeError("No layout: {}".format(str2(base)))
+            raise RuntimeError("No preset: {}".format(str2(base)))
           merge_dicts(full, worker(base, state))
         merge_dicts(full, cfg)
         del full["bases"]
@@ -5751,7 +5751,7 @@ def make_parser():
       if name is None:
         name = resolve(cfg, "name", state)
       #logger.debug("Parsing {} '{}'".format(propName, name))
-      #layout or class name can be specified by arg, so need to deref it here
+      #preset or class name can be specified by arg, so need to deref it here
       name = deref(name, state, name)
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
@@ -5764,7 +5764,7 @@ def make_parser():
     return parseExternalOp
 
   def sinkParserKeyOp(cfg, state):
-    names = ("layout",)
+    names = ("preset",)
     if type(cfg) in (dict, collections.OrderedDict):
       for name in names:
         if name in cfg or get_nested_d(cfg, "type", "") == name:
@@ -5773,7 +5773,7 @@ def make_parser():
 
   sinkParser = make_outer_deref_parser(keyOp=sinkParserKeyOp)
   mainParser.add("sink", sinkParser)
-  sinkParser.add("layout", parseExternal("layout", ("layouts",)))
+  sinkParser.add("preset", parseExternal("preset", ("presets",)))
 
   class HeadSink:
     def __call__(self, event):

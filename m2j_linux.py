@@ -249,8 +249,8 @@ def print_help():
   print "Usage: " + sys.argv[0] + " args"
   print "args are:\n\
   -h | --help : this message\n\
-  -p fileName | --print=fileName : print input devices to file fileName (- for stdout)\n\
-  -l layoutName | --layout=layoutName : use layout layoutName\n\
+  -d fileName | --devices=fileName : print input devices to file fileName (- for stdout)\n\
+  -p presetName | --preset=presetName : use preset presetName\n\
   -c configFileName | --config=configFileName : use config file configFileName\n\
   -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
 
@@ -308,7 +308,7 @@ def run():
           dev = EventCompressorDevice(dev)
         return dev
       settings["inputs"] = init_inputs(config["inputs"], makeDevice)
-      sink = init_main_sink(settings, init_layout_config)
+      sink = init_main_sink(settings, init_preset_config)
       settings["source"] = EventSource(settings["inputs"].values(), sink)
 
   def set_inputs_state(settings, state):
@@ -368,16 +368,16 @@ def run():
       print_help()
       return 0
 
-    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "layout=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         print_help()
         return 0
-      elif o in ("-p", "--print"):
+      elif o in ("-d", "--devices"):
         print_devices(a)
         return 0
-      if o in ("-l", "--layout"):
-        options["layout"] = a
+      if o in ("-p", "--preset"):
+        options["preset"] = a
       elif o in ("-v", "--logLevel"):
         options["logLevel"] = a
       elif o in ("-c", "--config"):
