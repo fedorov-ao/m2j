@@ -293,13 +293,17 @@ def init_objects(cfg, cb, state):
     o = None
     #logger.debug("Constructing object: {}".format(k))
     #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
-    for n in ("literal", "op", "curve", "action", "ed", "output"):
-      if n in v:
-        o = parser(n, v, state)
-        #break is needed to avoid executing the "else" block
-        break
+    n = v.get("class", None)
+    if n is not None:
+      o = parser(n, v, state)
     else:
-      o = parser("sink", v, state)
+      for n in ("literal", "op", "curve", "action", "ed", "output"):
+        if n in v:
+          o = parser(n, v, state)
+          #break is needed to avoid executing the "else" block
+          break
+      else:
+        o = parser("sink", v, state)
     if o is None:
       raise RuntimeError("Could not create object from: {}".format(str2(v)))
     cb(k, o)
@@ -5086,7 +5090,7 @@ def init_layout_config(settings):
   config = settings["config"]
   layoutName = get_nested(config, "layout")
   logger.info("Using '{}' layout from config".format(layoutName))
-  sectNames = ["layouts", "classes"]
+  sectNames = ("layouts",)
   cfg = get_nested_from_sections_d(config, sectNames, layoutName, None)
   if cfg is None:
     raise Exception("'{}' layout not found in config".format(layoutName))
@@ -5682,7 +5686,7 @@ def make_parser():
     presetName = resolve_d(cfg, "name", state, None)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
-    presetCfg = get_nested_from_sections_d(config, ("presets", "classes"), presetName, None)
+    presetCfg = get_nested_from_sections_d(config, ("presets",), presetName, None)
     if presetCfg is None:
       presets = config.get("presets", collections.OrderedDict())
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
@@ -5722,7 +5726,7 @@ def make_parser():
       if bases is None:
         return cfg
       else:
-        sectNames = ["layouts", "classes"]
+        sectNames = ("layouts",)
         config = state["settings"]["config"]
         full = {}
         for baseName in bases:
@@ -5760,7 +5764,7 @@ def make_parser():
     return parseExternalOp
 
   def sinkParserKeyOp(cfg, state):
-    names = ("layout", "class",)
+    names = ("layout",)
     if type(cfg) in (dict, collections.OrderedDict):
       for name in names:
         if name in cfg or get_nested_d(cfg, "type", "") == name:
@@ -5769,8 +5773,7 @@ def make_parser():
 
   sinkParser = make_outer_deref_parser(keyOp=sinkParserKeyOp)
   mainParser.add("sink", sinkParser)
-  sinkParser.add("layout", parseExternal("layout", ["layouts", "classes"]))
-  sinkParser.add("class", parseExternal("class", ["classes", "layouts"]))
+  sinkParser.add("layout", parseExternal("layout", ("layouts",)))
 
   class HeadSink:
     def __call__(self, event):
