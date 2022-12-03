@@ -668,8 +668,10 @@ class CompositeJoystick:
     limits = self.get_limits(axis)
     actual = clamp(desired, *limits)
     for c in self.children_:
-      if not self.checkChild_ or axis in c.get_supported_axes():
-        c.move_axis(axis, actual, relative=False)
+      if self.checkChild_:
+        if axis not in c.get_supported_axes():
+          continue
+      c.move_axis(axis, actual, relative=False)
     return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
@@ -683,8 +685,10 @@ class CompositeJoystick:
 
   def set_button_state(self, button, state):
     for c in self.children_:
-      if not self.checkChild_ or button in c.get_supported_buttons():
-        c.set_button_state(button, state)
+      if self.checkChild_:
+        if button not in c.get_supported_buttons():
+          continue
+      c.set_button_state(button, state)
 
   def get_button_state(self, button):
     return self.buttons_.get(button, False)
