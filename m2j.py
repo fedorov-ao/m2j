@@ -3485,7 +3485,10 @@ class AxisLinker:
         try:
           self.busy_= True
           #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
-          self.controlledAxis_.move(cv + self.offset_, relative=False)
+          desired = cv + self.offset_
+          actual = self.controlledAxis_.move(desired, relative=False)
+          if actual != desired:
+            self.offset_ -= (desired - actual)
         except:
           raise
         finally:
