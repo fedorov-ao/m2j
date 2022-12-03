@@ -4341,9 +4341,7 @@ class RelativeHeadMovementJoystick:
       return value
     elif axis in self.angleAxes_:
       self.dirsDirty_ = True
-      return self.next_.move_axis(axis, value, relative)
-    else:
-      return 0.0 if relative else value
+    return self.next_.move_axis(axis, value, relative)
 
 
   #TODO Unused
