@@ -622,15 +622,20 @@ class NullJoystick:
 
   def move_axis(self, axis, v, relative):
     if relative:
-      self.move_axis_by(axis, v)
+      return self.move_axis_by(axis, v)
     else:
-      self.move_axis_to(axis, v)
+      return self.move_axis_to(axis, v)
 
   def move_axis_by(self, axis, v):
-    self.move_axis_to(axis, self.get_axis_value(axis)+v)
+    desired = self.get_axis_value(axis)+v
+    actual = self.move_axis_to(axis, desired)
+    return v - (actual - desired)
 
   def move_axis_to(self, axis, v):
-    self.v_[axis] = clamp(v, *self.get_limits(axis))
+    limits = self.get_limits(axis)
+    v = clamp(v, *limits)
+    self.v_[axis] = v
+    return v
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -651,14 +656,20 @@ class NullJoystick:
     return self.b_.keys()
 
 
+#TODO Optimize: evaluate limits, supported axes and buttons at construction and cache it
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
-    value = self.get_axis_value(axis) + v if relative else v
+    desired = self.get_axis_value(axis) + v if relative else v
     limits = self.get_limits(axis)
-    value = clamp(value, *limits)
+    desired = clamp(value, *limits)
+    actual = None
     for c in self.children_:
       if axis in c.get_supported_axes():
-        c.move_axis(axis, value, relative=False)
+        actual = c.move_axis(axis, desired, relative=False)
+    if relative:
+      return v - (actual - desired)
+    else:
+      return actual
 
   def get_axis_value(self, axis):
     for c in self.children_:
@@ -3572,10 +3583,12 @@ class Opentrack:
 
   def move_axis(self, axis, v, relative = True):
     if axis not in self.axes_:
-      return
-    v = self.v_.get(axis, 0.0)+v if relative else v
-    self.v_[axis] = clamp(v, *self.get_limits(axis))
+      return 0.0
+    desired = self.v_.get(axis, 0.0)+v if relative else v
+    actual = clamp(desired, *self.get_limits(axis))
+    self.v_[axis] = actual
     self.dirty_ = True
+    return v - (actual - desired) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3608,10 +3621,12 @@ class UdpJoystick:
 
   def move_axis(self, axis, v, relative = True):
     if axis not in self.axes_:
-      return
-    v = self.v_.get(axis, 0.0)+v if relative else v
-    self.v_[axis] = clamp(v, *self.get_limits(axis))
+      return 0.0 if relative else v
+    desired = self.v_.get(axis, 0.0)+v if relative else v
+    actual = clamp(v, *self.get_limits(axis))
+    self.v_[axis] = actual
     self.dirty_ = True
+    return v - (actual - desired) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3818,7 +3833,7 @@ class MappingJoystick:
 
   def move_axis(self, axis, value, relative):
     d = self.adata_[axis]
-    d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
+    return d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
 
   def get_axis_value(self, axis):
     d = self.adata_[axis]
@@ -3865,7 +3880,7 @@ class MappingJoystick:
 class NodeJoystick(object):
   def move_axis(self, axis, value, relative):
     if self.next_ is not None:
-      self.next_.move_axis(axis, value, relative)
+      return self.next_.move_axis(axis, value, relative)
 
   def get_axis_value(self, axis):
     return self.next_.get_axis_value(axis) if self.next_ else 0
@@ -3895,8 +3910,13 @@ class NodeJoystick(object):
 
 class RateLimititngJoystick:
   def move_axis(self, axis, value, relative):
-    if self.next_ is not None:
-      self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
+    if self.next_ is None:
+      return 0.0 if relative else value
+    else:
+      desired = self.v_[axis]+value if relative else value
+      actual = clamp(desired, *self.get_limits(axis))
+      self.v_[axis] = actual
+      return v - (actual - desired) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3941,8 +3961,13 @@ class RateLimititngJoystick:
 
 class RateSettingJoystick:
   def move_axis(self, axis, value, relative):
-    if self.next_ is not None:
-      self.v_[axis] = clamp(self.v_[axis]+value if relative else value, *self.get_limits(axis))
+    if self.next_ is None:
+      return 0.0 if relative else value
+    else:
+      desired = self.v_[axis]+value if relative else value
+      actual = clamp(desired, *self.get_limits(axis))
+      self.v_[axis] = actual
+      return v - (actual - desired) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_[axis]
@@ -3992,9 +4017,10 @@ class RateSettingJoystick:
 
 class NotifyingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
-    super(NotifyingJoystick, self).move_axis(axis, value, relative)
+    r = super(NotifyingJoystick, self).move_axis(axis, value, relative)
     if not relative and self.sink_() is not None:
       self.sink_()(Event(codes.EV_ABS, axis, value, time.time()))
+    return r
 
   def set_sink(self, sink):
     self.sink_ = weakref.ref(sink)
@@ -4013,6 +4039,7 @@ class MetricsJoystick:
       self.data_[axis][0] += value
     else:
       self.data_[axis][0] = value
+    return value
 
   def get_axis_value(self, axis):
     return self.data_.get(axis, 0.0)[0]
@@ -4114,7 +4141,7 @@ class ReportingJoystickAxis:
 class ReportingJoystick(NodeJoystick):
   def move_axis(self, axis, value, relative):
     old = self.get_axis_value(axis)
-    NodeJoystick.move_axis(self, axis, value, relative)
+    r = NodeJoystick.move_axis(self, axis, value, relative)
     new = self.get_axis_value(axis)
     dirty = False
     for a in self.axes_.get(axis, ()):
@@ -4125,6 +4152,7 @@ class ReportingJoystick(NodeJoystick):
         dirty = True
     if dirty:
       self.cleanup_()
+    return r
 
   def make_axis(self, axisId):
     a = ReportingJoystickAxis(self, axisId)
@@ -4242,7 +4270,7 @@ class RelativeHeadMovementJoystick:
        Using with curves that set absolute positions may produce unexpected and undesired results.
     """
     if self.next_ is None:
-      return
+      return 0.0 if relative else value
 
     if axis in self.posAxes_:
       self.update_dirs_()
@@ -4253,7 +4281,7 @@ class RelativeHeadMovementJoystick:
       offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
 
       #If relative - add to current pos in global cs
-      if relative == True:
+      if relative:
         #Convert to global cs
         point = vec_mul(self.dirs_[axis], value)
         point = vec_add(point, offset)
@@ -4266,7 +4294,7 @@ class RelativeHeadMovementJoystick:
       #Clamp to sphere in global cs
       clamped = clamp_to_sphere(point, self.r_)
       if self.stick_ and point != clamped:
-        return
+        return 0.0 if relative else value
 
       #Clamp to limits of next sink and move, both in global cs
       for a in self.posAxes_:
@@ -4274,16 +4302,17 @@ class RelativeHeadMovementJoystick:
         ia = self.posAxes_.index(a)
         c, o = clamped[ia], offset[ia]
         c = clamp(c, *limits)
-        if relative == True:
+        if relative:
           self.next_.move_axis(a, c-o, relative=True)
         else:
           self.next_.move_axis(a, c, relative=False)
 
       self.limitsDirty_ = True
+      return value
     else:
       if axis in self.angleAxes_:
         self.dirsDirty_ = True
-      self.next_.move_axis(axis, value, relative)
+      return self.next_.move_axis(axis, value, relative)
 
 
   #TODO Unused

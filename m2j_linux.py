@@ -64,20 +64,22 @@ class EvdevJoystick:
 
   def move_axis(self, axis, v, relative):
     if relative:
-      self.move_axis_by(axis, v)
+      return self.move_axis_by(axis, v)
     else:
-      self.move_axis_to(axis, v)
+      return self.move_axis_to(axis, v)
 
   def move_axis_by(self, axis, v):
-    self.move_axis_to(axis, self.get_axis_value(axis)+v)
+    desired = self.get_axis_value(axis)+v
+    actual = self.move_axis_to(axis, desired)
+    return v - (actual - desired)
 
   def move_axis_to(self, axis, v):
     if axis not in self.axes_:
-      return
-    v = clamp(v, *self.limits.get(axis, (0.0, 0.0)))
+      return 0.0
+    limits = self.limits.get(axis, (0.0, 0.0,))
+    v = clamp(v, *limits)
     self.axes_[axis] = v
-    l = self.limits[axis]
-    nv = lerp(v, l[0], l[1], -self.nativeLimit_, self.nativeLimit_)
+    nv = lerp(v, limits[0], limits[1], -self.nativeLimit_, self.nativeLimit_)
     nv = int(nv)
     #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
     self.js.write(ecodes.EV_ABS, code2ecode(axis), nv)
@@ -85,6 +87,7 @@ class EvdevJoystick:
       self.js.syn()
     else:
       self.dirty_ = True
+    return v
 
   def get_axis_value(self, axis):
     return self.axes_.get(axis, 0.0)
