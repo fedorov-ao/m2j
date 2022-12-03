@@ -672,6 +672,7 @@ class CompositeJoystick:
         if axis not in c.get_supported_axes():
           continue
       c.move_axis(axis, actual, relative=False)
+    self.axes_[axis] = actual
     return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
@@ -689,6 +690,7 @@ class CompositeJoystick:
         if button not in c.get_supported_buttons():
           continue
       c.set_button_state(button, state)
+    self.buttons_[button] = state
 
   def get_button_state(self, button):
     return self.buttons_.get(button, False)
