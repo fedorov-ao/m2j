@@ -634,8 +634,11 @@ class NullJoystick:
   def move_axis_to(self, axis, v):
     limits = self.get_limits(axis)
     v = clamp(v, *limits)
-    self.v_[axis] = v
-    return v
+    if axis in self.v_:
+      self.v_[axis] = v
+      return v
+    else:
+      return 0.0
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -647,7 +650,8 @@ class NullJoystick:
     return self.v_.keys()
 
   def set_button_state(self, button, state):
-    self.b_[button] = state
+    if button in self.b_:
+      self.b_[button] = state
 
   def get_button_state(self, button):
     return self.b_.get(button, False)
@@ -664,7 +668,7 @@ class CompositeJoystick:
     limits = self.get_limits(axis)
     actual = clamp(desired, *limits)
     for c in self.children_:
-      if axis in c.get_supported_axes():
+      if not self.checkChild_ or axis in c.get_supported_axes():
         c.move_axis(axis, actual, relative=False)
     return v - (desired - actual) if relative else actual
 
@@ -679,7 +683,7 @@ class CompositeJoystick:
 
   def set_button_state(self, button, state):
     for c in self.children_:
-      if button in c.get_supported_buttons():
+      if not self.checkChild_ or button in c.get_supported_buttons():
         c.set_button_state(button, state)
 
   def get_button_state(self, button):
@@ -688,16 +692,19 @@ class CompositeJoystick:
   def get_supported_buttons(self):
     return self.buttons_.keys()
 
-  def __init__(self, children):
+  def __init__(self, children, checkChild=True, union=True):
     self.children_ = children
+    self.checkChild_, self.union_ = checkChild, union
     self.axes_, self.limits_, self.buttons_ = {}, {}, {}
     self.update_()
 
   def update_(self):
-    #finding supported axes
-    axes = set()
+    #finding supported axes and buttons
+    axes, buttons = set(), set()
+    op = set.update if self.union_ else set.intersection_update
     for c in self.children_:
-      axes.update(set(c.get_supported_axes()))
+      op(axes, set(c.get_supported_axes()))
+      op(buttons, set(c.get_supported_buttons()))
     #setting limits and initial values
     for axis in axes:
       #limits
@@ -717,10 +724,6 @@ class CompositeJoystick:
       for c in self.children_:
         if axis in c.get_supported_axes():
           c.move_axis(axis, v, relative=False)
-    #finding supported buttons
-    buttons = set()
-    for c in self.children_:
-      buttons.update(set(c.get_supported_buttons()))
     #setting initial buttons values
     v = False
     for button in buttons:
@@ -3851,10 +3854,14 @@ class MappingJoystick:
   """Forwards calls to contained joysticks with axis mapping"""
 
   def move_axis(self, axis, value, relative):
+    if axis not in self.adata_:
+      return 0.0 if relative else v
     d = self.adata_[axis]
     return d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
 
   def get_axis_value(self, axis):
+    if axis not in self.axes_:
+      return 0.0
     d = self.adata_[axis]
     value = d.toJoystick.get_axis_value(d.toAxis)
     return d.factor*value
@@ -3867,11 +3874,15 @@ class MappingJoystick:
     return self.adata_.keys()
 
   def set_button_state(self, button, state):
+    if button not in self.bdata_:
+      return
     d = self.bdata_[button]
     d.toJoystick.set_button_state(d.toButton, state if d.negate == False else not state)
 
   def get_button_state(self, button):
-    d = self.bdata_[button]
+    d = self.bdata_.get(button, None)
+    if d is None:
+      return None
     state = d.toJoystick.set_button_state(t.toButton)
     return state if d.negate == False else not state
 
@@ -3929,13 +3940,13 @@ class NodeJoystick(object):
 
 class RateLimititngJoystick:
   def move_axis(self, axis, value, relative):
-    if self.next_ is None:
+    if self.next_ is None or axis not in self.v_:
       return 0.0 if relative else value
     else:
       desired = self.v_[axis]+value if relative else value
       actual = clamp(desired, *self.get_limits(axis))
       self.v_[axis] = actual
-      return v - (desired - actual) if relative else actual
+      return value - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3980,16 +3991,16 @@ class RateLimititngJoystick:
 
 class RateSettingJoystick:
   def move_axis(self, axis, value, relative):
-    if self.next_ is None:
+    if self.next_ is None or axis not in self.v_:
       return 0.0 if relative else value
     else:
       desired = self.v_[axis]+value if relative else value
       actual = clamp(desired, *self.get_limits(axis))
       self.v_[axis] = actual
-      return v - (desired - actual) if relative else actual
+      return value - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
-    return self.v_[axis]
+    return self.v_.get(axis, 0.0)
 
   def get_limits(self, axis):
     return self.limits_.get(axis, (0.0, 0.0))
@@ -4328,10 +4339,11 @@ class RelativeHeadMovementJoystick:
 
       self.limitsDirty_ = True
       return value
-    else:
-      if axis in self.angleAxes_:
-        self.dirsDirty_ = True
+    elif axis in self.angleAxes_:
+      self.dirsDirty_ = True
       return self.next_.move_axis(axis, value, relative)
+    else:
+      return 0.0 if relative else value
 
 
   #TODO Unused
@@ -6661,7 +6673,9 @@ def make_parser():
   def parseCompositeOutput(cfg, state):
     parser = state["parser"].get("output")
     children = parse_list(resolve(cfg, "children", state), state, parser)
-    j = CompositeJoystick(children)
+    checkChild = resolve(cfg, "checkChild", state)
+    union = resolve(cfg, "union", state)
+    j = CompositeJoystick(children=children, checkChild=checkChild, union=union)
     return j
   outputParser.add("composite", parseCompositeOutput)
 
