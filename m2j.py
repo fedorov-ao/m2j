@@ -656,41 +656,26 @@ class NullJoystick:
     return self.b_.keys()
 
 
-#TODO Optimize: evaluate limits, supported axes and buttons at construction and cache it
 class CompositeJoystick:
   def move_axis(self, axis, v, relative):
+    if axis not in self.get_supported_axes():
+      return 0.0 if relative else v
     desired = self.get_axis_value(axis) + v if relative else v
     limits = self.get_limits(axis)
     actual = clamp(desired, *limits)
     for c in self.children_:
       if axis in c.get_supported_axes():
-        #TODO Check
         c.move_axis(axis, actual, relative=False)
     return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
-    for c in self.children_:
-      if axis in c.get_supported_axes():
-        return c.get_axis_value(axis)
-    else:
-      return 0.0
+    return self.axes_.get(axis, 0.0)
 
   def get_limits(self, axis):
-    l = [-float("inf"), float("inf")]
-    for c in self.children_:
-      if axis in c.get_supported_axes():
-        cl = list(c.get_limits(axis))
-        if cl[0] > cl[1] : cl[0], cl[1] = cl[1], cl[0]
-        l[0], l[1] = max(l[0], cl[0]), min(l[1], cl[1])
-        if l[0] >= l[1]:
-          return [0.0, 0.0]
-    return l
+    return self.limits_.get(axis, [0.0, 0.0])
 
   def get_supported_axes(self):
-    axes = set()
-    for c in self.children_:
-      axes.update(set(c.get_supported_axes()))
-    return list(axes)
+    return self.axes_.keys()
 
   def set_button_state(self, button, state):
     for c in self.children_:
@@ -698,20 +683,51 @@ class CompositeJoystick:
         c.set_button_state(button, state)
 
   def get_button_state(self, button):
-    for c in self.children_:
-      if button in c.get_supported_buttons():
-        return c.get_button_state(button)
-    else:
-      return False
+    return self.buttons_.get(button, False)
 
   def get_supported_buttons(self):
-    buttons = set()
-    for c in self.children_:
-      buttons.update(set(c.get_supported_buttons()))
-    return list(buttons)
+    return self.buttons_.keys()
 
   def __init__(self, children):
     self.children_ = children
+    self.axes_, self.limits_, self.buttons_ = {}, {}, {}
+    self.update_()
+
+  def update_(self):
+    #finding supported axes
+    axes = set()
+    for c in self.children_:
+      axes.update(set(c.get_supported_axes()))
+    #setting limits and initial values
+    for axis in axes:
+      #limits
+      l = [-float("inf"), float("inf")]
+      for c in self.children_:
+        if axis in c.get_supported_axes():
+          cl = list(c.get_limits(axis))
+          if cl[0] > cl[1] : cl[0], cl[1] = cl[1], cl[0]
+          l[0], l[1] = max(l[0], cl[0]), min(l[1], cl[1])
+          if l[0] >= l[1]:
+            l = [0.0, 0.0]
+      self.limits_[axis] = l
+      #values
+      v = 0.0
+      v = clamp(v, *l)
+      self.axes_[axis] = v
+      for c in self.children_:
+        if axis in c.get_supported_axes():
+          c.move_axis(axis, v, relative=False)
+    #finding supported buttons
+    buttons = set()
+    for c in self.children_:
+      buttons.update(set(c.get_supported_buttons()))
+    #setting initial buttons values
+    v = False
+    for button in buttons:
+      self.buttons_[button] = v
+      for c in self.children_:
+        if button in c.get_supported_buttons():
+          return c.set_button_state(button, v)
 
 
 class Event(object):
