@@ -629,7 +629,7 @@ class NullJoystick:
   def move_axis_by(self, axis, v):
     desired = self.get_axis_value(axis)+v
     actual = self.move_axis_to(axis, desired)
-    return v - (actual - desired)
+    return v - (desired - actual)
 
   def move_axis_to(self, axis, v):
     limits = self.get_limits(axis)
@@ -661,15 +661,12 @@ class CompositeJoystick:
   def move_axis(self, axis, v, relative):
     desired = self.get_axis_value(axis) + v if relative else v
     limits = self.get_limits(axis)
-    desired = clamp(value, *limits)
-    actual = None
+    actual = clamp(desired, *limits)
     for c in self.children_:
       if axis in c.get_supported_axes():
-        actual = c.move_axis(axis, desired, relative=False)
-    if relative:
-      return v - (actual - desired)
-    else:
-      return actual
+        #TODO Check
+        c.move_axis(axis, actual, relative=False)
+    return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     for c in self.children_:
@@ -2156,7 +2153,7 @@ class JoystickAxis:
 class ReportingAxis:
   def move(self, v, relative):
     old = self.next_.get()
-    self.next_.move(v, relative)
+    r = self.next_.move(v, relative)
     new = self.next_.get()
     #logger.debug(("{}: {} -> {}".format(self, old, new)))
     dirty = False
@@ -2168,6 +2165,7 @@ class ReportingAxis:
       c().on_move_axis(self, old, new)
     if dirty:
       self.cleanup_()
+    return r
 
   def get(self):
     return self.next_.get()
@@ -2207,7 +2205,9 @@ class ReportingAxis:
 class RateSettingAxis:
   def move(self, v, relative):
     #logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
-    self.v_ = clamp(self.v_+v if relative is True else v, self.limits_[0], self.limits_[1])
+    desired = self.v_+v if relative is True else v
+    actual = clamp(desired, self.limits_[0], self.limits_[1])
+    return v - (desired - actual) if relative else actual
 
   def get(self):
     return self.v_
@@ -3588,7 +3588,7 @@ class Opentrack:
     actual = clamp(desired, *self.get_limits(axis))
     self.v_[axis] = actual
     self.dirty_ = True
-    return v - (actual - desired) if relative else actual
+    return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3626,7 +3626,7 @@ class UdpJoystick:
     actual = clamp(v, *self.get_limits(axis))
     self.v_[axis] = actual
     self.dirty_ = True
-    return v - (actual - desired) if relative else actual
+    return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3916,7 +3916,7 @@ class RateLimititngJoystick:
       desired = self.v_[axis]+value if relative else value
       actual = clamp(desired, *self.get_limits(axis))
       self.v_[axis] = actual
-      return v - (actual - desired) if relative else actual
+      return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_.get(axis, 0.0)
@@ -3967,7 +3967,7 @@ class RateSettingJoystick:
       desired = self.v_[axis]+value if relative else value
       actual = clamp(desired, *self.get_limits(axis))
       self.v_[axis] = actual
-      return v - (actual - desired) if relative else actual
+      return v - (desired - actual) if relative else actual
 
   def get_axis_value(self, axis):
     return self.v_[axis]
@@ -4085,7 +4085,7 @@ class MetricsJoystick:
 
 class ReportingJoystickAxis:
   def move(self, v, relative):
-    self.joystick_.move_axis(self.axis_, v, relative)
+    return self.joystick_.move_axis(self.axis_, v, relative)
 
   def get(self):
     return self.joystick_.get_axis_value(self.axis_)
