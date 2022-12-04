@@ -373,7 +373,7 @@ def run():
       print_help()
       return 0
 
-    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "preset=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         print_help()
