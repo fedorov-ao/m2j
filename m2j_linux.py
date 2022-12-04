@@ -33,6 +33,8 @@ def ecode2code(code):
 
 class ExternalEvdevJoystick:
   def __init__(self, js, limits, immediateSyn, close):
+    #Needed to open the device
+    js.syn()
     self.js_ = js
     self.close_ = close
     self.dirty_ = False
