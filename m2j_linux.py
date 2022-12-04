@@ -45,11 +45,11 @@ class EvdevJoystick:
     for a,l in limits.items():
       value = (l[1] + l[0])/2
       self.axes_[a] = value
-      axesData.append((a, AbsInfo(value=value, min=-self.nativeLimit_, max=self.nativeLimit_, fuzz=0, flat=0, resolution=0)))
+      axesData.append((code2ecode(a), AbsInfo(value=value, min=-self.nativeLimit_, max=self.nativeLimit_, fuzz=0, flat=0, resolution=0)))
     cap[ecodes.EV_ABS] = axesData
 
     if buttons is not None:
-      cap[ecodes.EV_KEY] = buttons
+      cap[ecodes.EV_KEY] = [code2ecode(b) for b in buttons]
     self.buttons_ = { b:False for b in buttons } if buttons is not None else {}
 
     if name is None:
