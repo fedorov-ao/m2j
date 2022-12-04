@@ -31,6 +31,120 @@ def ecode2code(code):
   return code
 
 
+class ExternalEvdevJoystick:
+  def __init__(self, js, limits, immediateSyn, close):
+    self.js_ = js
+    self.close_ = close
+    self.dirty_ = False
+
+    self.immediateSyn_ = immediateSyn
+    self.limits_ = limits
+    self.nlimits_ = {}
+    self.axes_ = {}
+    self.buttons_ = {}
+
+    cap = self.js_.capabilities(absinfo=True)
+    for nativeAxis,absInfo in cap.get(ecodes.EV_ABS, ()):
+      axis = ecode2code(nativeAxis)
+      nl = (absInfo.min, absInfo.max,)
+      self.nlimits_[axis] = nl
+      l = self.limits_.get(axis)
+      value = lerp(absInfo.value, l[0], l[1], nl[0], nl[1])
+      self.axes_[axis] = value
+
+    #TODO Determine actual button state
+    for nativeButton in cap.get(ecodes.EV_KEY, ()):
+      self.buttons_[ecode2code(nativeButton)] = False
+
+    logger.debug("{} created".format(self))
+
+  def __del__(self):
+    if self.close_:
+      self.js_.close()
+    logger.debug("{} destroyed".format(self))
+
+  def move_axis(self, axis, v, relative):
+    if relative:
+      return self.move_axis_by(axis, v)
+    else:
+      return self.move_axis_to(axis, v)
+
+  def move_axis_by(self, axis, v):
+    desired = self.get_axis_value(axis)+v
+    actual = self.move_axis_to(axis, desired)
+    return v - (actual - desired)
+
+  def move_axis_to(self, axis, v):
+    if axis not in self.axes_:
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    l = self.limits_.get(axis, (0.0, 0.0,))
+    v = clamp(v, *l)
+    self.axes_[axis] = v
+    nl = self.nlimits_.get(axis, (0.0, 0.0,))
+    nv = lerp(v, l[0], l[1], nl[0], nl[1])
+    nv = int(nv)
+    #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
+    self.js_.write(ecodes.EV_ABS, code2ecode(axis), nv)
+    if self.immediateSyn_ == True:
+      self.js_.syn()
+    else:
+      self.dirty_ = True
+    return v
+
+  def get_axis_value(self, axis):
+    return self.axes_.get(axis, 0.0)
+
+  def get_limits(self, axis):
+    return self.limits_.get(axis, [0.0, 0.0])
+
+  def get_supported_axes(self):
+    return self.axes_.keys()
+
+  def set_button_state(self, button, state):
+    if button not in self.buttons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    self.buttons_[button] = state
+    self.js_.write(ecodes.EV_KEY, code2ecode(button), state)
+    if self.immediateSyn_ == True:
+      self.js_.syn()
+    else:
+      self.dirty_ = True
+
+  def get_button_state(self, button):
+    if button not in self.buttons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    return self.buttons_[button]
+
+  def get_supported_buttons(self):
+    return self.buttons_.keys()
+
+  def update(self, tick, ts):
+    if self.immediateSyn_ == False and self.dirty_ == True:
+      self.js_.syn()
+      self.dirty_ = False
+
+
+class EvdevJoystick2(ExternalEvdevJoystick):
+  def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767, close=True):
+    cap = {}
+    axesData = []
+    for a,l in limits.items():
+      value = (l[1] + l[0])/2
+      value = lerp(value, l[0], l[1], -nativeLimit, nativeLimit)
+      axesData.append((code2ecode(a), AbsInfo(value=value, min=-nativeLimit, max=nativeLimit, fuzz=0, flat=0, resolution=0)))
+    cap[ecodes.EV_ABS] = axesData
+
+    if buttons is not None:
+      cap[ecodes.EV_KEY] = [code2ecode(b) for b in buttons]
+
+    if name is None:
+      name='virtual-joystick'
+    js = UInput(cap, name=name, version=0x3, phys=phys)
+    ExternalEvdevJoystick.__init__(self, js=js, limits=limits, immediateSyn=immediateSyn, close=close)
+
+    logger.debug("{} created".format(self))
+
+
 class EvdevJoystick:
   def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767):
     self.nativeLimit_ = nativeLimit
@@ -286,7 +400,7 @@ def parseEvdevJoystickOutput(cfg, state):
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
   immediateSyn=cfg.get("immediateSyn", True)
   nativeLimit=cfg.get("nativeLimit", 32767)
-  j = EvdevJoystick(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
+  j = EvdevJoystick2(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
   if immediateSyn == False:
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick, ts))
   return j
