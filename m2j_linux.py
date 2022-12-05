@@ -33,9 +33,9 @@ def ecode2code(code):
 
 class ExternalEvdevJoystick:
   def __init__(self, js, limits, immediateSyn, close):
-    #Needed to open the device
-    js.syn()
     self.js_ = js
+    #Needed to open the device
+    self.js_.read_one()
     self.close_ = close
     self.dirty_ = False
 
@@ -88,7 +88,7 @@ class ExternalEvdevJoystick:
     #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
     self.js_.write(ecodes.EV_ABS, code2ecode(axis), nv)
     if self.immediateSyn_ == True:
-      self.js_.syn()
+      self.syn()
     else:
       self.dirty_ = True
     return v
@@ -108,7 +108,7 @@ class ExternalEvdevJoystick:
     self.buttons_[button] = state
     self.js_.write(ecodes.EV_KEY, code2ecode(button), state)
     if self.immediateSyn_ == True:
-      self.js_.syn()
+      self.syn()
     else:
       self.dirty_ = True
 
@@ -122,8 +122,11 @@ class ExternalEvdevJoystick:
 
   def update(self, tick, ts):
     if self.immediateSyn_ == False and self.dirty_ == True:
-      self.js_.syn()
+      self.syn()
       self.dirty_ = False
+
+  def syn(self):
+    self.js_.write(ecodes.EV_SYN, ecodes.SYN_REPORT, 0)
 
 
 class EvdevJoystick2(ExternalEvdevJoystick):
