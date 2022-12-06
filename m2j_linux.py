@@ -32,11 +32,8 @@ def ecode2code(code):
 
 
 class ExternalEvdevJoystick:
-  def __init__(self, js, limits, immediateSyn, close):
+  def __init__(self, js, limits, immediateSyn):
     self.js_ = js
-    #Needed to open the device
-    self.js_.read_one()
-    self.close_ = close
     self.dirty_ = False
 
     self.immediateSyn_ = immediateSyn
@@ -61,8 +58,6 @@ class ExternalEvdevJoystick:
     logger.debug("{} created".format(self))
 
   def __del__(self):
-    if self.close_:
-      self.js_.close()
     logger.debug("{} destroyed".format(self))
 
   def move_axis(self, axis, v, relative):
@@ -130,7 +125,7 @@ class ExternalEvdevJoystick:
 
 
 class EvdevJoystick2(ExternalEvdevJoystick):
-  def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767, close=True):
+  def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767):
     cap = {}
     axesData = []
     for a,l in limits.items():
@@ -144,10 +139,29 @@ class EvdevJoystick2(ExternalEvdevJoystick):
 
     if name is None:
       name='virtual-joystick'
-    js = UInput(cap, name=name, version=0x3, phys=phys)
-    ExternalEvdevJoystick.__init__(self, js=js, limits=limits, immediateSyn=immediateSyn, close=close)
+
+    numTries = 0
+    while (True):
+      try:
+        self.js_ = UInput(cap, name=name, version=0x3, phys=phys)
+        #Determine whether device has been opened
+        self.js_.capabilities(absinfo=True)
+        break
+      except evdev.uinput.UInputError:
+        logger.warning("Could not open evdev device {} on try {}".format(name, numTries+1))
+        numTries += 1
+        if numTries == 10:
+          raise
+        time.sleep(0.5)
+
+    ExternalEvdevJoystick.__init__(self, js=self.js_, limits=limits, immediateSyn=immediateSyn)
 
     logger.debug("{} created".format(self))
+
+  def __del__(self):
+    if self.js_ is not None:
+      self.js_.close()
+    logger.debug("{} destroyed".format(self))
 
 
 class EvdevJoystick:
