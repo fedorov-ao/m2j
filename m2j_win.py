@@ -4,6 +4,24 @@
 
 #Dependencies:
 
+#pywin32
+#https://github.com/mhammond/pywin32
+#last build supporting python 2.7 is 228: https://github.com/mhammond/pywin32/releases/tag/b228
+
+#virtual joystick driver
+#ppjoy (up to win xp)
+#https://github.com/elitak/PPJoy/releases
+#or
+#vJoy
+#original: https://sourceforge.net/projects/vjoystick/
+#forks:
+#https://github.com/shauleiz/vJoy
+#https://github.com/jshafer817/vJoy
+#https://github.com/njz3/vJoy/ (seems to be the most recent. Last build: https://github.com/njz3/vJoy/releases/tag/v2.2.1.1 (min win7 32bit))
+
+#TODO Need to add wrapper for Dll-based vjoy interface, because vJoy 2.x is not ppjoy-compatible.
+#See https://github.com/maxofbritton/pyvjoy or https://github.com/tidzo/pyvjoy as reference.
+
 import sys
 sys.path.append(".")
 import gc
@@ -14,10 +32,8 @@ import m2j
 from m2j import *
 
 import win32con
-import sys
 from ctypes import *
 from ctypes.wintypes import *
-
 import win32file
 
 logger = logging.getLogger(__name__)
@@ -1156,7 +1172,7 @@ def run():
       print_help()
       return 0
 
-    opts, args = getopt.getopt(sys.argv[1:], "hp:l:v:c:", ["help", "print=", "preset=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         print_help()
