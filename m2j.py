@@ -3711,12 +3711,12 @@ class UdpJoystick:
 #TODO Needs verifying
 def make_opentrack_packet(**kwargs):
   d = (
-    (codes.ABS_X, 1.0),
-    (codes.ABS_Y, -1.0),
-    (codes.ABS_Z, 1.0),
-    (codes.ABS_RX, 180.0),
-    (codes.ABS_RY, -90.0),
-    (codes.ABS_RZ, 90.0)
+    (codes.ABS_X, -100.0),
+    (codes.ABS_Y, -100.0),
+    (codes.ABS_Z, 100.0),
+    (codes.ABS_RX, 1.0),
+    (codes.ABS_RY, -1.0),
+    (codes.ABS_RZ, 1.0)
   )
   v = kwargs["axes"]
   values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
