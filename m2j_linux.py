@@ -419,7 +419,8 @@ def parseEvdevJoystickOutput(cfg, state):
   limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
   immediateSyn=cfg.get("immediateSyn", True)
   nativeLimit=cfg.get("nativeLimit", 32767)
-  j = EvdevJoystick2(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
+  #j = EvdevJoystick2(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
+  j = EvdevJoystick(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
   if immediateSyn == False:
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick, ts))
   return j
