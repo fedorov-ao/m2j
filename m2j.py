@@ -4837,6 +4837,11 @@ class Info:
 
 
 def init_info(**kwargs):
+  def calc_scale(fn, outputs):
+    name, code = fn2sc(fn)
+    limits = outputs[name].get_limits(code)
+    return 1.0/limits[1]
+
   settings = kwargs["settings"]
   axisAccumulator = kwargs["axisAccumulator"]
   outputs = settings["outputs"]
@@ -4873,7 +4878,9 @@ def init_info(**kwargs):
     area.add_marker("head.ABS_X", "head.ABS_Y", "rect", color="white", size=(13,13))
     area.add_marker(1.0, "head.ABS_Z", "oval", color="red")
     area = info.add_area("box", 1, 1, name="hrx hry hrz", gridColor="grey", gridWidth=1, cs=3)
-    area.add_marker("head.ABS_RX", "head.ABS_RY", "rect", color="white", size=(13,13), sx=1.0/180.0, sy=1.0/90.0)
+    sx=calc_scale("head.ABS_RX", outputs)
+    sy=calc_scale("head.ABS_RY", outputs)
+    area.add_marker("head.ABS_RX", "head.ABS_RY", "rect", color="white", size=(13,13), sx=sx, sy=sy)
     area.add_marker("head.ABS_RZ", 1.0, "oval", color="red")
     area = info.add_area("v", 1, 4, name="hr")
     area.add_marker(0.0, "-head.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
