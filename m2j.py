@@ -3861,12 +3861,12 @@ class MappingJoystick:
 
   def move_axis(self, axis, value, relative):
     if axis not in self.adata_:
-      return 0.0 if relative else v
+      return 0.0 if relative else value
     d = self.adata_[axis]
     return d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
 
   def get_axis_value(self, axis):
-    if axis not in self.axes_:
+    if axis not in self.adata_:
       return 0.0
     d = self.adata_[axis]
     value = d.toJoystick.get_axis_value(d.toAxis)
@@ -3899,7 +3899,7 @@ class MappingJoystick:
     class D:
       pass
     d = D()
-    d.toJoystick, d.toAxis, d.factor = toJoysitick, toAxis, factor
+    d.toJoystick, d.toAxis, d.factor = toJoystick, toAxis, factor
     self.adata_[fromAxis] = d
 
   def add_button(self, fromButton, toJoystick, toButton, negate=False):
@@ -6633,6 +6633,16 @@ def make_parser():
   outputParser = make_double_deref_parser(keyOp=outputParserKeyOp)
   mainParser.add("output", outputParser)
 
+  def get_or_make_output(name, state):
+    settings = state["settings"]
+    outputs = settings["outputs"]
+    config = settings["config"]
+    j = outputs.get(name, None)
+    if j is None:
+      j = state["parser"]("output", config["outputs"][name], state)
+      outputs[name] = j
+    return j
+
   @make_reporting_joystick
   def parseNullJoystickOutput(cfg, state):
     values = get_nested_d(cfg, "values")
@@ -6646,12 +6656,8 @@ def make_parser():
   outputParser.add("null", parseNullJoystickOutput)
 
   def parseExternalOutput(cfg, state):
-    settings, name = state["settings"], resolve(cfg, "name", state)
-    j = settings["outputs"].get(name, None)
-    if j is None:
-      j = state["parser"]("output", settings["config"]["outputs"][name], state)
-      settings["outputs"][name] = j
-    return j
+    name = resolve(cfg, "name", state)
+    return get_or_make_output(name, state)
   outputParser.add("external", parseExternalOutput)
 
   @make_reporting_joystick
@@ -6694,13 +6700,15 @@ def make_parser():
   def parseMappingOutput(cfg, state):
     outputs = state["settings"]["outputs"]
     j = MappingJoystick()
-    for fromAxis,to in resolve(cfg, "axisMapping", state).items():
-      toJoystick, toAxis = fn2sc(to["to"])
-      factor = to.get("factor", 1.0)
+    for fromAxis,to in resolve_d(cfg, "axisMapping", state, {}).items():
+      toJoystick, toAxis = fn2sc(resolve(to, "to", state))
+      toJoystick = get_or_make_output(toJoystick, state)
+      factor = resolve_d(to, "factor", state, 1.0)
       j.add_axis(name2code(fromAxis), toJoystick, toAxis, factor)
-    for fromButton,to in resolve(cfg, "buttonMapping", state).items():
-      toJoystick, toButton = fn2sc(to["to"])
-      negate = to.get("negate", False)
+    for fromButton,to in resolve_d(cfg, "buttonMapping", state, {}).items():
+      toJoystick, toButton = fn2sc(resolve(to, "to", state))
+      toJoystick = get_or_make_output(toJoystick, state)
+      negate = resolve_d(to, "negate", state, False)
       j.add_button(name2code(fromButton), toJoystick, toButton, negate)
     return j
   outputParser.add("mapping", parseMappingOutput)
