@@ -44,6 +44,8 @@ def slopes(seq, op):
 
 
 def clamp(v, lo, hi):
+  if lo > hi:
+    lo,hi = hi,lo
   return lo if v < lo else hi if v > hi else v
 
 
