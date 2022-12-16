@@ -3205,8 +3205,13 @@ class TransformAbsChainCurve:
       self.dirty_ = False
 
 
-class AxisAbsChainCurve:
+class AxisChainCurve:
   """Acturally moves axis. Is meant to be at the bottom of chain."""
+  def move_by(self, x, timestamp):
+    self.axis_.move(x, relative=True)
+    #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
+    return self.axis_.get()
+
   def move(self, x, timestamp):
     self.axis_.move(x, relative=False)
     #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
@@ -5717,7 +5722,7 @@ def make_parser():
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     offsetChainCurve.set_next(fixedChainCurve)
     #move axis
-    axisChainCurve = AxisAbsChainCurve(axis=axis)
+    axisChainCurve = AxisChainCurve(axis=axis)
     fixedChainCurve.set_next(axisChainCurve)
     add_curve_to_state(fullAxisName, curve, state)
     return top
@@ -5748,7 +5753,7 @@ def make_parser():
     fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
     accelChainCurve.set_next(fixedChainCurve)
     #move axis
-    axisChainCurve = AxisAbsChainCurve(axis=axis)
+    axisChainCurve = AxisChainCurve(axis=axis)
     fixedChainCurve.set_next(axisChainCurve)
     add_curve_to_state(fullAxisName, top, state)
     return top
