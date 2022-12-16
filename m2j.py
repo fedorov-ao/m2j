@@ -3119,9 +3119,7 @@ class DeltaRelChainCurve:
     factor = self.outputOp_.calc(self.value_)
     delta = self.deltaDOp_.calc(x, timestamp)
     delta *= factor
-    nextValue = self.next_.get_value()
-    nextValue += delta
-    self.next_.move(nextValue, timestamp)
+    self.next_.move_by(delta, timestamp)
     return self.value_
 
   def reset(self):
@@ -3160,6 +3158,30 @@ class DeltaRelChainCurve:
       elif self.resetOnMoveAxis_ == self.RMA_SOFT:
         self.soft_reset_()
       self.dirty_ = False
+
+
+class RelToAbsChainCurve:
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    nextValue = self.next_.get_value()
+    nextValue += x
+    self.next_.move(nextValue, timestamp)
+    return self.next_.get_value()
+
+  def reset(self):
+    self.next_.reset()
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    return self.next_.get_value()
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next):
+    self.next_ = next
 
 
 class TransformAbsChainCurve:
@@ -5746,15 +5768,20 @@ def make_parser():
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
     top.set_next(accelChainCurve)
+    bottom = accelChainCurve
     #transform
-    fixedCfg = resolve(cfg, "fixed", state)
-    fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
-    fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
-    accelChainCurve.set_next(fixedChainCurve)
+    fixedCfg = resolve_d(cfg, "fixed", state, None)
+    if fixedCfg is not None:
+      relToAbsChainCurve = RelToAbsChainCurve(next=None)
+      accelChainCurve.set_next(relToAbsChainCurve)
+      fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
+      fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
+      fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
+      relToAbsChainCurve.set_next(fixedChainCurve)
+      bottom = fixedChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
-    fixedChainCurve.set_next(axisChainCurve)
+    bottom.set_next(axisChainCurve)
     add_curve_to_state(fullAxisName, top, state)
     return top
   curveParser.add("accel", parseAccelCurve)
