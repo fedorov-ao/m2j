@@ -4463,6 +4463,7 @@ class RelativeHeadMovementJoystick:
       rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
       #TODO Check
       rYaw = -rYaw
+      rPitch = -rPitch
       sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
       cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
 
