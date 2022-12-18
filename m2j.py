@@ -4460,10 +4460,9 @@ class RelativeHeadMovementJoystick:
   def update_dirs_(self):
     if self.dirsDirty_ == True and self.next_ is not None:
       dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
-      rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
-      #TODO Check
-      rYaw = -rYaw
-      rPitch = -rPitch
+      #Angles should be negated for correct calculation
+      #Can instead negate sines or adjust signs in dirs_ calculation
+      rYaw, rPitch, rRoll = (-math.radians(a) for a in (dYaw, dPitch, dRoll))
       sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
       cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
 
