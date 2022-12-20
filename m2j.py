@@ -3784,105 +3784,105 @@ def make_il2_6dof_packet(**kwargs):
   return result
 
 
-class JoystickSnapManager:
+class JoystickPoseManager:
   """Sets joystick axes to preset values and also can update preset values from joystick"""
 
-  def set_snap(self, i, l):
-    self.snaps_[i] = [[p[0], p[1]] for p in l]
+  def set_pose(self, i, l):
+    self.poses_[i] = [[p[0], p[1]] for p in l]
 
-  def update_snap(self, i):
-    #logger.debug("update_snap({})".format(i))
-    snap = self.snaps_.get(i, None)
-    if snap is None:
-      #logger.debug("{}: no snap {}".format(self, i))
+  def update_pose(self, i):
+    #logger.debug("update_pose({})".format(i))
+    pose = self.poses_.get(i, None)
+    if pose is None:
+      #logger.debug("{}: no pose {}".format(self, i))
       return False
     else:
-      for j in xrange(len(snap)):
-        snap[j][1] = self.joystick_.get_axis_value(snap[j][0])
+      for j in xrange(len(pose)):
+        pose[j][1] = self.joystick_.get_axis_value(pose[j][0])
       return True
 
-  def snap_to(self, i):
-    #logger.debug("snap_to({})".format(i))
-    snap = self.snaps_.get(i, None)
-    if snap is None:
-      #logger.debug("{}: no snap {}".format(self, i))
+  def pose_to(self, i):
+    #logger.debug("pose_to({})".format(i))
+    pose = self.poses_.get(i, None)
+    if pose is None:
+      #logger.debug("{}: no pose {}".format(self, i))
       return False
     else:
-      for p in snap:
+      for p in pose:
         self.joystick_.move_axis(p[0], p[1], self.relative_)
       return True
 
   def __init__(self, joystick, relative):
-    self.snaps_, self.joystick_, self.relative_ = dict(), joystick, relative
+    self.poses_, self.joystick_, self.relative_ = dict(), joystick, relative
 
 
-class AxisSnapManager:
-  """Axis-based snap manager"""
-  def set_snap(self, i, l):
-    self.snaps_[i] = [[p[0], p[1]] for p in l]
+class AxisPoseManager:
+  """Axis-based pose manager"""
+  def set_pose(self, i, l):
+    self.poses_[i] = [[p[0], p[1]] for p in l]
 
-  def update_snap(self, i):
-    #logger.debug("{}: updating snap {}".format(self, i))
-    snap = self.snaps_.get(i, None)
-    if snap is None:
-      #logger.debug("{}: no snap {}".format(self, i))
+  def update_pose(self, i):
+    #logger.debug("{}: updating pose {}".format(self, i))
+    pose = self.poses_.get(i, None)
+    if pose is None:
+      #logger.debug("{}: no pose {}".format(self, i))
       return False
     else:
-      for p in snap:
+      for p in pose:
         p[1] = p[0].get()
       return True
 
-  def snap_to(self, i):
-    #logger.debug("{}: snapping to {}".format(self, i))
-    snap = self.snaps_.get(i, None)
-    if snap is None:
-      #logger.debug("{}: no snap {}".format(self, i))
+  def pose_to(self, i):
+    #logger.debug("{}: poseping to {}".format(self, i))
+    pose = self.poses_.get(i, None)
+    if pose is None:
+      #logger.debug("{}: no pose {}".format(self, i))
       return False
     else:
-      for p in snap:
+      for p in pose:
         p[0].move(p[1], False)
       return True
 
-  def has_snap(self, i):
-    return i in self.snaps_
+  def has_pose(self, i):
+    return i in self.poses_
 
   def __init__(self):
-    self.snaps_ = dict()
+    self.poses_ = dict()
 
 
-def SnapTo(snapManager, snap):
+def PoseTo(poseManager, pose):
   def op(event):
-    return snapManager.snap_to(snap)
+    return poseManager.pose_to(pose)
   return op
 
 
-def UpdateSnap(snapManager, snap):
+def UpdatePose(poseManager, pose):
   def op(event):
-    return snapManager.update_snap(snap)
+    return poseManager.update_pose(pose)
   return op
 
 
-class SnapTracker:
-  def inc(self, snap):
-    if snap not in self.snaps_:
-      self.snaps_[snap] = 0
-    if self.snaps_[snap] == 0:
-      self.sm_.update_snap(snap)
-    self.snaps_[snap] += 1
+class PoseTracker:
+  def inc(self, pose):
+    if pose not in self.poses_:
+      self.poses_[pose] = 0
+    if self.poses_[pose] == 0:
+      self.sm_.update_pose(pose)
+    self.poses_[pose] += 1
 
-  def dec(self, snap):
-    if snap not in self.snaps_:
-      self.snaps_[snap] = 0
-    if self.snaps_[snap] == 1:
-      self.sm_.snap_to(snap)
-    if self.snaps_[snap] >= 1:
-      self.snaps_[snap] -= 1
+  def dec(self, pose):
+    if pose not in self.poses_:
+      self.poses_[pose] = 0
+    if self.poses_[pose] == 1:
+      self.sm_.pose_to(pose)
+    if self.poses_[pose] >= 1:
+      self.poses_[pose] -= 1
 
-  def reset(self, snap):
-    self.snaps_[snap] = 0
+  def reset(self, pose):
+    self.poses_[pose] = 0
 
   def __init__(self, sm):
-    self.snaps_, self.sm_ = dict(), sm
+    self.poses_, self.sm_ = dict(), sm
 
 
 class MappingJoystick:
@@ -6342,54 +6342,54 @@ def make_parser():
     return worker
   actionParser.add("cycleOps", parseCycleOps)
 
-  def createSnap_(cfg, state):
-    state.setdefault("snapManager", AxisSnapManager())
-    snapManager = state["snapManager"]
-    state.setdefault("snapTracker", SnapTracker(snapManager))
-    snapName = resolve(cfg, "snap", state)
-    if not snapManager.has_snap(snapName):
-      snaps = state["settings"]["config"]["snaps"]
-      fullAxesNamesAndValues = snaps[snapName]
-      snap = []
+  def createPose_(cfg, state):
+    state.setdefault("poseManager", AxisPoseManager())
+    poseManager = state["poseManager"]
+    state.setdefault("poseTracker", PoseTracker(poseManager))
+    poseName = resolve(cfg, "pose", state)
+    if not poseManager.has_pose(poseName):
+      poses = state["settings"]["config"]["poses"]
+      fullAxesNamesAndValues = poses[poseName]
+      pose = []
       for fullAxisName,value in fullAxesNamesAndValues.items():
         axis = get_axis_by_full_name(fullAxisName, state)
-        snap.append((axis, value))
-      snapManager.set_snap(snapName, snap)
+        pose.append((axis, value))
+      poseManager.set_pose(poseName, pose)
 
-  def parseUpdateSnap(cfg, state):
-    createSnap_(cfg, state)
-    snapName = resolve(cfg, "snap", state)
-    snapManager = state["snapManager"]
-    return UpdateSnap(snapManager, snapName)
-  actionParser.add("updateSnap", parseUpdateSnap)
+  def parseUpdatePose(cfg, state):
+    createPose_(cfg, state)
+    poseName = resolve(cfg, "pose", state)
+    poseManager = state["poseManager"]
+    return UpdatePose(poseManager, poseName)
+  actionParser.add("updatePose", parseUpdatePose)
 
-  def parseSnapTo(cfg, state):
-    createSnap_(cfg, state)
-    snapName = resolve(cfg, "snap", state)
-    snapManager = state["snapManager"]
-    return SnapTo(snapManager, snapName)
-  actionParser.add("snapTo", parseSnapTo)
+  def parsePoseTo(cfg, state):
+    createPose_(cfg, state)
+    poseName = resolve(cfg, "pose", state)
+    poseManager = state["poseManager"]
+    return PoseTo(poseManager, poseName)
+  actionParser.add("poseTo", parsePoseTo)
 
-  def parseIncSnapCount(cfg, state):
-    createSnap_(cfg, state)
-    snapName = resolve(cfg, "snap", state)
-    snapTracker = state["snapTracker"]
-    return lambda e : snapTracker.inc(snapName)
-  actionParser.add("incSnapCount", parseIncSnapCount)
+  def parseIncPoseCount(cfg, state):
+    createPose_(cfg, state)
+    poseName = resolve(cfg, "pose", state)
+    poseTracker = state["poseTracker"]
+    return lambda e : poseTracker.inc(poseName)
+  actionParser.add("incPoseCount", parseIncPoseCount)
 
-  def parseDecSnapCount(cfg, state):
-    createSnap_(cfg, state)
-    snapName = resolve(cfg, "snap", state)
-    snapTracker = state["snapTracker"]
-    return lambda e : snapTracker.dec(snapName)
-  actionParser.add("decSnapCount", parseDecSnapCount)
+  def parseDecPoseCount(cfg, state):
+    createPose_(cfg, state)
+    poseName = resolve(cfg, "pose", state)
+    poseTracker = state["poseTracker"]
+    return lambda e : poseTracker.dec(poseName)
+  actionParser.add("decPoseCount", parseDecPoseCount)
 
-  def parseResetSnapCount(cfg, state):
-    createSnap_(cfg, state)
-    snapName = resolve(cfg, "snap", state)
-    snapTracker = state["snapTracker"]
-    return lambda e : snapTracker.reset(snapName)
-  actionParser.add("resetSnapCount", parseResetSnapCount)
+  def parseResetPoseCount(cfg, state):
+    createPose_(cfg, state)
+    poseName = resolve(cfg, "pose", state)
+    poseTracker = state["poseTracker"]
+    return lambda e : poseTracker.reset(poseName)
+  actionParser.add("resetPoseCount", parseResetPoseCount)
 
   def parseSetStateOnInit(cfg, state):
     linker = state["parser"]("curve", cfg, state)
