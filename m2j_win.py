@@ -903,14 +903,14 @@ class RawInputEventSource:
       r = windll.user32.DestroyWindow(self.hwnd)
       if r == 0:
         e = windll.kernel32.GetLastError()
-        raise RuntimError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd, e))
+        raise RuntimeError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd, e))
       else:
         del self.hwnd
     if hasattr(self, "wndclass"):
       r = windll.user32.UnregisterClassA(self.wndclass.lpszClassName, 0)
       if r == 0:
         e = windll.kernel32.GetLastError()
-        raise RuntimError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
+        raise RuntimeError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
       else:
         del self.wndclass
 
@@ -979,32 +979,38 @@ class RawInputEventSource:
     uiNumDevices = c_uint(0)
     r = windll.user32.GetRawInputDeviceList(0, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
     if r == c_uint(-1):
-      raise RuntimError("Error getting device number")
+      raise RuntimeError("Error getting device number")
     rawInputDeviceList = (uiNumDevices.value * RAWINPUTDEVICELIST)()
     r = windll.user32.GetRawInputDeviceList(rawInputDeviceList, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
     if r == c_uint(-1):
-      raise RuntimError("Error listing devices")
+      raise RuntimeError("Error listing devices")
     class DeviceInfo:
+      def __init__(self, **kwargs):
+        self.handle = kwargs.get("handle", None)
+        self.type = kwargs.get("type", 0)
+        self.name = kwargs.get("name", "")
+        self.usagePage = kwargs.get("usagePage", 0)
+        self.usage = kwargs.get("usage", 0)
       def __str__(self):
-        return "{} {} {} {} {}".format(di.handle, di.type, di.name, di.usagePage, di.usage)
+        return "{} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage)
     devices = []
-    for i in range(r):
+    for i in range(uiNumDevices):
       ridl = rawInputDeviceList[i]
       #Get required device name string length
       pName = 0
       szName = c_uint(0)
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
       if r == c_uint(-1):
-        raise RuntimError("Error getting device name string length")
+        raise RuntimeError("Error getting device name string length")
       pName = create_string_buffer(szName.value)
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
       if r == c_uint(-1):
-        raise RuntimError("Error getting device name")
+        raise RuntimeError("Error getting device name")
       ridi = RID_DEVICE_INFO()
       szRidi = c_uint(sizeof(RID_DEVICE_INFO))
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICEINFO, byref(ridi), byref(szRidi))
       if r == c_uint(-1):
-        raise RuntimError("Error getting device info")
+        raise RuntimeError("Error getting device info")
       di = DeviceInfo()
       di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
       if ridl.dwType == RIM_TYPEMOUSE:
