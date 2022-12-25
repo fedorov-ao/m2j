@@ -924,8 +924,8 @@ class RawInputEventSource:
         raw = RAWINPUT()
         dwSize = c_uint(sizeof(RAWINPUT))
         if windll.user32.GetRawInputData(msg.lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
-          if raw.header.hDevice in self.devs_:
-            hd = raw.header.hDevice
+          hd = raw.header.hDevice
+          if hd in self.devs_:
             sourceHash = self.devs_[hd].hash
             events = None
             if raw.header.dwType == RIM_TYPEMOUSE:
@@ -1039,8 +1039,8 @@ class RawInputEventSource:
       if mouse.lLastY != 0:
         events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, source))
     elif mouse.usFlags & MOUSE_MOVE_ABSOLUTE == MOUSE_MOVE_ABSOLUTE:
-      events.append(InputEvent(codes.EV_ABS, codes.REL_X, mouse.lLastX, ts, source))
-      events.append(InputEvent(codes.EV_ABS, codes.REL_Y, mouse.lLastY, ts, source))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_X, mouse.lLastX, ts, source))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_Y, mouse.lLastY, ts, source))
     if usButtonFlags & RI_MOUSE_WHEEL:
       #usButtonData is actually a signed value, and ctypes support only pointer casts,
       #so converting it this way
