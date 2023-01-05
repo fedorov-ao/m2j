@@ -1026,15 +1026,17 @@ def SetButtonState(output, button, state):
 
 class ClickSink:
   def __call__(self, event):
+    r = False
     if self.next_:
-      self.next_(event)
+      r = self.next_(event)
 
     numClicks = 0
     if event.type == codes.EV_KEY:
       numClicks = self.update_keys(event)
       if self.next_ and numClicks != 0:
         clickEvent = ClickEvent.from_event(event, numClicks)
-        self.next_(clickEvent)
+        r = r or self.next_(clickEvent)
+    return r
 
   #returns number of clicks
   def update_keys(self, event):
@@ -1093,8 +1095,7 @@ class HoldSink:
         times = HoldSink.Times()
         times.timestamps, times.initialTimestamp = {}, event.timestamp
         self.keys_[keyData] = times
-    if self.next_:
-      self.next_(event)
+    return self.next_(event) if self.next_ else False
 
   def update(self, tick, timestamp):
     for keyData,times in self.keys_.items():
@@ -1647,7 +1648,9 @@ class StateSink:
  def __call__(self, event):
    #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if (self.state_ == True) and (self.next_ is not None):
-     self.next_(event)
+     return self.next_(event)
+   else:
+     return False
 
  def set_state(self, state):
    #logger.debug("{}: setting state to {}".format(self, state))
@@ -1687,7 +1690,9 @@ class FilterSink:
   def __call__(self, event):
    #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if self.next_ is not None and self.op_(event) == True:
-     self.next_(event)
+     return self.next_(event)
+   else:
+     return False
 
   def set_next(self, next):
    #logger.debug("{}: setting next to {}".format(self, next))
@@ -5890,9 +5895,9 @@ def make_parser():
       #Can be actually called during init when next_ is not set yet
       if self.next_ is None:
         #logger.debug("{}: next sink is not set".format(self))
-        pass
+        return False
       else:
-        self.next_(event)
+        return self.next_(event)
 
     def get_component(self, name, dfault=None):
       return self.components_.get(name, dfault)
