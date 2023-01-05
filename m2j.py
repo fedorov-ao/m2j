@@ -1161,7 +1161,11 @@ class ModifierSink:
     if self.next_:
       eventWithModifiers = event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS)
       if not eventWithModifiers:
-        return self.next_(event)
+        try:
+          return self.next_(event)
+        finally:
+          if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
+            self.clear()
       else:
         oldModifiers = None
         try:
@@ -6025,17 +6029,7 @@ def make_parser():
   def parseModifiers(cfg, state):
     modifierDescs = [parse_modifier_desc(m, state) for m in resolve(cfg, "modifiers", state)]
     modifierSink = ModifierSink(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierSink.APPEND)
-    #saves event modifiers (if present), sets new modifers and restores old ones after call if needed
-    class Wrapper:
-      def __call__(self, event):
-        self.sink_(event)
-        if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
-          self.sink_.clear()
-      def set_next(self, next):
-        self.sink_.set_next(next)
-      def __init__(self, sink):
-        self.sink_ = sink
-    return Wrapper(modifierSink)
+    return modifierSink
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
