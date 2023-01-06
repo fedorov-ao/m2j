@@ -5641,12 +5641,12 @@ def make_parser():
     return linker
   curveParser.add("linker", parseAxisLinker)
 
-  def makeRefDeltaOp(cfg, state, sensOp):
-    if "refFixed" not in cfg:
+  def makeRefDeltaOp(cfg, state, sensOp, combine=lambda a,b: a*b):
+    if "reference" not in cfg:
       return sensOp
     else:
-      refAxis = get_axis_by_full_name(resolve(cfg, "refAxis", state), state)
-      refApprox = state["parser"]("op", resolve(cfg, "refFixed", state), state)
+      axis = get_axis_by_full_name(resolve(cfg, "reference.axis", state), state)
+      approx = state["parser"]("op", resolve(cfg, "reference.fixed", state), state)
       class RefDeltaOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
@@ -5654,7 +5654,7 @@ def make_parser():
           self.next_.reset()
         def __init__(self, combine, next, approx, axis):
           self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
-      return RefDeltaOp(lambda a,b: a*b, sensOp, refApprox, refAxis)
+      return RefDeltaOp(combine, sensOp, approx, axis)
 
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=resolve_d(cfg, "eps", state, 0.001), numSteps=resolve_d(cfg, "numSteps", state, 100))
