@@ -1,0 +1,37 @@
+Running under Linux
+
+(# means running command in shell as root, $ - as regular user)
+
+Dependencies: python evdev module and uinput.
+Maybe need to
+#modprobe -i uinput
+
+Install evdev module
+$pip install evdev
+
+Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from evdev dir to ~/.local/lib/python2.7/site-packages/evdev/ (~ is home dir).
+$cp evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/
+
+m2j_linux.py uses /dev/uinput , which typically belongs to user root and group root.
+In order to be able to run emulator without sudo following steps are needed:
+
+* add group "input" (can be any other appropriate name)
+#groupadd input
+
+* change the group of /dev/uinput to "input"
+#chown root:input /dev/uinput
+
+* change group permissions of "/dev/uinput" to "rw"
+$chmod g+rw /dev/uinput
+
+* add the user to the group "input"
+#usermod -a -G input axf
+
+* reboot
+
+* check
+$ls -l /dev/uinput
+crw-rw---- 1 root input 10, 223 янв  6 19:51 /dev/uinput
+
+$groups
+user ... input

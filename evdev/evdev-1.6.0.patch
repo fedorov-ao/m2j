@@ -1,0 +1,29 @@
+diff -x '*.pyc' -ur evdev/device.py evdev.patched/device.py
+--- evdev/device.py	2022-12-04 20:35:59.552920000 +0300
++++ evdev.patched/device.py	2022-12-04 20:33:11.688921456 +0300
+@@ -296,7 +296,10 @@
+     def close(self):
+         if self.fd > -1:
+             try:
+-                super().close()
++                #super().close()
++                #python 2.7 does not handle super() with no args
++                #cannot use super(InputDevice, self), because InputDevice is not a type
++                EventIO.close(self)
+                 os.close(self.fd)
+             finally:
+                 self.fd = -1
+diff -x '*.pyc' -ur evdev/uinput.py evdev.patched/uinput.py
+--- evdev/uinput.py	2022-12-04 20:35:59.556920000 +0300
++++ evdev.patched/uinput.py	2022-12-04 20:39:21.884918725 +0300
+@@ -34,7 +34,9 @@
+     )
+ 
+     @classmethod
+-    def from_device(cls, *devices, filtered_types=(ecodes.EV_SYN, ecodes.EV_FF), **kwargs):
++    #python 2.7 does not handle *devices
++    #def from_device(cls, *devices, filtered_types=(ecodes.EV_SYN, ecodes.EV_FF), **kwargs):
++    def from_device(cls, devices, filtered_types=(ecodes.EV_SYN, ecodes.EV_FF), **kwargs):
+         '''
+         Create an UInput device with the capabilities of one or more input
+         devices.
