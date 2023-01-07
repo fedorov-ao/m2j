@@ -299,7 +299,7 @@ def init_objects(cfg, cb, state):
     if n is not None:
       o = parser(n, v, state)
     else:
-      for n in ("literal", "op", "curve", "action", "ed", "output"):
+      for n in ("literal", "op", "curve", "action", "et", "output"):
         if n in v:
           o = parser(n, v, state)
           #break is needed to avoid executing the "else" block
@@ -5001,7 +5001,7 @@ def init_main_sink(settings, make_next):
 
   state = None
   toggler = Toggler(stateSink)
-  edParser = settings["parser"].get("ed")
+  etParser = settings["parser"].get("et")
 
   allInputs = [p[1] for p in settings.get("inputs", {}).iteritems()]
 
@@ -5031,7 +5031,8 @@ def init_main_sink(settings, make_next):
   binds = config.get("binds", None)
   if binds is not None:
     for bind in binds:
-      inpt = make_event_test_op(edParser(resolve(bind, "input", state), state), cmpOp)
+      inptCfg = resolve(bind, "input", state)
+      inpt = make_event_test_op(etParser(inptCfg, state), cmpOp)
       output = resolve(bind, "output", state)
       action = output["action"]
       if action == "changeSens":
@@ -5264,10 +5265,11 @@ class ParserError(RuntimeError):
 
 
 class ParserNotFoundError(KeyError2):
-  def __init__(self, requestedParser, availableParsers):
-    KeyError2.__init__(self, requestedParser, availableParsers)
+  def __init__(self, requestetParser, availableParsers, cfg=None):
+    KeyError2.__init__(self, requestetParser, availableParsers)
+    self.cfg = cfg
   def __str__(self):
-    return "Parser {} not found, available parsers are: {}".format(self.key, self.keys)
+    return "Parser {} not found, available parsers are: {} (encountered while parsing: {})".format(self.key, self.keys, str2(self.cfg))
 
 
 class SelectParser:
@@ -6120,8 +6122,11 @@ def make_parser():
       raise RuntimeError("No component '{}', available components are: {}".format(name, sink.components_))
     return component
 
-  #TODO Rename "type" to "action" and update configs
-  actionParserKeyOp = lambda cfg,state : get_nested_d(cfg, "action", get_nested_d(cfg, "type"))
+  def actionParserKeyOp(cfg, state):
+    key = get_nested_d(cfg, "action", None)
+    if key is None:
+      key = get_nested_d(cfg, "type", None)
+    return key
   actionParser = make_double_deref_parser(keyOp=actionParserKeyOp)
   mainParser.add("action", actionParser)
 
@@ -6443,10 +6448,16 @@ def make_parser():
     return callback
   actionParser.add("printEvent", parsePrintEvent)
 
-  #Event descriptors
-  edParserKeyOp=lambda cfg,state : get_nested_d(cfg, "ed", get_nested_d(cfg, "type"))
-  edParser = make_double_deref_parser(keyOp=edParserKeyOp)
-  mainParser.add("ed", edParser)
+  #Event types
+  def etParserKeyOp(cfg, state):
+    key = get_nested_d(cfg, "et", None)
+    if key is None:
+      key = get_nested_d(cfg, "type", None)
+    if key is None:
+      raise RuntimeError("Was expecting either \"et\" or \"type\" keys in {}".format(str2(cfg)))
+    return key
+  etParser = make_double_deref_parser(keyOp=etParserKeyOp)
+  mainParser.add("et", etParser)
 
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
@@ -6466,29 +6477,29 @@ def make_parser():
 
   def parseAny(cfg, state):
     return parseEdModifiers_([], cfg, state)
-  edParser.add("any", parseAny)
+  etParser.add("any", parseAny)
 
   def parsePress(cfg, state):
     return parseEdModifiers_(parseKey_(cfg, state, 1), cfg, state)
-  edParser.add("press", parsePress)
+  etParser.add("press", parsePress)
 
   def parseRelease(cfg, state):
     return parseEdModifiers_(parseKey_(cfg, state, 0), cfg, state)
-  edParser.add("release", parseRelease)
+  etParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(1)))
     r = parseEdModifiers_(r, cfg, state)
     return r
-  edParser.add("click", parseClick)
+  etParser.add("click", parseClick)
 
   def parseDoubleClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(2)))
     r = parseEdModifiers_(r, cfg, state)
     return r
-  edParser.add("doubleclick", parseDoubleClick)
+  etParser.add("doubleclick", parseDoubleClick)
 
   def parseMultiClick(cfg, state):
     r = parseKey_(cfg, state, 3)
@@ -6496,7 +6507,7 @@ def make_parser():
     r.append(("num_clicks", EqPropTest(num)))
     r = parseEdModifiers_(r, cfg, state)
     return r
-  edParser.add("multiclick", parseMultiClick)
+  etParser.add("multiclick", parseMultiClick)
 
   def parseHold(cfg, state):
     r = parseKey_(cfg, state, resolve_d(cfg, "value", state, 4))
@@ -6506,7 +6517,7 @@ def make_parser():
       r.append(("heldTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
     r = parseEdModifiers_(r, cfg, state)
     return r
-  edParser.add("hold", parseHold)
+  etParser.add("hold", parseHold)
 
   def parseMove(cfg, state):
     sourceHash, eventType, axis = fn2htc(resolve(cfg, "axis", state))
@@ -6537,7 +6548,7 @@ def make_parser():
       r.append(("value", CmpPropTest(value, op)))
     r = parseEdModifiers_(r, cfg, state)
     return r
-  edParser.add("move", parseMove)
+  etParser.add("move", parseMove)
 
   def parseInit(cfg, state):
     r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT))]
@@ -6547,7 +6558,7 @@ def make_parser():
       assert(value is not None)
       r.append(("value", EqPropTest(value)))
     return r
-  edParser.add("init", parseInit)
+  etParser.add("init", parseInit)
 
   def parseEvent(cfg, state):
     propValue = resolve_d(cfg, "etype", state, None)
@@ -6560,7 +6571,7 @@ def make_parser():
         propValue = propOp(propValue)
         r.append((propName, EqPropTest(propValue)))
     return r
-  edParser.add("event", parseEvent)
+  etParser.add("event", parseEvent)
 
   def parseSequence(cfg, state):
     class SequenceTest:
@@ -6583,11 +6594,11 @@ def make_parser():
         self.i_ = 0
     cmpOp = CmpWithModifiers()
     inputs = resolve(cfg, "inputs", state)
-    inputs = [make_event_test_op(edParser(inpt, state), cmpOp) for inpt in inputs]
+    inputs = [make_event_test_op(etParser(inpt, state), cmpOp) for inpt in inputs]
     resetOn = resolve_d(cfg, "resetOn", state, [])
-    resetOn = [make_event_test_op(edParser(rst, state), cmpOp) for rst in resetOn]
+    resetOn = [make_event_test_op(etParser(rst, state), cmpOp) for rst in resetOn]
     return SequenceTest(inputs, resetOn)
-  edParser.add("sequence", parseSequence)
+  etParser.add("sequence", parseSequence)
 
   def parseBinds(cfg, state):
     def parseInputsOutputs(cfg, state):
@@ -6629,7 +6640,7 @@ def make_parser():
           return mainParser("sink", cfg, state)
 
       mainParser = state["parser"]
-      inputs = parseGroup("input", "inputs", mainParser.get("ed"), cfg, state)
+      inputs = parseGroup("input", "inputs", mainParser.get("et"), cfg, state)
       if len(inputs) == 0:
         logger.warning("No inputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
@@ -6663,7 +6674,13 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  outputParserKeyOp=lambda cfg,state : get_nested_d(cfg, "output", get_nested_d(cfg, "type"))
+  def outputParserKeyOp(cfg, state):
+    key = get_nested_d(cfg, "output", None)
+    if key is None:
+      key = get_nested_d(cfg, "type", None)
+    if key is None:
+      raise RuntimeError("Was expecting either \"output\" or \"type\" keys in {}".format(str2(cfg)))
+    return key
   outputParser = make_double_deref_parser(keyOp=outputParserKeyOp)
   mainParser.add("output", outputParser)
 
