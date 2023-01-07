@@ -5641,20 +5641,20 @@ def make_parser():
     return linker
   curveParser.add("linker", parseAxisLinker)
 
-  def makeRefDeltaOp(cfg, state, sensOp, combine=lambda a,b: a*b):
-    if "reference" not in cfg:
+  def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
+    if "sensMod" not in cfg:
       return sensOp
     else:
-      axis = get_axis_by_full_name(resolve(cfg, "reference.axis", state), state)
-      approx = state["parser"]("op", resolve(cfg, "reference.fixed", state), state)
-      class RefDeltaOp:
+      axis = get_axis_by_full_name(resolve(cfg, "sensMod.axis", state), state)
+      approx = state["parser"]("op", resolve(cfg, "sensMod.fixed", state), state)
+      class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
         def reset(self):
           self.next_.reset()
         def __init__(self, combine, next, approx, axis):
           self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
-      return RefDeltaOp(combine, sensOp, approx, axis)
+      return SensModOp(combine, sensOp, approx, axis)
 
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=resolve_d(cfg, "eps", state, 0.001), numSteps=resolve_d(cfg, "numSteps", state, 100))
@@ -5672,7 +5672,7 @@ def make_parser():
       combine=lambda x,s : x*s,
       ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
+    deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, resolve_d(cfg, "deadzone", state, 0.0))
     sensOp = ApproxOp(approx=state["parser"]("op", resolve(cfg, "fixed", state), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
@@ -5696,7 +5696,7 @@ def make_parser():
     cb = None
     if resolve_d(cfg, "print", state, 0) == 1:
       cb = InputBasedCurve2PrintCB(fullAxisName, resolve_d(cfg, "deltaOrder", state, 3), resolve_d(cfg, "ivOrder", state, 3), resolve_d(cfg, "ovOrder", state, 3))
-    deltaOp = makeRefDeltaOp(cfg, state, deltaOp)
+    deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, resolve_d(cfg, "deadzone", state, 0.0))
     resetOpsOnAxisMove = resolve_d(cfg, "resetOpsOnAxisMove", state, True)
     ivLimits = resolve_d(cfg, "inputLimits", state, (-1.0, 1.0))
@@ -5726,7 +5726,7 @@ def make_parser():
     valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaDOp = XDeltaOp()
     deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
-    deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
+    deltaDOp = makeSensModOp(movingCfg, state, deltaDOp)
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
@@ -5774,7 +5774,7 @@ def make_parser():
     valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
     deltaDOp = XDeltaOp()
     deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
-    deltaDOp = makeRefDeltaOp(movingCfg, state, deltaDOp)
+    deltaDOp = makeSensModOp(movingCfg, state, deltaDOp)
     movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
     accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
     top.set_next(accelChainCurve)
