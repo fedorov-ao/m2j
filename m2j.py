@@ -6461,8 +6461,9 @@ def make_parser():
 
   def parseEdModifiers_(r, cfg, state):
     """Helper"""
-    if "modifiers" in cfg:
-      modifiers = [parse_modifier_desc(m, state) for m in resolve(cfg, "modifiers", state)]
+    modifiers = resolve_d(cfg, "modifiers", state, None)
+    if modifiers is not None and modifiers != "None":
+      modifiers = [parse_modifier_desc(m, state) for m in modifiers]
       allowExtraModifiers = resolve_d(cfg, "allowExtraModifiers", state, False)
       r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
     return r
