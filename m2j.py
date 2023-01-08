@@ -586,13 +586,9 @@ def fn2htce(s, sep="."):
   return SourceTypeCodeState(source=calc_hash(r.source), type=r.type, code=r.code, state=r.state)
 
 
-class ModifierDesc:
-  def __init__(self, source, code, state):
-      self.source, self.code, self.state = source, code, state
-
 def parse_modifier_desc(s, state, sep="."):
   t = split_full_name2(s, state, sep)
-  return ModifierDesc(source=t.shash, code=t.code, state=t.state)
+  return SourceCodeState(source=t.shash, code=t.code, state=t.state)
 
 
 class ReloadException:
@@ -4964,7 +4960,7 @@ def init_main_sink(settings, make_next):
   config = settings["config"]
 
   defaultModifierDescs = [
-    ModifierDesc(None, m, True) for m in
+    SourceCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = config.get("modifiers", None)
@@ -6475,7 +6471,7 @@ def make_parser():
   mainParser.add("et", etParser)
 
   def parseEtModifiers_(r, cfg, state):
-    """Appends a list of ModifierDescs to r if modifiers are specified in cfg."""
+    """Appends a list of modifierDescs to r if modifiers are specified in cfg."""
     modifiers = resolve_d(cfg, "modifiers", state, None)
     if modifiers is not None and modifiers != "any":
       modifiers = [parse_modifier_desc(m, state) for m in modifiers]
