@@ -316,13 +316,47 @@ def init_objects(cfg, cb, state):
 def calc_hash(s):
   return None if s is None else zlib.adler32(s)
 
-g_hash2source = {}
+class SourceRegister:
+  def register_source(self, name):
+    """Input event source __init__() should call this with the name of source."""
+    hsh = calc_hash(name)
+    self.sources_[hsh] = name
+    self.hashes_[name] = hsh
+    return hsh
+
+  def get_name(self, hsh):
+    if hsh is None:
+      return None
+    r = self.sources_.get(hsh, None)
+    if r is None:
+      raise RuntimeError("Source with hash {} not registered".format(hsh))
+    return r
+
+  def get_hash(self, name):
+    if name is None:
+      return None
+    r = self.hashes_.get(name, None)
+    if r is None:
+      if self.addMissing_:
+        r = self.register_source(name)
+      else:
+        raise RuntimeError("Source with name {} not registered".format(name))
+    return r
+
+  def __init__(self, addMissing=True):
+    self.sources_, self.hashes_, self.addMissing_ = dict(), dict(), addMissing
+
+g_sr = SourceRegister()
 
 def register_source(source):
   """Input event source __init__() should call this with the name of source."""
-  h = calc_hash(source)
-  g_hash2source[h] = source
+  return g_sr.register_source(source)
 
+def get_source_name(hsh):
+  return g_sr.get_name(hsh)
+
+def get_source_hash(name):
+  return g_sr.get_hash(name)
 
 class Derivatives:
   def update(self, f, x):
@@ -421,7 +455,7 @@ def split_full_name2(s, state, sep="."):
   s = deref(s, state, s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
-  shash = None if source is None else calc_hash(source)
+  shash = None if source is None else get_source_hash(source)
   name = s if i == -1 else s[i+1:]
   code = name2code(name)
   type = name2type(name)
@@ -458,11 +492,11 @@ def fn2sc(s, sep="."):
 def fn2hc(s, sep="."):
   """
   Splits full name into source hash and code.
-  'mouse.REL_X' -> (calc_hash('mouse'), codes.REL_X)
+  'mouse.REL_X' -> (get_source_hash('mouse'), codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
   r = fn2sc(s, sep)
-  h = calc_hash(r.source)
+  h = get_source_hash(r.source)
   return SourceCode(source=h, code=r.code)
 
 
@@ -479,11 +513,11 @@ def fn2stc(s, sep="."):
 def fn2htc(s, sep="."):
   """
   Splits full name into source hash, type and code.
-  'mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X)
+  'mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
   r = fn2stc(s, sep)
-  h = calc_hash(r.source)
+  h = get_source_hash(r.source)
   return SourceTypeCode(source=h, type=r.type, code=r.code)
 
 
@@ -502,7 +536,7 @@ def stc2fn(source, type, code, sep="."):
 def htc2fn(sourceHash, type, code, sep="."):
   """
   Joins source hash, type and code into full name.
-  calc_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
+  get_source_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
   s = None if sourceHash is None else str(g_hash2source.get(sourceHash))
@@ -554,7 +588,7 @@ def fn2hce(s, sep="."):
   '-REL_X' -> (None, codes.REL_X, False)
   """
   r = fn2sce(s, sep)
-  h = calc_hash(r.source)
+  h = get_source_hash(r.source)
   return SourceCodeState(source=h, code=r.code, state=r.state)
 
 
@@ -575,15 +609,15 @@ def fn2stce(s, sep="."):
 def fn2htce(s, sep="."):
   """
   Splits full name into source hash, type, code and state.
-  'mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  'mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, True)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
-  '+mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  '+mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, True)
   '+REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
-  '-mouse.REL_X' -> (calc_hash('mouse'), codes.EV_REL, codes.REL_X, False)
+  '-mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, False)
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
   r = fn2stce(s, sep)
-  return SourceTypeCodeState(source=calc_hash(r.source), type=r.type, code=r.code, state=r.state)
+  return SourceTypeCodeState(source=get_source_hash(r.source), type=r.type, code=r.code, state=r.state)
 
 
 def parse_modifier_desc(s, state, sep="."):
@@ -1725,7 +1759,7 @@ class SourceFilterOp:
    return self.state_
 
   def __init__(self, sources, state=True):
-    self.sources_, self.state_ = [calc_hash(s) for s in sources], state
+    self.sources_, self.state_ = [get_source_hash(s) for s in sources], state
 
 
 class ModeSink:
@@ -6576,7 +6610,7 @@ def make_parser():
     propValue = resolve_d(cfg, "etype", state, None)
     propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
     r = [("type", EqPropTest(propValue))]
-    for p in (("source", calc_hash), ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x), ("value", lambda x : x)):
+    for p in (("source", get_source_hash), ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x), ("value", lambda x : x)):
       propName, propOp = p[0], p[1]
       propValue = resolve_d(cfg, propName, state, None)
       if propValue is not None:

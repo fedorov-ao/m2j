@@ -965,9 +965,8 @@ class RawInputEventSource:
         class DevInfo:
           pass
         di = DevInfo()
-        di.source, di.hash = source, calc_hash(source)
+        di.source, di.hash = source, register_source(di.source)
         self.devs_[d.handle] = di
-        register_source(di.source)
         logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
         return
     raise RuntimeError("Device {} ({}) not found".format(name, source))

@@ -292,8 +292,7 @@ class EvdevDevice:
 
   def __init__(self, dev, source, recreateOp=lambda : None):
     self.dev_, self.sourceName_, self.recreateOp_ = dev, source, recreateOp
-    self.sourceHash_ = calc_hash(source)
-    register_source(source)
+    self.sourceHash_ = register_source(source)
     self.numEvents_ = 0
 
   def is_ready_(self):
