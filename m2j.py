@@ -5410,9 +5410,9 @@ def make_parser():
   mainParser.add("op", opParser)
 
   def make_symm_wrapper(wrapped, symm):
-    if symm == 1:
+    if symm in (1, "x"):
       return lambda x : wrapped(abs(x))
-    elif symm == 2:
+    elif symm in (2, "xy"):
       return lambda x : sign(x)*wrapped(abs(x))
     else:
       return wrapped
