@@ -295,6 +295,8 @@ def init_objects(cfg, cb, state):
     o = None
     #logger.debug("Constructing object: {}".format(k))
     #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
+    if type(v) not in (dict, collections.OrderedDict):
+      raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
     n = v.get("class", None)
     if n is not None:
       o = parser(n, v, state)
@@ -6036,9 +6038,12 @@ def make_parser():
     objectsCfg = cfg.get("objects", None)
     #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
     if objectsCfg is not None:
-      headSink=state["sinks"][-1]
-      init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
-      return ObjectsProxy(headSink)
+      try:
+        headSink=state["sinks"][-1]
+        init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
+        return ObjectsProxy(headSink)
+      except RuntimeError as e:
+        raise RuntimeError("{} (encountered while parsing objects cfg {})".format(e, str2(objectsCfg)))
     else:
       return None
   scParser.add("objects", parseObjects)
