@@ -5477,11 +5477,11 @@ def make_parser():
     def parseFixedPoint(cfg, state):
       p = Point(op=get_op(cfg, state), center=resolve_d(cfg, "center", state, 0.0))
       return p
-    pointParsers["fixed"] = parseFixedPoint
+    pointParsers["absolute"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
       p = Point(op=get_op(cfg, state), center=None)
       return p
-    pointParsers["moving"] = parseMovingPoint
+    pointParsers["relative"] = parseMovingPoint
     r = {}
     for n,d in cfg.items():
       state["point"] = n
@@ -5518,9 +5518,9 @@ def make_parser():
     deltaOp = DeltaOp()
     curve = OutputBasedCurve(deltaOp, vpo, axis)
 
-    if "moving" in points:
-      point = points["moving"]
-      pointCfg = resolve(cfg, "points", state)["moving"]
+    if "relative" in points:
+      point = points["relative"]
+      pointCfg = resolve(cfg, "points", state)["relative"]
       def getValueOp(curve):
         return curve.get_axis().get()
       def make_center_op(newRatio, l):
@@ -5556,7 +5556,7 @@ def make_parser():
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     points = parsePoints(resolve(cfg, "points", state), state)
-    fp = points["fixed"]
+    fp = points["absolute"]
     interpolationDistance = resolve_d(cfg, "interpolationDistance", state, 0.3)
     interpolationFactor = resolve_d(cfg, "interpolationFactor", state, 1.0)
     posLimits = resolve_d(cfg, "posLimits", state, (-1.1, 1.1))
@@ -5571,12 +5571,12 @@ def make_parser():
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     points = parsePoints(resolve(cfg, "points", state), state)
-    fp = points["fixed"]
-    mp = points.get("moving", Point(op=lambda x : 0.0, center=None))
+    fp = points["absolute"]
+    mp = points.get("relative", Point(op=lambda x : 0.0, center=None))
     interpolationDistance = resolve_d(cfg, "interpolationDistance", state, 0.3)
     interpolationFactor = resolve_d(cfg, "interpolationFactor", state, 1.0)
-    resetDistance = 0.0 if "moving" not in resolve(cfg, "points", state) else resolve(cfg, "points", state)["moving"].get("resetDistance", 0.4)
-    resetTime = float("inf") if "moving" not in resolve(cfg, "points", state) else resolve(cfg, "points", state)["moving"].get("resetTime", float("inf"))
+    resetDistance = 0.0 if "relative" not in resolve(cfg, "points", state) else resolve(cfg, "points", state)["relative"].get("resetDistance", 0.4)
+    resetTime = float("inf") if "relative" not in resolve(cfg, "points", state) else resolve(cfg, "points", state)["relative"].get("resetTime", float("inf"))
     posLimits = resolve_d(cfg, "posLimits", state, (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
@@ -5660,7 +5660,7 @@ def make_parser():
       return sensOp
     else:
       axis = get_axis_by_full_name(resolve(cfg, "sensMod.axis", state), state)
-      approx = state["parser"]("op", resolve(cfg, "sensMod.fixed", state), state)
+      approx = state["parser"]("op", resolve(cfg, "sensMod.op", state), state)
       class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
@@ -5679,16 +5679,16 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    movingCfg = resolve(cfg, "moving", state)
+    relativeCfg = resolve(cfg, "relative", state)
     signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, resolve_d(cfg, "deadzone", state, 0.0))
-    sensOp = ApproxOp(approx=state["parser"]("op", resolve(cfg, "fixed", state), state))
+    sensOp = ApproxOp(approx=state["parser"]("op", resolve(cfg, "absolute", state), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     add_curve_to_state(fullAxisName, curve, state)
     return curve
@@ -5697,14 +5697,14 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
-    movingCfg = resolve(cfg, "moving", state)
+    relativeCfg = resolve(cfg, "relative", state)
     signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", movingCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = ApproxOp(approx=state["parser"]("op", resolve(cfg, "fixed", state), state))
+    outputOp = ApproxOp(approx=state["parser"]("op", resolve(cfg, "absolute", state), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
@@ -5735,12 +5735,12 @@ def make_parser():
       curve = printCurve
     #accumulate
     #Order of ops should not matter
-    movingCfg = resolve(cfg, "moving", state)
+    relativeCfg = resolve(cfg, "relative", state)
     valueDDOp = SignDistanceDeltaOp()
-    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaDOp = XDeltaOp()
-    deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
-    deltaDOp = makeSensModOp(movingCfg, state, deltaDOp)
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
+    deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
@@ -5754,22 +5754,22 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    movingInputOp = makeIterativeInputOp(cfg, movingOutputOp, state)
-    movingChainCurve = TransformAbsChainCurve(next=None, inputOp=movingInputOp, outputOp=movingOutputOp)
-    accumulateChainCurve.set_next(movingChainCurve)
+    relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+    relativeInputOp = makeIterativeInputOp(cfg, relativeOutputOp, state)
+    relativeChainCurve = TransformAbsChainCurve(next=None, inputOp=relativeInputOp, outputOp=relativeOutputOp)
+    accumulateChainCurve.set_next(relativeChainCurve)
     #offset transformed
     offsetChainCurve = OffsetAbsChainCurve(next=None)
-    movingChainCurve.set_next(offsetChainCurve)
+    relativeChainCurve.set_next(offsetChainCurve)
     #transform offset
-    fixedCfg = resolve(cfg, "fixed", state)
-    fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-    fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
-    fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
-    offsetChainCurve.set_next(fixedChainCurve)
+    absoluteCfg = resolve(cfg, "absolute", state)
+    absoluteOutputOp = ApproxOp(approx=state["parser"]("op", absoluteCfg, state))
+    absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
+    absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
+    offsetChainCurve.set_next(absoluteChainCurve)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
-    fixedChainCurve.set_next(axisChainCurve)
+    absoluteChainCurve.set_next(axisChainCurve)
     add_curve_to_state(fullAxisName, curve, state)
     return top
   curveParser.add("offset", parseOffsetCurve)
@@ -5783,26 +5783,26 @@ def make_parser():
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    movingCfg = resolve(cfg, "moving", state)
+    relativeCfg = resolve(cfg, "relative", state)
     valueDDOp = SignDistanceDeltaOp()
-    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=movingCfg.get("resetTime", float("inf")), holdTime=movingCfg.get("holdTime", 0.0))
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaDOp = XDeltaOp()
-    deltaDOp = DeadzoneDeltaOp(deltaDOp, movingCfg.get("deadzone", 0.0))
-    deltaDOp = makeSensModOp(movingCfg, state, deltaDOp)
-    movingOutputOp = ApproxOp(approx=state["parser"]("op", movingCfg, state))
-    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=movingOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
+    deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
+    relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
     top.set_next(accelChainCurve)
     bottom = accelChainCurve
     #transform
-    fixedCfg = resolve_d(cfg, "fixed", state, None)
-    if fixedCfg is not None:
+    absoluteCfg = resolve_d(cfg, "absolute", state, None)
+    if absoluteCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       accelChainCurve.set_next(relToAbsChainCurve)
-      fixedOutputOp = ApproxOp(approx=state["parser"]("op", fixedCfg, state))
-      fixedInputOp = makeIterativeInputOp(cfg, fixedOutputOp, state)
-      fixedChainCurve = TransformAbsChainCurve(next=None, inputOp=fixedInputOp, outputOp=fixedOutputOp)
-      relToAbsChainCurve.set_next(fixedChainCurve)
-      bottom = fixedChainCurve
+      absoluteOutputOp = ApproxOp(approx=state["parser"]("op", absoluteCfg, state))
+      absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
+      absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
+      relToAbsChainCurve.set_next(absoluteChainCurve)
+      bottom = absoluteChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
