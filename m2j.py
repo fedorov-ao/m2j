@@ -1138,6 +1138,8 @@ class HoldSink:
     return (ht.source is None or (ht.source == keyData.source)) and (ht.code is None or (ht.code == keyData.code)) and (ht.modifiers is None or (ht.modifiers == keyData.modifiers))
 
 
+Modifier = collections.namedtuple("Modifier", "source code")
+
 class ModifierSink:
   APPEND = 0
   OVERWRITE = 1
@@ -1145,11 +1147,11 @@ class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       if self.modifiers_ is not None:
-        p = (event.source, event.code)
+        p = Modifier(source=event.source, code=event.code)
         #logger.debug("{}.__call__(): got: {}".format(self, p))
         for m in self.modifiers_:
           #logger.debug("{}.__call__(): checking against: {}".format(self, m))
-          if p[1] == m[1] and (p[0] == m[0] if m[0] is not None else True):
+          if p.code == m.code and (p.source == m.source if m.source is not None else True):
             #logger.debug("{}.__call__(): {} matched {}".format(self, p, m))
             if event.value == 1 and p not in self.m_:
               self.m_.append(p)
@@ -1176,7 +1178,7 @@ class ModifierSink:
           if self.mode_ == self.APPEND:
             for rm in self.removed_:
               for em in event.modifiers:
-                if rm[1] == em[1] and (rm[0] == em[0] if rm[0] is not None else True):
+                if rm.code == em.code and (rm.source == em.source if rm.source is not None else True):
                   event.modifiers.remove(em)
             for m in self.m_:
               if m not in event.modifiers:
@@ -1205,9 +1207,9 @@ class ModifierSink:
     if modifierDescs is not None:
       for md in modifierDescs:
         if md.state == True:
-          self.modifiers_.append((md.source, md.code,))
+          self.modifiers_.append(Modifier(md.source, md.code))
         elif md.state == False:
-          self.removed_.append((md.source, md.code,))
+          self.removed_.append(Modifier(md.source, md.code))
 
 
 class ScaleSink:
@@ -1530,24 +1532,23 @@ class CmpPropTest(PropTest):
     self.v_, self.cmp_ = v, compare
 
 
-def cmp_modifiers(eventValue, attrValue, allowExtraModifiers=False):
+def cmp_modifiers(eventModifiers, attrModifierDescs, allowExtraModifiers=False):
   r = False
-  if attrValue is None:
-    r = eventValue is None
-  elif eventValue is None:
+  if attrModifierDescs is None:
+    r = eventModifiers is None
+  elif eventModifiers is None:
     r = False
-  elif len(attrValue) == 0:
-    r = len(eventValue) == 0
-  elif allowExtraModifiers or (len(attrValue) == len(eventValue)):
+  elif len(attrModifierDescs) == 0:
+    r = len(eventModifiers) == 0
+  elif allowExtraModifiers or (len(attrModifierDescs) == len(eventModifiers)):
     r = True
-    for m in attrValue:
+    for am in attrModifierDescs:
       found = False
-      for n in eventValue:
-        assert(len(n) == 2)
-        found = (True if m.source is None else m.source == n[0]) and (m.code == n[1])
+      for em in eventModifiers:
+        found = (True if am.source is None else am.source == em.source) and (am.code == em.code)
         if found:
           break
-      if m.state == False:
+      if am.state == False:
          found = not found
       r = r and found
       if not r:
