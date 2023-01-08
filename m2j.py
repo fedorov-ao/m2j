@@ -6474,8 +6474,8 @@ def make_parser():
   etParser = make_double_deref_parser(keyOp=etParserKeyOp)
   mainParser.add("et", etParser)
 
-  def parseEdModifiers_(r, cfg, state):
-    """Helper"""
+  def parseEtModifiers_(r, cfg, state):
+    """Appends a list of ModifierDescs to r if modifiers are specified in cfg."""
     modifiers = resolve_d(cfg, "modifiers", state, None)
     if modifiers is not None and modifiers != "any":
       modifiers = [parse_modifier_desc(m, state) for m in modifiers]
@@ -6492,28 +6492,28 @@ def make_parser():
     return r
 
   def parseAny(cfg, state):
-    return parseEdModifiers_([], cfg, state)
+    return parseEtModifiers_([], cfg, state)
   etParser.add("any", parseAny)
 
   def parsePress(cfg, state):
-    return parseEdModifiers_(parseKey_(cfg, state, 1), cfg, state)
+    return parseEtModifiers_(parseKey_(cfg, state, 1), cfg, state)
   etParser.add("press", parsePress)
 
   def parseRelease(cfg, state):
-    return parseEdModifiers_(parseKey_(cfg, state, 0), cfg, state)
+    return parseEtModifiers_(parseKey_(cfg, state, 0), cfg, state)
   etParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(1)))
-    r = parseEdModifiers_(r, cfg, state)
+    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("click", parseClick)
 
   def parseDoubleClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(2)))
-    r = parseEdModifiers_(r, cfg, state)
+    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("doubleclick", parseDoubleClick)
 
@@ -6521,7 +6521,7 @@ def make_parser():
     r = parseKey_(cfg, state, 3)
     num = int(resolve(cfg, "numClicks", state))
     r.append(("num_clicks", EqPropTest(num)))
-    r = parseEdModifiers_(r, cfg, state)
+    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("multiclick", parseMultiClick)
 
@@ -6531,7 +6531,7 @@ def make_parser():
     if holdTime is not None:
       holdTime = float(holdTime)
       r.append(("heldTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
-    r = parseEdModifiers_(r, cfg, state)
+    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("hold", parseHold)
 
@@ -6562,7 +6562,7 @@ def make_parser():
         op = eq
         value = float(value)
       r.append(("value", CmpPropTest(value, op)))
-    r = parseEdModifiers_(r, cfg, state)
+    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("move", parseMove)
 
