@@ -1140,6 +1140,15 @@ class HoldSink:
 
 Modifier = collections.namedtuple("Modifier", "source code")
 
+def cmp_modifiers(eventModifier, referenceModifier):
+  r = False
+  if eventModifier.code == referenceModifier.code:
+    if referenceModifier.source is not None:
+      r = eventModifier.source == referenceModifier.source
+    else:
+      r = True
+  return r
+
 class ModifierSink:
   APPEND = 0
   OVERWRITE = 1
@@ -1147,18 +1156,18 @@ class ModifierSink:
   def __call__(self, event):
     if event.type == codes.EV_KEY:
       if self.modifiers_ is not None:
-        p = Modifier(source=event.source, code=event.code)
-        #logger.debug("{}.__call__(): got: {}".format(self, p))
-        for m in self.modifiers_:
-          #logger.debug("{}.__call__(): checking against: {}".format(self, m))
-          if p.code == m.code and (p.source == m.source if m.source is not None else True):
-            #logger.debug("{}.__call__(): {} matched {}".format(self, p, m))
-            if event.value == 1 and p not in self.m_:
-              self.m_.append(p)
-            elif event.value == 0 and p in self.m_:
-              self.m_.remove(p)
+        eventModifier = Modifier(source=event.source, code=event.code)
+        #logger.debug("{}.__call__(): got: {}".format(self, eventModifier))
+        for referenceModifier in self.modifiers_:
+          #logger.debug("{}.__call__(): checking against: {}".format(self, referenceModifier))
+          if cmp_modifiers(eventModifier, referenceModifier):
+            #logger.debug("{}.__call__(): {} matched {}".format(self, eventModifier, referenceModifier))
+            if event.value == 1 and eventModifier not in self.m_:
+              self.m_.append(eventModifier)
+            elif event.value == 0 and eventModifier in self.m_:
+              self.m_.remove(eventModifier)
           else:
-            #logger.debug("{}.__call__(): {} mismatched {}".format(self, p, m))
+            #logger.debug("{}.__call__(): {} mismatched {}".format(self, eventModifier, referenceModifier))
             pass
 
     if self.next_:
@@ -1178,7 +1187,7 @@ class ModifierSink:
           if self.mode_ == self.APPEND:
             for rm in self.removed_:
               for em in event.modifiers:
-                if rm.code == em.code and (rm.source == em.source if rm.source is not None else True):
+                if cmp_modifiers(em, rm):
                   event.modifiers.remove(em)
             for m in self.m_:
               if m not in event.modifiers:
@@ -1532,7 +1541,7 @@ class CmpPropTest(PropTest):
     self.v_, self.cmp_ = v, compare
 
 
-def cmp_modifiers(eventModifiers, attrModifierDescs, allowExtraModifiers=False):
+def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs, allowExtraModifiers=False):
   r = False
   if attrModifierDescs is None:
     r = eventModifiers is None
@@ -1558,7 +1567,7 @@ def cmp_modifiers(eventModifiers, attrModifierDescs, allowExtraModifiers=False):
 
 class ModifiersPropTest(PropTest):
   def __call__(self, v):
-    return cmp_modifiers(v, self.v_, self.allowExtraModifiers_)
+    return cmp_modifiers_with_descs(v, self.v_, self.allowExtraModifiers_)
 
   def __init__(self, v, allowExtraModifiers=False):
     self.v_, self.allowExtraModifiers_ = v, allowExtraModifiers
@@ -1574,7 +1583,7 @@ class CmpWithModifiers:
     elif name == "source":
       return (attrValue is None) or (eventValue == attrValue)
     elif name == "modifiers":
-      return cmp_modifiers(eventValue, attrValue, self.allowExtraModifiers_)
+      return cmp_modifiers_with_descs(eventValue, attrValue, self.allowExtraModifiers_)
     else:
       return eventValue == attrValue
 
