@@ -5484,6 +5484,17 @@ def make_parser():
     return make_op(resolve(cfg, "points", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("sbezier", sbezier)
 
+  def cubic(cfg, state):
+    w = resolve(cfg, "weight", state)
+    def cub(x):
+      return w*x**3 + (1.0 - w)*x
+    db = resolve_d(cfg, "deadband", state, 0.0)
+    cubDB = cub(db)
+    def scaled_cub(x):
+      return (cub(x) - sign(x)*cubDB)/(1.0 - cubDB)
+    return scaled_cub
+  opParser.add("cubic", cubic)
+
   def get_op(cfg, state):
     op = resolve(cfg, "op", state)
     if type(op) in (str, unicode):
@@ -5808,26 +5819,28 @@ def make_parser():
     #axis tracker
     resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, 1)
     top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
+    bottom = top
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    relativeCfg = resolve(cfg, "relative", state)
-    valueDDOp = SignDistanceDeltaOp()
-    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
-    deltaDOp = XDeltaOp()
-    deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
-    deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
-    relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
-    accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
-    top.set_next(accelChainCurve)
-    bottom = accelChainCurve
+    relativeCfg = resolve_d(cfg, "relative", state, None)
+    if relativeCfg is not None:
+      valueDDOp = SignDistanceDeltaOp()
+      valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
+      deltaDOp = XDeltaOp()
+      deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
+      deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
+      relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
+      top.set_next(accelChainCurve)
+      bottom = accelChainCurve
     #transform
     absoluteCfg = resolve_d(cfg, "absolute", state, None)
     if absoluteCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
-      accelChainCurve.set_next(relToAbsChainCurve)
+      bottom.set_next(relToAbsChainCurve)
       absoluteOutputOp = ApproxOp(approx=state["parser"]("op", absoluteCfg, state))
       absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
       absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
