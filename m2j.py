@@ -1293,14 +1293,16 @@ class ScaleSink2:
     return next
 
   def set_sens(self, sc, s):
-    sens = self.sens_[sc]
-    if type(sens) in (str, unicode):
+    sens = self.sens_.get(sc, None)
+    if sens is None:
+      logger.error("No sens preinitialized for {}".format(htc2fn(*sc)))
+    elif type(sens) in (str, unicode):
       self.gSens_[sens] = s
     else:
       self.sens_[sc] = s
 
   def get_sens(self, sc):
-    sens = self.sens_.get(sc, 1.0)
+    sens = self.sens_.get(sc, 0.0)
     return self.gSens_[sens] if type(sens) in (str, unicode) else sens
 
   def get_name(self):
@@ -5082,7 +5084,7 @@ def init_main_sink(settings, make_next):
           def op(e):
             sens = scaleSink.get_sens(htc) + step
             scaleSink.set_sens(htc, sens)
-            logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), sens))
+            logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
           return op
         htc = fn2htc(resolve(output, "axis", state))
         delta = resolve(output, "delta", state)
@@ -6216,7 +6218,7 @@ def make_parser():
       def op(e):
         scaleSink.set_sens(htc, value)
         name = scaleSink.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
@@ -6233,7 +6235,7 @@ def make_parser():
         sens += delta
         scaleSink.set_sens(htc, sens)
         name = scaleSink.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), sens))
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
