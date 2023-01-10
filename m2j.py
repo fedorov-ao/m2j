@@ -5484,16 +5484,17 @@ def make_parser():
     return make_op(resolve(cfg, "points", state), resolve_d(cfg, "symmetric", state, 0))
   opParser.add("sbezier", sbezier)
 
-  def cubic(cfg, state):
+  def weighted(cfg, state):
     w = resolve(cfg, "weight", state)
-    def cub(x):
-      return w*x**3 + (1.0 - w)*x
+    o = resolve(cfg, "order", state)
+    def f(x):
+      return w*x**o + (1.0 - w)*x
     db = resolve_d(cfg, "deadband", state, 0.0)
-    cubDB = cub(db)
-    def scaled_cub(x):
-      return (cub(x) - sign(x)*cubDB)/(1.0 - cubDB)
-    return scaled_cub
-  opParser.add("cubic", cubic)
+    fDB = f(db)
+    def scaled_f(x):
+      return (f(x) - sign(x)*fDB)/(1.0 - fDB)
+    return scaled_f
+  opParser.add("weighted", weighted)
 
   def get_op(cfg, state):
     op = resolve(cfg, "op", state)
