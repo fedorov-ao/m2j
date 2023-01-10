@@ -539,7 +539,7 @@ def htc2fn(sourceHash, type, code, sep="."):
   get_source_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
-  s = None if sourceHash is None else str(g_hash2source.get(sourceHash))
+  s = None if sourceHash is None else str(get_source_name(sourceHash))
   return stc2fn(s, type, code, sep)
 
 
