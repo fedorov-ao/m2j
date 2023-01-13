@@ -790,7 +790,7 @@ class InputEvent(Event):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
     fmt = ", source: {} ({}), modifiers: {}"
     modifiers = [((s, m), htc2fn(s, codes.EV_KEY, m)) for s,m in self.modifiers]
-    return Event.__str__(self) + fmt.format(self.source, g_hash2source.get(self.source, ""), modifiers)
+    return Event.__str__(self) + fmt.format(self.source, get_source_name(self.source), modifiers)
     #these do not work in FreePie
     #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
     #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
@@ -4681,17 +4681,17 @@ def make_curve_makers():
 curveMakers = make_curve_makers()
 
 class AxisAccumulator:
-  def on_event(self, e):
-    key = (e.source, e.code)
+  def __call__(self, e):
+    axisID = e.code
     if self.state_ and e.type == codes.EV_REL:
-      v = self.values_.get(key, 0.0)
-      v += e.value * self.scales_.get(key, 1.0)
+      v = self.values_.get(axisID, 0.0)
+      v += e.value * self.scales_.get(axisID, 1.0)
       v = clamp(v, -1.0, 1.0)
-      self.values_[key] = v
+      self.values_[axisID] = v
     return False
 
-  def get_axis_value(self, fullAxisName):
-    return self.values_.get(fn2hc(fullAxisName), 0.0)
+  def get_axis_value(self, axisID):
+    return self.values_.get(axisID, 0.0)
 
   def reset(self):
     for k in self.values_.keys():
@@ -4706,8 +4706,8 @@ class AxisAccumulator:
   def __init__(self, scales=None, state=False):
     self.scales_ = {}
     if scales is not None:
-      for n,v in scales.items():
-        self.scales_[fn2hc(n)] = v
+      for i,v in scales.items():
+        self.scales_[i] = v
     self.values_ = {}
     self.state_ = state
 
@@ -4924,9 +4924,9 @@ def init_info(**kwargs):
     return 1.0/limits[1]
 
   settings = kwargs["settings"]
-  axisAccumulator = kwargs["axisAccumulator"]
+  axisAccumulators = kwargs["axisAccumulators"]
   outputs = settings["outputs"]
-  getOutput = lambda name : outputs.get(name, None)
+  getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
   title = "Info"
   info = Info(title=title, getOutput=getOutput)
   settings["updated"].append(lambda tick,ts : info.update())
@@ -4937,9 +4937,8 @@ def init_info(**kwargs):
     area = info.add_area("box", 0, 0, name="jx jy jz", gridColor="grey", gridWidth=1, cw=1)
     area.add_marker("joystick.ABS_X", "joystick.ABS_Y", "rect", color="white", size=(13,13))
     area.add_marker("joystick.ABS_Z", 1.0, "oval", color="red")
-    mx = lambda : axisAccumulator.get_axis_value("mouse.REL_X")
-    my = lambda : axisAccumulator.get_axis_value("mouse.REL_Y")
-    area.add_marker(mx, my, "rect", color="green", size=(9,9))
+    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
+    area.add_marker("mouse.REL_WHEEL", 1.0, "rect", color="green", size=(9,9))
     area = info.add_area("v", 0, 1, name="jrx", sticky="nse", cw=1)
     area.add_marker(0.0, "-joystick.ABS_RX", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 0, 2, name="jry", cw=0)
@@ -4958,12 +4957,16 @@ def init_info(**kwargs):
     area = info.add_area("box", 1, 0, name="hx hy hz", gridColor="grey", gridWidth=1)
     area.add_marker("head.ABS_X", "head.ABS_Y", "rect", color="white", size=(13,13))
     area.add_marker(1.0, "head.ABS_Z", "oval", color="red")
+    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
+    area.add_marker(1.0, "mouse.REL_WHEEL", "rect", color="green", size=(9,9))
     area = info.add_area("box", 1, 1, name="hrx hry hrz", gridColor="grey", gridWidth=1, cs=3)
     sx=calc_scale("head.ABS_RX", outputs)
     sy=calc_scale("head.ABS_RY", outputs)
     sz=calc_scale("head.ABS_RZ", outputs)
     area.add_marker("head.ABS_RX", "head.ABS_RY", "rect", color="white", size=(13,13), sx=sx, sy=sy)
     area.add_marker("head.ABS_RZ", 1.0, "oval", color="red", sx=sz)
+    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
+    area.add_marker("mouse.REL_WHEEL", 1.0, "rect", color="green", size=(9,9))
     area = info.add_area("v", 1, 4, name="hr")
     area.add_marker(0.0, "-head.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
     area = info.add_area("v", 1, 5, name="ht")
@@ -5067,9 +5070,13 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  axisAccumulator = AxisAccumulator(state=False)
-  mainSink.add(None, lambda e : axisAccumulator.on_event(e))
-  info = init_info(settings=settings, axisAccumulator=axisAccumulator)
+  axisAccumulators = {}
+  for inputName,inpt in settings["inputs"].iteritems():
+    axisAccumulator = AxisAccumulator(state=False)
+    axisAccumulators[inputName] = axisAccumulator
+    et = make_event_test_op((("source", get_source_hash(inputName)), ("type", codes.EV_REL),), cmpOp)
+    mainSink.add(et, axisAccumulator)
+  info = init_info(settings=settings, axisAccumulators=axisAccumulators)
 
   binds = config.get("binds", None)
   if binds is not None:
@@ -5126,13 +5133,16 @@ def init_main_sink(settings, make_next):
         action = op
       elif action == "resetAxisAccumulator":
         def op(e):
-          axisAccumulator.reset()
+          for aa in axisAccumulators.values():
+            aa.reset()
         action = op
       elif action == "toggleAxisAccumulator":
+        s = [False]
         def op(e):
-          s = not axisAccumulator.get_state()
-          axisAccumulator.reset()
-          axisAccumulator.set_state(s)
+          s[0] = not s[0]
+          for aa in axisAccumulators.values():
+            aa.reset()
+            aa.set_state(s[0])
         action = op
       else:
         logger.error("Unknown action: {}", action)
