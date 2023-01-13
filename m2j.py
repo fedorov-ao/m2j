@@ -4818,78 +4818,90 @@ class Info:
           canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
-  class ButtonsArea:
-    def add_buttons_from(self, output, **kwargs):
-      output = self.get_output_(output) if type(output) in (str, unicode) else output
-      buttons = output.get_supported_buttons()
-      br, bc = 0, 0
-      for button in buttons:
-        text=typecode2name(codes.EV_KEY, button).strip("BTN_")
-        buttonLabel = tk.Label(self.frame_, text=text)
-        buttonLabel.grid(row=br, column=bc, rowspan=1, columnspan=1)
-        if self.orientation_ == "v":
-          br += 1
-          if br == self.numButtonsPerGroup_:
-            br = 0
-            bc += 1
-        elif self.orientation_ == "h":
-          bc += 1
-          if bc == self.numButtonsPerGroup_:
-            bc = 0
-            br += 1
-        else:
-          assert(False)
-        class D:
-          pass
-        d = D()
-        d.output, d.button, d.label, d.state, d.style = output, button, buttonLabel, None, self.style_
-        self.data_.append(d)
+  class EntriesArea:
+    def add(self, **kwargs):
+      child = kwargs["child"]
+      child.grid(in_=self.frame_, row=self.r_, column=self.c_, rowspan=1, columnspan=1)
+      if self.orientation_ == "v":
+        self.r_ += 1
+        if self.r_ == self.dim_:
+          self.r_ = 0
+          self.c_ += 1
+      elif self.orientation_ == "h":
+        self.c_ += 1
+        if self.c_ == self.dim_:
+          self.c_ = 0
+          self.r_ += 1
+      else:
+        assert(False)
+      self.children_.append(child)
       self.update()
     def update(self):
-      for buttonData in self.data_:
-        state = buttonData.output.get_button_state(buttonData.button)
-        if state == buttonData.state:
-          continue
-        else:
-          buttonData.state = state
-          styleName = "pressed" if state == True else "released"
-          style = buttonData.style[styleName]
-          for p in (("foreground", "fg"), ("background", "bg")):
-            self.set_prop_(buttonData.label, p[0], style, p[1])
-    def __init__(self, window, r, c, **kwargs):
+      for child in self.children_:
+        child.update()
+    def __init__(self, **kwargs):
+      window = kwargs["window"]
       frame = tk.Frame(window)
       frame.pack_propagate(True)
-      frame.grid(row=r, column=c, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
+      row=kwargs["r"]
+      column=kwargs["c"]
+      frame.grid(row=row, column=column, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
       frame.grid_configure(sticky=kwargs.get("sticky", "nsew"))
-      window.grid_rowconfigure(r, weight=kwargs.get("rw", 1))
-      window.grid_columnconfigure(c, weight=kwargs.get("cw", 1))
+      window.grid_rowconfigure(row, weight=kwargs.get("rw", 1))
+      window.grid_columnconfigure(column, weight=kwargs.get("cw", 1))
       name = kwargs.get("name", None)
       if name is not None:
         nameLabel = tk.Label(frame, text=name)
         nameLabel.pack()
-      buttonsFrame = tk.Frame(frame)
-      buttonsFrame.pack()
-      buttonsFrame.pack_configure(expand=True, fill="both")
-      self.frame_ = buttonsFrame
-      self.data_ = []
-      self.get_output_ = kwargs.get("getOutput", None)
-      self.numButtonsPerGroup_ = kwargs.get("numButtonsPerGroup", 8)
+      contentsFrame = tk.Frame(frame)
+      contentsFrame.pack()
+      contentsFrame.pack_configure(expand=True, fill="both")
+      self.frame_ = contentsFrame
+      self.children_ = []
+      self.dim_ = kwargs.get("dim", 8)
       self.orientation_ = kwargs.get("orientation", "v")
       if self.orientation_ not in ("h", "v"):
         raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
+      self.r_, self.c_ = 0, 0
+  class ButtonsArea(EntriesArea):
+    class Button:
+      def grid(self, **kwargs):
+        self.label_.grid(**kwargs)
+      def update(self):
+        state = self.output_.get_button_state(self.buttonID_)
+        if state != self.state_:
+          self.state_ = state
+          styleName = "pressed" if state == True else "released"
+          style = self.style_[styleName]
+          for p in (("foreground", "fg"), ("background", "bg")):
+            self.label_[p[0]] = style[p[1]]
+      def __init__(self, **kwargs):
+        self.label_ = tk.Label(text=kwargs["name"])
+        self.output_ = kwargs["output"]
+        self.buttonID_ = kwargs["buttonID"]
+        self.style_ = kwargs["style"]
+        self.state_ = None
+        self.update()
+    def add_buttons_from(self, output, **kwargs):
+      output = self.get_output_(output) if type(output) in (str, unicode) else output
+      buttonIDs = output.get_supported_buttons()
+      for buttonID in buttonIDs:
+        name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
+        button = self.Button(name=name, output=output, buttonID=buttonID, style=self.style_)
+        self.add(child=button)
+    def __init__(self, **kwargs):
+      Info.EntriesArea.__init__(self, **kwargs)
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
+      self.get_output_ = kwargs["getOutput"]
       source = kwargs.get("source", None)
       if source is not None:
         self.add_buttons_from(source)
-    def set_prop_(self, label, propName, style, stylePropName):
-      p = style.get(stylePropName, None) 
-      label[propName] = p 
 
   def add_area(self, type, r, c, **kwargs):
     kwargs["getOutput"] = self.get_output_
     area = None
     if type == "buttons":
-      area = self.ButtonsArea(self.w_, r, c, **kwargs)
+      area = self.ButtonsArea(window=self.w_, r=r, c=c, **kwargs)
     else:
       area = self.AxisArea(self.w_, type, r, c, **kwargs)
     self.areas_.append(area)
