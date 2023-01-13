@@ -4878,6 +4878,9 @@ class Info:
       if self.orientation_ not in ("h", "v"):
         raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
+      source = kwargs.get("source", None)
+      if source is not None:
+        self.add_buttons_from(source)
     def set_prop_(self, label, propName, style, stylePropName):
       p = style.get(stylePropName, None) 
       label[propName] = p 
@@ -4927,67 +4930,15 @@ def init_info(**kwargs):
   axisAccumulators = kwargs["axisAccumulators"]
   outputs = settings["outputs"]
   getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
-  title = "Info"
+
+  infoCfg = kwargs["cfg"]
+  title = infoCfg.get("title", "")
   info = Info(title=title, getOutput=getOutput)
+  for areaCfg in infoCfg.get("areas", ()):
+    area = info.add_area(**areaCfg)
+    for markerCfg in areaCfg.get("markers", ()):
+      area.add_marker(**markerCfg)
   settings["updated"].append(lambda tick,ts : info.update())
-
-  outputs = settings["outputs"]
-  joystick = outputs.get("joystick")
-  if joystick is not None:
-    area = info.add_area("box", 0, 0, name="jx jy jz", gridColor="grey", gridWidth=1, cw=1)
-    area.add_marker("joystick.ABS_X", "joystick.ABS_Y", "rect", color="white", size=(13,13))
-    area.add_marker("joystick.ABS_Z", 1.0, "oval", color="red")
-    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
-    area.add_marker("mouse.REL_WHEEL", 1.0, "rect", color="green", size=(9,9))
-    area = info.add_area("v", 0, 1, name="jrx", sticky="nse", cw=1)
-    area.add_marker(0.0, "-joystick.ABS_RX", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 2, name="jry", cw=0)
-    area.add_marker(0.0, "-joystick.ABS_RY", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 3, name="jrz", sticky="nsw", cw=1)
-    area.add_marker(0.0, "-joystick.ABS_RZ", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 4, name="jr", cw=0)
-    area.add_marker(0.0, "-joystick.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 0, 5, name="jt", cw=0)
-    area.add_marker(0.0, "-joystick.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 0, 6, name="jbuttons", cw=0, orientation="h", numButtonsPerGroup=4)
-    area.add_buttons_from("joystick")
-
-  head = outputs.get("head")
-  if head is not None:
-    area = info.add_area("box", 1, 0, name="hx hy hz", gridColor="grey", gridWidth=1)
-    area.add_marker("head.ABS_X", "head.ABS_Y", "rect", color="white", size=(13,13))
-    area.add_marker(1.0, "head.ABS_Z", "oval", color="red")
-    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
-    area.add_marker(1.0, "mouse.REL_WHEEL", "rect", color="green", size=(9,9))
-    area = info.add_area("box", 1, 1, name="hrx hry hrz", gridColor="grey", gridWidth=1, cs=3)
-    sx=calc_scale("head.ABS_RX", outputs)
-    sy=calc_scale("head.ABS_RY", outputs)
-    sz=calc_scale("head.ABS_RZ", outputs)
-    area.add_marker("head.ABS_RX", "head.ABS_RY", "rect", color="white", size=(13,13), sx=sx, sy=sy)
-    area.add_marker("head.ABS_RZ", 1.0, "oval", color="red", sx=sz)
-    area.add_marker("mouse.REL_X", "mouse.REL_Y", "rect", color="green", size=(9,9))
-    area.add_marker("mouse.REL_WHEEL", 1.0, "rect", color="green", size=(9,9))
-    area = info.add_area("v", 1, 4, name="hr")
-    area.add_marker(0.0, "-head.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 1, 5, name="ht")
-    area.add_marker(0.0, "-head.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 1, 6, name="hbuttons", orientation="h", numButtonsPerGroup=4)
-    area.add_buttons_from("head")
-
-  joystick2 = outputs.get("joystick2")
-  if joystick2 is not None:
-    area = info.add_area("box", 2, 0, name="j2x j2y j2z", gridColor="grey", gridWidth=1)
-    area.add_marker("joystick2.ABS_X", "joystick2.ABS_Y", "rect", color="white", size=(13,13))
-    area.add_marker("joystick2.ABS_Z", 1.0, "oval", color="red")
-    area = info.add_area("box", 2, 1, name="j2rx j2ry j2rz", gridColor="grey", gridWidth=1, cs=3)
-    area.add_marker("joystick2.ABS_RX", "joystick2.ABS_RY", "rect", color="white", size=(13,13))
-    area.add_marker("joystick2.ABS_RZ", 1.0, "oval", color="red")
-    area = info.add_area("v", 2, 4, name="j2r")
-    area.add_marker(0.0, "-joystick2.ABS_RUDDER", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("v", 2, 5, name="j2t")
-    area.add_marker(0.0, "-joystick2.ABS_THROTTLE", "hline", color="white", size=(13,3), width=3)
-    area = info.add_area("buttons", 2, 6, name="j2buttons", orientation="h", numButtonsPerGroup=4)
-    area.add_buttons_from("joystick2")
 
   return info
 
@@ -5076,7 +5027,7 @@ def init_main_sink(settings, make_next):
     axisAccumulators[inputName] = axisAccumulator
     et = make_event_test_op((("source", get_source_hash(inputName)), ("type", codes.EV_REL),), cmpOp)
     mainSink.add(et, axisAccumulator)
-  info = init_info(settings=settings, axisAccumulators=axisAccumulators)
+  info = init_info(cfg=config.get("info", {}), settings=settings, axisAccumulators=axisAccumulators)
 
   binds = config.get("binds", None)
   if binds is not None:
