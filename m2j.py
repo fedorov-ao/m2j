@@ -4683,9 +4683,9 @@ curveMakers = make_curve_makers()
 class AxisAccumulator:
   def on_event(self, e):
     key = (e.source, e.code)
-    if self.state_ and e.type == codes.EV_REL and key in self.scales_:
+    if self.state_ and e.type == codes.EV_REL:
       v = self.values_.get(key, 0.0)
-      v += e.value / self.scales_[key]
+      v += e.value * self.scales_.get(key, 1.0)
       v = clamp(v, -1.0, 1.0)
       self.values_[key] = v
     return False
@@ -4703,8 +4703,11 @@ class AxisAccumulator:
   def get_state(self):
     return self.state_
 
-  def __init__(self, scales, state=False):
-    self.scales_ = { fn2hc(n) : v for n,v in scales.items() }
+  def __init__(self, scales=None, state=False):
+    self.scales_ = {}
+    if scales is not None:
+      for n,v in scales.items():
+        self.scales_[fn2hc(n)] = v
     self.values_ = {}
     self.state_ = state
 
@@ -5064,7 +5067,7 @@ def init_main_sink(settings, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  axisAccumulator = AxisAccumulator({"mouse.REL_X" : 1.0, "mouse.REL_Y" : 1.0}, state=False)
+  axisAccumulator = AxisAccumulator(state=False)
   mainSink.add(None, lambda e : axisAccumulator.on_event(e))
   info = init_info(settings=settings, axisAccumulator=axisAccumulator)
 
