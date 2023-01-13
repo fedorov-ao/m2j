@@ -926,25 +926,6 @@ def Call(*ops):
   return op
 
 
-class MoveJoystickAxis:
-  def __call__(self, event):
-    assert(self.curve_ is not None)
-    assert(self.j_ is not None)
-
-    if event.type in (codes.EV_REL, codes.EV_ABS):
-      self.j_.move_axis(self.axis_, self.curve_.calc(event.value, event.timestamp), self.relative_)
-      return True
-    else:
-      return False
-
-  def __init__(self, j, axis, curve, relative):
-    if curve is None:
-      raise ArgumentError("Curve is None")
-    if j is None:
-      raise ArgumentError("Joystick is None")
-    self.j_, self.axis_, self.curve_, self.relative_ = j, axis, curve, relative
-
-
 class MoveCurve:
   def __call__(self, event):
     if self.curve_ is not None and event.type in (codes.EV_REL,):
@@ -1047,6 +1028,21 @@ def MoveAxes(axesAndValues):
     for axis,value,relative in axesAndValues:
       axis.move(value, relative)
   return moveAxesOp
+
+
+def MoveAxisByEvent(axis):
+  def op(event):
+    if axis is not None:
+      relative = None
+      if event.type == codes.EV_REL:
+        relative = True
+      elif event.type == codes.EV_ABS:
+        relative = False
+      if relative is not None:
+        axis.move(event.value, relative)
+        return True
+    return False
+  return op
 
 
 def SetButtonState(output, button, state):
@@ -6273,6 +6269,12 @@ def make_parser():
     r = MoveAxis(axis, value, False)
     return r
   actionParser.add("setAxis", parseSetAxis)
+
+  def parseMoveAxisByEvent(cfg, state):
+    axis = get_axis_by_full_name(resolve(cfg, "axis", state), state)
+    r = MoveAxisByEvent(axis)
+    return r
+  actionParser.add("moveAxisByEvent", parseMoveAxisByEvent)
 
   def parseSetAxes(cfg, state):
     axesAndValues = resolve(cfg, "axesAndValues", state)
