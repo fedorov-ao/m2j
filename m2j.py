@@ -3278,7 +3278,7 @@ class TransformAbsChainCurve:
 
 
 class AxisChainCurve:
-  """Acturally moves axis. Is meant to be at the bottom of chain."""
+  """Moves axis. Is meant to be at the bottom of chain."""
   def move_by(self, x, timestamp):
     self.axis_.move(x, relative=True)
     #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
@@ -3305,7 +3305,7 @@ class AxisChainCurve:
     self.axis_ = axis
 
 
-class AxisTrackerRelChainCurve:
+class AxisTrackerChainCurve:
   """Prevents endless recursion on moving axis.
      Is meant to be at the top of chain.
      Subscribe as axis listener."""
@@ -3317,6 +3317,18 @@ class AxisTrackerRelChainCurve:
     v = None
     try:
       v = self.next_.move_by(x, timestamp)
+    finally:
+      self.busy_ = False
+    return v
+
+  def move(self, x, timestamp):
+    """x is absolute."""
+    if self.dirty_ == True:
+      self.reset()
+    self.busy_ = True
+    v = None
+    try:
+      v = self.next_.move(x, timestamp)
     finally:
       self.busy_ = False
     return v
@@ -5781,7 +5793,7 @@ def make_parser():
   def parseOffsetCurve(cfg, state):
     #axis tracker
     resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, True)
-    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
+    top = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
     curve = top
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
@@ -5835,7 +5847,7 @@ def make_parser():
   def parseAccelCurve(cfg, state):
     #axis tracker
     resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, 1)
-    top = AxisTrackerRelChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
+    top = AxisTrackerChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
     bottom = top
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
