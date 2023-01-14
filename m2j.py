@@ -4876,7 +4876,7 @@ class Info:
           for p in (("foreground", "fg"), ("background", "bg")):
             self.label_[p[0]] = style[p[1]]
       def __init__(self, **kwargs):
-        self.label_ = tk.Label(text=kwargs["name"])
+        self.label_ = tk.Label(master=kwargs.get("master", None), text=kwargs["name"])
         self.output_ = kwargs["output"]
         self.buttonID_ = kwargs["buttonID"]
         self.style_ = kwargs["style"]
@@ -4887,7 +4887,7 @@ class Info:
       buttonIDs = output.get_supported_buttons()
       for buttonID in buttonIDs:
         name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
-        button = self.Button(name=name, output=output, buttonID=buttonID, style=self.style_)
+        button = self.Button(master=self.frame_, name=name, output=output, buttonID=buttonID, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
