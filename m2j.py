@@ -466,6 +466,7 @@ SourceName = collections.namedtuple("SourceName", "source name")
 SourceCode = collections.namedtuple("SourceCode", "source code")
 SourceNameState = collections.namedtuple("SourceNameState", "source name state")
 SourceCodeState = collections.namedtuple("SourceCodeState", "source code state")
+TypeCode = collections.namedtuple("TypeCode", "type code")
 SourceTypeCode = collections.namedtuple("SourceTypeCode", "source type code")
 SourceTypeCodeState = collections.namedtuple("SourceTypeCodeState", "source type code state")
 
@@ -4888,6 +4889,8 @@ class Info:
         self.update()
     def add_buttons_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
+      if output is None:
+        return
       buttonIDs = output.get_supported_buttons()
       for buttonID in buttonIDs:
         name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
@@ -4909,6 +4912,7 @@ class Info:
         self.valueLabel_["text"] = "{:.3f}".format(value)
       def __init__(self, **kwargs):
         self.frame_ = tk.Frame(master=kwargs.get("master", None))
+        self.frame_.grid(sticky="nsew")
         self.nameLabel_ = tk.Label(master=self.frame_, text=kwargs["name"])
         self.nameLabel_.pack(side="left")
         self.valueLabel_ = tk.Label(master=self.frame_)
@@ -4918,10 +4922,11 @@ class Info:
         self.update()
     def add_axes_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
+      if output is None:
+        return
       axisIDs = output.get_supported_axes()
-      axesMode = kwargs.get("axesMode")
       for axisID in axisIDs:
-        name=typecode2name(codes.EV_ABS, axisID).strip("ABS_") if axesMode == "rel" else typecode2name(codes.EV_ABS, axisID).strip("ABS_")
+        name=typecode2name(codes.EV_ABS, axisID)[4:]
         axisValue = self.AxisValue(master=self.frame_, name=name, output=output, axisID=axisID)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
