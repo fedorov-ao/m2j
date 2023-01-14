@@ -4693,6 +4693,9 @@ class AxisAccumulator:
   def get_axis_value(self, axisID):
     return self.values_.get(axisID, 0.0)
 
+  def get_supported_axes(self):
+    return self.values_.keys()
+
   def reset(self):
     for k in self.values_.keys():
       self.values_[k] = 0.0
@@ -4705,10 +4708,11 @@ class AxisAccumulator:
 
   def __init__(self, scales=None, state=False):
     self.scales_ = {}
+    self.values_ = {}
     if scales is not None:
       for i,v in scales.items():
         self.scales_[i] = v
-    self.values_ = {}
+        self.values_[i] = 0.0
     self.state_ = state
 
 
@@ -4895,13 +4899,45 @@ class Info:
       self.get_output_ = kwargs["getOutput"]
       source = kwargs.get("source", None)
       if source is not None:
-        self.add_buttons_from(source)
+        self.add_buttons_from(source, **kwargs)
+  class AxisValuesArea(EntriesArea):
+    class AxisValue:
+      def grid(self, **kwargs):
+        self.frame_.grid(**kwargs)
+      def update(self):
+        value = self.output_.get_axis_value(self.axisID_)
+        self.valueLabel_["text"] = "{:.3f}".format(value)
+      def __init__(self, **kwargs):
+        self.frame_ = tk.Frame(master=kwargs.get("master", None))
+        self.nameLabel_ = tk.Label(master=self.frame_, text=kwargs["name"])
+        self.nameLabel_.pack(side="left")
+        self.valueLabel_ = tk.Label(master=self.frame_)
+        self.valueLabel_.pack(side="right")
+        self.output_ = kwargs["output"]
+        self.axisID_ = kwargs["axisID"]
+        self.update()
+    def add_axes_from(self, output, **kwargs):
+      output = self.get_output_(output) if type(output) in (str, unicode) else output
+      axisIDs = output.get_supported_axes()
+      axesMode = kwargs.get("axesMode")
+      for axisID in axisIDs:
+        name=typecode2name(codes.EV_ABS, axisID).strip("ABS_") if axesMode == "rel" else typecode2name(codes.EV_ABS, axisID).strip("ABS_")
+        axisValue = self.AxisValue(master=self.frame_, name=name, output=output, axisID=axisID)
+        self.add(child=axisValue)
+    def __init__(self, **kwargs):
+      Info.EntriesArea.__init__(self, **kwargs)
+      self.get_output_ = kwargs["getOutput"]
+      source = kwargs.get("source", None)
+      if source is not None:
+        self.add_axes_from(source, **kwargs)
 
   def add_area(self, type, r, c, **kwargs):
     kwargs["getOutput"] = self.get_output_
     area = None
     if type == "buttons":
       area = self.ButtonsArea(window=self.w_, r=r, c=c, **kwargs)
+    elif type == "axisValues":
+      area = self.AxisValuesArea(window=self.w_, r=r, c=c, **kwargs)
     else:
       area = self.AxisArea(self.w_, type, r, c, **kwargs)
     self.areas_.append(area)
@@ -5035,7 +5071,8 @@ def init_main_sink(settings, make_next):
 
   axisAccumulators = {}
   for inputName,inpt in settings["inputs"].iteritems():
-    axisAccumulator = AxisAccumulator(state=False)
+    scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
+    axisAccumulator = AxisAccumulator(state=False, scales=scales)
     axisAccumulators[inputName] = axisAccumulator
     et = make_event_test_op((("source", get_source_hash(inputName)), ("type", codes.EV_REL),), cmpOp)
     mainSink.add(et, axisAccumulator)
