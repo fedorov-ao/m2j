@@ -3340,6 +3340,7 @@ class AxisTrackerChainCurve:
   def on_move_axis(self, axis, old, new):
     if self.busy_ == True:
       return
+    #TODO Remove reset on axis move and let subsequent curves decide if and how they need to reset themselves on axis movement
     if self.resetOnAxisMove_ == True:
       self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
@@ -5862,7 +5863,8 @@ def make_parser():
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
       relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
-      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else 0)
+      resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else DeltaRelChainCurve.RMA_NONE
+      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=resetOnMoveAxis)
       top.set_next(accelChainCurve)
       bottom = accelChainCurve
     #transform
