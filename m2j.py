@@ -702,10 +702,8 @@ class CompositeJoystick:
     desired = self.get_axis_value(axis) + v if relative else v
     limits = self.get_limits(axis)
     actual = clamp(desired, *limits)
-    for c in self.children_:
-      if self.checkChild_:
-        if axis not in c.get_supported_axes():
-          continue
+    children = self.a2c_[axis] if self.checkChild_ else self.children_
+    for c in children:
       c.move_axis(axis, actual, relative=False)
     self.axes_[axis] = actual
     return v - (desired - actual) if relative else actual
@@ -720,10 +718,8 @@ class CompositeJoystick:
     return self.axes_.keys()
 
   def set_button_state(self, button, state):
-    for c in self.children_:
-      if self.checkChild_:
-        if button not in c.get_supported_buttons():
-          continue
+    children = self.a2c_[axis] if self.checkChild_ else self.children_
+    for c in self.children:
       c.set_button_state(button, state)
     self.buttons_[button] = state
 
@@ -737,6 +733,7 @@ class CompositeJoystick:
     self.children_ = children
     self.checkChild_, self.union_ = checkChild, union
     self.axes_, self.limits_, self.buttons_ = {}, {}, {}
+    self.a2c_, self.b2c_ = {}, {}
     self.update_()
 
   def update_(self):
@@ -758,19 +755,25 @@ class CompositeJoystick:
           if l[0] >= l[1]:
             l = [0.0, 0.0]
       self.limits_[axis] = l
-      #values
+      #values and axis-to-children mapping
       v = 0.0
       v = clamp(v, *l)
       self.axes_[axis] = v
+      a2c = []
+      self.a2c_[axis] = a2c
       for c in self.children_:
         if axis in c.get_supported_axes():
+          a2c.append(c)
           c.move_axis(axis, v, relative=False)
-    #setting initial buttons values
+    #buttons and button-to-children mapping
     v = False
     for button in buttons:
       self.buttons_[button] = v
+      b2c = []
+      self.b2c_[button] = b2c
       for c in self.children_:
         if button in c.get_supported_buttons():
+          b2c.append(c)
           c.set_button_state(button, v)
 
 
