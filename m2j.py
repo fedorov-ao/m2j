@@ -6145,15 +6145,23 @@ def make_parser():
   @parseBasesDecorator
   def parseMode(cfg, state):
     name = resolve_d(cfg, "name", state, "")
+    allowMissingModes = resolve_d(cfg, "allowMissingModes", state, False)
     headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
     headSink.set_component("msmm", msmm)
     try:
       for modeName,modeCfg in resolve(cfg, "modes", state).items():
-        #logger.debug("{}: parsing mode:".format(name, modeName))
-        child = state["parser"]("sink", modeCfg, state)
-        modeSink.add(modeName, child)
+        try:
+          #logger.debug("{}: parsing mode:".format(name, modeName))
+          child = state["parser"]("sink", modeCfg, state)
+          modeSink.add(modeName, child)
+        except Exception as e:
+          if allowMissingModes:
+            logger.warning("Error parsing mode '{}' in '{}' ({})".format(modeName, name, e))
+            continue
+          else:
+            raise
       initialMode = resolve_d(cfg, "initialMode", state, None)
       if initialMode is not None:
         if not modeSink.set_mode(initialMode):
