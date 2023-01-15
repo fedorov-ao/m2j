@@ -2921,42 +2921,12 @@ class LimitedOpToOp:
 
 class LookupOp:
   def calc(self, outputValue):
-    ie, ivLimits, ovPrev = bisect.bisect_right(self.ovs_, outputValue), None, None
-    
-    if ie == 0:
-      iv = self.ivs_[0]
-      while True:
-        iv -= self.s_*self.inputStep_
-        ov = self.outputOp_.calc(iv)
-        if ov == ovPrev:
-          break
-        else:
-          ovPrev = ov
-        self.ivs_.insert(0, iv)
-        self.ovs_.insert(0, ov)  
-        #logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
-        if ov <= outputValue:
-          ie = 1
-          break
-    elif ie == len(self.ivs_):
-      iv = self.ivs_[ie-1]
-      while True:
-        iv += self.s_*self.inputStep_
-        ov = self.outputOp_.calc(iv)
-        if ov == ovPrev:
-          break
-        else:
-          ovPrev = ov
-        self.ivs_.append(iv)
-        self.ovs_.append(ov)
-        #logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
-        if ov >= outputValue:
-          ie = len(self.ivs_)-1
-          break
-
-    if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
-      raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
-    ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
+    ie, ivLimits = bisect.bisect_right(self.ovs_, outputValue), None
+    ie = self.fill_(ie, outputValue)
+    b, e = self.ovs_[ie-1], self.ovs_[ie]
+    if not (b <= outputValue and outputValue <= e):
+      raise RuntimeError("{}: Wrong interval [{}, {}] for value {} (ivs: {}; ovs: {})".format(self, b, e, outputValue, self.ivs_, self.ovs_))
+    ivLimits = (b, e)
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
     #logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f}".format(self, inputValue, outputValue))
     return inputValue
@@ -2968,14 +2938,44 @@ class LookupOp:
   def __init__(self, inputOp, outputOp, inputStep):
     self.inputOp_, self.outputOp_, self.inputStep_ = inputOp, outputOp, inputStep
     self.ivs_, self.ovs_ = [], []
-    iv = (0.0, self.inputStep_)
-    ov = tuple((self.outputOp_.calc(ivv) for ivv in iv))
-    self.s_ = sign(iv[1]-iv[0])*sign(ov[1]-ov[0])
-    self.ivs_.append(iv[0])
-    self.ovs_.append(ov[0])
-    i1 = 1 if self.s_ > 0 else 0
-    self.ivs_.insert(i1, iv[1])
-    self.ovs_.insert(i1, ov[1])
+    iv0 = 0.0
+    ov0 = self.outputOp_.calc(iv0)
+    self.s_ = 0
+    iv = iv0
+    while self.s_ == 0:
+      iv += self.inputStep_
+      ov = self.outputOp_.calc(iv)
+      self.s_ = sign(iv-iv0)*sign(ov-ov0)
+    self.fill_(0, 0.0)
+
+  def fill_(self, ie, outputValue):
+    if ie <= 0:
+      iv = self.ivs_[0] if len(self.ivs_) else 0.0
+      while True:
+        iv -= self.s_*self.inputStep_
+        ov = self.outputOp_.calc(iv)
+        if len(self.ovs_) and (ov == self.ovs_[0]):
+          continue
+        self.ivs_.insert(0, iv)
+        self.ovs_.insert(0, ov)  
+        #logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        if ov <= outputValue:
+          ie = 1
+          break
+    elif ie >= len(self.ivs_):
+      iv = self.ivs_[ie-1] if len(self.ivs_) else 0.0
+      while True:
+        iv += self.s_*self.inputStep_
+        ov = self.outputOp_.calc(iv)
+        if len(self.ovs_) and (ov == self.ovs_[ie-1]):
+          continue
+        self.ivs_.append(iv)
+        self.ovs_.append(ov)
+        #logger.info("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        if ov >= outputValue:
+          ie = len(self.ivs_)-1
+          break
+    return ie
 
 
 class ApproxOp:
