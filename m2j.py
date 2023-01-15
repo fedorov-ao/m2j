@@ -257,7 +257,7 @@ def resolve(d, name, state):
 def resolve_args(args, state):
   r = collections.OrderedDict()
   for n,a in args.items():
-    r[n] = deref(a, state, a)
+    r[n] = resolve_args(a, state) if type(a) in (dict, collections.OrderedDict) else deref(a, state, a)
   return r
 
 
