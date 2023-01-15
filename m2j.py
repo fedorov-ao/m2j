@@ -3298,9 +3298,6 @@ class AxisChainCurve:
   def get_value(self):
     return self.axis_.get()
 
-  def set_next(self, next):
-    self.next_ = next
-
   def __init__(self, axis):
     self.axis_ = axis
 
@@ -4747,7 +4744,7 @@ class Info:
         canvas.coords(shape, x0, y0, x1, y1)
     def __init__(self, area, vpx, vpy, shapes, size):
       self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = area, vpx, vpy, shapes, size
-  class AxisArea:
+  class AxesArea:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
       def make_vp(vp, scale=1.0):
         if type(vp) in (str, unicode):
@@ -4777,7 +4774,7 @@ class Info:
     def update(self):
       for marker in self.markers_:
         marker.update()
-    def __init__(self, window, type, r, c, **kwargs):
+    def __init__(self, window, layout, r, c, **kwargs):
       frame = tk.Frame(window)
       frame.pack_propagate(True)
       frame.grid(row=r, column=c, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
@@ -4791,16 +4788,16 @@ class Info:
       canvas = tk.Canvas(frame, bg=kwargs.get("canvasBg", "black"))
       canvasSize = kwargs.get("canvasSize", (200, 20))
       fill = "both"
-      if type == "box":
+      if layout == "box":
         canvas["width"], canvas["height"] = canvasSize[0], canvasSize[0]
         fill = "both"
-      elif type == "h":
+      elif layout == "h":
         canvas["width"], canvas["height"] = canvasSize[0], canvasSize[1]
         fill = "x"
-      elif type == "v":
+      elif layout == "v":
         canvas["width"], canvas["height"] = canvasSize[1], canvasSize[0]
         fill = "y"
-      self.add_grid_(canvas, type, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
+      self.add_grid_(canvas, layout, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
       canvas.pack()
       canvas.pack_configure(expand=True, fill=fill)
       self.canvas_ = canvas
@@ -4825,10 +4822,10 @@ class Info:
         return [canvas.create_line(0,0,0,size[1], fill=color, width=width)]
       else:
         raise RuntimeError("Unknown shape type: '{}'".format(shapeType))
-    def add_grid_(self, canvas, type, **kwargs):
+    def add_grid_(self, canvas, layout, **kwargs):
       width = kwargs.get("width", 1)
       color = kwargs.get("color", "white")
-      if type == "box":
+      if layout == "box":
         cw, ch = canvas.winfo_width(), canvas.winfo_height()
         vline = canvas.create_line(0.5*cw, 0.0, 0.5*cw, ch, fill=color, width=width),
         hline = canvas.create_line(0.0, 0.5*ch, cw, 0.5*ch, fill=color, width=width)
@@ -4840,12 +4837,12 @@ class Info:
     def add(self, **kwargs):
       child = kwargs["child"]
       child.grid(in_=self.frame_, row=self.r_, column=self.c_, rowspan=1, columnspan=1)
-      if self.orientation_ == "v":
+      if self.layout_ == "v":
         self.r_ += 1
         if self.r_ == self.dim_:
           self.r_ = 0
           self.c_ += 1
-      elif self.orientation_ == "h":
+      elif self.layout_ == "h":
         self.c_ += 1
         if self.c_ == self.dim_:
           self.c_ = 0
@@ -4877,29 +4874,29 @@ class Info:
       self.frame_ = contentsFrame
       self.children_ = []
       self.dim_ = kwargs.get("dim", 8)
-      self.orientation_ = kwargs.get("orientation", "v")
-      if self.orientation_ not in ("h", "v"):
-        raise RuntimeError("Bad orientation: '{}'".format(self.orientation_))
+      self.layout_ = kwargs.get("layout", "v")
+      if self.layout_ not in ("h", "v"):
+        raise RuntimeError("Bad layout: '{}'".format(self.layout_))
       self.r_, self.c_ = 0, 0
+  class Button:
+    def grid(self, **kwargs):
+      self.label_.grid(**kwargs)
+    def update(self):
+      state = self.output_.get_button_state(self.buttonID_)
+      if state != self.state_:
+        self.state_ = state
+        styleName = "pressed" if state == True else "released"
+        style = self.style_[styleName]
+        for p in (("foreground", "fg"), ("background", "bg")):
+          self.label_[p[0]] = style[p[1]]
+    def __init__(self, **kwargs):
+      self.label_ = tk.Label(master=kwargs.get("master", None), text=kwargs["name"])
+      self.output_ = kwargs["output"]
+      self.buttonID_ = kwargs["buttonID"]
+      self.style_ = kwargs["style"]
+      self.state_ = None
+      self.update()
   class ButtonsArea(EntriesArea):
-    class Button:
-      def grid(self, **kwargs):
-        self.label_.grid(**kwargs)
-      def update(self):
-        state = self.output_.get_button_state(self.buttonID_)
-        if state != self.state_:
-          self.state_ = state
-          styleName = "pressed" if state == True else "released"
-          style = self.style_[styleName]
-          for p in (("foreground", "fg"), ("background", "bg")):
-            self.label_[p[0]] = style[p[1]]
-      def __init__(self, **kwargs):
-        self.label_ = tk.Label(master=kwargs.get("master", None), text=kwargs["name"])
-        self.output_ = kwargs["output"]
-        self.buttonID_ = kwargs["buttonID"]
-        self.style_ = kwargs["style"]
-        self.state_ = None
-        self.update()
     def add_buttons_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       if output is None:
@@ -4907,7 +4904,7 @@ class Info:
       buttonIDs = output.get_supported_buttons()
       for buttonID in buttonIDs:
         name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
-        button = self.Button(master=self.frame_, name=name, output=output, buttonID=buttonID, style=self.style_)
+        button = Info.Button(master=self.frame_, name=name, output=output, buttonID=buttonID, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
@@ -4916,23 +4913,23 @@ class Info:
       source = kwargs.get("source", None)
       if source is not None:
         self.add_buttons_from(source, **kwargs)
-  class AxisValuesArea(EntriesArea):
-    class AxisValue:
-      def grid(self, **kwargs):
-        self.frame_.grid(**kwargs)
-      def update(self):
-        value = self.output_.get_axis_value(self.axisID_)
-        self.valueLabel_["text"] = "{:.3f}".format(value)
-      def __init__(self, **kwargs):
-        self.frame_ = tk.Frame(master=kwargs.get("master", None))
-        self.frame_.grid(sticky="nsew")
-        self.nameLabel_ = tk.Label(master=self.frame_, text=kwargs["name"])
-        self.nameLabel_.pack(side="left")
-        self.valueLabel_ = tk.Label(master=self.frame_)
-        self.valueLabel_.pack(side="right")
-        self.output_ = kwargs["output"]
-        self.axisID_ = kwargs["axisID"]
-        self.update()
+  class AxisValue:
+    def grid(self, **kwargs):
+      self.frame_.grid(**kwargs)
+    def update(self):
+      value = self.output_.get_axis_value(self.axisID_)
+      self.valueLabel_["text"] = "{:.3f}".format(value)
+    def __init__(self, **kwargs):
+      self.frame_ = tk.Frame(master=kwargs.get("master", None))
+      self.frame_.grid(sticky="nsew")
+      self.nameLabel_ = tk.Label(master=self.frame_, text=kwargs["name"])
+      self.nameLabel_.pack(side="left")
+      self.valueLabel_ = tk.Label(master=self.frame_)
+      self.valueLabel_.pack(side="right")
+      self.output_ = kwargs["output"]
+      self.axisID_ = kwargs["axisID"]
+      self.update()
+  class AxesValuesArea(EntriesArea):
     def add_axes_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       if output is None:
@@ -4940,7 +4937,7 @@ class Info:
       axisIDs = output.get_supported_axes()
       for axisID in axisIDs:
         name=typecode2name(codes.EV_ABS, axisID)[4:]
-        axisValue = self.AxisValue(master=self.frame_, name=name, output=output, axisID=axisID)
+        axisValue = Info.AxisValue(master=self.frame_, name=name, output=output, axisID=axisID)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
@@ -4949,15 +4946,20 @@ class Info:
       if source is not None:
         self.add_axes_from(source, **kwargs)
 
-  def add_area(self, type, r, c, **kwargs):
+  def add_area(self, **kwargs):
     kwargs["getOutput"] = self.get_output_
     area = None
-    if type == "buttons":
-      area = self.ButtonsArea(window=self.w_, r=r, c=c, **kwargs)
-    elif type == "axisValues":
-      area = self.AxisValuesArea(window=self.w_, r=r, c=c, **kwargs)
+    r, c = kwargs["r"], kwargs["c"]
+    t = kwargs["type"]
+    if t == "axes":
+      layout = kwargs["layout"]
+      area = self.AxesArea(window=self.w_, **kwargs)
+    elif t == "buttons":
+      area = self.ButtonsArea(window=self.w_, **kwargs)
+    elif t == "axesValues":
+      area = self.AxesValuesArea(window=self.w_, **kwargs)
     else:
-      area = self.AxisArea(self.w_, type, r, c, **kwargs)
+      logger.warning("Unknown area type: {}".format(t))
     self.areas_.append(area)
     return area
   def set_state(self, s):
@@ -5002,8 +5004,9 @@ def init_info(**kwargs):
   info = Info(title=title, getOutput=getOutput)
   for areaCfg in infoCfg.get("areas", ()):
     area = info.add_area(**areaCfg)
-    for markerCfg in areaCfg.get("markers", ()):
-      area.add_marker(**markerCfg)
+    if areaCfg.get("type", None) == "axes":
+      for markerCfg in areaCfg.get("markers", ()):
+        area.add_marker(**markerCfg)
   settings["updated"].append(lambda tick,ts : info.update())
 
   return info
