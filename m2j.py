@@ -771,7 +771,7 @@ class CompositeJoystick:
       self.buttons_[button] = v
       for c in self.children_:
         if button in c.get_supported_buttons():
-          return c.set_button_state(button, v)
+          c.set_button_state(button, v)
 
 
 class Event(object):
