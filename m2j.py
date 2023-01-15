@@ -4921,7 +4921,7 @@ class Info:
       self.frame_.grid(**kwargs)
     def update(self):
       value = self.output_.get_axis_value(self.axisID_)
-      self.valueLabel_["text"] = "{:.3f}".format(value)
+      self.valueLabel_["text"] = "{:+.3f}".format(value)
     def __init__(self, **kwargs):
       self.frame_ = tk.Frame(master=kwargs.get("master", None))
       self.frame_.grid(sticky="nsew")
