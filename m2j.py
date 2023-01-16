@@ -2919,14 +2919,13 @@ class LimitedOpToOp:
     self.op_, self.limits_ = op, limits
 
 
-#FIXME
 class LookupOp:
   def calc(self, outputValue):
     ie = bisect.bisect_right(self.ovs_, outputValue)
     ie = self.fill_(ie, outputValue)
     ob, oe = self.ovs_[ie-1], self.ovs_[ie]
     if not (ob <= outputValue and outputValue <= oe):
-      raise RuntimeError("{}: Wrong interval [{}, {}] for value {} (ie: {}; ivs: {}; ovs: {})".format(self, ob, oe, outputValue, ie, self.ivs_, self.ovs_))
+      raise RuntimeError("Wrong interval [{}, {}] for value {} (ie: {}; ivs: {}; ovs: {})".format(ob, oe, outputValue, ie, self.ivs_, self.ovs_))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
     #logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f} (ivLimits: {}; ivs: {}; ovs: {})".format(self, inputValue, outputValue, ivLimits, self.ivs_, self.ovs_))
@@ -2936,8 +2935,10 @@ class LookupOp:
     self.inputOp_.reset()
     self.outputOp_.reset()
 
-  def __init__(self, inputOp, outputOp, inputStep, inputLimits):
-    self.inputOp_, self.outputOp_, self.inputStep_, self.inputLimits_ = inputOp, outputOp, inputStep, inputLimits
+  def __init__(self, inputOp, outputOp, inputStep, inputLimits, expandLimits=False):
+    self.inputOp_, self.outputOp_, self.inputStep_, self.inputLimits_, self.expandLimits_ = inputOp, outputOp, inputStep, list(inputLimits), expandLimits
+    if self.inputLimits_[0] > self.inputLimits_[1]:
+      self.inputLimits_[0], self.inputLimits_[1] = self.inputLimits_[1], self.inputLimits_[0]
     self.ivs_, self.ovs_ = [], []
     iv0 = 0.0
     ov0 = self.outputOp_.calc(iv0)
@@ -2952,7 +2953,8 @@ class LookupOp:
   def fill_(self, ie, outputValue):
     if ie <= 0:
       iv = self.ivs_[0] if len(self.ivs_) else 0.0
-      while iv == clamp(iv, *self.inputLimits_):
+      while True:
+        self.check_iv_(iv)
         iv -= self.s_*self.inputStep_
         ov = self.outputOp_.calc(iv)
         if len(self.ovs_) and (ov == self.ovs_[0]):
@@ -2965,7 +2967,8 @@ class LookupOp:
       ie = 1
     elif ie >= len(self.ivs_):
       iv = self.ivs_[-1] if len(self.ivs_) else 0.0
-      while iv == clamp(iv, *self.inputLimits_):
+      while True:
+        self.check_iv_(iv)
         iv += self.s_*self.inputStep_
         ov = self.outputOp_.calc(iv)
         if len(self.ovs_) and (ov == self.ovs_[-1]):
@@ -2977,6 +2980,19 @@ class LookupOp:
           break
       ie = len(self.ivs_)-1
     return ie
+
+  def check_iv_(self, iv):
+    if iv == clamp(iv, *self.inputLimits_):
+      return
+    if self.expandLimits_:
+      if iv < self.inputLimits_[0]:
+        self.inputLimits_[0] = iv
+      elif iv > self.inputLimits_[-1]:
+        self.inputLimits_[-1] = iv
+      else:
+        assert(False)
+    else:
+      raise RuntimeError("Requested input value {} is out of input limits {}".format(iv, self.inputLimits_))
 
 
 class ApproxOp:
@@ -5751,9 +5767,10 @@ def make_parser():
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=resolve_d(cfg, "eps", state, 0.001), numSteps=resolve_d(cfg, "numSteps", state, 100))
     inputLimits = resolve(cfg, "inputLimits", state)
-    #inputStep = resolve_d(cfg, "inputStep", state, 0.1)
-    #inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits)
-    inputOp = LimitedOpToOp(inputOp, inputLimits)
+    inputStep = resolve_d(cfg, "inputStep", state, 0.1)
+    expandLimits = resolve_d(cfg, "expandLimits", state, False)
+    inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
+    #inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
