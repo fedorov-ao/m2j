@@ -5521,13 +5521,13 @@ def make_parser():
 
   def weighted(cfg, state):
     w = resolve(cfg, "weight", state)
-    o = resolve(cfg, "order", state)
+    o = resolve(cfg, "degree", state)
     def f(x):
       return w*x**o + (1.0 - w)*x
     db = resolve_d(cfg, "deadband", state, 0.0)
     fDB = f(db)
     def scaled_f(x):
-      return (f(x) - sign(x)*fDB)/(1.0 - fDB)
+      return (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > db else 0.0
     return scaled_f
   opParser.add("weighted", weighted)
 
