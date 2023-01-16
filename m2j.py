@@ -2919,13 +2919,14 @@ class LimitedOpToOp:
     self.op_, self.limits_ = op, limits
 
 
+#FIXME
 class LookupOp:
   def calc(self, outputValue):
     ie = bisect.bisect_right(self.ovs_, outputValue)
     ie = self.fill_(ie, outputValue)
     ob, oe = self.ovs_[ie-1], self.ovs_[ie]
     if not (ob <= outputValue and outputValue <= oe):
-      raise RuntimeError("{}: Wrong interval [{}, {}] for value {} (ivs: {}; ovs: {})".format(self, ob, oe, outputValue, self.ivs_, self.ovs_))
+      raise RuntimeError("{}: Wrong interval [{}, {}] for value {} (ie: {}; ivs: {}; ovs: {})".format(self, ob, oe, outputValue, ie, self.ivs_, self.ovs_))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
     #logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f} (ivLimits: {}; ivs: {}; ovs: {})".format(self, inputValue, outputValue, ivLimits, self.ivs_, self.ovs_))
@@ -5750,9 +5751,9 @@ def make_parser():
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=resolve_d(cfg, "eps", state, 0.001), numSteps=resolve_d(cfg, "numSteps", state, 100))
     inputLimits = resolve(cfg, "inputLimits", state)
-    inputStep = resolve_d(cfg, "inputStep", state, 0.1)
-    inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits)
-    #inputOp = LimitedOpToOp(inputOp, inputLimits)
+    #inputStep = resolve_d(cfg, "inputStep", state, 0.1)
+    #inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits)
+    inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
