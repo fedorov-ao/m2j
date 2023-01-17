@@ -6784,31 +6784,27 @@ def make_parser():
 
   def parseBinds(cfg, state):
     def parseOnsDos(cfg, state):
-      def parseGroup(n1, n2, parser, cfg, state):
-        cfgs = cfg.get(n2, None)
-        if cfgs is not None:
-          if type(cfgs) not in (list, tuple):
-            raise RuntimeError("'{}' in must be a list of dictionaries, got {} (encountered while parsing {})".format(n2, type(c), str2(cfg)))
+      def parseGroup(name, parser, cfg, state):
+        cfgs = cfg.get(name, None)
+        tcfgs = type(cfgs)
+        if tcfgs in (list, tuple):
+          pass
+        elif tcfgs in (dict, collections.OrderedDict):
+          cfgs = (cfgs,)
         else:
-          c = cfg.get(n1, None)
-          if c is not None:
-            if type(c) not in (dict, collections.OrderedDict):
-              raise RuntimeError("'{}' must be a dictionary, got {} (encountered while parsing {})".format(n1, type(c), str2(cfg)))
-            cfgs = (c,)
-          else:
-            cfgs = ()
+          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} (encountered while parsing {})".format(name, tcfgs, str2(cfg, 100)))
         r, t = [], None
         for c in cfgs:
           try:
             t = parser(c, state)
           except RuntimeError as e:
-            logger.warning("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
+            logger.warning("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 100)))
             continue
           except Exception as e:
-            logger.error("{} (encountered when parsing {} '{}')".format(e, n1, str2(c)))
+            logger.error("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 100)))
             raise ParserError(c)
           if t is None:
-            logger.warning("Could not parse {} '{}')".format(n1, str2(c)))
+            logger.warning("Could not parse {} '{}')".format(name, str2(c, 100)))
             continue
           r.append(t)
         return r
@@ -6822,17 +6818,13 @@ def make_parser():
           return mainParser("sink", cfg, state)
 
       mainParser = state["parser"]
-      ons = parseGroup("on", "ons", mainParser.get("et"), cfg, state)
+      ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
-        ons = parseGroup("input", "inputs", mainParser.get("et"), cfg, state)
-      if len(ons) == 0:
-        logger.warning("No ons were constructed (encountered when parsing '{}')".format(str2(cfg)))
+        logger.warning("No 'on' objects  were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
-      dos = parseGroup("do", "dos", parseActionOrSink, cfg, state)
+      dos = parseGroup("do", parseActionOrSink, cfg, state)
       if len(dos) == 0:
-        dos = parseGroup("output", "outputs", parseActionOrSink, cfg, state)
-      if len(dos) == 0:
-        logger.warning("No dos were constructed (encountered when parsing '{}')".format(str2(cfg)))
+        logger.warning("No 'do' objects  were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
       return ((on,do) for on in ons for do in dos)
 
