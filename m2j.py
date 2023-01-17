@@ -76,30 +76,39 @@ def merge_dicts(destination, source):
   return destination
 
 
-def str2(v):
-  ps = {
-    collections.OrderedDict : ( "{{", "}}" ),
-    dict : ( "{", "}" ),
-    list : ( "[", "]" ),
-    tuple : ( "(", ")" ),
-    str : ( '"', '"' ),
-    unicode : ( '"', '"' )
-  }
-  s = str()
-  if type(v) in (dict, collections.OrderedDict):
-    for a,b in v.items():
-      s += str2(a) + " : " + str2(b) + ", "
-    s = s[:-2]
-  elif type(v) in (tuple, list):
-    for a in v:
-      s += str2(a) + ", "
-    s = s[:-2]
-  else:
-    s = str(v)
-  tv = type(v)
-  if tv in ps:
-    p = ps[tv]
-    s = p[0] + s + p[1]
+def str2(v, length=0):
+  def str2_w(v):
+    ps = {
+      collections.OrderedDict : ( "{{", "}}" ),
+      dict : ( "{", "}" ),
+      list : ( "[", "]" ),
+      tuple : ( "(", ")" ),
+      str : ( '"', '"' ),
+      unicode : ( '"', '"' )
+    }
+    s = str()
+    if type(v) in (dict, collections.OrderedDict):
+      for a,b in v.items():
+        s += str2(a) + " : " + str2(b) + ", "
+      s = s[:-2]
+    elif type(v) in (tuple, list):
+      for a in v:
+        s += str2(a) + ", "
+      s = s[:-2]
+    else:
+      s = str(v)
+    tv = type(v)
+    if tv in ps:
+      p = ps[tv]
+      s = p[0] + s + p[1]
+    return s
+  s = str2_w(v)
+  if length > 0:
+    rep = "..."
+    ls = len(s)
+    if ls > length:
+      ls = (length - len(rep))/2
+      s = s[:ls] + rep + s[-ls:]
   return s
 
 
@@ -6186,7 +6195,7 @@ def make_parser():
         init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
         return ObjectsProxy(headSink)
       except RuntimeError as e:
-        raise RuntimeError("{} (encountered while parsing objects cfg {})".format(e, str2(objectsCfg)))
+        raise RuntimeError("{} (encountered while parsing objects cfg {})".format(e, str2(objectsCfg, 100)))
     else:
       return None
   scParser.add("objects", parseObjects)
