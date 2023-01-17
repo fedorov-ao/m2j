@@ -4740,7 +4740,7 @@ def make_curve_makers():
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
-        #logger.debug("Error while parsing {}: {}".format(path, e))
+        #logger.debug("Error when parsing {}: {}".format(path, e))
         raise ParseError(path, e)
     return r
 
@@ -5404,7 +5404,7 @@ class ParserNotFoundError(KeyError2):
     KeyError2.__init__(self, requestetParser, availableParsers)
     self.cfg = cfg
   def __str__(self):
-    return "Parser {} not found, available parsers are: {} (encountered while parsing: {})".format(self.key, self.keys, str2(self.cfg))
+    return "Parser {} not found, available parsers are: {} (encountered when parsing: {})".format(self.key, self.keys, str2(self.cfg))
 
 
 class SelectParser:
@@ -5420,7 +5420,7 @@ class SelectParser:
         #logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
         raise
       except:
-        #logger.error("Unknown exception while parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
+        #logger.error("Unknown exception when parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
         raise
 
   def add(self, key, parser):
@@ -5499,7 +5499,7 @@ def get_axis_by_full_name(fullAxisName, state):
     settings["axes"] = {}
   allAxes = settings["axes"]
   if outputName not in allAxes:
-    #raise RuntimeError("No axes were initialized for '{}' (while parsing '{}')".format(outputName, fullAxisName))
+    #raise RuntimeError("No axes were initialized for '{}' (when parsing '{}')".format(outputName, fullAxisName))
     allAxes[outputName] = {}
   outputAxes = allAxes[outputName]
   axisId = name2code(axisName)
@@ -6195,7 +6195,7 @@ def make_parser():
         init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
         return ObjectsProxy(headSink)
       except RuntimeError as e:
-        raise RuntimeError("{} (encountered while parsing objects cfg {})".format(e, str2(objectsCfg, 100)))
+        raise RuntimeError("{} (encountered when parsing objects cfg {})".format(e, str2(objectsCfg, 100)))
     else:
       return None
   scParser.add("objects", parseObjects)
@@ -6283,7 +6283,7 @@ def make_parser():
       #logger.debug("Cannot get target sink by '{}'".format(sinkName))
       sinks = state.get("sinks")
       if sinks is None or len(sinks) == 0:
-        raise RuntimeError("Not in a sink while parsing '{}'".format(cfg))
+        raise RuntimeError("Not in a sink when parsing '{}'".format(cfg))
       sink = sinks[get_depth(cfg, state)]
     return sink
 
@@ -6792,7 +6792,7 @@ def make_parser():
         elif tcfgs in (dict, collections.OrderedDict):
           cfgs = (cfgs,)
         else:
-          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} (encountered while parsing {})".format(name, tcfgs, str2(cfg, 100)))
+          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} (encountered when parsing {})".format(name, tcfgs, str2(cfg, 100)))
         r, t = [], None
         for c in cfgs:
           try:
