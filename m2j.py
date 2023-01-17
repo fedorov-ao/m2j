@@ -5259,11 +5259,11 @@ def init_main_sink(settings, make_next):
   return topSink
 
 
-def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s"):
+def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
   root = logging.getLogger()
   root.setLevel(level)
   handler.setLevel(logging.NOTSET)
-  handler.setFormatter(logging.Formatter(fmt))
+  handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
   root.addHandler(handler)
 
 
@@ -5277,12 +5277,13 @@ def init_log(settings):
   logFileName = config.get("logFile", None)
   if logFileName is not None:
     logFileFmt = config.get("logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
+    logFileDateFmt = config.get("logFileDateFmt", "%T")
     logFileLevelName = config.get("logFileLevel", "NOTSET").upper()
     logFileLevel = name2loglevel(logFileLevelName)
     logFile = open(logFileName, "w")
     logFileHandler = logging.StreamHandler(logFile)
     logFileHandler.setLevel(logFileLevel)
-    logFileHandler.setFormatter(logging.Formatter(logFileFmt))
+    logFileHandler.setFormatter(logging.Formatter(fmt=logFileFmt, datefmt=logFileDateFmt))
     root.addHandler(logFileHandler)
 
 
