@@ -3131,6 +3131,25 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = None
 
 
+class ExtDistanceDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    if self.timestamp_ is None:
+      self.timestamp_ = timestamp
+    dt = timestamp - self.timestamp_
+    self.timestamp_ = timestamp
+    if self.next_ is not None:
+      distance = self.next_.calc(distance, x, timestamp)
+    return self.op_(distance, dt)
+  def reset(self):
+    self.timestamp_ = None
+    if self.next_:
+      self.next_.reset()
+  def __init__(self, next, op):
+    self.next_, self.op_ = next, op
+    self.timestamp_ = None
+
+
 class DistanceDeltaToDeltaOp:
   def calc(self, distance, x, timestamp):
     """distance is absolute, x is relative."""
@@ -5895,7 +5914,15 @@ def make_parser():
     relativeCfg = resolve_d(cfg, "relative", state, None)
     if relativeCfg is not None:
       valueDDOp = SignDistanceDeltaOp()
-      valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
+      resetOpCfg = resolve_d(relativeCfg, "resetOp", None)
+      if resetOpCfg is not None:
+        resetOp = state["parser"]("op", resetOpCfg, state)
+        def resetOp2(distance,dt):
+          factor = resetOp(dt)
+          return factor*distance
+        valueDDOp = ExtDistanceDeltaOp(next=valueDDOp, op=resetOp2)
+      else:
+        valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
       deltaDOp = XDeltaOp()
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
