@@ -3131,6 +3131,16 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = None
 
 
+class DistanceDeltaToDeltaOp:
+  def calc(self, distance, x, timestamp):
+    """distance is absolute, x is relative."""
+    return self.next_.calc(x, timestamp)
+  def reset(self):
+    self.next_.reset()
+  def __init__(self, next):
+    self.next_ = next
+
+
 #Chain curves
 class AccumulateRelChainCurve:
   def move_by(self, x, timestamp):
@@ -3185,16 +3195,16 @@ class DeltaRelChainCurve:
     """x is relative."""
     self.update_()
     self.value_ = self.valueDDOp_.calc(self.value_, x, timestamp)
-    self.value_ += x
+    self.value_ = self.combineValue_(self.value_, x)
     factor = self.outputOp_.calc(self.value_)
-    delta = self.deltaDOp_.calc(x, timestamp)
-    delta *= factor
+    delta = self.deltaDDOp_.calc(self.value_, x, timestamp)
+    delta = self.combineDelta_(delta, factor)
     self.next_.move_by(delta, timestamp)
     return self.value_
 
   def reset(self):
     self.valueDDOp_.reset()
-    self.deltaDOp_.reset()
+    self.deltaDDOp_.reset()
     self.outputOp_.reset()
     self.next_.reset()
     self.value_ = 0.0
@@ -3211,13 +3221,14 @@ class DeltaRelChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, valueDDOp, deltaDOp, outputOp, resetOnMoveAxis):
-    self.next_, self.valueDDOp_, self.deltaDOp_, self.outputOp_, self.resetOnMoveAxis_ = next, valueDDOp, deltaDOp, outputOp, resetOnMoveAxis
+  def __init__(self, next, valueDDOp, deltaDDOp, outputOp, combineValue, combineDelta, resetOnMoveAxis):
+    self.next_, self.valueDDOp_, self.deltaDDOp_, self.outputOp_, self.resetOnMoveAxis_ = next, valueDDOp, deltaDDOp, outputOp, resetOnMoveAxis
+    self.combineValue_, self.combineDelta_ = combineValue, combineDelta
     self.value_, self.dirty_ = 0.0, False
 
   def soft_reset_(self):
     self.valueDDOp_.reset()
-    self.deltaDOp_.reset()
+    self.deltaDDOp_.reset()
     self.outputOp_.reset()
     self.value_ = 0.0
 
@@ -5888,9 +5899,12 @@ def make_parser():
       deltaDOp = XDeltaOp()
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
+      deltaDDOp = DistanceDeltaToDeltaOp(deltaDOp)
       relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+      combineValue = lambda value,x: value+x
+      combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else DeltaRelChainCurve.RMA_NONE
-      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, outputOp=relativeOutputOp, resetOnMoveAxis=resetOnMoveAxis)
+      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=relativeOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
       top.set_next(accelChainCurve)
       bottom = accelChainCurve
     #transform
