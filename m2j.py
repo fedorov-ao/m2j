@@ -5152,10 +5152,12 @@ def init_main_sink(settings, make_next):
   binds = config.get("binds", None)
   if binds is not None:
     for bind in binds:
-      inptCfg = resolve(bind, "input", state)
-      inpt = make_event_test_op(etParser(inptCfg, state), cmpOp)
-      output = resolve(bind, "output", state)
-      action = output["action"]
+      onCfg = resolve_d(bind, "on", state, resolve_d(bind, "input", state, None))
+      if onCfg is None:
+        raise RuntimeError("Cannot get 'on' or 'input' from {}".format(str2(onCfg)))
+      on = make_event_test_op(etParser(onCfg, state), cmpOp)
+      doCfg = resolve_d(bind, "do", state, resolve_d(bind, "output", state, None))
+      action = doCfg["action"]
       if action == "changeSens":
         def make_sens_op(htc, step):
           def op(e):
@@ -5163,8 +5165,8 @@ def init_main_sink(settings, make_next):
             scaleSink.set_sens(htc, sens)
             logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
           return op
-        htc = fn2htc(resolve(output, "axis", state))
-        delta = resolve(output, "delta", state)
+        htc = fn2htc(resolve(doCfg, "axis", state))
+        delta = resolve(doCfg, "delta", state)
         action = make_sens_op(htc, delta)
       elif action == "toggle":
         action = toggler.make_toggle()
@@ -5182,11 +5184,11 @@ def init_main_sink(settings, make_next):
       elif action == "disable":
         action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowDevices(released, False),  print_ungrabbed))
       elif action == "grab":
-        inputs = get_nested_d(output, "inputs", None)
+        inputs = get_nested_d(doCfg, "inputs", None)
         inputs = allInputs if inputs is None else names2inputs(inputs, settings)
         action = SwallowDevices(inputs, True)
       elif action == "ungrab":
-        inputs = get_nested_d(output, "inputs", None)
+        inputs = get_nested_d(doCfg, "inputs", None)
         inputs = allInputs if inputs is None else names2inputs(inputs, settings)
         action = SwallowDevices(inputs, False)
       elif action == "showInfo":
@@ -5218,7 +5220,7 @@ def init_main_sink(settings, make_next):
       else:
         logger.error("Unknown action: {}", action)
         continue
-      mainSink.add(inpt, action, 0)
+      mainSink.add(on, action, 0)
 
   namesOfGrabbed = config.get("grabbed", ())
   namesOfGrabbedStr = ", ".join(namesOfGrabbed)
@@ -6772,17 +6774,17 @@ def make_parser():
   etParser.add("sequence", parseSequence)
 
   def parseBinds(cfg, state):
-    def parseInputsOutputs(cfg, state):
+    def parseOnsDos(cfg, state):
       def parseGroup(n1, n2, parser, cfg, state):
         cfgs = cfg.get(n2, None)
         if cfgs is not None:
           if type(cfgs) not in (list, tuple):
-            raise RuntimeError("'{}' in must be a list of dictionaries (encountered while parsing {})".format(n2, str2(cfg)))
+            raise RuntimeError("'{}' in must be a list of dictionaries, got {} (encountered while parsing {})".format(n2, type(c), str2(cfg)))
         else:
           c = cfg.get(n1, None)
           if c is not None:
             if type(c) not in (dict, collections.OrderedDict):
-              raise RuntimeError("'{}' must be a dictionary (encountered while parsing {})".format(n1, str2(cfg)))
+              raise RuntimeError("'{}' must be a dictionary, got {} (encountered while parsing {})".format(n1, type(c), str2(cfg)))
             cfgs = (c,)
           else:
             cfgs = ()
@@ -6811,36 +6813,42 @@ def make_parser():
           return mainParser("sink", cfg, state)
 
       mainParser = state["parser"]
-      inputs = parseGroup("input", "inputs", mainParser.get("et"), cfg, state)
-      if len(inputs) == 0:
-        logger.warning("No inputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
+      ons = parseGroup("on", "ons", mainParser.get("et"), cfg, state)
+      if len(ons) == 0:
+        ons = parseGroup("input", "inputs", mainParser.get("et"), cfg, state)
+      if len(ons) == 0:
+        logger.warning("No ons were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
-      outputs = parseGroup("output", "outputs", parseActionOrSink, cfg, state)
-      if len(outputs) == 0:
-        logger.warning("No outputs were constructed (encountered when parsing '{}')".format(str2(cfg)))
+      dos = parseGroup("do", "dos", parseActionOrSink, cfg, state)
+      if len(dos) == 0:
+        dos = parseGroup("output", "outputs", parseActionOrSink, cfg, state)
+      if len(dos) == 0:
+        logger.warning("No dos were constructed (encountered when parsing '{}')".format(str2(cfg)))
 
-      return ((i,o) for i in inputs for o in outputs)
+      return ((on,do) for on in ons for do in dos)
 
     binds = resolve_d(cfg, "binds", state, [])
     #logger.debug("binds: {}".format(binds))
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
-      def checkOutput(o):
+      def checkDo(o):
         return 10 if type(o) in (dict, collections.OrderedDict) and o.get("action", o.get("type", None)) in ("resetCurve", "resetCurves") else 0
       r = 0
-      if "output" in b:
-        r = checkOutput(b["output"])
-      elif "outputs" in b:
-        for o in b["outputs"]:
-          r = max(r, checkOutput(o))
+      do = b.get("output", b.get("do", None))
+      if cfg:
+        r = checkDo(do)
+      else:
+        dos = b.get("outputs", b.get("dos", None))
+        for do in dos:
+          r = max(r, checkDo(dos))
       return r
     binds.sort(key=bindsKey)
     bindingSink = BindSink()
     cmpOp = CmpWithModifiers()
     for bind in binds:
-      for i,o in parseInputsOutputs(bind, state):
-        i = make_event_test_op(i, cmpOp)
-        bindingSink.add(i, o, bind.get("level", 0), bind.get("name", None))
+      for on,do in parseOnsDos(bind, state):
+        on = make_event_test_op(on, cmpOp)
+        bindingSink.add(on, do, resolve_d(bind, "level", 0), resolve_d(bind, "name", None))
     return bindingSink
 
   scParser.add("binds", parseBinds)
