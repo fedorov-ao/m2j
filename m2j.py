@@ -6850,7 +6850,7 @@ def make_parser():
     for bind in binds:
       for on,do in parseOnsDos(bind, state):
         on = make_event_test_op(on, cmpOp)
-        bindingSink.add(on, do, resolve_d(bind, "level", 0), resolve_d(bind, "name", None))
+        bindingSink.add(on, do, resolve_d(bind, "level", state, 0), resolve_d(bind, "name", state, None))
     return bindingSink
 
   scParser.add("binds", parseBinds)
