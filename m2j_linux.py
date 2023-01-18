@@ -432,7 +432,7 @@ def run():
     outputParser = parser.get("output")
     orderOp = lambda i : i[1].get("seq", 100000)
     cfg = settings["config"]["outputs"]
-    state = {"settings" : settings, "parser" : parser}
+    state = make_state(settings)
     outputs = {}
     settings["outputs"] = outputs
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)

@@ -204,6 +204,10 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
+def make_state(settings):
+    return { "settings" : settings, "parser" : settings["parser"] }
+
+
 def push_in_state(n, v, state):
   state.setdefault(n, [])
   state[n].append(v)
@@ -251,6 +255,8 @@ def deref(name, state, dfault=None):
 
 
 def resolve_d(d, name, state, dfault=None):
+  if type(state) not in (dict, collections.OrderedDict):
+    raise RuntimeError("state must be a dictionary, got {} instead".format(state))
   v = get_nested_d(d, name, dfault)
   return deref(v, state, v)
 
@@ -5124,7 +5130,7 @@ def init_main_sink(settings, make_next):
     def __init__(self, sink):
       self.sink_, self.s_ = sink, False
 
-  state = None
+  state = make_state(settings)
   toggler = Toggler(stateSink)
   etParser = settings["parser"].get("et")
 
@@ -5344,7 +5350,7 @@ def init_preset_config(settings):
   else:
     try:
       parser = settings["parser"]
-      state = {"settings" : settings, "parser" : parser}
+      state = make_state(settings)
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:
