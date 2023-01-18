@@ -5926,7 +5926,7 @@ def make_parser():
     relativeCfg = resolve_d(cfg, "relative", state, None)
     if relativeCfg is not None:
       valueDDOp = SignDistanceDeltaOp()
-      resetOpCfg = resolve_d(relativeCfg, "resetOp", None)
+      resetOpCfg = resolve_d(relativeCfg, "resetOp", state, None)
       if resetOpCfg is not None:
         resetOp = state["parser"]("op", resetOpCfg, state)
         def resetOp2(distance,dt):
