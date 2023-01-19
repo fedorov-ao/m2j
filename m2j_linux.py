@@ -314,18 +314,13 @@ def calc_device_hash(device):
     return hash(info)
 
 
-def make_evdev_devices(inputsData):
-  """{source : identifier (name, path, hash, phys)} -> {source : native evdev device}"""
-  Info = collections.namedtuple("Info", "path name phys hash")
-  DeviceInfo = collections.namedtuple("DeviceInfo", "device info")
-  identifierRe = re.compile("([^:]*):(.*)")
-  devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
-  deviceInfos = [DeviceInfo(device, Info(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))) for device in devices]
-
-  def find_device(identifier):
-    m = identifierRe.match(identifier)
+class NativeEvdevDeviceFactory:
+  def make_device(self, identifier, update=False):
+    if update:
+      self.update()
+    m = self.identifierRe_.match(identifier)
     found = None
-    for di in deviceInfos:
+    for di in self.deviceInfos_:
       if m is None:
         if identifier in di.info:
           found = di
@@ -338,23 +333,25 @@ def make_evdev_devices(inputsData):
           break
     return found.device if found else None
 
-  idType = type(inputsData)
-  if idType in (dict, collections.OrderedDict):
-    r = {}
-    for source,identifier in inputsData.items():
-      device = find_device(identifier)
-      r[source] = device
-    return r
-  else:
-    raise RuntimeError("make_evdev_devices(): bad inputsData type: {} (must be dict)".format(idType))
+  def update(self):
+    devices = (evdev.InputDevice(fn) for fn in evdev.list_devices())
+    self.deviceInfos_ = [self.DeviceInfo_(device, self.Info_(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))) for device in devices]
+
+  def __init__(self):
+    self.update()
+
+  Info_ = collections.namedtuple("Info", "path name phys hash")
+  DeviceInfo_ = collections.namedtuple("DeviceInfo", "device info")
+  identifierRe_ = re.compile("([^:]*):(.*)")
 
 
-def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp)):
+def init_inputs(inputsCfg, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp), deviceUpdatePeriod=2):
   """
   Initializes input devices.
   Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
   """
-  def make_recreate(identifier, **kwargs):
+  nativeDevFactory = NativeEvdevDeviceFactory()
+  def make_recreate_op(identifier, **kwargs):
     deviceUpdatePeriod = kwargs.get("deviceUpdatePeriod", 0)
     ts = [None]
     def op():
@@ -367,15 +364,14 @@ def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDe
           return None
         else:
           ts[0] = t
-      sourceName = "source"
-      return make_evdev_devices({sourceName : identifier})[sourceName]
+      return nativeDevFactory.make_device(identifier, update=True)
     return op
   r = {}
-  natives = make_evdev_devices(inputsData)
-  for source,native in natives.items():
-    identifier = inputsData[source]
-    r[source] = makeDevice(native, source, recreateOp=make_recreate(inputsData[source], deviceUpdatePeriod=2))
-    if native:
+  for source,identifier in inputsCfg.items():
+    nativeDevice = nativeDevFactory.make_device(identifier)
+    recreateOp=make_recreate_op(identifier=identifier, deviceUpdatePeriod=deviceUpdatePeriod)
+    r[source] = makeDevice(nativeDevice, source, recreateOp=recreateOp)
+    if nativeDevice:
       logger.info("Found device {} ({})".format(source, identifier))
     else:
       logger.warning("Device {} ({}) not found".format(source, identifier))
@@ -440,13 +436,14 @@ def run():
 
   def init_source(settings):
       config = settings["config"]
-      compressEvents = config.get("compressEvents", False)
-      def makeDevice(native, source, recreateOp):
+      compressEvents = config.get("compressInputEvents", False)
+      def make_device(native, source, recreateOp):
         dev = EvdevDevice(native, source, recreateOp)
         if compressEvents:
           dev = EventCompressorDevice(dev)
         return dev
-      settings["inputs"] = init_inputs(config["inputs"], makeDevice)
+      deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
+      settings["inputs"] = init_inputs(config.get("inputs", {}), make_device, deviceUpdatePeriod)
       sink = init_main_sink(settings, init_preset_config)
       settings["source"] = EventSource(settings["inputs"].values(), sink)
 
