@@ -324,29 +324,29 @@ def make_evdev_devices(inputsData):
 
   def find_device(identifier):
     m = identifierRe.match(identifier)
-    deviceInfo = None
+    found = None
     for di in deviceInfos:
       if m is None:
         if identifier in di.info:
-          deviceInfo = di
+          found = di
           break
       else:
-        d = di.info._asdict()
-        if d.get(m.group(1)) == m.group(2):
-          deviceInfo = di
+        devInfoDict = di.info._asdict()
+        devIdType, devIdValue = m.group(1), m.group(2)
+        if devInfoDict.get(devIdType) == devIdValue:
+          found = di
           break
-    return  deviceInfo.device if deviceInfo else None
+    return found.device if found else None
 
   idType = type(inputsData)
-  if idType in (str, unicode):
-    return find_device(inputsData)
-  elif idType in (dict, collections.OrderedDict):
+  if idType in (dict, collections.OrderedDict):
     r = {}
     for source,identifier in inputsData.items():
-      r[source] = find_device(identifier)
+      device = find_device(identifier)
+      r[source] = device
     return r
   else:
-    raise RuntimeError("make_evdev_devices(): bad inputsData type: {} (can be string or dict)".format(idType))
+    raise RuntimeError("make_evdev_devices(): bad inputsData type: {} (must be dict)".format(idType))
 
 
 def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp)):
@@ -367,7 +367,8 @@ def init_inputs(inputsData, makeDevice=lambda native,source,recreateOp : EvdevDe
           return None
         else:
           ts[0] = t
-      return make_evdev_devices(identifier)
+      sourceName = "source"
+      return make_evdev_devices({sourceName : identifier})[sourceName]
     return op
   r = {}
   natives = make_evdev_devices(inputsData)
