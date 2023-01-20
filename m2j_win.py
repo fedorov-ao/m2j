@@ -161,6 +161,177 @@ def parsePPJoystickOutput(cfg, state):
   return j
 
 
+#vJoy
+class VJoystick:
+  dll_ = None
+
+  @classmethod
+  def open_dll(cls, path="vJoyInterface.dll"):
+    cls.dll_ = ctypes.CDLL(path)
+
+  def move_axis(self, axis, value, relative):
+    if axis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    desired = value if not relative else self.get_axis_value(axis)+value
+    actual = clamp(desired, *self.get_limits(axis))
+    self.a_[axis] = actual
+    #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
+    self.dirty_ = True
+    return value - (actual - desired) if relative else actual
+
+  def get_axis_value(self, axis):
+    if axis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    return self.a_[axis]
+
+  def get_limits(self, axis):
+    if axis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(axis))
+    return self.limits_[axis]
+
+  def get_supported_axes(self):
+    return self.axes_[:self.numAxes_]
+
+  def set_button_state(self, button, state):
+    n = button - 256
+    if n < 0 or n >= self.numButtons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    if state:
+      self.d_ |= (1 << n)
+    else:
+      self.d_ &= not (1 << n)
+    self.dirty_ = True
+
+  def get_button_state(self, button):
+    n = button - 256
+    if n < 0 or n >= self.numButtons_:
+      raise RuntimeError("Button not supported: {}".format(button))
+    return self.d_ & (1 << n)
+
+  def get_supported_buttons(self):
+    return [n+256 for n in range(self.numButtons_)]
+
+  def update(self):
+    if self.dll_ is None:
+      raise RuntimeError("vJoy DLL is not loaded")
+    if not self.dirty_:
+      return
+    data = self.make_data_()
+    if not self.dll_.UpdateVJD(self.i_, data):
+      raise RuntimeError("Failed to update vJoy {} data".format(self.i_))
+    self.dirty_ = False
+
+  def open(self):
+    if self.dll_ is None:
+      raise RuntimeError("vJoy DLL is not loaded")
+    if not self.dll_.AcquireVJD(self.i_):
+      raise RuntimeError("Failed to open vJoy {}".format(self.i_))
+
+  def close(self):
+    if self.dll_ is None:
+      raise RuntimeError("vJoy DLL is not loaded")
+    if not self.dll_.RelinquishVJD(self.i_):
+      raise RuntimeError("Failed to close vJoy {}".format(self.i_))
+
+  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None):
+    self.i_, self.numAxes, self.numButtons_, self.limits_, self.factors_ = i, numAxes, numButtons,
+    self.limits_ = [l for l in limits] if limits is not None else None
+    self.factors_ = [f for f in factors] if factors is not None else None
+    self.a_ = [0.0 for i in self.numAxes_]
+    self.d_ = 0
+    self.open()
+
+  def __del__(self):
+    self.close()
+
+  def make_data_(self):
+    """
+    typedef struct _JOYSTICK_POSITION
+    {
+        BYTE    bDevice; // Index of device. 1-based
+        LONG    wThrottle;
+        LONG    wRudder;
+        LONG    wAileron;
+        LONG    wAxisX;
+        LONG    wAxisY;
+        LONG    wAxisZ;
+        LONG    wAxisXRot;
+        LONG    wAxisYRot;
+        LONG    wAxisZRot;
+        LONG    wSlider;
+        LONG    wDial;
+        LONG    wWheel;
+        LONG    wAxisVX;
+        LONG    wAxisVY;
+        LONG    wAxisVZ;
+        LONG    wAxisVBRX;
+        LONG    wAxisVBRY;
+        LONG    wAxisVBRZ;
+        LONG    lButtons;   // 32 buttons: 0x00000001 means button1 is pressed, 0x80000000 -> button32 is pressed
+        DWORD   bHats;      // Lower 4 bits: HAT switch or 16-bit of continuous HAT switch
+        DWORD   bHatsEx1;   // 16-bit of continuous HAT switch
+        DWORD   bHatsEx2;   // 16-bit of continuous HAT switch
+        DWORD   bHatsEx3;   // 16-bit of continuous HAT switch
+    } JOYSTICK_POSITION, *PJOYSTICK_POSITION;
+    """
+    def av(axidID):
+      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], self.limits_[axisID][0], self.limits_[axisID][1], self.AXIS_MIN, self.AXIS_MAX)
+    fmt = "BlllllllllllllllllllIIII"
+    data = struct.pack(
+      fmt,
+      self.reference, #bDevice
+      av(codes.ABS_THROTTLE), #wThrottle
+      av(codes.ABS_RUDDER), #wRudder
+      0, #wAileron
+      av(codes.ABS_X), #wAxisX
+      av(codes.ABS_Y), #wAxisY
+      av(codes.ABS_Z), #wAxisZ
+      av(codes.ABS_RX), #wAxisXRot
+      av(codes.ABS_RY), #wAxisYRot
+      av(codes.ABS_RZ), #wAxisZRot
+      0, #wSlider
+      0, #wDial
+      0, #wWheel
+      0, #wAxisVX
+      0, #wAxisVY
+      0, #wAxisVZ
+      0, #wAxisVBRX
+      0, #wAxisVBRY
+      0, #wAxisVBRZ
+      self.d_, #lButtons
+      0, #bHats
+      0, #bHatsEx1
+      0, #bHatsEx2
+      0, #bHatsEx3
+    )
+    return data
+
+  AXIS_MIN = 1
+  AXIS_MAX = 32767
+  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+
+
+@make_reporting_joystick
+def parseVJoystickOutput(cfg, state):
+  #If custom vJoyInterface.dll path is set, it must be specified in first vjoy cfg
+  dllPath = cfg.get("dll", "vJoyInterface.dll")
+  if dllPath is not None:
+    VJoystick.open_dll(dllPath)
+  #id is 1-based
+  i=cfg["id"]
+  numAxes=cfg.get("numAxes", 8)
+  numButtons=cfg.get("numButtons", 16)
+  limits = cfg.get("limits")
+  if limits is not None:
+    limits = {name2code(n) : v for n,v in limits.items()}
+  factors = cfg.get("factors")
+  if factors is not None:
+    factors = {name2code(n) : v for n,v in factors.items()}
+  j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
+  state["settings"]["updated"].append(lambda tick,ts : j.update())
+  return j
+
+
 #Raw input device manager
 MAX_PATH = 255
 WM_INPUT = 255
@@ -1196,6 +1367,7 @@ def run():
     parser = make_parser()
     settings["parser"] = parser
     parser.get("output").add("ppjoy", parsePPJoystickOutput)
+    parser.get("output").add("vjoy", parseVJoystickOutput)
     parser.get("output").add("di_keyboard", parseDirectInputKeyboardOutput)
 
     settings["reloading"] = False
