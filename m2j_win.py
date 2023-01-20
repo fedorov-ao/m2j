@@ -662,6 +662,7 @@ class DirectInputKeyboard:
     inpt = INPUT()
     inpt.type = INPUT_KEYBOARD
     inpt.ki.wVk = 0
+    #Key codes in ecodes and DirectInput match, so no conversion is needed
     inpt.ki.wScan = key
     inpt.ki.dwFlags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if state == 0 else 0)
     inpt.ki.time = 0

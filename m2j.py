@@ -6489,8 +6489,6 @@ def make_parser():
     return eventOp
   actionParser.add("click", parseClick)
 
-  actionParser.add("setKeyState", parseSetKeyState)
-
   def parseResetCurves(cfg, state):
     curvesToReset = []
     allCurves = state.get("curves")
