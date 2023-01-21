@@ -4947,7 +4947,7 @@ class Info:
     def grid(self, **kwargs):
       self.label_.grid(**kwargs)
     def update(self):
-      state = self.output_.get_button_state(self.buttonID_)
+      state = self.getButtonState_()
       if state != self.state_:
         self.state_ = state
         styleName = "pressed" if state == True else "released"
@@ -4956,12 +4956,16 @@ class Info:
           self.label_[p[0]] = style[p[1]]
     def __init__(self, **kwargs):
       self.label_ = tk.Label(master=kwargs.get("master", None), text=kwargs["name"])
-      self.output_ = kwargs["output"]
-      self.buttonID_ = kwargs["buttonID"]
+      self.getButtonState_ = kwargs["getButtonState"]
       self.style_ = kwargs["style"]
       self.state_ = None
       self.update()
   class ButtonsArea(EntriesArea):
+    class GetButtonState:
+      def __call__(self):
+        return self.output_.get_button_state(self.buttonID_)
+      def __init__(self, output, buttonID):
+        self.output_, self.buttonID_ = output, buttonID
     def add_buttons_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       if output is None:
@@ -4969,7 +4973,8 @@ class Info:
       buttonIDs = output.get_supported_buttons()
       for buttonID in buttonIDs:
         name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
-        button = Info.Button(master=self.frame_, name=name, output=output, buttonID=buttonID, style=self.style_)
+        getButtonState = self.GetButtonState(output, buttonID)
+        button = Info.Button(master=self.frame_, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
@@ -4982,7 +4987,7 @@ class Info:
     def grid(self, **kwargs):
       self.frame_.grid(**kwargs)
     def update(self):
-      value = self.output_.get_axis_value(self.axisID_)
+      value = self.getAxisValue_()
       self.valueLabel_["text"] = "{:+.3f}".format(value)
     def __init__(self, **kwargs):
       self.frame_ = tk.Frame(master=kwargs.get("master", None))
@@ -4991,10 +4996,14 @@ class Info:
       self.nameLabel_.pack(side="left")
       self.valueLabel_ = tk.Label(master=self.frame_)
       self.valueLabel_.pack(side="right")
-      self.output_ = kwargs["output"]
-      self.axisID_ = kwargs["axisID"]
+      self.getAxisValue_ = kwargs["getAxisValue"]
       self.update()
   class AxesValuesArea(EntriesArea):
+    class GetAxisValue:
+      def __call__(self):
+        return self.output_.get_axis_value(self.axisID_)
+      def __init__(self, output, axisID):
+        self.output_, self.axisID_ = output, axisID
     def add_axes_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       if output is None:
@@ -5002,7 +5011,8 @@ class Info:
       axisIDs = output.get_supported_axes()
       for axisID in axisIDs:
         name=typecode2name(codes.EV_ABS, axisID)[4:]
-        axisValue = Info.AxisValue(master=self.frame_, name=name, output=output, axisID=axisID)
+        getAxisValue = self.GetAxisValue(output, axisID)
+        axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
