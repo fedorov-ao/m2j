@@ -212,37 +212,41 @@ class VJoystick:
     return [n+256 for n in range(self.numButtons_)]
 
   def update(self):
-    if self.dll_ is None:
-      raise RuntimeError("vJoy DLL is not loaded")
     if not self.dirty_:
       return
     data = self.make_data_()
-    if not self.dll_.UpdateVJD(self.i_, data):
-      raise RuntimeError("Failed to update vJoy {} data".format(self.i_))
+    if not self.get_dll_().UpdateVJD(self.i_, data):
+      raise RuntimeError("Failed to update vJoy {}".format(self.i_))
     self.dirty_ = False
 
   def open(self):
-    if self.dll_ is None:
-      raise RuntimeError("vJoy DLL is not loaded")
-    if not self.dll_.AcquireVJD(self.i_):
+    if not self.get_dll_().AcquireVJD(self.i_):
       raise RuntimeError("Failed to open vJoy {}".format(self.i_))
 
   def close(self):
-    if self.dll_ is None:
-      raise RuntimeError("vJoy DLL is not loaded")
-    if not self.dll_.RelinquishVJD(self.i_):
+    if not self.get_dll_().RelinquishVJD(self.i_):
       raise RuntimeError("Failed to close vJoy {}".format(self.i_))
 
-  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None):
+  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None, nativeAxisLimit=(1,32767)):
+    if (numAxes <= 0) or (numAxes > 8):
+      raise RuntimeError("Number of axes must be in range from 1 to 8, got {}".format(numAxes))
+    if (numButtons < 0) or (numButtons > 32):
+      raise RuntimeError("Number of buttons must be in range from 0 to 32, got {}".format(numButtons))
     self.i_, self.numAxes, self.numButtons_, self.limits_, self.factors_ = i, numAxes, numButtons,
     self.limits_ = [l for l in limits] if limits is not None else None
     self.factors_ = [f for f in factors] if factors is not None else None
+    self.nativeAxisLimit_ = nativeAxisLimit
     self.a_ = [0.0 for i in self.numAxes_]
     self.d_ = 0
     self.open()
 
   def __del__(self):
     self.close()
+
+  def get_dll_(self):
+    if self.dll_ is None:
+      raise RuntimeError("vJoy DLL is not loaded")
+    return self.dll_
 
   def make_data_(self):
     """
@@ -275,7 +279,7 @@ class VJoystick:
     } JOYSTICK_POSITION, *PJOYSTICK_POSITION;
     """
     def av(axidID):
-      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], self.limits_[axisID][0], self.limits_[axisID][1], self.AXIS_MIN, self.AXIS_MAX)
+      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], self.limits_[axisID][0], self.limits_[axisID][1], self.nativeAxisLimit_[0], self.nativeAxisLimit_[1])
     fmt = "BlllllllllllllllllllIIII"
     data = struct.pack(
       fmt,
@@ -306,8 +310,6 @@ class VJoystick:
     )
     return data
 
-  AXIS_MIN = 1
-  AXIS_MAX = 32767
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
 
 
@@ -327,7 +329,8 @@ def parseVJoystickOutput(cfg, state):
   factors = cfg.get("factors")
   if factors is not None:
     factors = {name2code(n) : v for n,v in factors.items()}
-  j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
+  nativeAxisLimit = cfg.get("nativeAxisLimit", (1, 32767))
+  j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors, nativeAxisLimit=nativeAxisLimit)
   state["settings"]["updated"].append(lambda tick,ts : j.update())
   return j
 
