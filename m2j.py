@@ -3190,11 +3190,8 @@ class AccumulateRelChainCurve:
     return self.value_
 
   def reset(self):
-    self.valueDDOp_.reset()
-    self.deltaDOp_.reset()
-    self.inputOp_.reset()
+    self.reset_self_()
     self.next_.reset()
-    self.value_ = 0.0
     self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
@@ -3209,22 +3206,26 @@ class AccumulateRelChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, valueDDOp, deltaDOp, combine, inputOp):
-    self.next_, self.valueDDOp_, self.deltaDOp_, self.combine_, self.inputOp_ = next, valueDDOp, deltaDOp, combine, inputOp
+  def __init__(self, next, valueDDOp, deltaDOp, combine, inputOp, resetOnMoveAxis):
+    self.next_, self.valueDDOp_, self.deltaDOp_, self.combine_, self.inputOp_, self.resetOnMoveAxis_ = next, valueDDOp, deltaDOp, combine, inputOp, resetOnMoveAxis
     self.value_, self.dirty_ = 0.0, False
+
+  def reset_self_(self):
+    self.valueDDOp_.reset()
+    self.deltaDOp_.reset()
+    self.inputOp_.reset()
+    self.value_ = 0.0
 
   def update_(self):
     if self.dirty_ == True:
+      if self.resetOnMoveAxis_ == True:
+        self.reset_self_()
       self.value_ = self.inputOp_.calc(self.next_.get_value())
       #logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
       self.dirty_ = False
 
 
 class DeltaRelChainCurve:
-  RMA_NONE = 0
-  RMA_HARD = 1
-  RMA_SOFT = 2
-
   def move_by(self, x, timestamp):
     """x is relative."""
     self.update_()
@@ -3260,7 +3261,7 @@ class DeltaRelChainCurve:
     self.combineValue_, self.combineDelta_ = combineValue, combineDelta
     self.value_, self.dirty_ = 0.0, False
 
-  def soft_reset_(self):
+  def reset_self_(self):
     self.valueDDOp_.reset()
     self.deltaDDOp_.reset()
     self.outputOp_.reset()
@@ -3268,10 +3269,8 @@ class DeltaRelChainCurve:
 
   def update_(self):
     if self.dirty_ == True:
-      if self.resetOnMoveAxis_ == self.RMA_HARD:
-        self.reset()
-      elif self.resetOnMoveAxis_ == self.RMA_SOFT:
-        self.soft_reset_()
+      if self.resetOnMoveAxis_ == True:
+        self.reset_self_()
       self.dirty_ = False
 
 
@@ -3373,8 +3372,6 @@ class AxisTrackerChainCurve:
      Subscribe as axis listener."""
   def move_by(self, x, timestamp):
     """x is relative."""
-    if self.dirty_ == True:
-      self.reset()
     self.busy_ = True
     v = None
     try:
@@ -3385,8 +3382,6 @@ class AxisTrackerChainCurve:
 
   def move(self, x, timestamp):
     """x is absolute."""
-    if self.dirty_ == True:
-      self.reset()
     self.busy_ = True
     v = None
     try:
@@ -3396,15 +3391,12 @@ class AxisTrackerChainCurve:
     return v
 
   def reset(self):
-    self.busy_, self.dirty_ = False, False
+    self.busy_ = False
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
     if self.busy_ == True:
       return
-    #TODO Remove reset on axis move and let subsequent curves decide if and how they need to reset themselves on axis movement
-    if self.resetOnAxisMove_ == True:
-      self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
@@ -3413,9 +3405,9 @@ class AxisTrackerChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, resetOnAxisMove):
-    self.next_, self.resetOnAxisMove_ = next, resetOnAxisMove
-    self.busy_, self.dirty_ = False, False
+  def __init__(self, next):
+    self.next_ = next
+    self.busy_ = False
 
 
 class OffsetAbsChainCurve:
@@ -5877,8 +5869,7 @@ def make_parser():
 
   def parseOffsetCurve(cfg, state):
     #axis tracker
-    resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, True)
-    top = AxisTrackerChainCurve(next=None, resetOnAxisMove=resetOnAxisMove)
+    top = AxisTrackerChainCurve(next=None)
     curve = top
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
@@ -5904,9 +5895,9 @@ def make_parser():
         pass
       def __init__(self, value=None):
         self.value_ = value
-    resetAccumulatedOnAxisMove = resolve_d(cfg, "resetAccumulatedOnAxisMove", state, resetOnAxisMove)
-    inputOp = ResetOp(0.0 if resetAccumulatedOnAxisMove else None)
-    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp)
+    resetOnMoveAxis = resolve_d(cfg, "resetOnMoveAxis", state, True)
+    inputOp = ResetOp(0.0 if resetOnMoveAxis else None)
+    accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
@@ -5931,8 +5922,7 @@ def make_parser():
 
   def parseAccelCurve(cfg, state):
     #axis tracker
-    resetOnAxisMove = resolve_d(cfg, "resetOnAxisMove", state, 1)
-    top = AxisTrackerChainCurve(next=None, resetOnAxisMove=True if resetOnAxisMove == 1 else False)
+    top = AxisTrackerChainCurve(next=None)
     bottom = top
     fullAxisName = resolve(cfg, "axis", state)
     axis = get_axis_by_full_name(fullAxisName, state)
@@ -5958,7 +5948,7 @@ def make_parser():
       relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
-      resetOnMoveAxis=DeltaRelChainCurve.RMA_SOFT if resetOnAxisMove == 2 else DeltaRelChainCurve.RMA_NONE
+      resetOnMoveAxis = resolve_d(cfg, "resetOnMoveAxis", state, True)
       accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=relativeOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
       top.set_next(accelChainCurve)
       bottom = accelChainCurve
