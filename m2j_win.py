@@ -215,6 +215,9 @@ class VJoystick:
     if not self.dirty_:
       return
     data = self.make_data_()
+    vjdStatus = self.dll_.GetVJDStatus(self.i_)
+    if vjdStatus != self.VJD_STAT_OWN:
+      raise RuntimeError("vJoy {} is not owned".format(self.i_)
     if not self.get_dll_().UpdateVJD(self.i_, data):
       raise RuntimeError("Failed to update vJoy {}".format(self.i_))
     self.dirty_ = False
@@ -227,18 +230,29 @@ class VJoystick:
     if not self.get_dll_().RelinquishVJD(self.i_):
       raise RuntimeError("Failed to close vJoy {}".format(self.i_))
 
-  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None, nativeAxisLimit=(1,32767)):
+  def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None):
     if (numAxes <= 0) or (numAxes > 8):
       raise RuntimeError("Number of axes must be in range from 1 to 8, got {}".format(numAxes))
     if (numButtons < 0) or (numButtons > 32):
       raise RuntimeError("Number of buttons must be in range from 0 to 32, got {}".format(numButtons))
-    self.i_, self.numAxes, self.numButtons_, self.limits_, self.factors_ = i, numAxes, numButtons,
+    vjdStatus = self.dll_.GetVJDStatus(self.i_)
+    if vjdStatus != self.VJD_STAT_FREE:
+      raise RuntimeError("vJoy {} is not free".format(self.i_)
+    self.i_, self.numAxes, self.numButtons_ = i, numAxes, numButtons,
     self.limits_ = [l for l in limits] if limits is not None else None
     self.factors_ = [f for f in factors] if factors is not None else None
-    self.nativeAxisLimit_ = nativeAxisLimit
+    for axisID in self.get_supported_axes():
+      nativeAxisID = self.w2n_axis_(axisID)
+      nativeAxisMin, nativeAxisMax = LONG(), LONG()
+      if self.dll_.getVJDAxisMin(self.i_, nativeAxisID, byref(nativeAxisMin)) == False:
+        raise RuntimeError("Failed to get min native axis value")
+      if self.dll_.getVJDAxisMax(self.i_, nativeAxisID, byref(nativeAxisMax)) == False:
+        raise RuntimeError("Failed to get max native axis value")
+      self.nativeLimits_[axisID] = (nativeAxisMin, nativeAxisMax)
     self.a_ = [0.0 for i in self.numAxes_]
     self.d_ = 0
     self.open()
+    self.update()
 
   def __del__(self):
     self.close()
@@ -279,7 +293,9 @@ class VJoystick:
     } JOYSTICK_POSITION, *PJOYSTICK_POSITION;
     """
     def av(axidID):
-      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], self.limits_[axisID][0], self.limits_[axisID][1], self.nativeAxisLimit_[0], self.nativeAxisLimit_[1])
+      limit = self.limits_[axisID]
+      nativeLimit = self.nativeLimits_[axisID]
+      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], limit[0], limit[1], nativeLimit[0], nativeLimit[1])
     fmt = "BlllllllllllllllllllIIII"
     data = struct.pack(
       fmt,
@@ -310,7 +326,30 @@ class VJoystick:
     )
     return data
 
+    def w2n_axis_(self, axisID):
+      HID_USAGE_X   = 0x30
+      HID_USAGE_Y   = 0x31
+      HID_USAGE_Z   = 0x32
+      HID_USAGE_RX  = 0x33
+      HID_USAGE_RY  = 0x34
+      HID_USAGE_RZ  = 0x35
+      HID_USAGE_SL0 = 0x36
+      HID_USAGE_SL1 = 0x37
+      HID_USAGE_WHL = 0x38
+      HID_USAGE_POV = 0x39
+      mapping = { codes.ABS_X : HID_USAGE_X, codes.ABS_Y : HID_USAGE_Y, codes.ABS_Z : HID_USAGE_Z, codes.ABS_RX : HID_USAGE_RX, codes.ABS_RY : HID_USAGE_RY, codes.ABS_RZ : HID_USAGE_RZ, codes.ABS_THROTTLE : HID_USAGE_SL0, codes.ABS_RUDDER : HID_USAGE_SL1 }
+      nativeAxisID = mapping.get(axisID, None)
+      if nativeAxisID is None:
+        raise LogicError("No native axis ID for  axis ID: {}".format(axisID))
+      return nativeAxisID
+
   axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+
+  VJD_STAT_OWN  = 0 #The  vJoy Device is owned by this application.
+  VJD_STAT_FREE = 1 #The  vJoy Device is NOT owned by any application (including this one).
+  VJD_STAT_BUSY = 2 #The  vJoy Device is owned by another application. It cannot be acquired by this application.
+  VJD_STAT_MISS = 3 #The  vJoy Device is missing. It either does not exist or the driver is down.
+  VJD_STAT_UNKN = 4 #Unknown
 
 
 @make_reporting_joystick
@@ -329,8 +368,7 @@ def parseVJoystickOutput(cfg, state):
   factors = cfg.get("factors")
   if factors is not None:
     factors = {name2code(n) : v for n,v in factors.items()}
-  nativeAxisLimit = cfg.get("nativeAxisLimit", (1, 32767))
-  j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors, nativeAxisLimit=nativeAxisLimit)
+  j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
   state["settings"]["updated"].append(lambda tick,ts : j.update())
   return j
 
