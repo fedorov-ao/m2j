@@ -5963,7 +5963,7 @@ def make_parser():
   curveParser.add("accel", parseAccelCurve)
 
   def parsePresetCurve(cfg, state):
-    config = state["settings"]["config"]
+    config = state.get_settings()["config"]
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
@@ -6008,7 +6008,7 @@ def make_parser():
         return cfg
       else:
         sectNames = ("presets",)
-        config = state["settings"]["config"]
+        config = state.get_settings()["config"]
         full = {}
         for baseName in bases:
           #logger.debug("Parsing base : {}".format(baseName))
@@ -6027,7 +6027,7 @@ def make_parser():
 
   def parseExternal(propName, groupNames):
     def parseExternalOp(cfg, state):
-      config = state["settings"]["config"]
+      config = state.get_settings()["config"]
       name = cfg.get(propName, None)
       if name is None:
         name = state.resolve(cfg, "name")
@@ -6377,7 +6377,7 @@ def make_parser():
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
     mcs = MultiCurveSink(curves, op)
-    state["settings"]["updated"].append(lambda tick,ts : mcs.update(tick, ts))
+    state.get_settings()["updated"].append(lambda tick,ts : mcs.update(tick, ts))
     return mcs
   actionParser.add("moveOneOf", parseMoveOneOf)
 
@@ -6427,7 +6427,7 @@ def make_parser():
 
   def parseSetKeyState_(cfg, state, s):
     output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state["settings"]["outputs"][output]
+    output = state.get_settings()["outputs"][output]
     key = name2code(key)
     return SetButtonState(output, key, s)
 
@@ -6446,7 +6446,7 @@ def make_parser():
 
   def parseClick(cfg, state):
     output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state["settings"]["outputs"][output]
+    output = state.get_settings()["outputs"][output]
     key = name2code(key)
     numClicks = int(state.resolve_d(cfg, "numClicks", 1))
     delay = float(state.resolve_d(cfg, "delay", 0.0))
@@ -6478,7 +6478,7 @@ def make_parser():
     clicker = Clicker(output, key, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
-    state["settings"]["updated"].append(updateOp)
+    state.get_settings()["updated"].append(updateOp)
     return eventOp
   actionParser.add("click", parseClick)
 
@@ -6531,7 +6531,7 @@ def make_parser():
     state.setdefault("poseTracker", PoseTracker(poseManager))
     poseName = state.resolve(cfg, "pose")
     if not poseManager.has_pose(poseName):
-      poses = state["settings"]["config"]["poses"]
+      poses = state.get_settings()["config"]["poses"]
       fullAxesNamesAndValues = poses[poseName]
       pose = []
       for fullAxisName,value in fullAxesNamesAndValues.items():
@@ -6863,7 +6863,7 @@ def make_parser():
   mainParser.add("output", outputParser)
 
   def get_or_make_output(name, state):
-    settings = state["settings"]
+    settings = state.get_settings()
     outputs = settings["outputs"]
     config = settings["config"]
     j = outputs.get(name, None)
@@ -6894,7 +6894,7 @@ def make_parser():
     rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
     next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
-    state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
+    state.get_settings()["updated"].append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateLimit", parseRateLimitOutput)
 
@@ -6904,7 +6904,7 @@ def make_parser():
     limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
     next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateSettingJoystick(next, rates, limits)
-    state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
+    state.get_settings()["updated"].append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateSet", parseRateSettingOutput)
 
@@ -6927,7 +6927,7 @@ def make_parser():
 
   @make_reporting_joystick
   def parseMappingOutput(cfg, state):
-    outputs = state["settings"]["outputs"]
+    outputs = state.get_settings()["outputs"]
     j = MappingJoystick()
     for fromAxis,to in state.resolve_d(cfg, "axisMapping", {}).items():
       toJoystick, toAxis = fn2sc(state.resolve(to, "to"))
@@ -6945,7 +6945,7 @@ def make_parser():
   @make_reporting_joystick
   def parseOpentrackOutput(cfg, state):
     j = Opentrack(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")))
-    state["settings"]["updated"].append(lambda tick,ts : j.send())
+    state.get_settings()["updated"].append(lambda tick,ts : j.send())
     return j
   outputParser.add("opentrack", parseOpentrackOutput)
 
@@ -6959,7 +6959,7 @@ def make_parser():
     j = UdpJoystick(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")), packetMakers[state.resolve(cfg, "format")], int(state.resolve_d(cfg, "numPackets", 1)))
     for a,l in state.resolve_d(cfg, "limits", {}).items():
       j.set_limits(name2code(a), l)
-    state["settings"]["updated"].append(lambda tick,ts : j.send())
+    state.get_settings()["updated"].append(lambda tick,ts : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
