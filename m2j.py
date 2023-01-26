@@ -216,9 +216,17 @@ class ParserState:
     stack.pop()
 
   def at(self, n, i):
-    assert n in self.stacks_
-    stack = self.stacks_[n]
-    return None if len(stack) == 0 else stack[-(1+i)]
+    stack = self.stacks_.get(n)
+    return None if (stack is None or len(stack) == 0) else stack[-(1+i)]
+
+  def set(self, n, v):
+    self.values_[n] = v
+
+  def setdefault(self, n, v):
+    return self.values_.setdefault(n, v)
+
+  def get(self, n, dfault=None):
+    return self.values_.get(n, dfault)
 
   def get_obj(self, name, nameSep=":", memberSep="."):
     sink = self.at("sinks", 0)
@@ -307,7 +315,7 @@ class ParserState:
     v = get_nested_d(d, name, dfault)
     return self.deref(v, v)
 
-  def resolve(self. d, name):
+  def resolve(self, d, name):
     r = self.resolve_d(d, name, None)
     if r is None:
       #TODO Use more appropriate exception
@@ -347,6 +355,7 @@ class ParserState:
     self.settings_ = settings
     self.parser_ = settings["parser"]
     self.stacks_ = {}
+    self.values_ = {}
 
 
 def calc_hash(s):
@@ -488,7 +497,8 @@ def split_full_name2(s, state, sep="."):
   elif s[0] == "-":
     st = False
     s = s[1:]
-  s = state.deref(s, s)
+  if state is not None:
+    s = state.deref(s, s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else get_source_hash(source)
@@ -5609,7 +5619,6 @@ def make_parser():
   mainParser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
-    assert("curves" in state)
     axisCurves = state.at("curves", 0).setdefault(fullAxisName, [])
     axisCurves.append(curve)
 
@@ -6193,6 +6202,7 @@ def make_parser():
     if objectsCfg is not None:
       try:
         headSink=state.at("sinks", 0)
+        assert headSink is not None
         state.make_objs(objectsCfg, lambda k,o : headSink.set_object(k, o))
         return ObjectsProxy(headSink)
       except RuntimeError as e:
@@ -6520,8 +6530,7 @@ def make_parser():
   actionParser.add("cycleOps", parseCycleOps)
 
   def createPose_(cfg, state):
-    state.setdefault("poseManager", AxisPoseManager())
-    poseManager = state["poseManager"]
+    poseManager = state.setdefault("poseManager", AxisPoseManager())
     state.setdefault("poseTracker", PoseTracker(poseManager))
     poseName = state.resolve(cfg, "pose")
     if not poseManager.has_pose(poseName):
@@ -6536,35 +6545,35 @@ def make_parser():
   def parseUpdatePose(cfg, state):
     createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseManager = state["poseManager"]
+    poseManager = state.get("poseManager")
     return UpdatePose(poseManager, poseName)
   actionParser.add("updatePose", parseUpdatePose)
 
   def parsePoseTo(cfg, state):
     createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseManager = state["poseManager"]
+    poseManager = state.get("poseManager")
     return PoseTo(poseManager, poseName)
   actionParser.add("poseTo", parsePoseTo)
 
   def parseIncPoseCount(cfg, state):
     createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state["poseTracker"]
+    poseTracker = state.get("poseTracker")
     return lambda e : poseTracker.inc(poseName)
   actionParser.add("incPoseCount", parseIncPoseCount)
 
   def parseDecPoseCount(cfg, state):
     createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state["poseTracker"]
+    poseTracker = state.get("poseTracker")
     return lambda e : poseTracker.dec(poseName)
   actionParser.add("decPoseCount", parseDecPoseCount)
 
   def parseResetPoseCount(cfg, state):
     createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state["poseTracker"]
+    poseTracker = state.get("poseTracker")
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
@@ -6793,7 +6802,7 @@ def make_parser():
             logger.warning("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 100)))
             continue
           except Exception as e:
-            logger.error("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 100)))
+            logger.error("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 200)))
             raise ParserError(c)
           if t is None:
             logger.warning("Could not parse {} '{}')".format(name, str2(c, 100)))

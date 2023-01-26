@@ -502,7 +502,7 @@ def run():
       except Exception as e:
         logger.error("Could not create or recreate loop; reason: '{}'".format(e))
         logger.error("===Traceback begin===")
-        for l in traceback.format_exc().splitlines()[-21:]:
+        for l in traceback.format_exc().splitlines()[-31:]:
           logger.error(l)
         logger.error("===Traceback end===")
         if settings.get("loop") is not None:
