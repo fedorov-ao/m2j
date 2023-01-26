@@ -441,7 +441,7 @@ def parseEvdevJoystickOutput(cfg, state):
       axesDatum[axisID] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
-    state["settings"]["updated"].append(lambda tick,ts : j.update(tick, ts))
+    state.get_settings()["updated"].append(lambda tick,ts : j.update(tick, ts))
   return j
 
 
@@ -452,7 +452,7 @@ def run():
     outputParser = parser.get("output")
     orderOp = lambda i : i[1].get("seq", 100000)
     cfg = settings["config"]["outputs"]
-    state = make_state(settings)
+    state = ParserState(settings)
     outputs = {}
     settings["outputs"] = outputs
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)

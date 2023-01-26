@@ -5153,7 +5153,7 @@ def init_main_sink(settings, make_next):
     def __init__(self, sink):
       self.sink_, self.s_ = sink, False
 
-  state = make_state(settings)
+  state = ParserState(settings)
   toggler = Toggler(stateSink)
   etParser = settings["parser"].get("et")
 
@@ -5373,7 +5373,7 @@ def init_preset_config(settings):
   else:
     try:
       parser = settings["parser"]
-      state = make_state(settings)
+      state = ParserState(settings)
       r = parser("sink", cfg, state)
       return r
     except KeyError2 as e:

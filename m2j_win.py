@@ -157,7 +157,7 @@ def parsePPJoystickOutput(cfg, state):
   if factors is not None:
     factors = {name2code(n) : v for n,v in factors.items()}
   j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
-  state["settings"]["updated"].append(lambda tick, ts : j.update())
+  state.get_settings()["updated"].append(lambda tick, ts : j.update())
   return j
 
 
@@ -369,7 +369,7 @@ def parseVJoystickOutput(cfg, state):
   if factors is not None:
     factors = {name2code(n) : v for n,v in factors.items()}
   j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
-  state["settings"]["updated"].append(lambda tick,ts : j.update())
+  state.get_settings()["updated"].append(lambda tick,ts : j.update())
   return j
 
 
@@ -1318,7 +1318,7 @@ def run():
     outputParser = parser.get("output")
     orderOp = lambda i : i[1].get("seq", 100000)
     cfg = settings["config"]["outputs"]
-    state = make_state(settings)
+    state = ParserState(settings)
     outputs = {}
     settings["outputs"] = outputs
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
