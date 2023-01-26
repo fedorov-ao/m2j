@@ -332,6 +332,12 @@ class ParserState:
       axis = outputAxes[axisId]
     return axis
 
+  def get_parser(self):
+    return self.parser_
+
+  def get_settings(self):
+    return self.settings_
+
   def __init__(self, settings):
     self.settings_ = settings
     self.parser_ = settings["parser"]
@@ -4681,7 +4687,7 @@ def make_curve_makers():
         #TODO axis not in state anymore
         raise Exception("{}.{}.{}: Curve type not set".format(state["set"], state["mode"], state["axis"]))
       state["curve"] = curve
-      return state["parser"]("curve", cfg, state)
+      return state.get_parser()("curve", cfg, state)
 
     def parseAxes(cfg, state):
       r = {}
@@ -5588,7 +5594,7 @@ def make_parser():
   def get_op(cfg, state):
     op = state.resolve(cfg, "op")
     if type(op) in (str, unicode):
-      op = state["parser"]("op", cfg, state)
+      op = state.get_parser()("op", cfg, state)
     return op
 
   #Curves
@@ -5598,9 +5604,9 @@ def make_parser():
   mainParser.add("curve", curveParser)
 
   def add_curve_to_state(fullAxisName, curve, state):
-      assert("curves" in state)
-      axisCurves = state["curves"].setdefault(fullAxisName, [])
-      axisCurves.append(curve)
+    assert("curves" in state)
+    axisCurves = state["curves"].setdefault(fullAxisName, [])
+    axisCurves.append(curve)
 
   def parsePoints(cfg, state):
     """Helper"""
@@ -5791,7 +5797,7 @@ def make_parser():
       return sensOp
     else:
       axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
-      approx = state["parser"]("op", state.resolve(cfg, "sensMod.op"), state)
+      approx = state.get_parser()("op", state.resolve(cfg, "sensMod.op"), state)
       class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
@@ -5818,11 +5824,11 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state.get_parser()("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
-    sensOp = ApproxOp(approx=state["parser"]("op", state.resolve(cfg, "absolute"), state))
+    sensOp = ApproxOp(approx=state.get_parser()("op", state.resolve(cfg, "absolute"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     add_curve_to_state(fullAxisName, curve, state)
     return curve
@@ -5836,9 +5842,9 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state["parser"]("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state.get_parser()("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = ApproxOp(approx=state["parser"]("op", state.resolve(cfg, "absolute"), state))
+    outputOp = ApproxOp(approx=state.get_parser()("op", state.resolve(cfg, "absolute"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
@@ -5887,7 +5893,7 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+    relativeOutputOp = ApproxOp(approx=state.get_parser()("op", relativeCfg, state))
     relativeInputOp = makeIterativeInputOp(cfg, relativeOutputOp, state)
     relativeChainCurve = TransformAbsChainCurve(next=None, inputOp=relativeInputOp, outputOp=relativeOutputOp)
     accumulateChainCurve.set_next(relativeChainCurve)
@@ -5896,7 +5902,7 @@ def make_parser():
     relativeChainCurve.set_next(offsetChainCurve)
     #transform offset
     absoluteCfg = state.resolve(cfg, "absolute")
-    absoluteOutputOp = ApproxOp(approx=state["parser"]("op", absoluteCfg, state))
+    absoluteOutputOp = ApproxOp(approx=state.get_parser()("op", absoluteCfg, state))
     absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
     absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
     offsetChainCurve.set_next(absoluteChainCurve)
@@ -5921,7 +5927,7 @@ def make_parser():
       valueDDOp = SignDistanceDeltaOp()
       resetOpCfg = state.resolve_d(relativeCfg, "resetOp", None)
       if resetOpCfg is not None:
-        resetOp = state["parser"]("op", resetOpCfg, state)
+        resetOp = state.get_parser()("op", resetOpCfg, state)
         def resetOp2(distance,dt):
           factor = resetOp(dt)
           return factor*distance
@@ -5932,7 +5938,7 @@ def make_parser():
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
       deltaDDOp = DistanceDeltaToDeltaOp(deltaDOp)
-      relativeOutputOp = ApproxOp(approx=state["parser"]("op", relativeCfg, state))
+      relativeOutputOp = ApproxOp(approx=state.get_parser()("op", relativeCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
@@ -5944,7 +5950,7 @@ def make_parser():
     if absoluteCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
-      absoluteOutputOp = ApproxOp(approx=state["parser"]("op", absoluteCfg, state))
+      absoluteOutputOp = ApproxOp(approx=state.get_parser()("op", absoluteCfg, state))
       absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
       absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
       relToAbsChainCurve.set_next(absoluteChainCurve)
@@ -5967,19 +5973,19 @@ def make_parser():
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
-      push_args(state.resolve_d(cfg, "args", {}), state)
+      state.push_args(state.resolve_d(cfg, "args", {}))
       try:
         #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
-        return state["parser"]("curve", presetCfg, state)
+        return state.get_parser()("curve", presetCfg, state)
       finally:
-        pop_args(state)
+        state.pop_args()
     else:
       presetCfgStack = CfgStack(presetCfg)
       try:
         for n in ("axis", "controlling", "leader", "follower", "print"):
           if n in cfg:
             presetCfgStack.push(n, cfg[n])
-        curve = state["parser"]("curve", presetCfg, state)
+        curve = state.get_parser()("curve", presetCfg, state)
         return curve
       finally:
         presetCfgStack.pop_all()
@@ -6031,11 +6037,11 @@ def make_parser():
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
-      push_args(state.resolve_d(cfg, "args", {}), state)
+      state.push_args(state.resolve_d(cfg, "args", {}))
       try:
-        return state["parser"]("sink", cfg2, state)
+        return state.get_parser()("sink", cfg2, state)
       finally:
-        pop_args(state)
+        state.pop_args()
     return parseExternalOp
 
   def sinkParserKeyOp(cfg, state):
@@ -6104,8 +6110,8 @@ def make_parser():
   @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
-    parser = state["parser"].get("sc")
-    push_args(state.resolve_d(cfg, "args", {}), state)
+    parser = state.get_parser().get("sc")
+    state.push_args(state.resolve_d(cfg, "args", {}))
     push_in_state("curvesStack", {}, state)
     state["curves"] = state["curvesStack"][-1]
     #Init headsink
@@ -6165,7 +6171,7 @@ def make_parser():
       finally:
         state["sinks"].pop()
     finally:
-      pop_args(state)
+      state.pop_args()
       pop_in_state("curvesStack", state)
       state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
   sinkParser.add("sink", parseSink)
@@ -6186,7 +6192,7 @@ def make_parser():
     if objectsCfg is not None:
       try:
         headSink=state["sinks"][-1]
-        init_objects(objectsCfg, lambda k,o : headSink.set_object(k, o), state)
+        state.make_objs(objectsCfg, lambda k,o : headSink.set_object(k, o))
         return ObjectsProxy(headSink)
       except RuntimeError as e:
         raise RuntimeError("{} (encountered when parsing objects cfg {})".format(e, str2(objectsCfg, 100)))
@@ -6223,7 +6229,7 @@ def make_parser():
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
           #logger.debug("{}: parsing mode:".format(name, modeName))
-          child = state["parser"]("sink", modeCfg, state)
+          child = state.get_parser()("sink", modeCfg, state)
           modeSink.add(modeName, child)
         except Exception as e:
           if allowMissingModes:
@@ -6247,7 +6253,7 @@ def make_parser():
     sink = StateSink()
     stateCfg = state.resolve(cfg, "state")
     if "next" in stateCfg:
-      next = state["parser"]("sink", stateCfg["next"], state)
+      next = state.get_parser()("sink", stateCfg["next"], state)
       sink.set_next(next)
     if "initialState" in stateCfg:
       sink.set_state(stateCfg["initialState"])
@@ -6255,7 +6261,7 @@ def make_parser():
   scParser.add("state", parseState)
 
   def parseNext(cfg, state):
-    parser = state["parser"]
+    parser = state.get_parser()
     r = parser("sink", state.resolve(cfg, "next"), state)
     if r is None:
       #logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
@@ -6351,7 +6357,7 @@ def make_parser():
   actionParser.add("changeSens", parseChangeSens)
 
   def parseMove(cfg, state):
-    curve = state["parser"]("curve", cfg, state)
+    curve = state.get_parser()("curve", cfg, state)
     return MoveCurve(curve)
   actionParser.add("move", parseMove)
 
@@ -6359,7 +6365,7 @@ def make_parser():
     axesData = state.resolve(cfg, "axes")
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
-      curve = state["parser"]("curve", curveCfg, state)
+      curve = state.get_parser()("curve", curveCfg, state)
       curves[fn2hc(state.deref(fullInputAxisName, fullInputAxisName))] = curve
     op = None
     if state.resolve(cfg, "op") == "min":
@@ -6569,7 +6575,7 @@ def make_parser():
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
   def parseSetStateOnInit(cfg, state):
-    linker = state["parser"]("curve", cfg, state)
+    linker = state.get_parser()("curve", cfg, state)
     return SetAxisLinkerState(linker)
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
@@ -6802,14 +6808,14 @@ def make_parser():
         return r
 
       def parseActionOrSink(cfg, state):
-        mainParser = state["parser"]
+        mainParser = state.get_parser()
         try:
           return mainParser("action", cfg, state)
         except ParserNotFoundError:
           #logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
           return mainParser("sink", cfg, state)
 
-      mainParser = state["parser"]
+      mainParser = state.get_parser()
       ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
         logger.warning("No 'on' objects  were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
@@ -6862,7 +6868,7 @@ def make_parser():
     config = settings["config"]
     j = outputs.get(name, None)
     if j is None:
-      j = state["parser"]("output", config["outputs"][name], state)
+      j = state.get_parser()("output", config["outputs"][name], state)
       outputs[name] = j
     return j
 
@@ -6886,7 +6892,7 @@ def make_parser():
   @make_reporting_joystick
   def parseRateLimitOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
-    next = state["parser"]("output", state.resolve(cfg, "next"), state)
+    next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
@@ -6896,7 +6902,7 @@ def make_parser():
   def parseRateSettingOutput(cfg, state):
     rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
     limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
-    next = state["parser"]("output", state.resolve(cfg, "next"), state)
+    next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateSettingJoystick(next, rates, limits)
     state["settings"]["updated"].append(lambda tick,ts : j.update(tick))
     return j
@@ -6904,14 +6910,14 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRelativeOutput(cfg, state):
-    next = state["parser"]("output", state.resolve(cfg, "next"), state)
+    next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RelativeHeadMovementJoystick(next=next, r=state.resolve_d(cfg, "clampRadius", float("inf")), stick=state.resolve_d(cfg, "stick", True))
     return j
   outputParser.add("relative", parseRelativeOutput)
 
   @make_reporting_joystick
   def parseCompositeOutput(cfg, state):
-    parser = state["parser"].get("output")
+    parser = state.get_parser().get("output")
     children = parse_list(state.resolve(cfg, "children"), state, parser)
     checkChild = state.resolve(cfg, "checkChild")
     union = state.resolve(cfg, "union")
