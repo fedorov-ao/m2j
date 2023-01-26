@@ -215,8 +215,13 @@ class ParserState:
     assert len(stack) > 0
     stack.pop()
 
+  def at(self, n, i):
+    assert n in self.stacks_
+    stack = self.stacks_[n]
+    return None if len(stack) == 0 else stack[-(1+i)]
+
   def get_obj(self, name, nameSep=":", memberSep="."):
-    sink = self.stacks_["sinks"][-1]
+    sink = self.at("sinks", 0)
     objectName = name.split(nameSep)
     obj = sink.get_object(objectName[0])
     if obj is None:
@@ -5605,7 +5610,7 @@ def make_parser():
 
   def add_curve_to_state(fullAxisName, curve, state):
     assert("curves" in state)
-    axisCurves = state["curves"].setdefault(fullAxisName, [])
+    axisCurves = state.at("curves", 0).setdefault(fullAxisName, [])
     axisCurves.append(curve)
 
   def parsePoints(cfg, state):
@@ -6112,14 +6117,11 @@ def make_parser():
     """Assembles sink components in certain order."""
     parser = state.get_parser().get("sc")
     state.push_args(state.resolve_d(cfg, "args", {}))
-    push_in_state("curvesStack", {}, state)
-    state["curves"] = state["curvesStack"][-1]
+    state.push("curves", {})
     #Init headsink
-    state.setdefault("sinks", [])
-    sinks = state["sinks"]
-    parent = sinks[-1] if len(sinks) > 0 else None
+    parent = state.at("sinks", 0)
     headSink = HeadSink(parent=parent)
-    state["sinks"].append(headSink)
+    state.push("sinks", headSink)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     #logger.debug("parsing sink {}".format(cfg))
     def parse_component(name):
@@ -6169,11 +6171,10 @@ def make_parser():
           headSink.set_next(sink[0])
           return headSink
       finally:
-        state["sinks"].pop()
+        state.pop("sinks")
     finally:
       state.pop_args()
-      pop_in_state("curvesStack", state)
-      state["curves"] = state["curvesStack"][-1] if len(state["curvesStack"]) > 0 else None
+      state.pop("curves")
   sinkParser.add("sink", parseSink)
 
   #Sink components
@@ -6191,7 +6192,7 @@ def make_parser():
     #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
     if objectsCfg is not None:
       try:
-        headSink=state["sinks"][-1]
+        headSink=state.at("sinks", 0)
         state.make_objs(objectsCfg, lambda k,o : headSink.set_object(k, o))
         return ObjectsProxy(headSink)
       except RuntimeError as e:
@@ -6270,10 +6271,6 @@ def make_parser():
   scParser.add("next", parseNext)
 
   #Actions
-  def get_depth(cfg, state):
-    """Helper."""
-    return -(1+state.resolve_d(cfg, "depth", 0))
-
   def get_sink(cfg, state):
     """Helper. Retrieves sink from sinks stack by depth or by object name.
        depth: 0 - current component sink, 1 - its parent, etc
@@ -6281,10 +6278,7 @@ def make_parser():
     sink = state.resolve_d(cfg, "sink", None)
     if sink is None:
       #logger.debug("Cannot get target sink by '{}'".format(sinkName))
-      sinks = state.get("sinks")
-      if sinks is None or len(sinks) == 0:
-        raise RuntimeError("Not in a sink when parsing '{}'".format(cfg))
-      sink = sinks[get_depth(cfg, state)]
+      sink = state.at("sinks", state.resolve_d(cfg, "depth", 0))
     return sink
 
   def get_component(name, cfg, state):
@@ -6484,7 +6478,7 @@ def make_parser():
 
   def parseResetCurves(cfg, state):
     curvesToReset = []
-    allCurves = state.get("curves")
+    allCurves = state.at("curves", 0)
     assert(allCurves is not None)
     if "axes" in cfg:
       for fullAxisName in state.resolve(cfg, "axes"):
@@ -6494,7 +6488,7 @@ def make_parser():
         else:
           curvesToReset += curves
     elif "objects" in cfg:
-      sink = state["sinks"][-1]
+      sink = state.at("sinks", 0)
       for objectName in state.resolve(cfg, "objects"):
         curve = sink.get_object(objectName)
         if curve is None:
