@@ -204,128 +204,138 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
-def make_state(settings):
-    return { "settings" : settings, "parser" : settings["parser"] }
+class ParserState:
+  def push(self, n, v):
+    self.stacks_.setdefault(n, [])
+    self.stacks_[n].append(v)
 
+  def pop(self, n):
+    assert n in self.stacks_
+    stack = self.stacks_[n]
+    assert len(stack) > 0
+    stack.pop()
 
-def push_in_state(n, v, state):
-  state.setdefault(n, [])
-  state[n].append(v)
+  def get_obj(self, name, nameSep=":", memberSep="."):
+    sink = self.stacks_["sinks"][-1]
+    objectName = name.split(nameSep)
+    obj = sink.get_object(objectName[0])
+    if obj is None:
+      allObjects = []
+      while sink is not None:
+        allObjects.append(str2(sink.objects_.keys()))
+        sink = sink.get_parent()
+      raise RuntimeError("Object '{}' was not created (available objects are: '{}').".format(str2(name), allObjects))
+    if len(objectName) > 1:
+      for s in objectName[1].split(memberSep):
+        obj = obj.get(s)
+        if obj is None:
+          raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
+    return obj
 
-
-def pop_in_state(n, state):
-  assert n in state
-  assert len(state[n]) > 0
-  state[n].pop()
-
-
-def get_arg(name, state):
-  if state is None:
-    raise RuntimeError("Need state to get arg {}".format(name))
-  args = state.get("args")
-  if args is not None:
-    r = get_nested_from_stack_d(args, name, None)
-    if r is None:
-      raise RuntimeError("No such arg: {}".format(str2(name)))
-    else:
-      return r
-  else:
-    raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
-
-
-def deref(name, state, dfault=None):
-  if type(name) in (dict, collections.OrderedDict):
-    objName = get_nested_d(name, "obj", None)
-    if objName is not None:
-      return get_obj(objName, state)
-    argName = get_nested_d(name, "arg", None)
-    if argName is not None:
-      return get_arg(argName, state)
-  elif type(name) in (str, unicode):
-    pa, po = "arg:", "obj:"
-    lpa, lpo = len(pa), len(po)
-    if name[:lpo] == po:
-      objName = name[lpo:]
-      return get_obj(objName, state)
-    elif name[:lpa] == pa:
-      argName = name[lpa:]
-      return get_arg(argName, state)
-  #Fallback, not in else block!
-  return dfault
-
-
-def resolve_d(d, name, state, dfault=None):
-  if type(state) not in (dict, collections.OrderedDict):
-    raise RuntimeError("state must be a dictionary, got {} instead".format(state))
-  v = get_nested_d(d, name, dfault)
-  return deref(v, state, v)
-
-
-def resolve(d, name, state):
-  r = resolve_d(d, name, state, None)
-  if r is None:
-    #TODO Use more appropriate exception
-    raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d)))
-  return r
-
-
-def resolve_args(args, state):
-  r = collections.OrderedDict()
-  for n,a in args.items():
-    r[n] = resolve_args(a, state) if type(a) in (dict, collections.OrderedDict) else deref(a, state, a)
-  return r
-
-
-def push_args(argsCfg, state):
-  push_in_state("args", resolve_args(argsCfg, state), state)
-
-
-def pop_args(state):
-  pop_in_state("args", state)
-
-
-def get_obj(name, state, nameSep=":", memberSep="."):
-  if state is None:
-    raise RuntimeError("Need state to get object '{}'".format(name))
-  sink = state["sinks"][-1]
-  objectName = name.split(nameSep)
-  obj = sink.get_object(objectName[0])
-  if obj is None:
-    allObjects = []
-    while sink is not None:
-      allObjects.append(str2(sink.objects_.keys()))
-      sink = sink.get_parent()
-    raise RuntimeError("Object '{}' was not created (available objects are: '{}').".format(str2(name), allObjects))
-  if len(objectName) > 1:
-    for s in objectName[1].split(memberSep):
-      obj = obj.get(s)
-      if obj is None:
-        raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
-  return obj
-
-
-def init_objects(cfg, cb, state):
-  parser = state["parser"]
-  for k,v in cfg.items():
-    o = None
-    #logger.debug("Constructing object: {}".format(k))
-    #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
-    if type(v) not in (dict, collections.OrderedDict):
-      raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
-    n = v.get("class", None)
-    if n is not None:
-      o = parser(n, v, state)
-    else:
-      for n in ("literal", "op", "curve", "action", "et", "output"):
-        if n in v:
-          o = parser(n, v, state)
-          #break is needed to avoid executing the "else" block
-          break
+  def make_objs(self, cfg, cb):
+    parser = self.parser_
+    for k,v in cfg.items():
+      o = None
+      #logger.debug("Constructing object: {}".format(k))
+      #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
+      if type(v) not in (dict, collections.OrderedDict):
+        raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
+      n = v.get("class", None)
+      if n is not None:
+        o = parser(n, v, self)
       else:
-        o = parser("sink", v, state)
-    if o is None:
-      raise RuntimeError("Could not create object from: {}".format(str2(v)))
-    cb(k, o)
+        for n in ("literal", "op", "curve", "action", "et", "output"):
+          if n in v:
+            o = parser(n, v, self)
+            #break is needed to avoid executing the "else" block
+            break
+        else:
+          o = parser("sink", v, self)
+      if o is None:
+        raise RuntimeError("Could not create object from: {}".format(str2(v)))
+      cb(k, o)
+
+  def get_arg(self, name):
+    args = self.stacks_.get("args")
+    if args is not None:
+      r = get_nested_from_stack_d(args, name, None)
+      if r is None:
+        raise RuntimeError("No such arg: {}".format(str2(name)))
+      else:
+        return r
+    else:
+      raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
+
+  def resolve_args(self, args):
+    r = collections.OrderedDict()
+    for n,a in args.items():
+      r[n] = self.resolve_args(a) if type(a) in (dict, collections.OrderedDict) else self.deref(a, a)
+    return r
+
+  def push_args(self, argsCfg):
+    self.push("args", self.resolve_args(argsCfg))
+
+  def pop_args(self):
+    self.pop("args")
+
+  def deref(self, name, dfault=None):
+    if type(name) in (dict, collections.OrderedDict):
+      objName = get_nested_d(name, "obj", None)
+      if objName is not None:
+        return self.get_obj(objName)
+      argName = get_nested_d(name, "arg", None)
+      if argName is not None:
+        return self.get_arg(argName)
+    elif type(name) in (str, unicode):
+      pa, po = "arg:", "obj:"
+      lpa, lpo = len(pa), len(po)
+      if name[:lpo] == po:
+        objName = name[lpo:]
+        return self.get_obj(objName)
+      elif name[:lpa] == pa:
+        argName = name[lpa:]
+        return self.get_arg(argName)
+    #Fallback, not in else block!
+    return dfault
+
+  def resolve_d(self, d, name, dfault=None):
+    v = get_nested_d(d, name, dfault)
+    return self.deref(v, v)
+
+  def resolve(self. d, name):
+    r = self.resolve_d(d, name, None)
+    if r is None:
+      #TODO Use more appropriate exception
+      raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d)))
+    return r
+
+  def get_axis_by_full_name(self, fullAxisName):
+    outputName, axisName = fn2sn(fullAxisName)
+    settings = self.settings_
+    if "axes" not in settings:
+      settings["axes"] = {}
+    allAxes = settings["axes"]
+    if outputName not in allAxes:
+      #raise RuntimeError("No axes were initialized for '{}' (when parsing '{}')".format(outputName, fullAxisName))
+      allAxes[outputName] = {}
+    outputAxes = allAxes[outputName]
+    axisId = name2code(axisName)
+    axis = None
+    if axisId not in outputAxes:
+      #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
+      outputs = settings["outputs"]
+      o = outputs[outputName]
+      isReportingJoystick = type(o) is ReportingJoystick
+      axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
+      outputAxes[axisId] = axis
+    else:
+      axis = outputAxes[axisId]
+    return axis
+
+  def __init__(self, settings):
+    self.settings_ = settings
+    self.parser_ = settings["parser"]
+    self.stacks_ = {}
 
 
 def calc_hash(s):
@@ -5500,29 +5510,6 @@ class DerefParser:
   def __init__(self, parser):
     self.p_ = parser
 
-
-def get_axis_by_full_name(fullAxisName, state):
-  outputName, axisName = fn2sn(fullAxisName)
-  settings = state["settings"]
-  if "axes" not in settings:
-    settings["axes"] = {}
-  allAxes = settings["axes"]
-  if outputName not in allAxes:
-    #raise RuntimeError("No axes were initialized for '{}' (when parsing '{}')".format(outputName, fullAxisName))
-    allAxes[outputName] = {}
-  outputAxes = allAxes[outputName]
-  axisId = name2code(axisName)
-  axis = None
-  if axisId not in outputAxes:
-    #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
-    outputs = settings["outputs"]
-    o = outputs[outputName]
-    isReportingJoystick = type(o) is ReportingJoystick
-    axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
-    outputAxes[axisId] = axis
-  else:
-    axis = outputAxes[axisId]
-  return axis
 
 def make_parser():
   def make_double_deref_parser(keyOp):
