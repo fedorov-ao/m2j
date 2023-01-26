@@ -150,16 +150,16 @@ class CfgStack:
   DELETE = 1
 
 
-def get_nested(d, name):
+def get_nested(d, name, sep = "."):
   try:
     if len(name) != 0:
-      tokens = name.split(".")
+      tokens = name.split(sep)
       for t in tokens:
         nd = d.get(t)
         if nd is None:
-          path = str(".".join(tokens[:tokens.index(t)]))
-          token = ".".join((path, str(t))) if len(path) != 0 else str(t)
-          keys = [".".join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
+          path = str(sep.join(tokens[:tokens.index(t)]))
+          token = sep.join((path, str(t))) if len(path) != 0 else str(t)
+          keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
           raise KeyError2(token, keys)
         d = nd
       if d is not None:
@@ -171,9 +171,9 @@ def get_nested(d, name):
     raise
 
 
-def get_nested_d(d, name, dfault = None):
+def get_nested_d(d, name, dfault = None, sep = "."):
   if len(name) != 0:
-    tokens = name.split(".")
+    tokens = name.split(sep)
     for t in tokens:
       nd = d.get(t)
       if nd is None:
@@ -6094,12 +6094,12 @@ def make_parser():
     def set(self, name, component):
       self.set_component(name, component)
 
-    def get_object(self, k):
-      o = get_nested_d(self.objects_, k, None)
+    def get_object(self, k, sep = "."):
+      o = get_nested_d(self.objects_, k, None, sep)
       if o is None:
         sink = self.parent_
         while sink is not None:
-          o = sink.get_object(k)
+          o = sink.get_object(k, sep)
           if o is None:
             sink = sink.get_parent()
           else:
