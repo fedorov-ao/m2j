@@ -1538,7 +1538,7 @@ class BindSink:
     del self.children_[:]
 
   def get(self, name):
-    """Returns binding proxy that returns ed op on .get("input") and output action or sink on .get("output").
+    """Returns binding proxy that returns ed op on .get("on") and output action or sink on .get("do").
        Since ed can be chared among several outputs, changing given ed will affect other bindings!
     """
     class BindingProxy:
@@ -1546,7 +1546,7 @@ class BindSink:
         return self.m_.get(propName, None)
       __slots__ = ("m_",)
       def __init__(self, i, o):
-        self.m_ = {"input" : i, "output" : o}
+        self.m_ = {"on" : i, "do" : o}
     for childrenInfo in self.children_:
       for childInfo in childrenInfo.children:
         if childInfo.name == name:
