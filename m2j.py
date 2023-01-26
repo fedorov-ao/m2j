@@ -477,7 +477,7 @@ def split_full_name2(s, state, sep="."):
   elif s[0] == "-":
     st = False
     s = s[1:]
-  s = deref(s, state, s)
+  s = state.deref(s, s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else get_source_hash(source)
@@ -5477,7 +5477,7 @@ class IntrusiveSelectParser:
 class DerefSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
-    r = deref(key, state, None)
+    r = state.deref(key, None)
     return self.p_(key, cfg, state) if r is None else r
 
   def add(self, key, parser):
@@ -5495,7 +5495,7 @@ class DerefSelectParser:
 
 class DerefParser:
   def __call__(self, cfg, state):
-    r = deref(cfg, state, None)
+    r = state.deref(cfg, None)
     return self.p_(cfg, state) if r is None else r
 
   def add(self, key, parser):
@@ -6027,7 +6027,7 @@ def make_parser():
         name = state.resolve(cfg, "name")
       #logger.debug("Parsing {} '{}'".format(propName, name))
       #preset or class name can be specified by arg, so need to deref it here
-      name = deref(name, state, name)
+      name = state.deref(name, name)
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
@@ -6360,14 +6360,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state["parser"]("curve", curveCfg, state)
-      curves[fn2hc(deref(fullInputAxisName, state, fullInputAxisName))] = curve
+      curves[fn2hc(state.deref(fullInputAxisName, fullInputAxisName))] = curve
     op = None
     if state.resolve(cfg, "op") == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif state.resolve(cfg, "op") == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif state.resolve(cfg, "op") == "thresholds":
-      op = MCSThresholdOp(thresholds = {fn2hc(deref(fullInputAxisName, state, fullInputAxisName)):deref(threshold, state, threshold) for fullInputAxisName,threshold in state.resolve(cfg, "thresholds").items()})
+      op = MCSThresholdOp(thresholds = {fn2hc(state.deref(fullInputAxisName, fullInputAxisName)):state.deref(threshold, threshold) for fullInputAxisName,threshold in state.resolve(cfg, "thresholds").items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
     mcs = MultiCurveSink(curves, op)
@@ -6397,8 +6397,8 @@ def make_parser():
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = state.get_axis_by_full_name(deref(fullAxisName, state, fullAxisName))
-      value = float(deref(value, state, value))
+      axis = state.get_axis_by_full_name(state.deref(fullAxisName, fullAxisName))
+      value = float(state.deref(value, value))
       av.append([axis, value, False])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
@@ -6412,8 +6412,8 @@ def make_parser():
       axesAndValues = axesAndValues.items()
     av = []
     for fullAxisName,value in axesAndValues:
-      axis = state.get_axis_by_full_name(deref(fullAxisName, state, fullAxisName))
-      value = float(deref(value, state, value))
+      axis = state.get_axis_by_full_name(state.deref(fullAxisName, fullAxisName))
+      value = float(state.deref(value, value))
       av.append([axis, value, True])
     r = MoveAxes(av)
     return r
@@ -6482,7 +6482,7 @@ def make_parser():
     assert(allCurves is not None)
     if "axes" in cfg:
       for fullAxisName in state.resolve(cfg, "axes"):
-        curves = allCurves.get(deref(fullAxisName, state, fullAxisName), None)
+        curves = allCurves.get(state.deref(fullAxisName, fullAxisName), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
         else:
@@ -6508,7 +6508,7 @@ def make_parser():
 
   def parseCycleOps(cfg, state):
     curve = state.resolve(cfg, "curve")
-    ops = [deref(op, state, op) for op in state.resolve(cfg, "ops")]
+    ops = [state.deref(op, op) for op in state.resolve(cfg, "ops")]
     step = state.resolve(cfg, "step")
     def worker(e):
       current = ops.index(curve.get_op())
