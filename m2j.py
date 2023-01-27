@@ -217,7 +217,7 @@ class ParserState:
 
   def at(self, n, i):
     stack = self.stacks_.get(n)
-    return None if (stack is None or len(stack) == 0) else stack[-(1+i)]
+    return None if (stack is None or len(stack) == 0 or len(stack) <= i) else stack[-(1+i)]
 
   def set(self, n, v):
     self.values_[n] = v
