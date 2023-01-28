@@ -237,11 +237,12 @@ class ParserState:
         break
       objects = sink.get("objects", None)
       if objects is not None:
-        break
+        obj = objects.get(objectName[0])
+        if obj is not None:
+          break
       i += 1
     if objects is None:
       raise RuntimeError("No objects were initialized, so cannot get object '{}'".format(name))
-    obj = objects.get(objectName[0])
     if obj is None:
       raise RuntimeError("Object '{}' was not created.".format(str2(name)))
     if len(objectName) > 1:
@@ -6112,22 +6113,13 @@ def make_parser():
   class ObjectsComponent:
     def get(self, k, sep = "."):
       o = get_nested_d(self.objects_, k, None, sep)
-      if o is None:
-        p = self.parent_
-        while p is not None:
-          o = p.get(k, sep)
-          if o is None:
-            p = p.parent_
-          else:
-            break
       return o
 
     def set(self, name, obj):
       self.objects_[name] = obj
 
-    def __init__(self, parent):
+    def __init__(self):
       self.objects_ = {}
-      self.parent_ = parent
 
   @parseBasesDecorator
   def parseSink(cfg, state):
@@ -6173,7 +6165,7 @@ def make_parser():
         #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parseOrder = ("objectsComponent", "objects", "next", "modes", "state", "sens", "modifiers", "binds")
+        parseOrder = ("objects", "next", "modes", "state", "sens", "modifiers", "binds")
         for name in parseOrder:
           parse_component(name)
         #Link components
@@ -6204,16 +6196,7 @@ def make_parser():
     #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
     if objectsCfg is not None:
       try:
-        parent = None
-        sink = state.at("sinks", 1) #Starting from parent sink, hence index = 1
-        while sink is not None:
-          current = sink.get("objects")
-          if current is not None:
-            parent = current
-            break
-          else:
-            sink = sink.get_parent()
-        objectsComponent = ObjectsComponent(parent)
+        objectsComponent = ObjectsComponent()
         state.at("sinks", 0).set("objects", objectsComponent)
         state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
         return objectsComponent
@@ -6512,7 +6495,7 @@ def make_parser():
     elif "objects" in cfg:
       sink = state.at("sinks", 0)
       for objectName in state.resolve(cfg, "objects"):
-        curve = sink.get("objects").get(objectName)
+        curve = state.get_obj(objectName)
         if curve is None:
           raise RuntimeError("Curve {} not found".format(str2(objectName)))
         curvesToReset.append(curve)
