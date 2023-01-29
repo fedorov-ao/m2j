@@ -413,12 +413,12 @@ def parseEvdevJoystickOutput(cfg, state):
       axesDatum[axisID] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
-    state.get_settings().get("updated").append(lambda tick,ts : j.update(tick, ts))
+    state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
   return j
 
 
 def parseEvdevSource(cfg, state):
-  config = state.get_settings().get("config")
+  config = state.get("main").get("config")
   compressEvents = config.get("compressInputEvents", False)
   deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
   def make_device(native, source, recreateOp):
