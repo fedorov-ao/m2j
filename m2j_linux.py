@@ -472,7 +472,6 @@ def print_tech_data():
 if __name__ == "__main__":
   try:
     main = Main(print_devices=print_devices)
-    #TODO Use accessor method
     main.get("parser").get("output").add("evdev", parseEvdevJoystickOutput)
     main.get("parser").add("source", parseEvdevSource)
     exit(main.run())

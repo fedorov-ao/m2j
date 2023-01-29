@@ -1290,14 +1290,21 @@ class RawInputEventSource:
     return (r,)
 
 
-def print_help():
-  print sys.argv[0] + " args"
-  print "args are:\n\
-  -h | --help : this message\n\
-  -d fileName | --devices=fileName : print input devices to file fileName (- for stdout)\n\
-  -p presetName | --preset=presetName : use preset presetName\n\
-  -c configFileName | --config=configFileName : use config file configFileName\n\
-  -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
+def parseRawInputEventSource(cfg, state):
+  main = state.get("main")
+  config = main.get("config")
+  source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
+  for s,n in config["inputs"].items():
+    try:
+      source.track_device(n, s)
+    except RuntimeError as e:
+      logger.warning(e)
+  oldSource = main.get("source")
+  if oldSource:
+    if hasattr(oldSource, "stop"):
+      oldSource.stop()
+    del oldSource
+  return source
 
 
 def print_devices(fname):
@@ -1314,135 +1321,16 @@ def print_devices(fname):
         f.write(l+"\n")
 
 
-def run():
-  def init_outputs(settings):
-    nameParser = lambda key,state : key
-    parser = settings["parser"]
-    outputParser = parser.get("output")
-    orderOp = lambda i : i[1].get("seq", 100000)
-    cfg = settings["config"]["outputs"]
-    state = ParserState(settings)
-    outputs = {}
-    settings["outputs"] = outputs
-    parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
-
-  def init_source(settings):
-    config = settings["config"]
-    sink = init_main_sink(settings, init_preset_config)
-    source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
-    for s,n in config["inputs"].items():
-      try:
-        source.track_device(n, s)
-      except RuntimeError as e:
-        logger.warning(e)
-    source.set_sink(sink)
-    oldSource = settings.get("source")
-    #settings["source"].stop()
-    settings["source"] = source
-    if oldSource:
-      if hasattr(oldSource, "stop"):
-        oldSource.stop()
-      del oldSource
-
-  def init_and_run(settings):
-    oldUpdated = [v for v in settings.get("updated")]
-    try:
-      try:
-        init_config2(settings)
-        init_source(settings)
-        refreshRate = settings["config"].get("refreshRate", 100.0)
-        step = 1.0 / refreshRate
-        source = settings["source"]
-        assert(source is not None)
-        def run_source(tick, ts):
-          source.run_once()
-        updated = settings.get("updated", [])
-        def run_updated(tick, ts):
-          for u in updated:
-            u(tick, ts)
-        callbacks = [run_source, run_updated]
-        loop = Loop(callbacks, step)
-        if "loop" in settings: del settings["loop"]
-        settings["loop"] = loop
-        settings["reloading"] = False
-      except Exception as e:
-        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-        logger.error("===Traceback begin===")
-        for l in traceback.format_exc().splitlines()[-21:]:
-          logger.error(l)
-        logger.error("===Traceback end===")
-        if settings.get("loop") is not None:
-          logger.error("Falling back to previous state.")
-        else:
-          raise Exception("No valid state to fall back to.")
-
-      loop = settings["loop"]
-      assert(loop is not None)
-      loop.run()
-    finally:
-      if oldUpdated is not None:
-        settings["updated"] = oldUpdated
-
-  preinit_log()
-  try:
-    settings = {"options" : {}, "configNames" : [], "updated" : []}
-    options = {}
-    settings["options"] = options
-
-    if (len(sys.argv)) == 1:
-      print_help()
-      return 0
-
-    opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
-    for o, a in opts:
-      if o in ("-h", "--help"):
-        print_help()
-        return 0
-      elif o in ("-d", "--devices"):
-        print_devices(a)
-        return 0
-      if o in ("-p", "--preset"):
-        options["preset"] = a
-      elif o in ("-v", "--logLevel"):
-        options["logLevel"] = a
-      elif o in ("-c", "--config"):
-        settings["configNames"].append(a)
-
-    parser = make_parser()
-    settings["parser"] = parser
-    parser.get("output").add("ppjoy", parsePPJoystickOutput)
-    parser.get("output").add("vjoy", parseVJoystickOutput)
-    parser.get("output").add("di_keyboard", parseDirectInputKeyboardOutput)
-
-    settings["reloading"] = False
-    init_config2(settings)
-    init_log(settings)
-    init_outputs(settings)
-
-    while (True):
-      try:
-        r = init_and_run(settings)
-      except ReloadException:
-        logger.info("Reloading")
-        settings["reloading"] = True
-      except Exception as e:
-        logger.error("Unexpected exception: {}".format(e))
-        raise
-
-  except KeyboardInterrupt:
-    logger.info("Exiting normally")
-    return 0
-  except ExitException:
-    logger.info("Exiting normally")
-    return 0
-  except ConfigReadError as e:
-    logger.error(e)
-    return 1
-
-
 if __name__ == "__main__":
   try:
-    exit(run())
+    main = Main(print_devices=print_devices)
+    parser = main.get("parser")
+    outputParser = parser.get("output")
+    outputParser.add("ppjoy", parsePPJoystickOutput)
+    outputParser.add("vjoy", parseVJoystickOutput)
+    outputParser.add("di_keyboard", parseDirectInputKeyboardOutput)
+    parser.add("source", parseRawInputEventSource)
+    exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)
     for l in traceback.format_exc().splitlines()[-11:]:
