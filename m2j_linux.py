@@ -13,7 +13,6 @@
 import sys
 sys.path.append(".")
 import gc
-import getopt
 import traceback
 import m2j
 from m2j import *
@@ -293,10 +292,14 @@ class EvdevDevice:
   def swallow(self, s):
     if not self.is_ready_():
       return
-    if s:
-      self.dev_.grab()
-    else:
-      self.dev_.ungrab()
+    try:
+      if s:
+        self.dev_.grab()
+      else:
+        self.dev_.ungrab()
+    except IOError as e:
+      #IOError is expected
+      pass
 
   def __init__(self, dev, source, recreateOp=lambda : None):
     self.dev_, self.sourceName_, self.recreateOp_ = dev, source, recreateOp
@@ -386,37 +389,6 @@ def init_inputs(inputsCfg, makeDevice=lambda native,source,recreateOp : EvdevDev
   return r
 
 
-def print_help():
-  print "Usage: " + sys.argv[0] + " args"
-  print "args are:\n\
-  -h | --help : this message\n\
-  -d fileName | --devices=fileName : print input devices to file fileName (- for stdout)\n\
-  -p presetName | --preset=presetName : use preset presetName\n\
-  -c configFileName | --config=configFileName : use config file configFileName\n\
-  -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
-
-
-def print_devices(fname):
-  """Prints input devices info."""
-  r = []
-  devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
-  for d in devices:
-    caps = d.capabilities(verbose=True, absinfo=False)
-    capsInfo = ""
-    for k,v in caps.items():
-      keyName = k[0]
-      codeNames = ", ".join((str(i[0]) for i in v))
-      capsInfo += " {}: {}\n".format(keyName, codeNames)
-    r.append("name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d)))
-  if fname == "-":
-    for l in r:
-      print l
-  else:
-    with open(fname, "w") as f:
-      for l in r:
-        f.write(l+"\n")
-
-
 @make_reporting_joystick
 def parseEvdevJoystickOutput(cfg, state):
   buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
@@ -441,137 +413,42 @@ def parseEvdevJoystickOutput(cfg, state):
       axesDatum[axisID] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
-    state.get_settings()["updated"].append(lambda tick,ts : j.update(tick, ts))
+    state.get_settings().updated_.append(lambda tick,ts : j.update(tick, ts))
   return j
 
 
-def run():
-  def init_outputs(settings):
-    nameParser = lambda key,state : key
-    parser = settings["parser"]
-    outputParser = parser.get("output")
-    orderOp = lambda i : i[1].get("seq", 100000)
-    cfg = settings["config"]["outputs"]
-    state = ParserState(settings)
-    outputs = {}
-    settings["outputs"] = outputs
-    parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
+def parseEvdevSource(cfg, state):
+  config = state.get_settings().config_
+  compressEvents = config.get("compressInputEvents", False)
+  deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
+  def make_device(native, source, recreateOp):
+    dev = EvdevDevice(native, source, recreateOp)
+    if compressEvents:
+      dev = EventCompressorDevice(dev)
+    return dev
+  inputs = init_inputs(config.get("inputs", {}), make_device, deviceUpdatePeriod)
+  return EventSource(inputs, None)
 
-  def init_source(settings):
-      config = settings["config"]
-      compressEvents = config.get("compressInputEvents", False)
-      def make_device(native, source, recreateOp):
-        dev = EvdevDevice(native, source, recreateOp)
-        if compressEvents:
-          dev = EventCompressorDevice(dev)
-        return dev
-      deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
-      settings["inputs"] = init_inputs(config.get("inputs", {}), make_device, deviceUpdatePeriod)
-      sink = init_main_sink(settings, init_preset_config)
-      settings["source"] = EventSource(settings["inputs"].values(), sink)
 
-  def set_inputs_state(settings, state):
-    for i in settings["inputs"].values():
-      try:
-        i.swallow(state)
-      except IOError as e:
-        logger.debug("got IOError ({}), but that was expected".format(e))
-        continue
-
-  def init_and_run(settings):
-    oldUpdated = [v for v in settings.get("updated")]
-    try:
-      try:
-        init_config2(settings)
-        init_source(settings)
-        refreshRate = settings["config"].get("refreshRate", 100.0)
-        step = 1.0 / refreshRate
-        source = settings["source"]
-        assert(source is not None)
-        def run_source(tick, ts):
-          source.run_once()
-        updated = settings.get("updated", [])
-        def run_updated(tick, ts):
-          for u in updated:
-            u(tick, ts)
-        callbacks = [run_source, run_updated]
-        loop = Loop(callbacks, step)
-        if "loop" in settings: del settings["loop"]
-        settings["loop"] = loop
-        settings["reloading"] = False
-      except Exception as e:
-        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-        logger.error("===Traceback begin===")
-        for l in traceback.format_exc().splitlines()[-31:]:
-          logger.error(l)
-        logger.error("===Traceback end===")
-        if settings.get("loop") is not None:
-          logger.error("Falling back to previous state.")
-        else:
-          raise Exception("No valid state to fall back to.")
-
-      loop = settings["loop"]
-      assert(loop is not None)
-      loop.run()
-    finally:
-      if oldUpdated is not None:
-        settings["updated"] = oldUpdated
-
-  preinit_log()
-  try:
-    settings = {"options" : {}, "configNames" : [], "updated" : []}
-    options = {}
-    settings["options"] = options
-
-    if (len(sys.argv)) == 1:
-      print_help()
-      return 0
-
-    opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
-    for o, a in opts:
-      if o in ("-h", "--help"):
-        print_help()
-        return 0
-      elif o in ("-d", "--devices"):
-        print_devices(a)
-        return 0
-      if o in ("-p", "--preset"):
-        options["preset"] = a
-      elif o in ("-v", "--logLevel"):
-        options["logLevel"] = a
-      elif o in ("-c", "--config"):
-        settings["configNames"].append(a)
-
-    parser = make_parser()
-    settings["parser"] = parser
-    parser.get("output").add("evdev", parseEvdevJoystickOutput)
-
-    settings["reloading"] = False
-    init_config2(settings)
-    init_log(settings)
-    init_outputs(settings)
-
-    while (True):
-      try:
-        r = init_and_run(settings)
-      except ReloadException:
-        logger.info("Reloading")
-        settings["reloading"] = True
-      except Exception as e:
-        logger.error("Unexpected exception: {}".format(e))
-        raise
-      finally:
-        set_inputs_state(settings, False)
-
-  except KeyboardInterrupt:
-    logger.info("Exiting normally")
-    return 0
-  except ExitException:
-    logger.info("Exiting normally")
-    return 0
-  except ConfigReadError as e:
-    logger.error(e)
-    return 1
+def print_devices(fname):
+  """Prints input devices info."""
+  r = []
+  devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
+  for d in devices:
+    caps = d.capabilities(verbose=True, absinfo=False)
+    capsInfo = ""
+    for k,v in caps.items():
+      keyName = k[0]
+      codeNames = ", ".join((str(i[0]) for i in v))
+      capsInfo += " {}: {}\n".format(keyName, codeNames)
+    r.append("name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d)))
+  if fname == "-":
+    for l in r:
+      print l
+  else:
+    with open(fname, "w") as f:
+      for l in r:
+        f.write(l+"\n")
 
 
 def print_tech_data():
@@ -594,7 +471,12 @@ def print_tech_data():
 
 if __name__ == "__main__":
   try:
-    exit(run())
+    main = Main()
+    #TODO Use accessor method
+    main.parser_.get("output").add("evdev", parseEvdevJoystickOutput)
+    main.parser_.add("source", parseEvdevSource)
+    main.print_devices_ = print_devices
+    exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)
     for l in traceback.format_exc().splitlines()[-11:]:

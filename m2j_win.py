@@ -1184,6 +1184,9 @@ class RawInputEventSource:
         return
     raise RuntimeError("Device {} ({}) not found".format(name, source))
 
+  def swallow(self, name, s):
+    pass
+
   def set_sink(self, sink):
     self.sink_ = sink
 
