@@ -413,12 +413,12 @@ def parseEvdevJoystickOutput(cfg, state):
       axesDatum[axisID] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
-    state.get_settings().updated_.append(lambda tick,ts : j.update(tick, ts))
+    state.get_settings().get("updated").append(lambda tick,ts : j.update(tick, ts))
   return j
 
 
 def parseEvdevSource(cfg, state):
-  config = state.get_settings().config_
+  config = state.get_settings().get("config")
   compressEvents = config.get("compressInputEvents", False)
   deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
   def make_device(native, source, recreateOp):
@@ -471,11 +471,10 @@ def print_tech_data():
 
 if __name__ == "__main__":
   try:
-    main = Main()
+    main = Main(print_devices=print_devices)
     #TODO Use accessor method
-    main.parser_.get("output").add("evdev", parseEvdevJoystickOutput)
-    main.parser_.add("source", parseEvdevSource)
-    main.print_devices_ = print_devices
+    main.get("parser").get("output").add("evdev", parseEvdevJoystickOutput)
+    main.get("parser").add("source", parseEvdevSource)
     exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)

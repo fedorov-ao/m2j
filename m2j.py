@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#_!/usr/bin/python
 
 #Mouse to joystick emulator common functionality
 
@@ -117,7 +117,7 @@ def truncate(cfg, l=30, ellipsis=True):
   return str2(cfg)[:l] + "..." if ellipsis else ""
 
 
-  levelName = settings.config_.get("logLevel", "NOTSET").upper()
+  levelName = settings.get("config").get("logLevel", "NOTSET").upper()
   nameToLevel = {
     logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
   }
@@ -333,7 +333,7 @@ class ParserState:
   def get_axis_by_full_name(self, fullAxisName):
     outputName, axisName = fn2sn(fullAxisName)
     settings = self.settings_
-    allAxes = settings.axes_
+    allAxes = settings.get("axes")
     if outputName not in allAxes:
       #raise RuntimeError("No axes were initialized for '{}' (when parsing '{}')".format(outputName, fullAxisName))
       allAxes[outputName] = {}
@@ -342,7 +342,7 @@ class ParserState:
     axis = None
     if axisId not in outputAxes:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
-      outputs = settings.outputs_
+      outputs = settings.get("outputs")
       o = outputs[outputName]
       isReportingJoystick = type(o) is ReportingJoystick
       axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
@@ -359,7 +359,7 @@ class ParserState:
 
   def __init__(self, settings):
     self.settings_ = settings
-    self.parser_ = settings.parser_
+    self.parser_ = settings.get("parser")
     self.stacks_ = {}
     self.values_ = {}
 
@@ -4789,7 +4789,7 @@ def make_curve_makers():
         r[setName] = parseModes(setData, state)
       return r
 
-    config = settings.config_
+    config = settings.get("config")
     configCurves = config["configCurves"]
     logger.info("Using '{}' curves from config".format(configCurves))
     sets = config["presets"].get(configCurves, None)
@@ -4802,7 +4802,7 @@ def make_curve_makers():
           for n in ("set", "mode", "group", "output", "axis"):
             r += "." + str(state.get(n, ""))
           return r
-        state = {"settings" : settings, "curves" : configCurves, "parser" : settings.parser_}
+        state = {"settings" : settings, "curves" : configCurves, "parser" : settings.get("parser")}
         r = parseSets(sets, state)
       except Exception as e:
         path = make_path(state)
@@ -5131,7 +5131,7 @@ def init_info(**kwargs):
 
   settings = kwargs["settings"]
   axisAccumulators = kwargs["axisAccumulators"]
-  outputs = settings.outputs_
+  outputs = settings.get("outputs")
   getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
 
   infoCfg = kwargs["cfg"]
@@ -5142,7 +5142,7 @@ def init_info(**kwargs):
     if areaCfg.get("type", None) == "axes":
       for markerCfg in areaCfg.get("markers", ()):
         area.add_marker(**markerCfg)
-  settings.updated_.append(lambda tick,ts : info.update())
+  settings.get("updated").append(lambda tick,ts : info.update())
 
   return info
 
@@ -5150,7 +5150,7 @@ def init_info(**kwargs):
 def init_main_sink(settings, make_next):
   #logger.debug("init_main_sink()")
   cmpOp = CmpWithModifiers()
-  config = settings.config_
+  config = settings.get("config")
 
   defaultModifierDescs = [
     SourceCodeState(None, m, True) for m in
@@ -5170,7 +5170,7 @@ def init_main_sink(settings, make_next):
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
     holdSink.add(keySource, keyCode, modifiers, ht.get("holdTime"), ht.get("value"), ht.get("fireOnce"))
-  settings.updated_.append(lambda tick,ts : holdSink.update(tick, ts))
+  settings.get("updated").append(lambda tick,ts : holdSink.update(tick, ts))
 
   sens = config.get("sens", None)
   if sens is not None:
@@ -5202,7 +5202,7 @@ def init_main_sink(settings, make_next):
 
   state = ParserState(settings)
   toggler = Toggler(stateSink)
-  etParser = settings.parser_.get("et")
+  etParser = settings.get("parser").get("et")
 
   released = config.get("released", ())
   sourceFilterOp = SourceFilterOp(released)
@@ -5215,7 +5215,7 @@ def init_main_sink(settings, make_next):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
   axisAccumulators = {}
-  for inputName,inpt in settings.config_.get("inputs").iteritems():
+  for inputName,inpt in settings.get("config").get("inputs").iteritems():
     scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
     axisAccumulator = AxisAccumulator(state=False, scales=scales)
     axisAccumulators[inputName] = axisAccumulator
@@ -5254,17 +5254,17 @@ def init_main_sink(settings, make_next):
           raise ExitException()
         action = op
       elif action == "enable":
-        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowSource(settings.source_, [(n,True) for n in released]),  print_grabbed))
+        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowSource(settings.get("source"), [(n,True) for n in released]),  print_grabbed))
       elif action == "disable":
-        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowSource(settings.source_, [(n,False) for n in released]),  print_ungrabbed))
+        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowSource(settings.get("source"), [(n,False) for n in released]),  print_ungrabbed))
       elif action == "grab":
         inputs = get_nested_d(doCfg, "inputs", None)
         inputs = released if inputs is None else inputs
-        action = SwallowSource(settings.source_, [(n,True) for n in inputs])
+        action = SwallowSource(settings.get("source"), [(n,True) for n in inputs])
       elif action == "ungrab":
         inputs = get_nested_d(doCfg, "inputs", None)
         inputs = released if inputs is None else inputs
-        action = SwallowSource(settings.source_, [(n,False) for n in inputs])
+        action = SwallowSource(settings.get("source"), [(n,False) for n in inputs])
       elif action == "showInfo":
         def op(e):
           info.set_state(True)
@@ -5305,12 +5305,12 @@ def init_main_sink(settings, make_next):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
   grabSink = filterSink.set_next(BindSink())
-  grabSink.add(make_event_test_op(ED.init(1), cmpOp), Call(SwallowSource(settings.source_, [(n,True) for n in grabbed]), print_enabled), 0)
-  grabSink.add(make_event_test_op(ED.init(0), cmpOp), Call(SwallowSource(settings.source_, [(n,False) for n in grabbed]), print_disabled), 0)
+  grabSink.add(make_event_test_op(ED.init(1), cmpOp), Call(SwallowSource(settings.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
+  grabSink.add(make_event_test_op(ED.init(0), cmpOp), Call(SwallowSource(settings.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
 
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
-  for oName, oAxes in settings.axes_.items():
+  for oName, oAxes in settings.get("axes").items():
     for axisId, axis in oAxes.items():
       axis.remove_all_listeners()
 
@@ -5332,7 +5332,7 @@ def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout),
 
 
 def init_log(settings):
-  config = settings.config_
+  config = settings.get("config")
   logLevelName = config.get("logLevel", "NOTSET").upper()
   logLevel = name2loglevel(logLevelName)
   root = logging.getLogger()
@@ -5385,20 +5385,8 @@ def init_config(configFilesNames):
   return cfg
 
 
-def init_config2(settings):
-  if "config" in settings and not settings.reloading_:
-    return
-  config = settings.options_
-  if "configNames" in settings:
-    externalConfig = init_config(settings.configNames_)
-    merge_dicts(externalConfig, config)
-    config = externalConfig
-  settings.config_ = config
-  logger.info("Configs loaded successfully")
-
-
 def init_preset_config(settings):
-  config = settings.config_
+  config = settings.get("config")
   presetName = get_nested(config, "preset")
   logger.info("Using '{}' preset from config".format(presetName))
   sectNames = ("presets",)
@@ -5407,7 +5395,7 @@ def init_preset_config(settings):
     raise Exception("'{}' preset not found in config".format(presetName))
   else:
     try:
-      parser = settings.parser_
+      parser = settings.get("parser")
       state = ParserState(settings)
       r = parser("sink", cfg, state)
       return r
@@ -6002,7 +5990,7 @@ def make_parser():
   curveParser.add("accel", parseAccelCurve)
 
   def parsePresetCurve(cfg, state):
-    config = state.get_settings().config_
+    config = state.get_settings().get("config")
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
@@ -6047,7 +6035,7 @@ def make_parser():
         return cfg
       else:
         sectNames = ("presets",)
-        config = state.get_settings().config_
+        config = state.get_settings().get("config")
         full = {}
         for baseName in bases:
           #logger.debug("Parsing base : {}".format(baseName))
@@ -6066,7 +6054,7 @@ def make_parser():
 
   def parseExternal(propName, groupNames):
     def parseExternalOp(cfg, state):
-      config = state.get_settings().config_
+      config = state.get_settings().get("config")
       name = cfg.get(propName, None)
       if name is None:
         name = state.resolve(cfg, "name")
@@ -6394,7 +6382,7 @@ def make_parser():
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
     mcs = MultiCurveSink(curves, op)
-    state.get_settings().updated_.append(lambda tick,ts : mcs.update(tick, ts))
+    state.get_settings().get("updated").append(lambda tick,ts : mcs.update(tick, ts))
     return mcs
   actionParser.add("moveOneOf", parseMoveOneOf)
 
@@ -6495,7 +6483,7 @@ def make_parser():
     clicker = Clicker(output, key, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
-    state.get_settings().updated_.append(updateOp)
+    state.get_settings().get("updated").append(updateOp)
     return eventOp
   actionParser.add("click", parseClick)
 
@@ -6547,7 +6535,7 @@ def make_parser():
     state.setdefault("poseTracker", PoseTracker(poseManager))
     poseName = state.resolve(cfg, "pose")
     if not poseManager.has_pose(poseName):
-      poses = state.get_settings().config_["poses"]
+      poses = state.get_settings().get("config")["poses"]
       fullAxesNamesAndValues = poses[poseName]
       pose = []
       for fullAxisName,value in fullAxesNamesAndValues.items():
@@ -6880,8 +6868,8 @@ def make_parser():
 
   def get_or_make_output(name, state):
     settings = state.get_settings()
-    outputs = settings.outputs_
-    config = settings.config_
+    outputs = settings.get("outputs")
+    config = settings.get("config")
     j = outputs.get(name, None)
     if j is None:
       j = state.get_parser()("output", config["outputs"][name], state)
@@ -6910,7 +6898,7 @@ def make_parser():
     rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
     next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
-    state.get_settings().updated_.append(lambda tick,ts : j.update(tick))
+    state.get_settings().get("updated").append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateLimit", parseRateLimitOutput)
 
@@ -6920,7 +6908,7 @@ def make_parser():
     limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
     next = state.get_parser()("output", state.resolve(cfg, "next"), state)
     j = RateSettingJoystick(next, rates, limits)
-    state.get_settings().updated_.append(lambda tick,ts : j.update(tick))
+    state.get_settings().get("updated").append(lambda tick,ts : j.update(tick))
     return j
   outputParser.add("rateSet", parseRateSettingOutput)
 
@@ -6943,7 +6931,7 @@ def make_parser():
 
   @make_reporting_joystick
   def parseMappingOutput(cfg, state):
-    outputs = state.get_settings().outputs_
+    outputs = state.get_settings().get("outputs")
     j = MappingJoystick()
     for fromAxis,to in state.resolve_d(cfg, "axisMapping", {}).items():
       toJoystick, toAxis = fn2sc(state.resolve(to, "to"))
@@ -6961,7 +6949,7 @@ def make_parser():
   @make_reporting_joystick
   def parseOpentrackOutput(cfg, state):
     j = Opentrack(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")))
-    state.get_settings().updated_.append(lambda tick,ts : j.send())
+    state.get_settings().get("updated").append(lambda tick,ts : j.send())
     return j
   outputParser.add("opentrack", parseOpentrackOutput)
 
@@ -6975,7 +6963,7 @@ def make_parser():
     j = UdpJoystick(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")), packetMakers[state.resolve(cfg, "format")], int(state.resolve_d(cfg, "numPackets", 1)))
     for a,l in state.resolve_d(cfg, "limits", {}).items():
       j.set_limits(name2code(a), l)
-    state.get_settings().updated_.append(lambda tick,ts : j.send())
+    state.get_settings().get("updated").append(lambda tick,ts : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
 
@@ -7000,7 +6988,7 @@ class Main:
     root.addHandler(handler)
 
   def init_log(self):
-    config = self.config_
+    config = self.get("config")
     logLevelName = config.get("logLevel", "NOTSET").upper()
     logLevel = name2loglevel(logLevelName)
     root = logging.getLogger()
@@ -7019,7 +7007,7 @@ class Main:
       root.addHandler(logFileHandler)
 
   def init_config2(self):
-    if self.config_ is not None and not self.reloading_:
+    if self.get("config") is not None and not self.reloading_:
       return
     config = self.options_
     configNames = self.options_.get("configNames", None)
@@ -7027,40 +7015,40 @@ class Main:
       externalConfig = init_config(configNames)
       merge_dicts(externalConfig, config)
       config = externalConfig
-    self.config_ = config
+    self.set("config", config)
     logger.info("Configs loaded successfully")
 
   def init_outputs(self):
     nameParser = lambda key,state : key
-    parser = self.parser_
+    parser = self.get("parser")
     outputParser = parser.get("output")
     orderOp = lambda i : i[1].get("seq", 100000)
-    cfg = self.config_["outputs"]
+    cfg = self.get("config")["outputs"]
     state = ParserState(self)
     outputs = {}
-    self.outputs_ = outputs
     parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
+    self.set("outputs", outputs)
 
   def init_source(self):
     #TODO Use dedicated config section?
     state = ParserState(self)
-    self.source_ = self.parser_("source", self.config_, state)
+    self.set("source", self.get("parser")("source", self.get("config"), state))
     sink = init_main_sink(self, init_preset_config)
-    self.source_.set_sink(sink)
+    self.get("source").set_sink(sink)
 
   def init_and_run(self):
-    oldUpdated = [v for v in self.updated_]
+    oldUpdated = [v for v in self.get("updated")]
     try:
       try:
         self.init_config2()
         self.init_source()
-        refreshRate = self.config_.get("refreshRate", 100.0)
+        refreshRate = self.get("config").get("refreshRate", 100.0)
         step = 1.0 / refreshRate
-        source = self.source_
+        source = self.get("source")
         assert(source is not None)
         def run_source(tick, ts):
           source.run_once()
-        updated = self.updated_
+        updated = self.get("updated")
         def run_updated(tick, ts):
           for u in updated:
             u(tick, ts)
@@ -7086,7 +7074,7 @@ class Main:
       loop.run()
     finally:
       if oldUpdated is not None:
-        self.updated_ = oldUpdated
+        self.set("updated", oldUpdated)
 
   def run(self):
     self.preinit_log()
@@ -7126,7 +7114,7 @@ class Main:
           logger.error("Unexpected exception: {}".format(e))
           raise
         finally:
-          self.source_.swallow(None, False)
+          self.get("source").swallow(None, False)
 
     except KeyboardInterrupt:
       logger.info("Exiting normally")
@@ -7138,14 +7126,25 @@ class Main:
       logger.error(e)
       return 1
 
-  def __init__(self):
-    self.source_ = None
-    self.loop_ = None
-    self.updated_ = []
-    self.axes_ = {}
-    self.outputs_ = {}
-    self.options_ = {}
-    self.config_ = None
-    self.parser_ = make_parser()
-    self.print_devices_ = lambda a: None
+  def get(self, propName):
+    if propName not in self.props_:
+      raise LogicError("Property '{}' not registered".format(propName))
+    return self.props_.get(propName)
+
+  def set(self, propName, propValue):
+    if propName not in self.props_:
+      raise LogicError("Property '{}' not registered".format(propName))
+    self.props_[propName] = propValue
+
+  def __init__(self, parser=make_parser(), print_devices=lambda a:None):
     self.reloading_ = False 
+    self.loop_ = None
+    self.print_devices_ = print_devices
+    self.options_ = {}
+    self.props_ = {}
+    self.props_["source"] = None
+    self.props_["config"] = None
+    self.props_["parser"] = parser
+    self.props_["updated"] = []
+    self.props_["axes"] = {}
+    self.props_["outputs"] = {}
