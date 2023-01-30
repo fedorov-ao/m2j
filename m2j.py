@@ -2146,7 +2146,7 @@ class MCSThresholdOp:
     self.thresholds_, self.distances_, self.selected_ = thresholds, {}, None
 
 
-class PowerApproximator:
+class PowerFunc:
   def __call__(self, v):
     return sign(v)*self.k*abs(v)**self.n
 
@@ -2154,7 +2154,7 @@ class PowerApproximator:
     self.k, self.n = k, n
 
 
-class ConstantApproximator:
+class ConstantFunc:
   def __call__(self, v):
     return self.value_
 
@@ -2162,7 +2162,7 @@ class ConstantApproximator:
     self.value_ = value
 
 
-class PolynomialApproximator:
+class PolynomialFunc:
   def __call__(self, v):
     v += self.off_
     r = 0.0
@@ -2177,7 +2177,7 @@ class PolynomialApproximator:
     self.coeffs_, self.off_ = coeffs, off
 
 
-class SegmentApproximator:
+class SegmentFunc:
   def __call__(self, x):
     if len(self.x_) == 0 or len(self.y_) == 0:
       return 0.0
@@ -2207,7 +2207,7 @@ class SegmentApproximator:
     self.clampLeft_, self.clampRight_ = clampLeft, clampRight
 
 
-class SigmoidApproximator:
+class SigmoidFunc:
   def __call__(self, x):
     x = self.k_*x + self.b_
     ex = math.e**x
@@ -2226,7 +2226,7 @@ def calc_bezier(points, t):
   return points[0]
 
 
-class BezierApproximator:
+class BezierFunc:
   def __call__(self, x):
     l, r = self.points_[0][0], self.points_[len(self.points_)-1][0]
     x = clamp(x, l, r)
@@ -2241,7 +2241,7 @@ class BezierApproximator:
     self.points_ = [(p[0],p[1]) for p in points]
 
 
-class SegmentedBezierApproximator:
+class SegmentedBezierFunc:
   def __call__(self, x):
     keys = [p["c"][0] for p in self.points_]
     i = bisect.bisect_left(keys, x)-1
@@ -3052,13 +3052,13 @@ class LookupOp:
       raise RuntimeError("Requested input value {} is out of input limits {}".format(iv, self.inputLimits_))
 
 
-class ApproxOp:
+class FuncOp:
   def calc(self, value):
-    return self.approx_(value)
+    return self.func_(value)
   def reset(self):
     pass
-  def __init__(self, approx):
-    self.approx_ = approx
+  def __init__(self, func):
+    self.func_ = func
 
 
 #delta ops
@@ -3071,13 +3071,13 @@ class OpToDeltaOp:
     self.op_ = op
 
 
-class ApproxDeltaOp:
+class FuncDeltaOp:
   def calcOutput(self, value, timestamp):
-    return self.approx_(value)
+    return self.func_(value)
   def reset(self):
     pass
-  def __init__(self, approx):
-    self.approx_ = approx
+  def __init__(self, func):
+    self.func_ = func
 
 
 class CombineDeltaOp:
@@ -3107,7 +3107,7 @@ class AccumulateDeltaOp:
     for op in self.ops_:
       self.distance_ = op.calc(self.distance_, x, timestamp)
     self.distance_ += x
-    return self.approx_(self.distance_) if self.approx_ is not None else self.distance_
+    return self.func_(self.distance_) if self.func_ is not None else self.distance_
   def reset(self):
     #logger.debug("{}: resetting".format(self))
     self.distance_ = 0.0
@@ -3115,8 +3115,8 @@ class AccumulateDeltaOp:
       op.reset()
   def add_op(self, op):
     self.ops_.append(op)
-  def __init__(self, approx, ops=None):
-    self.approx_ = approx
+  def __init__(self, func, ops=None):
+    self.func_ = func
     self.ops_ = [] if ops is None else ops
     self.reset()
 
@@ -5478,13 +5478,13 @@ def make_parser():
       return wrapped
 
   def constant(cfg, state):
-    return ConstantApproximator(state.resolve(cfg, "value"))
+    return ConstantFunc(state.resolve(cfg, "value"))
   opParser.add("constant", constant)
 
   def segment(cfg, state):
     def make_op(data, symmetric):
-      approx = SegmentApproximator(data, 1.0, True, True)
-      return make_symm_wrapper(approx, symmetric)
+      func = SegmentFunc(data, 1.0, True, True)
+      return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
   opParser.add("segment", segment)
 
@@ -5502,15 +5502,15 @@ def make_parser():
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
-      approx = BezierApproximator(data)
-      return make_symm_wrapper(approx, symmetric)
+      func = BezierFunc(data)
+      return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
   opParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
     def make_op(data, symmetric):
-      approx = SegmentedBezierApproximator(data)
-      return make_symm_wrapper(approx, symmetric)
+      func = SegmentedBezierFunc(data)
+      return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
   opParser.add("sbezier", sbezier)
 
@@ -5731,15 +5731,15 @@ def make_parser():
       return sensOp
     else:
       axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
-      approx = state.get("parser")("op", state.resolve(cfg, "sensMod.op"), state)
+      func = state.get("parser")("op", state.resolve(cfg, "sensMod.op"), state)
       class SensModOp:
         def calc(self, x, timestamp):
-          return self.combine_(self.next_.calc(x, timestamp), self.approx_(self.axis_.get()))
+          return self.combine_(self.next_.calc(x, timestamp), self.func_(self.axis_.get()))
         def reset(self):
           self.next_.reset()
-        def __init__(self, combine, next, approx, axis):
-          self.next_, self.combine_, self.approx_, self.axis_ = next, combine, approx, axis
-      return SensModOp(combine, sensOp, approx, axis)
+        def __init__(self, combine, next, func, axis):
+          self.next_, self.combine_, self.func_, self.axis_ = next, combine, func, axis
+      return SensModOp(combine, sensOp, func, axis)
 
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=state.resolve_d(cfg, "eps", 0.001), numSteps=state.resolve_d(cfg, "numSteps", 100))
@@ -5762,7 +5762,7 @@ def make_parser():
     )
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
-    sensOp = ApproxOp(approx=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
+    sensOp = FuncOp(func=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     add_curve_to_state(fullAxisName, curve, state)
     return curve
@@ -5778,7 +5778,7 @@ def make_parser():
       combine=lambda x,s : x*s,
       ops=(XDeltaOp(), AccumulateDeltaOp(state.get("parser")("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = ApproxOp(approx=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
+    outputOp = FuncOp(func=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
@@ -5827,7 +5827,7 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    relativeOutputOp = ApproxOp(approx=state.get("parser")("op", relativeCfg, state))
+    relativeOutputOp = FuncOp(func=state.get("parser")("op", relativeCfg, state))
     relativeInputOp = makeIterativeInputOp(cfg, relativeOutputOp, state)
     relativeChainCurve = TransformAbsChainCurve(next=None, inputOp=relativeInputOp, outputOp=relativeOutputOp)
     accumulateChainCurve.set_next(relativeChainCurve)
@@ -5836,7 +5836,7 @@ def make_parser():
     relativeChainCurve.set_next(offsetChainCurve)
     #transform offset
     absoluteCfg = state.resolve(cfg, "absolute")
-    absoluteOutputOp = ApproxOp(approx=state.get("parser")("op", absoluteCfg, state))
+    absoluteOutputOp = FuncOp(func=state.get("parser")("op", absoluteCfg, state))
     absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
     absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
     offsetChainCurve.set_next(absoluteChainCurve)
@@ -5872,7 +5872,7 @@ def make_parser():
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
       deltaDDOp = DistanceDeltaToDeltaOp(deltaDOp)
-      relativeOutputOp = ApproxOp(approx=state.get("parser")("op", relativeCfg, state))
+      relativeOutputOp = FuncOp(func=state.get("parser")("op", relativeCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
@@ -5884,7 +5884,7 @@ def make_parser():
     if absoluteCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
-      absoluteOutputOp = ApproxOp(approx=state.get("parser")("op", absoluteCfg, state))
+      absoluteOutputOp = FuncOp(func=state.get("parser")("op", absoluteCfg, state))
       absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
       absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
       relToAbsChainCurve.set_next(absoluteChainCurve)
