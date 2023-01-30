@@ -6426,7 +6426,7 @@ def make_parser():
 
   def parseSetKeyState_(cfg, state, s):
     output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state.get("main").outputs_[output]
+    output = state.get("main").get("outputs")[output]
     key = name2code(key)
     return SetButtonState(output, key, s)
 
@@ -6445,7 +6445,7 @@ def make_parser():
 
   def parseClick(cfg, state):
     output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state.get("main").outputs_[output]
+    output = state.get("main").get("outputs")[output]
     key = name2code(key)
     numClicks = int(state.resolve_d(cfg, "numClicks", 1))
     delay = float(state.resolve_d(cfg, "delay", 0.0))
