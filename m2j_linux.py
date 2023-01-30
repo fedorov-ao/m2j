@@ -472,8 +472,9 @@ def print_tech_data():
 if __name__ == "__main__":
   try:
     main = Main(print_devices=print_devices)
-    main.get("parser").get("output").add("evdev", parseEvdevJoystickOutput)
-    main.get("parser").add("source", parseEvdevSource)
+    parser = main.get("parser")
+    parser.get("output").add("evdev", parseEvdevJoystickOutput)
+    parser.add("source", parseEvdevSource)
     exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)
