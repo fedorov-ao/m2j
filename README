@@ -2,15 +2,21 @@ Running under Linux
 
 (# means running command in shell as root, $ - as regular user)
 
-Dependencies: python evdev module and uinput.
-Maybe need to
-#modprobe -i uinput
+Dependencies:
+python playsound module - for playing sounds
+python evdev module - for reading and emulating input
+
+Install playsound module
+$pip install playsound
 
 Install evdev module
 $pip install evdev
 
 Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from evdev dir to ~/.local/lib/python2.7/site-packages/evdev/ (~ is home dir).
 $cp evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/
+
+May need to
+#modprobe -i uinput
 
 m2j_linux.py uses /dev/uinput , which typically belongs to user root and group root.
 In order to be able to run emulator without sudo following steps are needed:

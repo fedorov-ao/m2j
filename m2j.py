@@ -17,6 +17,7 @@ import collections
 import zlib
 import Tkinter as tk
 import getopt
+import playsound
 
 logger = logging.getLogger(__name__)
 
@@ -6485,6 +6486,16 @@ def make_parser():
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
+  def parsePlaySound(cfg, state):
+    soundName = state.resolve(cfg, "sound")
+    soundFileName = state.get("main").get("sounds").get(soundName, None)
+    if soundFileName is None:
+      raise RuntimeError("Sound '{}' is not registered".format(soundName))
+    def op(e):
+      playsound.playsound(soundFileName, False)
+    return op
+  actionParser.add("playSound", parsePlaySound)
+
   def parseSetStateOnInit(cfg, state):
     linker = state.get("parser")("curve", cfg, state)
     return SetAxisLinkerState(linker)
@@ -6935,6 +6946,12 @@ class Main:
     state = ParserState(self)
     parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
+  def init_sounds(self):
+    soundsCfg = self.get("config").get("sounds", {})
+    sounds = self.get("sounds")
+    for soundName,soundFileName in soundsCfg.items():
+      sounds[soundName] = soundFileName
+
   def init_source(self):
     #TODO Use dedicated config section?
     state = ParserState(self)
@@ -7009,6 +7026,7 @@ class Main:
       self.init_config2()
       self.init_log()
       self.init_outputs()
+      self.init_sounds()
 
       while (True):
         try:
@@ -7034,12 +7052,12 @@ class Main:
 
   def get(self, propName):
     if propName not in self.props_:
-      raise LogicError("Property '{}' not registered".format(propName))
+      raise RuntimeError("Property '{}' not registered".format(propName))
     return self.props_.get(propName)
 
   def set(self, propName, propValue):
     if propName not in self.props_:
-      raise LogicError("Property '{}' not registered".format(propName))
+      raise RuntimeError("Property '{}' not registered".format(propName))
     self.props_[propName] = propValue
 
   def __init__(self, parser=make_parser(), print_devices=lambda a:None):
@@ -7054,4 +7072,5 @@ class Main:
     self.props_["updated"] = []
     self.props_["axes"] = {}
     self.props_["outputs"] = {}
+    self.props_["sounds"] = {}
     self.props_["state"] = False
