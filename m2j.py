@@ -5240,7 +5240,7 @@ def init_main_sink(main, make_next):
         action = toggler.make_toggle()
       elif action == "reload":
         def op(e):
-          main.initState_ = stateSink.get_state()
+          main.set("state", stateSink.get_state())
           raise ReloadException()
         action = op
       elif action == "exit":
@@ -5309,8 +5309,8 @@ def init_main_sink(main, make_next):
       axis.remove_all_listeners()
 
   grabSink.add(None, make_next(main), 1)
-  main.initState_ = config.get("initState", False)
-  stateSink.set_state(main.initState_)
+  main.set("state", config.get("initialState", False))
+  stateSink.set_state(main.get("state"))
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
 
@@ -7142,3 +7142,4 @@ class Main:
     self.props_["updated"] = []
     self.props_["axes"] = {}
     self.props_["outputs"] = {}
+    self.props_["state"] = False
