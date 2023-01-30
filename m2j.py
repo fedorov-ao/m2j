@@ -1,4 +1,4 @@
-#_!/usr/bin/python
+#!/usr/bin/python
 
 #Mouse to joystick emulator common functionality
 
@@ -6781,6 +6781,7 @@ def make_parser():
     if j is None:
       j = state.get("parser")("output", config["outputs"][name], state)
       outputs[name] = j
+    assert name in main.get("outputs")
     return j
 
   @make_reporting_joystick
@@ -6932,9 +6933,7 @@ class Main:
     orderOp = lambda i : i[1].get("seq", 100000)
     cfg = self.get("config")["outputs"]
     state = ParserState(self)
-    outputs = {}
-    parse_dict_live_ordered(outputs, cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
-    self.set("outputs", outputs)
+    parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
   def init_source(self):
     #TODO Use dedicated config section?
