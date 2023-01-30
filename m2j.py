@@ -5209,11 +5209,11 @@ def init_main_sink(main, make_next):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
   axisAccumulators = {}
-  for inputName,inpt in main.get("config").get("inputs").iteritems():
+  for sourceName,sourceObj in main.get("config").get("sources").iteritems():
     scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
     axisAccumulator = AxisAccumulator(state=False, scales=scales)
-    axisAccumulators[inputName] = axisAccumulator
-    et = make_event_test_op((("source", get_source_hash(inputName)), ("type", codes.EV_REL),), cmpOp)
+    axisAccumulators[sourceName] = axisAccumulator
+    et = make_event_test_op((("source", get_source_hash(sourceName)), ("type", codes.EV_REL),), cmpOp)
     mainSink.add(et, axisAccumulator)
   info = init_info(cfg=config.get("info", {}), main=main, axisAccumulators=axisAccumulators)
 

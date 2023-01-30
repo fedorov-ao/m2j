@@ -1294,7 +1294,7 @@ def parseRawInputEventSource(cfg, state):
   main = state.get("main")
   config = main.get("config")
   source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
-  for s,n in config["inputs"].items():
+  for s,n in config["sources"].items():
     try:
       source.track_device(n, s)
     except RuntimeError as e:

@@ -356,9 +356,9 @@ class NativeEvdevDeviceFactory:
   identifierRe_ = re.compile("([^:]*):(.*)")
 
 
-def init_inputs(inputsCfg, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp), deviceUpdatePeriod=2):
+def init_sources(sourcesCfg, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp), deviceUpdatePeriod=2):
   """
-  Initializes input devices.
+  Initializes source devices.
   Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
   """
   nativeDevFactory = NativeEvdevDeviceFactory()
@@ -378,7 +378,7 @@ def init_inputs(inputsCfg, makeDevice=lambda native,source,recreateOp : EvdevDev
       return nativeDevFactory.make_device(identifier, update=True)
     return op
   r = {}
-  for source,identifier in inputsCfg.items():
+  for source,identifier in sourcesCfg.items():
     nativeDevice = nativeDevFactory.make_device(identifier)
     recreateOp=make_recreate_op(identifier=identifier, deviceUpdatePeriod=deviceUpdatePeriod)
     r[source] = makeDevice(nativeDevice, source, recreateOp=recreateOp)
@@ -417,21 +417,21 @@ def parseEvdevJoystickOutput(cfg, state):
   return j
 
 
-def parseEvdevSource(cfg, state):
+def parseEvdevEventSource(cfg, state):
   config = state.get("main").get("config")
-  compressEvents = config.get("compressInputEvents", False)
-  deviceUpdatePeriod = config.get("missingInputUpdatePeriod", 2)
+  compressEvents = config.get("compressSourceEvents", False)
+  deviceUpdatePeriod = config.get("missingSourceUpdatePeriod", 2)
   def make_device(native, source, recreateOp):
     dev = EvdevDevice(native, source, recreateOp)
     if compressEvents:
       dev = EventCompressorDevice(dev)
     return dev
-  inputs = init_inputs(config.get("inputs", {}), make_device, deviceUpdatePeriod)
-  return EventSource(inputs, None)
+  sources = init_sources(config.get("sources", {}), make_device, deviceUpdatePeriod)
+  return EventSource(sources, None)
 
 
 def print_devices(fname):
-  """Prints input devices info."""
+  """Prints source devices info."""
   r = []
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:
@@ -474,7 +474,7 @@ if __name__ == "__main__":
     main = Main(print_devices=print_devices)
     parser = main.get("parser")
     parser.get("output").add("evdev", parseEvdevJoystickOutput)
-    parser.add("source", parseEvdevSource)
+    parser.add("source", parseEvdevEventSource)
     exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)
