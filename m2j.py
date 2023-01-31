@@ -6495,13 +6495,15 @@ def make_parser():
 
     def __init__(self):
       self.q_ = []
-      self.cv_ = threading.Condition()
+      self.cv_ = threading.Condition(threading.Lock())
       def op():
-        with self.cv_:
-          while len(self.q_) == 0:
-            self.cv_.wait()
-          soundFileName = self.q_[0]
-          del self.q_[0]
+        while True:
+          soundFileName = None
+          with self.cv_:
+            while len(self.q_) == 0:
+              self.cv_.wait()
+            soundFileName = self.q_[0]
+            del self.q_[0]
           playsound.playsound(soundFileName, True)
       self.thread_ = threading.Thread(target=op)
       self.thread_.daemon = True
