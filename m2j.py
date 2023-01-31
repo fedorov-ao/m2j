@@ -18,6 +18,7 @@ import zlib
 import Tkinter as tk
 import getopt
 import playsound
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -6486,13 +6487,35 @@ def make_parser():
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
+  class SoundPlayer:
+    def queue(self, soundFileName):
+      with self.cv_:
+        self.q_.append(soundFileName)
+        self.cv_.notify_all()
+
+    def __init__(self):
+      self.q_ = []
+      self.cv_ = threading.Condition()
+      def op():
+        with self.cv_:
+          while len(self.q_) == 0:
+            self.cv_.wait()
+          soundFileName = self.q_[0]
+          del self.q_[0]
+          playsound.playsound(soundFileName, True)
+      self.thread_ = threading.Thread(target=op)
+      self.thread_.daemon = True
+      self.thread_.start()
+
+  soundPlayer = SoundPlayer()
+
   def parsePlaySound(cfg, state):
     soundName = state.resolve(cfg, "sound")
     soundFileName = state.get("main").get("sounds").get(soundName, None)
     if soundFileName is None:
       raise RuntimeError("Sound '{}' is not registered".format(soundName))
     def op(e):
-      playsound.playsound(soundFileName, False)
+      soundPlayer.queue(soundFileName)
     return op
   actionParser.add("playSound", parsePlaySound)
 
