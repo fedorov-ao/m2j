@@ -6487,31 +6487,9 @@ def make_parser():
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
-  class SoundPlayer:
-    def queue(self, soundFileName):
-      with self.cv_:
-        self.q_.append(soundFileName)
-        self.cv_.notify_all()
-
-    def __init__(self):
-      self.q_ = []
-      self.cv_ = threading.Condition(threading.Lock())
-      def op():
-        while True:
-          soundFileName = None
-          with self.cv_:
-            while len(self.q_) == 0:
-              self.cv_.wait()
-            soundFileName = self.q_[0]
-            del self.q_[0]
-          playsound.playsound(soundFileName, True)
-      self.thread_ = threading.Thread(target=op)
-      self.thread_.daemon = True
-      self.thread_.start()
-
-  soundPlayer = SoundPlayer()
-
   def parsePlaySound(cfg, state):
+    main = state.get("main")
+    soundPlayer = main.get("soundPlayer")
     soundName = state.resolve(cfg, "sound")
     soundFileName = state.get("main").get("sounds").get(soundName, None)
     if soundFileName is None:
@@ -6914,6 +6892,39 @@ def make_parser():
   return mainParser
 
 
+class SoundPlayer:
+  def queue(self, soundFileName):
+    with self.cv_:
+      self.q_.append(soundFileName)
+      self.cv_.notify_all()
+
+  def __call__(self):
+    while True:
+      soundFileName = None
+      with self.cv_:
+        while len(self.q_) == 0 and not self.quit_:
+          self.cv_.wait()
+        if self.quit_:
+          return
+        else:
+          soundFileName = self.q_[0]
+          del self.q_[0]
+      playsound.playsound(soundFileName, True)
+
+  def __init__(self):
+    self.q_ = []
+    self.quit_ = False
+    self.cv_ = threading.Condition(threading.RLock())
+    self.thread_ = threading.Thread(target=self)
+    self.thread_.start()
+
+  def quit(self):
+    with self.cv_:
+      self.quit_ = True
+      self.cv_.notify_all()
+    self.thread_.join()
+
+
 class Main:
   def print_help(self):
     print "Usage: " + sys.argv[0] + " args"
@@ -7025,55 +7036,59 @@ class Main:
         self.set("updated", oldUpdated)
 
   def run(self):
-    self.preinit_log()
     try:
-      if (len(sys.argv)) == 1:
-        self.print_help()
-        return 0
-
-      opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
-      for o, a in opts:
-        if o in ("-h", "--help"):
+      self.preinit_log()
+      try:
+        if (len(sys.argv)) == 1:
           self.print_help()
           return 0
-        elif o in ("-d", "--devices"):
-          self.print_devices_(a)
-          return 0
-        if o in ("-p", "--preset"):
-          self.options_["preset"] = a
-        elif o in ("-v", "--logLevel"):
-          self.options_["logLevel"] = a
-        elif o in ("-c", "--config"):
-          cns = self.options_.setdefault("configNames", [])
-          cns.append(a)
 
-      self.reloading_ = False
-      self.init_config2()
-      self.init_log()
-      self.init_outputs()
-      self.init_sounds()
+        opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
+        for o, a in opts:
+          if o in ("-h", "--help"):
+            self.print_help()
+            return 0
+          elif o in ("-d", "--devices"):
+            self.print_devices_(a)
+            return 0
+          if o in ("-p", "--preset"):
+            self.options_["preset"] = a
+          elif o in ("-v", "--logLevel"):
+            self.options_["logLevel"] = a
+          elif o in ("-c", "--config"):
+            cns = self.options_.setdefault("configNames", [])
+            cns.append(a)
 
-      while (True):
-        try:
-          r = self.init_and_run()
-        except ReloadException:
-          logger.info("Reloading")
-          self.reloading_ = True
-        except Exception as e:
-          logger.error("Unexpected exception: {}".format(e))
-          raise
-        finally:
-          self.get("source").swallow(None, False)
+        self.reloading_ = False
+        self.init_config2()
+        self.init_log()
+        self.init_outputs()
+        self.init_sounds()
 
-    except KeyboardInterrupt:
-      logger.info("Exiting normally")
-      return 0
-    except ExitException:
-      logger.info("Exiting normally")
-      return 0
-    except ConfigReadError as e:
-      logger.error(e)
-      return 1
+        while (True):
+          try:
+            r = self.init_and_run()
+          except ReloadException:
+            logger.info("Reloading")
+            self.reloading_ = True
+          except Exception as e:
+            logger.error("Unexpected exception: {}".format(e))
+            raise
+          finally:
+            self.get("source").swallow(None, False)
+
+      except KeyboardInterrupt:
+        logger.info("Exiting normally")
+        return 0
+      except ExitException:
+        logger.info("Exiting normally")
+        return 0
+      except ConfigReadError as e:
+        logger.error(e)
+        return 1
+    finally:
+      self.get("soundPlayer").quit()
+
 
   def get(self, propName):
     if propName not in self.props_:
@@ -7099,3 +7114,4 @@ class Main:
     self.props_["outputs"] = {}
     self.props_["sounds"] = {}
     self.props_["state"] = False
+    self.props_["soundPlayer"] = SoundPlayer()
