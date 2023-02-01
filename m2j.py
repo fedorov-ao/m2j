@@ -14,7 +14,6 @@ import traceback
 import weakref
 import re
 import collections
-import zlib
 import Tkinter as tk
 import getopt
 import playsound
@@ -360,13 +359,11 @@ class ParserState:
     self.stacks_ = {}
 
 
-def calc_hash(s):
-  return None if s is None else zlib.adler32(s)
-
 class SourceRegister:
   def register_source(self, name):
     """Input event source __init__() should call this with the name of source."""
-    hsh = calc_hash(name)
+    hsh = self.hash_
+    self.hash_ += 1
     self.sources_[hsh] = name
     self.hashes_[name] = hsh
     return hsh
@@ -392,8 +389,9 @@ class SourceRegister:
 
   def __init__(self, addMissing=True):
     self.sources_, self.hashes_, self.addMissing_ = dict(), dict(), addMissing
+    self.hash_ = 0
 
-g_sr = SourceRegister()
+g_sr = SourceRegister(addMissing=True)
 
 def register_source(source):
   """Input event source __init__() should call this with the name of source."""
