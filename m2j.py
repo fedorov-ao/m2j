@@ -1533,6 +1533,22 @@ def make_event_test_op(attrsOrOp, cmp):
     return attrsOrOp
 
 
+class AttrsEventTestOp2:
+  __slots__ = ("attrs_",)
+
+  def __call__(self, event):
+    for attrName, attrCmpOp in self.attrs_:
+      eventValue = getattr(event, attrName, None)
+      if eventValue is None:
+        return False
+      if not attrCmpOp(eventValue):
+        return False
+    return True
+
+  def __init__(self, attrs):
+    self.attrs_ = attrs
+
+
 class BindSink:
   class ChildInfo:
     __slots__ = ("child", "name",)
@@ -5126,7 +5142,7 @@ def init_main_sink(main, make_next):
     scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
     axisAccumulator = AxisAccumulator(state=False, scales=scales)
     axisAccumulators[sourceName] = axisAccumulator
-    et = make_event_test_op((("source", get_source_hash(sourceName)), ("type", codes.EV_REL),), cmpOp)
+    et = AttrsEventTestOp2((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
     mainSink.add(et, axisAccumulator)
   info = init_info(cfg=config.get("info", {}), main=main, axisAccumulators=axisAccumulators)
 
