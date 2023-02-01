@@ -1510,7 +1510,7 @@ class CalibratingSink:
       logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
-class AttrsEventTestOp:
+class AttrsEventTest:
   __slots__ = ("attrs_", "cmp_",)
   def __call__(self, event):
     for attrName, attrValue in self.attrs_:
@@ -1526,27 +1526,28 @@ class AttrsEventTestOp:
     self.attrs_, self.cmp_ = attrs, cmp
 
 
+#TODO Remove
 def make_event_test_op(attrsOrOp, cmp):
   if type(attrsOrOp) in (list, tuple):
-    return AttrsEventTestOp(attrsOrOp, cmp)
+    return AttrsEventTest(attrsOrOp, cmp)
   else:
     return attrsOrOp
 
 
-class AttrsEventTestOp2:
-  __slots__ = ("attrs_",)
+class PropTestsEventTest:
+  __slots__ = ("pd_",)
 
   def __call__(self, event):
-    for attrName, attrCmpOp in self.attrs_:
-      eventValue = getattr(event, attrName, None)
+    for propName, propTest in self.pd_:
+      eventValue = getattr(event, propName, None)
       if eventValue is None:
         return False
-      if not attrCmpOp(eventValue):
+      if not propTest(eventValue):
         return False
     return True
 
-  def __init__(self, attrs):
-    self.attrs_ = attrs
+  def __init__(self, pd):
+    self.pd_ = pd
 
 
 class BindSink:
@@ -1680,6 +1681,7 @@ class ModifiersPropTest(PropTest):
     self.v_, self.allowExtraModifiers_ = v, allowExtraModifiers
 
 
+#TODO Remove
 class CmpWithModifiers:
   fi = float("inf")
   def __call__(self, name, eventValue, attrValue):
@@ -5072,7 +5074,6 @@ def init_info(**kwargs):
 
 def init_main_sink(main, make_next):
   #logger.debug("init_main_sink()")
-  cmpOp = CmpWithModifiers()
   config = main.get("config")
 
   defaultModifierDescs = [
@@ -5142,7 +5143,7 @@ def init_main_sink(main, make_next):
     scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
     axisAccumulator = AxisAccumulator(state=False, scales=scales)
     axisAccumulators[sourceName] = axisAccumulator
-    et = AttrsEventTestOp2((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
+    et = PropTestsEventTest((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
     mainSink.add(et, axisAccumulator)
   info = init_info(cfg=config.get("info", {}), main=main, axisAccumulators=axisAccumulators)
 
@@ -5152,7 +5153,7 @@ def init_main_sink(main, make_next):
       onCfg = state.resolve_d(bind, "on", state.resolve_d(bind, "input", None))
       if onCfg is None:
         raise RuntimeError("Cannot get 'on' or 'input' from {}".format(str2(onCfg)))
-      on = make_event_test_op(etParser(onCfg, state), cmpOp)
+      on = PropTestsEventTest(etParser(onCfg, state))
       doCfg = state.resolve_d(bind, "do", state.resolve_d(bind, "output", None))
       action = doCfg["action"]
       if action == "changeSens":
@@ -5228,8 +5229,8 @@ def init_main_sink(main, make_next):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
   grabSink = filterSink.set_next(BindSink())
-  grabSink.add(make_event_test_op(ED.init(1), cmpOp), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
-  grabSink.add(make_event_test_op(ED.init(0), cmpOp), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
+  grabSink.add(PropTestsEventTest(ED.init(1)), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
+  grabSink.add(PropTestsEventTest(ED.init(0)), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
 
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
@@ -6711,11 +6712,10 @@ def make_parser():
       def __init__(self, inputs, resetOn=[lambda event : False]):
         self.inputs_, self.resetOn_ = inputs, resetOn
         self.i_ = 0
-    cmpOp = CmpWithModifiers()
     inputs = state.resolve(cfg, "inputs")
-    inputs = [make_event_test_op(etParser(inpt, state), cmpOp) for inpt in inputs]
+    inputs = [PropTestsEventTest(etParser(inpt, state)) for inpt in inputs]
     resetOn = state.resolve_d(cfg, "resetOn", [])
-    resetOn = [make_event_test_op(etParser(rst, state), cmpOp) for rst in resetOn]
+    resetOn = [PropTestsEventTest(etParser(rst, state)) for rst in resetOn]
     return SequenceTest(inputs, resetOn)
   etParser.add("sequence", parseSequence)
 
@@ -6782,10 +6782,9 @@ def make_parser():
       return r
     binds.sort(key=bindsKey)
     bindingSink = BindSink()
-    cmpOp = CmpWithModifiers()
     for bind in binds:
       for on,do in parseOnsDos(bind, state):
-        on = make_event_test_op(on, cmpOp)
+        on = PropTestsEventTest(on)
         bindingSink.add(on, do, state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None))
     return bindingSink
 
