@@ -1701,60 +1701,60 @@ class CmpWithModifiers:
 class ED:
   @staticmethod
   def move(axis, modifiers = None):
-    r = (("type", codes.EV_REL), ("code", axis))
+    r = (("type", EqPropTest(codes.EV_REL)), ("code", EqPropTest(axis)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def move_to(axis, modifiers = None):
-    r = (("type", codes.EV_ABS), ("code", axis))
+    r = (("type", EqPropTest(codes.EV_ABS)), ("code", EqPropTest(axis)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def press(key, modifiers = None):
-    r  = (("type", codes.EV_KEY), ("code", key), ("value", 1))
+    r  = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(1)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def release(key, modifiers = None):
-    r = (("type", codes.EV_KEY), ("code", key), ("value", 0))
+    r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(0)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def click(key, modifiers = None):
-    r = (("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 1))
+    r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(1)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def doubleclick(key, modifiers = None):
-    r = (("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", 2))
+    r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(2)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def multiclick(key, n, modifiers = None):
-    r = (("type", codes.EV_KEY), ("code", key), ("value", 3), ("num_clicks", n))
+    r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(n)))
     if modifiers is not None:
-      r = r + (("modifiers", modifiers),)
+      r = r + (("modifiers", ModifiersPropTest(modifiers)),)
     return r
 
   @staticmethod
   def bcast():
-    return (("type", codes.EV_BCT),)
+    return (("type", EqPropTest(codes.EV_BCT)),)
 
   @staticmethod
   def init(i):
-    return (("type", codes.EV_BCT), ("code", codes.BCT_INIT), ("value", i))
+    return (("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT)), ("value", EqPropTest(i)))
 
   @staticmethod
   def any():
