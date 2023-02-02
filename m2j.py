@@ -764,8 +764,8 @@ class CompositeJoystick:
     return self.axes_.keys()
 
   def set_button_state(self, button, state):
-    children = self.a2c_[axis] if self.checkChild_ else self.children_
-    for c in self.children:
+    children = self.b2c_[button] if self.checkChild_ else self.children_
+    for c in children:
       c.set_button_state(button, state)
     self.buttons_[button] = state
 
