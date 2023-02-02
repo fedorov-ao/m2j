@@ -6578,14 +6578,17 @@ def make_parser():
   etParser = make_double_deref_parser(keyOp=etParserKeyOp)
   mainParser.add("et", etParser)
 
-  def parseEtModifiers_(r, cfg, state):
-    """Appends a list of modifierDescs to r if modifiers are specified in cfg."""
-    modifiers = state.resolve_d(cfg, "modifiers", None)
-    if modifiers is not None and modifiers != "any":
-      modifiers = [parse_modifier_desc(m, state) for m in modifiers]
-      allowExtraModifiers = state.resolve_d(cfg, "allowExtraModifiers", False)
-      r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
-    return r
+  def make_et(f):
+    def op(cfg, state):
+      """Appends a list of modifierDescs to r if modifiers are specified in cfg."""
+      r = f(cfg, state)
+      modifiers = state.resolve_d(cfg, "modifiers", None)
+      if modifiers is not None and modifiers != "any":
+        modifiers = [parse_modifier_desc(m, state) for m in modifiers]
+        allowExtraModifiers = state.resolve_d(cfg, "allowExtraModifiers", False)
+        r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
+      return r
+    return op
 
   def parseKey_(cfg, state, value):
     """Helper"""
@@ -6595,50 +6598,54 @@ def make_parser():
       r.append(("source", EqPropTest(sourceHash)))
     return r
 
+  @make_et
   def parseAny(cfg, state):
-    return parseEtModifiers_([], cfg, state)
+    return []
   etParser.add("any", parseAny)
 
+  @make_et
   def parsePress(cfg, state):
-    return parseEtModifiers_(parseKey_(cfg, state, 1), cfg, state)
+    return parseKey_(cfg, state, 1)
   etParser.add("press", parsePress)
 
+  @make_et
   def parseRelease(cfg, state):
-    return parseEtModifiers_(parseKey_(cfg, state, 0), cfg, state)
+    return parseKey_(cfg, state, 0)
   etParser.add("release", parseRelease)
 
+  @make_et
   def parseClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(1)))
-    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("click", parseClick)
 
+  @make_et
   def parseDoubleClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     r.append(("num_clicks", EqPropTest(2)))
-    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("doubleclick", parseDoubleClick)
 
+  @make_et
   def parseMultiClick(cfg, state):
     r = parseKey_(cfg, state, 3)
     num = int(state.resolve(cfg, "numClicks"))
     r.append(("num_clicks", EqPropTest(num)))
-    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("multiclick", parseMultiClick)
 
+  @make_et
   def parseHold(cfg, state):
     r = parseKey_(cfg, state, state.resolve_d(cfg, "value", 4))
     holdTime = state.resolve_d(cfg, "heldTime", None)
     if holdTime is not None:
       holdTime = float(holdTime)
       r.append(("heldTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
-    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("hold", parseHold)
 
+  @make_et
   def parseMove(cfg, state):
     sourceHash, eventType, axis = fn2htc(state.resolve(cfg, "axis"))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(axis))]
@@ -6666,10 +6673,10 @@ def make_parser():
         op = eq
         value = float(value)
       r.append(("value", CmpPropTest(value, op)))
-    r = parseEtModifiers_(r, cfg, state)
     return r
   etParser.add("move", parseMove)
 
+  @make_et
   def parseInit(cfg, state):
     r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT))]
     eventName = get_nested_d(cfg, "event")
@@ -6680,6 +6687,7 @@ def make_parser():
     return r
   etParser.add("init", parseInit)
 
+  @make_et
   def parseEvent(cfg, state):
     propValue = state.resolve_d(cfg, "etype", None)
     propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
