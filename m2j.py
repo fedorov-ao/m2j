@@ -1637,6 +1637,12 @@ class EqPropTest(PropTest):
   def __call__(self, v):
     return self.v_ == v
 
+  def __str__(self):
+    return "EqPropTest({})".format(self.v_)
+
+  def __repr__(self):
+    return str(self)
+
   def __init__(self, v):
     self.v_ = v
 
@@ -1700,67 +1706,70 @@ class CmpWithModifiers:
     self.allowExtraModifiers_ = allowExtraModifiers
 
 
-class ED:
+class ET:
   @staticmethod
   def move(axis, modifiers = None):
     r = (("type", EqPropTest(codes.EV_REL)), ("code", EqPropTest(axis)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def move_to(axis, modifiers = None):
     r = (("type", EqPropTest(codes.EV_ABS)), ("code", EqPropTest(axis)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def press(key, modifiers = None):
     r  = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(1)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def release(key, modifiers = None):
     r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(0)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def click(key, modifiers = None):
     r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(1)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def doubleclick(key, modifiers = None):
     r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(2)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def multiclick(key, n, modifiers = None):
     r = (("type", EqPropTest(codes.EV_KEY)), ("code", EqPropTest(key)), ("value", EqPropTest(3)), ("num_clicks", EqPropTest(n)))
     if modifiers is not None:
       r = r + (("modifiers", ModifiersPropTest(modifiers)),)
-    return r
+    return PropTestsEventTest(r)
 
   @staticmethod
   def bcast():
-    return (("type", EqPropTest(codes.EV_BCT)),)
+    r = (("type", EqPropTest(codes.EV_BCT)),)
+    return PropTestsEventTest(r)
 
   @staticmethod
   def init(i):
-    return (("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT)), ("value", EqPropTest(i)))
+    r = (("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT)), ("value", EqPropTest(i)))
+    return PropTestsEventTest(r)
 
   @staticmethod
   def any():
-    return ()
+    r = ()
+    return PropTestsEventTest(r)
 
 
 class StateSink:
@@ -5153,7 +5162,7 @@ def init_main_sink(main, make_next):
       onCfg = state.resolve_d(bind, "on", state.resolve_d(bind, "input", None))
       if onCfg is None:
         raise RuntimeError("Cannot get 'on' or 'input' from {}".format(str2(onCfg)))
-      on = PropTestsEventTest(etParser(onCfg, state))
+      on = etParser(onCfg, state)
       doCfg = state.resolve_d(bind, "do", state.resolve_d(bind, "output", None))
       action = doCfg["action"]
       if action == "changeSens":
@@ -5229,8 +5238,8 @@ def init_main_sink(main, make_next):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
   grabSink = filterSink.set_next(BindSink())
-  grabSink.add(PropTestsEventTest(ED.init(1)), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
-  grabSink.add(PropTestsEventTest(ED.init(0)), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
+  grabSink.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
+  grabSink.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
 
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
@@ -6587,7 +6596,7 @@ def make_parser():
         modifiers = [parse_modifier_desc(m, state) for m in modifiers]
         allowExtraModifiers = state.resolve_d(cfg, "allowExtraModifiers", False)
         r.append(("modifiers", ModifiersPropTest(modifiers, allowExtraModifiers)))
-      return r
+      return PropTestsEventTest(r)
     return op
 
   def parseKey_(cfg, state, value):
@@ -6721,9 +6730,9 @@ def make_parser():
         self.inputs_, self.resetOn_ = inputs, resetOn
         self.i_ = 0
     inputs = state.resolve(cfg, "inputs")
-    inputs = [PropTestsEventTest(etParser(inpt, state)) for inpt in inputs]
+    inputs = [etParser(inpt, state) for inpt in inputs]
     resetOn = state.resolve_d(cfg, "resetOn", [])
-    resetOn = [PropTestsEventTest(etParser(rst, state)) for rst in resetOn]
+    resetOn = [etParser(rst, state) for rst in resetOn]
     return SequenceTest(inputs, resetOn)
   etParser.add("sequence", parseSequence)
 
@@ -6792,7 +6801,6 @@ def make_parser():
     bindingSink = BindSink()
     for bind in binds:
       for on,do in parseOnsDos(bind, state):
-        on = PropTestsEventTest(on)
         bindingSink.add(on, do, state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None))
     return bindingSink
 
