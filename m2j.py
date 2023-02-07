@@ -5157,6 +5157,7 @@ def init_main_sink(main, make_next):
   info = init_info(cfg=config.get("info", {}), main=main, axisAccumulators=axisAccumulators)
 
   binds = config.get("binds", None)
+  enabled = [True]
   if binds is not None:
     for bind in binds:
       onCfg = state.resolve_d(bind, "on", state.resolve_d(bind, "input", None))
@@ -5187,9 +5188,21 @@ def init_main_sink(main, make_next):
           raise ExitException()
         action = op
       elif action == "enable":
-        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed))
+        callbacks = (SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
+        def op(event):
+          if stateSink.get_state() and not enabled[0]:
+            for cb in callbacks:
+              cb(event)
+            enabled[0] = True
+        action = op
       elif action == "disable":
-        action = If(lambda : stateSink.get_state(), Call(SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed))
+        callbacks2 = (SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
+        def op(event):
+          if stateSink.get_state() and enabled[0]:
+            for cb in callbacks2:
+              cb(event)
+            enabled[0] = False
+        action = op
       elif action == "grab":
         inputs = get_nested_d(doCfg, "inputs", None)
         inputs = released if inputs is None else inputs
