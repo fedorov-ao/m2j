@@ -332,24 +332,21 @@ class ParserState:
     return r
 
   def get_axis_by_full_name(self, fullAxisName):
-    outputName, axisName = fn2sn(fullAxisName)
+    outputName, axisType, axisId = fn2stc(fullAxisName)
     main = self.get("main")
     allAxes = main.get("axes")
-    if outputName not in allAxes:
-      #raise RuntimeError("No axes were initialized for '{}' (when parsing '{}')".format(outputName, fullAxisName))
-      allAxes[outputName] = {}
-    outputAxes = allAxes[outputName]
-    axisId = name2code(axisName)
+    outputAxes = allAxes.setdefault(outputName, {})
+    key = (axisType, axisId)
     axis = None
-    if axisId not in outputAxes:
+    if key not in outputAxes:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
       outputs = main.get("outputs")
       o = outputs[outputName]
       isReportingJoystick = type(o) is ReportingJoystick
       axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
-      outputAxes[axisId] = axis
+      outputAxes[key] = axis
     else:
-      axis = outputAxes[axisId]
+      axis = outputAxes[key]
     return axis
 
   def __init__(self, main):
