@@ -349,6 +349,10 @@ class ParserState:
       axis = outputAxes[key]
     return axis
 
+  def add_curve(self, fullAxisName, curve):
+    axisCurves = self.at("curves", 0).setdefault(fullAxisName, [])
+    axisCurves.append(curve)
+
   def __init__(self, main):
     self.values_ = {}
     self.values_["main"] = main
@@ -5574,10 +5578,6 @@ def make_parser():
   curveParser = make_double_deref_parser(keyOp=curveParserKeyOp)
   mainParser.add("curve", curveParser)
 
-  def add_curve_to_state(fullAxisName, curve, state):
-    axisCurves = state.at("curves", 0).setdefault(fullAxisName, [])
-    axisCurves.append(curve)
-
   def parsePoints(cfg, state):
     """Helper"""
     pointParsers = {}
@@ -5655,7 +5655,7 @@ def make_parser():
         onReset=onReset, onMove=onMove, resetTime=resetTime)
 
     axis.add_listener(curve)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("pointsOut", parsePointsOutputBasedCurve)
 
@@ -5670,7 +5670,7 @@ def make_parser():
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=None, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.01)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
     axis.add_listener(curve)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("fpointIn", parseFixedPointInputBasedCurve)
 
@@ -5696,7 +5696,7 @@ def make_parser():
       next=curve, point=mp, getValueOp=getValueOp, centerOp=centerOp, resetDistance=resetDistance,
       onReset=onReset, onMove=onMove, resetTime=resetTime)
     axis.add_listener(curve)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("pointsIn", parsePointsInputBasedCurve)
 
@@ -5711,8 +5711,8 @@ def make_parser():
     curve = OutputDeltaLinkingCurve(controllingAxis, controlledAxis, sensOp, deltaOp, radius)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
-    add_curve_to_state(fullControlledAxisName, curve, state)
-    add_curve_to_state(fullControllingAxisName, curve, state)
+    state.add_curve(fullControlledAxisName, curve)
+    state.add_curve(fullControllingAxisName, curve)
     return curve
   curveParser.add("outDeltaLink", parseOutputDeltaLinkingCurve)
 
@@ -5728,8 +5728,8 @@ def make_parser():
     curve = InputDeltaLinkingCurve(controllingAxis, controlledAxis, op, radius, threshold)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
-    add_curve_to_state(fullControlledAxisName, curve, state)
-    add_curve_to_state(fullControllingAxisName, curve, state)
+    state.add_curve(fullControlledAxisName, curve)
+    state.add_curve(fullControllingAxisName, curve)
     return curve
   curveParser.add("inDeltaLink", parseInputDeltaLinkingCurve)
 
@@ -5742,8 +5742,8 @@ def make_parser():
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
     controlledAxis.add_listener(curve)
     controllingAxis.add_listener(curve)
-    add_curve_to_state(fullControlledAxisName, curve, state)
-    add_curve_to_state(fullControllingAxisName, curve, state)
+    state.add_curve(fullControlledAxisName, curve)
+    state.add_curve(fullControllingAxisName, curve)
     return curve
   curveParser.add("inLink", parseInputLinkingCurve)
 
@@ -5757,8 +5757,8 @@ def make_parser():
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
     #FIXME Since there is no "axis" property in config node, it does not get added to state["curves"]
-    add_curve_to_state(fullControlledAxisName, linker, state)
-    add_curve_to_state(fullControllingAxisName, linker, state)
+    state.add_curve(fullControlledAxisName, linker)
+    state.add_curve(fullControllingAxisName, linker)
     return linker
   curveParser.add("linker", parseAxisLinker)
 
@@ -5800,7 +5800,7 @@ def make_parser():
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
     sensOp = FuncOp(func=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("combined", parseCombinedCurve)
 
@@ -5826,7 +5826,7 @@ def make_parser():
     ivLimits = state.resolve_d(cfg, "inputLimits", (-1.0, 1.0))
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("input2", parseInputBasedCurve2)
 
@@ -5879,7 +5879,7 @@ def make_parser():
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     absoluteChainCurve.set_next(axisChainCurve)
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return top
   curveParser.add("offset", parseOffsetCurve)
 
@@ -5928,7 +5928,7 @@ def make_parser():
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
-    add_curve_to_state(fullAxisName, top, state)
+    state.add_curve(fullAxisName, top)
     return top
   curveParser.add("accel", parseAccelCurve)
 
@@ -5966,7 +5966,7 @@ def make_parser():
     #To init state
     state.get_axis_by_full_name(fullAxisName)
     curve = NoopCurve(value=state.resolve_d(cfg, "value", 0.0))
-    add_curve_to_state(fullAxisName, curve, state)
+    state.add_curve(fullAxisName, curve)
     return curve
   curveParser.add("noop", parseNoopCurve)
 
