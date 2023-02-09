@@ -6266,7 +6266,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     component = sink.get_component(name)
     if component is None:
-      raise RuntimeError("No component '{}', available components are: {}".format(name, sink.components_))
+      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, sink, sink.components_.keys()))
     return component
 
   def actionParserKeyOp(cfg, state):
