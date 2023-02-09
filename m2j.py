@@ -5806,8 +5806,8 @@ def make_parser():
     inputLimits = state.resolve(cfg, "inputLimits")
     inputStep = state.resolve_d(cfg, "inputStep", 0.1)
     expandLimits = state.resolve_d(cfg, "expandLimits", False)
-    inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
-    #inputOp = LimitedOpToOp(inputOp, inputLimits)
+    #inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
+    inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
@@ -6204,6 +6204,7 @@ def make_parser():
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
     headSink.set_component("msmm", msmm)
+    print "set msmm for", name, headSink
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
@@ -6225,6 +6226,7 @@ def make_parser():
       return modeSink
     except:
       headSink.remove_component("msmm")
+      print "removed msmm from", name
       raise
   scParser.add("modes", parseMode)
 
@@ -6266,7 +6268,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     component = sink.get_component(name)
     if component is None:
-      raise RuntimeError("No component '{}', available components are: {}".format(name, sink.components_))
+      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, sink, sink.components_.keys()))
     return component
 
   def actionParserKeyOp(cfg, state):
