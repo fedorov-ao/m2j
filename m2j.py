@@ -275,11 +275,6 @@ class ParserState:
           o = parser("sink", v, self)
       if o is None:
         raise RuntimeError("Could not create object from: {}".format(str2(v)))
-      print "created obj", o, "as", k
-      try:
-        print "components:", o.components_
-      except:
-        pass
       cb(k, o)
 
   def get_arg(self, name):
@@ -5556,7 +5551,6 @@ class HeadSink:
 
   def __init__(self, next=None, components=None, parent=None, objects=None):
     self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
-    print "Created {}".format(self)
 
 
 class ObjectsComponent:
@@ -6117,12 +6111,15 @@ def make_parser():
     state.push("sinks", headSink)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     #logger.debug("parsing sink {}".format(cfg))
-    def parse_component(name):
+    def parse_component(name, set_component=None):
       #logger.debug("parsing component '{}'".format(name))
       if name in cfg:
         t = parser(name, cfg, state)
         if t is not None:
-          headSink.set_component(name, t)
+          if set_component is None:
+            headSink.set_component(name, t)
+          else:
+            set_component(headSink, name, t)
     sink = [None]
     def link_component(name, op=None):
       #logger.debug("linking component '{}'".format(name))
@@ -6149,9 +6146,12 @@ def make_parser():
         #Parse components
         if "modes" in cfg and "next" in cfg:
           raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parseOrder = ("objects", "next", "modes", "state", "sens", "modifiers", "binds")
-        for name in parseOrder:
-          parse_component(name)
+        def set_modes(headSink, name, t):
+          headSink.set_component("modes", t[0])
+          headSink.set_component("msmm", t[1])
+        parseOrder = (("objects", None), ("next", None), ("modes", set_modes), ("state", None), ("sens", None), ("modifiers", None), ("binds", None))
+        for name,set_component in parseOrder:
+          parse_component(name, set_component)
         #Link components
         linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
         for p in linkOrder:
@@ -6211,11 +6211,8 @@ def make_parser():
   def parseMode(cfg, state):
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
-    headSink = get_sink(cfg, state)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
-    headSink.set_component("msmm", msmm)
-    print "set msmm for", name, headSink
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
@@ -6234,11 +6231,8 @@ def make_parser():
           logger.warning("Cannot set mode: {}".format(initialMode))
       #Saving initial mode in msmm afer modeSink was initialized
       msmm.save()
-      print modeSink.children_
-      return modeSink
+      return (modeSink, msmm,)
     except:
-      headSink.remove_component("msmm")
-      print "removed msmm from", name
       raise
   scParser.add("modes", parseMode)
 
