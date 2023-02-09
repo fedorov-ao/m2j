@@ -342,8 +342,12 @@ class ParserState:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
       outputs = main.get("outputs")
       o = outputs[outputName]
-      isReportingJoystick = type(o) is ReportingJoystick
-      axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
+      axis = None
+      if axisType == codes.EV_KEY:
+        axis = ReportingAxis(JoystickButtonAxis(o, axisId))
+      else:
+        isReportingJoystick = type(o) is ReportingJoystick
+        axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
       outputAxes[key] = axis
     else:
       axis = outputAxes[key]
@@ -2313,6 +2317,26 @@ class JoystickAxis:
   def __init__(self, j, a):
     assert(j)
     self.j_, self.a_ = j, a
+
+
+class JoystickButtonAxis:
+  def move(self, v, relative):
+    assert(self.j_)
+    self.v_ = clamp(self.v_ + v if relative else v, *self.limits())
+    self.j_.set_button_state(self.b_, int(self.v_))
+    return self.v_
+
+  def get(self):
+    assert(self.j_)
+    return self.v_
+
+  def limits(self):
+    assert(self.j_)
+    return (0, 1)
+
+  def __init__(self, j, b):
+    assert(j)
+    self.j_, self.b_, self.v_ = j, b, 0.0
 
 
 class ReportingAxis:
