@@ -5516,6 +5516,52 @@ class DerefParser:
     self.p_ = parser
 
 
+class HeadSink:
+  def __call__(self, event):
+    #Can be actually called during init when next_ is not set yet
+    if self.next_ is None:
+      #logger.debug("{}: next sink is not set".format(self))
+      return False
+    else:
+      return self.next_(event)
+
+  def get_component(self, name, dfault=None):
+    return self.components_.get(name, dfault)
+
+  def set_component(self, name, component):
+    self.components_[name] = component
+
+  def remove_component(self, name):
+    del self.components_[name]
+
+  def get(self, name, dfault=None):
+    return self.get_component(name, dfault)
+
+  def set(self, name, component):
+    self.set_component(name, component)
+
+  def set_next(self, next):
+      self.next_ = next
+
+  def get_parent(self):
+    return self.parent_
+
+  def __init__(self, next=None, components=None, parent=None, objects=None):
+    self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
+
+
+class ObjectsComponent:
+  def get(self, k, sep = "."):
+    o = get_nested_d(self.objects_, k, None, sep)
+    return o
+
+  def set(self, name, obj):
+    self.objects_[name] = obj
+
+  def __init__(self):
+    self.objects_ = {}
+
+
 def make_parser():
   def make_double_deref_parser(keyOp):
     return DerefParser(parser=IntrusiveSelectParser(keyOp=keyOp, parser=DerefSelectParser()))
@@ -6050,50 +6096,6 @@ def make_parser():
   mainParser.add("sink", sinkParser)
   sinkParser.add("preset", parseExternal("preset", ("presets",)))
 
-  class HeadSink:
-    def __call__(self, event):
-      #Can be actually called during init when next_ is not set yet
-      if self.next_ is None:
-        #logger.debug("{}: next sink is not set".format(self))
-        return False
-      else:
-        return self.next_(event)
-
-    def get_component(self, name, dfault=None):
-      return self.components_.get(name, dfault)
-
-    def set_component(self, name, component):
-      self.components_[name] = component
-
-    def remove_component(self, name):
-      del self.components_[name]
-
-    def get(self, name, dfault=None):
-      return self.get_component(name, dfault)
-
-    def set(self, name, component):
-      self.set_component(name, component)
-
-    def set_next(self, next):
-        self.next_ = next
-
-    def get_parent(self):
-      return self.parent_
-
-    def __init__(self, next=None, components=None, parent=None, objects=None):
-        self.next_, self.components_, self.parent_, self.objects_ = next, components if components is not None else {}, parent, objects if objects is not None else {}
-
-  class ObjectsComponent:
-    def get(self, k, sep = "."):
-      o = get_nested_d(self.objects_, k, None, sep)
-      return o
-
-    def set(self, name, obj):
-      self.objects_[name] = obj
-
-    def __init__(self):
-      self.objects_ = {}
-
   @parseBasesDecorator
   def parseSink(cfg, state):
     """Assembles sink components in certain order."""
@@ -6106,12 +6108,12 @@ def make_parser():
     state.push("sinks", headSink)
     #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
     #logger.debug("parsing sink {}".format(cfg))
-    def parse_component(name):
+    def parse_component(name, set_component=None):
       #logger.debug("parsing component '{}'".format(name))
       if name in cfg:
         t = parser(name, cfg, state)
-        if t is not None:
-          headSink.set_component(name, t)
+        if t is not None and set_component is not None:
+          set_component(headSink, name, t)
     sink = [None]
     def link_component(name, op=None):
       #logger.debug("linking component '{}'".format(name))
@@ -6134,27 +6136,29 @@ def make_parser():
         def noop(event):
           return False
         return noop
-      try:
-        #Parse components
-        if "modes" in cfg and "next" in cfg:
-          raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        parseOrder = ("objects", "next", "modes", "state", "sens", "modifiers", "binds")
-        for name in parseOrder:
-          parse_component(name)
-        #Link components
-        linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
-        for p in linkOrder:
-          link_component(p[0], p[1])  
-        #Check result
-        if sink[0] is None:
-          #logger.debug("Could not make sink out of '{}'".format(cfg))
-          return None
-        else:
-          headSink.set_next(sink[0])
-          return headSink
-      finally:
-        state.pop("sinks")
+      #Parse components
+      if "modes" in cfg and "next" in cfg:
+        raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+      def set_component(headSink, name, t):
+        headSink.set_component(name, t)
+      assert headSink is state.at("sinks", 0)
+      parseOrder = (("objects", None), ("next", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component))
+      for name,set_component in parseOrder:
+        parse_component(name, set_component)
+      #Link components
+      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
+      assert headSink is state.at("sinks", 0)
+      for p in linkOrder:
+        link_component(p[0], p[1])
+      #Check result
+      if sink[0] is None:
+        #logger.debug("Could not make sink out of '{}'".format(cfg))
+        return None
+      else:
+        headSink.set_next(sink[0])
+        return headSink
     finally:
+      state.pop("sinks")
       state.pop_args()
       state.pop("curves")
   sinkParser.add("sink", parseSink)
@@ -6200,10 +6204,11 @@ def make_parser():
   def parseMode(cfg, state):
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
-    headSink = get_sink(cfg, state)
+    headSink = state.at("sinks", 0)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
     headSink.set_component("msmm", msmm)
+    headSink.set_component("modes", modeSink)
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
@@ -6225,6 +6230,7 @@ def make_parser():
       return modeSink
     except:
       headSink.remove_component("msmm")
+      headSink.remove_component("modes")
       raise
   scParser.add("modes", parseMode)
 
@@ -6266,7 +6272,7 @@ def make_parser():
     sink = get_sink(cfg, state)
     component = sink.get_component(name)
     if component is None:
-      raise RuntimeError("No component '{}', available components are: {}".format(name, sink.components_))
+      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, sink, sink.components_.keys()))
     return component
 
   def actionParserKeyOp(cfg, state):
