@@ -6142,30 +6142,27 @@ def make_parser():
         def noop(event):
           return False
         return noop
-      try:
-        #Parse components
-        if "modes" in cfg and "next" in cfg:
-          raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-        def set_modes(headSink, name, t):
-          headSink.set_component("modes", t[0])
-          headSink.set_component("msmm", t[1])
-        parseOrder = (("objects", None), ("next", None), ("modes", set_modes), ("state", None), ("sens", None), ("modifiers", None), ("binds", None))
-        for name,set_component in parseOrder:
-          parse_component(name, set_component)
-        #Link components
-        linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
-        for p in linkOrder:
-          link_component(p[0], p[1])  
-        #Check result
-        if sink[0] is None:
-          #logger.debug("Could not make sink out of '{}'".format(cfg))
-          return None
-        else:
-          headSink.set_next(sink[0])
-          return headSink
-      finally:
-        state.pop("sinks")
+      #Parse components
+      if "modes" in cfg and "next" in cfg:
+        raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+      assert headSink is state.at("sinks", 0)
+      parseOrder = (("objects", None), ("next", None), ("modes", None), ("state", None), ("sens", None), ("modifiers", None), ("binds", None))
+      for name,set_component in parseOrder:
+        parse_component(name, set_component)
+      #Link components
+      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
+      assert headSink is state.at("sinks", 0)
+      for p in linkOrder:
+        link_component(p[0], p[1])
+      #Check result
+      if sink[0] is None:
+        #logger.debug("Could not make sink out of '{}'".format(cfg))
+        return None
+      else:
+        headSink.set_next(sink[0])
+        return headSink
     finally:
+      state.pop("sinks")
       state.pop_args()
       state.pop("curves")
   sinkParser.add("sink", parseSink)
@@ -6211,8 +6208,10 @@ def make_parser():
   def parseMode(cfg, state):
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
+    headSink = state.at("sinks", 0)
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
+    headSink.set_component("msmm", msmm)
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
@@ -6231,8 +6230,9 @@ def make_parser():
           logger.warning("Cannot set mode: {}".format(initialMode))
       #Saving initial mode in msmm afer modeSink was initialized
       msmm.save()
-      return (modeSink, msmm,)
+      return modeSink
     except:
+      headSink.remove_component("msmm")
       raise
   scParser.add("modes", parseMode)
 
