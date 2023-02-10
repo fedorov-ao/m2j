@@ -4994,7 +4994,7 @@ class Info:
         return
       buttonIDs = output.get_supported_buttons()
       for buttonID in buttonIDs:
-        name=typecode2name(codes.EV_KEY, buttonID).strip("BTN_")
+        name = str(buttonID - codes.BTN_0)
         getButtonState = self.GetButtonState(output, buttonID)
         button = Info.Button(master=self.frame_, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)

@@ -391,7 +391,17 @@ def init_sources(sourcesCfg, makeDevice=lambda native,source,recreateOp : EvdevD
 
 @make_reporting_joystick
 def parseEvdevJoystickOutput(cfg, state):
-  buttons = [code2ecode(name2code(buttonName)) for buttonName in cfg["buttons"]]
+  buttons = None
+  numButtons = cfg.get("numButtons", None)
+  if numButtons is not None:
+    buttons = [codes.BTN_0+i for i in range(numButtons)]
+  else:
+    buttonNames = cfg.get("buttons", None)
+    if buttonNames is not None:
+      buttons = [code2ecode(name2code(buttonName)) for buttonName in buttonNames]
+    else:
+      raise RuntimeError("Either 'buttons' or 'numButtons' must be specified")
+  assert buttons is not None
   axesDatum = {}
   immediateSyn=cfg.get("immediateSyn", True)
   nativeLimit=cfg.get("nativeLimit", 32767)
