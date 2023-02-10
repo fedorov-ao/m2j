@@ -6115,11 +6115,8 @@ def make_parser():
       #logger.debug("parsing component '{}'".format(name))
       if name in cfg:
         t = parser(name, cfg, state)
-        if t is not None:
-          if set_component is None:
-            headSink.set_component(name, t)
-          else:
-            set_component(headSink, name, t)
+        if t is not None and set_component is not None:
+          set_component(headSink, name, t)
     sink = [None]
     def link_component(name, op=None):
       #logger.debug("linking component '{}'".format(name))
@@ -6145,8 +6142,10 @@ def make_parser():
       #Parse components
       if "modes" in cfg and "next" in cfg:
         raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+      def set_component(headSink, name, t):
+        headSink.set_component(name, t)
       assert headSink is state.at("sinks", 0)
-      parseOrder = (("objects", None), ("next", None), ("modes", None), ("state", None), ("sens", None), ("modifiers", None), ("binds", None))
+      parseOrder = (("objects", None), ("next", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component))
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
@@ -6212,6 +6211,7 @@ def make_parser():
     modeSink = ModeSink(name)
     msmm = ModeSinkModeManager(modeSink)
     headSink.set_component("msmm", msmm)
+    headSink.set_component("modes", modeSink)
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
@@ -6233,6 +6233,7 @@ def make_parser():
       return modeSink
     except:
       headSink.remove_component("msmm")
+      headSink.remove_component("modes")
       raise
   scParser.add("modes", parseMode)
 
