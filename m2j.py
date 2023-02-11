@@ -1899,9 +1899,6 @@ class ModeSink:
         #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
         child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
 
-  def __repr__(self):
-    return "ModeSink, {}, {}, {}".format(self.children_, self.mode_, self.name_)
-
   def __init__(self, name="", reportModeSwitchCb=None):
     self.children_, self.mode_, self.name_ = {}, None, name
     if reportModeSwitchCb is None:
@@ -6267,7 +6264,6 @@ def make_parser():
        depth: 0 - current component sink, 1 - its parent, etc
     """
     sink = state.resolve_d(cfg, "sink", None)
-    #print "got", sink, "for", str2(cfg)
     if sink is None:
       #logger.debug("Cannot get target sink by '{}'".format(sinkName))
       sink = state.at("sinks", state.resolve_d(cfg, "depth", 0))
