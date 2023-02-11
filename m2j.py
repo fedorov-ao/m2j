@@ -1120,16 +1120,17 @@ def SetButtonState(output, button, state):
 
 class ClickSink:
   def __call__(self, event):
-    r = False
-    if self.next_:
-      r = self.next_(event)
-
     numClicks = 0
     if event.type == codes.EV_KEY:
       numClicks = self.update_keys(event)
-      if self.next_ and numClicks != 0:
+
+    r = False
+    if self.next_:
+      r = self.next_(event)
+      if numClicks != 0:
         clickEvent = ClickEvent.from_event(event, numClicks)
-        r = r or self.next_(clickEvent)
+        rc = self.next_(clickEvent)
+        r = r or rc
     return r
 
   #returns number of clicks
@@ -5164,6 +5165,7 @@ def init_main_sink(main, make_next):
   state = ParserState(main)
   toggler = Toggler(stateSink)
   etParser = main.get("parser").get("et")
+  actionParser = main.get("parser").get("action")
 
   released = config.get("released", ())
   sourceFilterOp = SourceFilterOp(released)
@@ -5266,8 +5268,10 @@ def init_main_sink(main, make_next):
             aa.set_state(s[0])
         action = op
       else:
-        logger.error("Unknown action: {}", action)
-        continue
+        action = actionParser(doCfg, state)
+        if action is None:
+          logger.error("Unknown action: {}", action)
+          continue
       mainSink.add(on, action, 0)
 
   grabbed = config.get("grabbed", ())
