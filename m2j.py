@@ -5161,6 +5161,7 @@ def init_main_sink(main, make_next):
   state = ParserState(main)
   toggler = Toggler(stateSink)
   etParser = main.get("parser").get("et")
+  actionParser = main.get("parser").get("action")
 
   released = config.get("released", ())
   sourceFilterOp = SourceFilterOp(released)
@@ -5263,8 +5264,10 @@ def init_main_sink(main, make_next):
             aa.set_state(s[0])
         action = op
       else:
-        logger.error("Unknown action: {}", action)
-        continue
+        action = actionParser(doCfg, state)
+        if action is None:
+          logger.error("Unknown action: {}", action)
+          continue
       mainSink.add(on, action, 0)
 
   grabbed = config.get("grabbed", ())
