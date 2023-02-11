@@ -273,7 +273,7 @@ class EvdevDevice:
       return
     try:
       evdevEvent = self.dev_.read_one()
-      while (evdevEvent is not None) and (evdevEvent.type == 0):
+      while (evdevEvent is not None) and (evdevEvent.type in (0, 4)):
         evdevEvent = self.dev_.read_one()
       event = translate_evdev_event(evdevEvent, self.sourceHash_)
       if event is None:
