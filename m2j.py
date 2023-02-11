@@ -5865,8 +5865,8 @@ def make_parser():
     inputLimits = state.resolve(cfg, "inputLimits")
     inputStep = state.resolve_d(cfg, "inputStep", 0.1)
     expandLimits = state.resolve_d(cfg, "expandLimits", False)
-    #inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
-    inputOp = LimitedOpToOp(inputOp, inputLimits)
+    inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
+    #inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
 
   def parseCombinedCurve(cfg, state):
