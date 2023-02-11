@@ -481,16 +481,21 @@ def type2names(type):
   return t2ps.get(type, ())
 
 
-typeCode2Name = {
-  t : {
-    c : n for n,c in codesDict.items() if name2type(n) == t
-  }
-  for t in set((name2type(n) for n in codesDict.keys())) if t is not None
-}
+typeCode2Name = None
 
-
-def typecode2name(type, code):
-  return typeCode2Name.get(type, {}).get(code, "")
+def tc2ns(t, c):
+  global typeCode2Name
+  if typeCode2Name is None:
+    typeCode2Name = {}
+    for n,c in codesDict.items():
+      codeToNames = typeCode2Name.setdefault(name2type(n), {})
+      names = codeToNames.setdefault(c, [])
+      names.append(n)
+  dfault = [""]
+  codeToNames = typeCode2Name.get(t, None)
+  if codeToNames is None:
+    return dfault
+  return codeToNames.get(c, dfault)
 
 
 SplitName = collections.namedtuple("SplitName", "state source shash type code")
@@ -573,26 +578,26 @@ def fn2htc(s, sep="."):
   return SourceTypeCode(source=h, type=r.type, code=r.code)
 
 
-def stc2fn(source, type, code, sep="."):
+def stc2fn(source, type, code, sep=".", nameSep="/"):
   """
   Joins source, type and code into full name.
   'mouse', codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
-  tcn = typecode2name(type, code)
+  tcn = tc2ns(type, code)
   if source is not None:
-    tcn = sep.join((source, tcn))
+    tcn = sep.join((source, nameSep.join(*tcn)))
   return tcn
 
 
-def htc2fn(sourceHash, type, code, sep="."):
+def htc2fn(sourceHash, type, code, sep=".", nameSep="/"):
   """
   Joins source hash, type and code into full name.
   get_source_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
   s = None if sourceHash is None else str(get_source_name(sourceHash))
-  return stc2fn(s, type, code, sep)
+  return stc2fn(s, type, code, sep, nameSep)
 
 
 def fn2sne(s, sep="."):
@@ -831,7 +836,7 @@ class CompositeJoystick:
 class Event(object):
   def __str__(self):
     fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}"
-    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), str2(self.value), self.timestamp)
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, stc2fn(None, self.type, self.code), str2(self.value), self.timestamp)
 
   __slots__ = ("type", "code", "value", "timestamp", )
   def __init__(self, type, code, value, timestamp=None):
@@ -1114,7 +1119,7 @@ def MoveAxisByEvent(axis):
 def SetButtonState(output, button, state):
   def op(event):
     output.set_button_state(button, state)
-    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, typecode2name(codes.EV_KEY, button), button, state))
+    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, stc2fn(None, codes.EV_KEY, button), button, state))
   return op
 
 
@@ -1306,7 +1311,7 @@ class ModifierSink:
     self.m_ = []
 
   def __init__(self, next = None, modifierDescs = None, saveModifiers = True, mode = 0):
-    #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, typecode2name(codes.EV_KEY, m)) for s,m in modifiers]))
+    #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, stc2fn(None, codes.EV_KEY, m)) for s,m in modifiers]))
     self.m_, self.next_, self.modifiers_, self.removed_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
     if modifierDescs is not None:
       for md in modifierDescs:
@@ -5039,7 +5044,7 @@ class Info:
         return
       axisIDs = output.get_supported_axes()
       for axisID in axisIDs:
-        name=typecode2name(codes.EV_ABS, axisID)[4:]
+        name=tc2ns(codes.EV_ABS, axisID)[0][4:]
         getAxisValue = self.GetAxisValue(output, axisID)
         axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
