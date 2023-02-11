@@ -1120,16 +1120,17 @@ def SetButtonState(output, button, state):
 
 class ClickSink:
   def __call__(self, event):
-    r = False
-    if self.next_:
-      r = self.next_(event)
-
     numClicks = 0
     if event.type == codes.EV_KEY:
       numClicks = self.update_keys(event)
-      if self.next_ and numClicks != 0:
+
+    r = False
+    if self.next_:
+      r = self.next_(event)
+      if numClicks != 0:
         clickEvent = ClickEvent.from_event(event, numClicks)
-        r = r or self.next_(clickEvent)
+        rc = self.next_(clickEvent)
+        r = r or rc
     return r
 
   #returns number of clicks
