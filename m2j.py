@@ -3050,14 +3050,23 @@ class LookupOp:
     if self.inputLimits_[0] > self.inputLimits_[1]:
       self.inputLimits_[0], self.inputLimits_[1] = self.inputLimits_[1], self.inputLimits_[0]
     self.ivs_, self.ovs_ = [], []
-    iv0 = 0.0
-    ov0 = self.outputOp_.calc(iv0)
-    self.s_ = 0
-    iv = iv0
-    while self.s_ == 0:
-      iv += self.inputStep_
+    ivp = self.inputLimits_[0]
+    ovp = self.outputOp_.calc(ivp)
+    s = 0
+    iv = ivp
+    while iv == clamp(iv, *self.inputLimits_):
+      iv = ivp + self.inputStep_
       ov = self.outputOp_.calc(iv)
-      self.s_ = sign(iv-iv0)*sign(ov-ov0)
+      ts = sign(iv-ivp)*sign(ov-ovp)
+      if ts != 0:
+        if s == 0:
+          s = ts
+        elif s != ts:
+          raise RuntimeError("Function must be either increasing or decreasing")
+      ivp, ovp = iv, ov
+    if s == 0:
+      raise RuntimeError("Cannot determine whether function is increasing or decreasing")
+    self.s_ = s
     self.fill_(0, 0.0)
 
   def fill_(self, ie, outputValue):
