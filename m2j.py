@@ -6758,12 +6758,28 @@ def make_parser():
     propValue = state.resolve_d(cfg, "etype", None)
     propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
     r = [("type", EqPropTest(propValue))]
-    for p in (("source", get_source_hash), ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x), ("value", lambda x : x)):
+    def eq(ev, pv):
+      return ev == pv
+    def eq_dict(ev, pv):
+      dicts = (dict, collections.OrderedDict,)
+      if type(ev) in dicts and type(pv) in dicts:
+        for n,v in pv.items():
+          vv = ev.get(n, None)
+          if vv != v:
+            return False
+        return True
+      else:
+        return eq(ev, pv)
+    for p in  (
+      ("source", get_source_hash, eq),
+      ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x, eq),
+      ("value", lambda x : x, eq_dict)
+    ):
       propName, propOp = p[0], p[1]
       propValue = state.resolve_d(cfg, propName, None)
       if propValue is not None:
         propValue = propOp(propValue)
-        r.append((propName, EqPropTest(propValue)))
+        r.append((propName, CmpPropTest(propValue, eq_dict)))
     return r
   etParser.add("event", parseEvent)
 
