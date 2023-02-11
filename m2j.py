@@ -831,7 +831,7 @@ class CompositeJoystick:
 class Event(object):
   def __str__(self):
     fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}"
-    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), self.value, self.timestamp)
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, typecode2name(self.type, self.code), str2(self.value), self.timestamp)
 
   __slots__ = ("type", "code", "value", "timestamp", )
   def __init__(self, type, code, value, timestamp=None):
@@ -5169,6 +5169,8 @@ def init_main_sink(main, make_next):
       self.sink_, self.s_ = sink, False
 
   state = ParserState(main)
+  state.push("sinks", topSink)
+
   toggler = Toggler(stateSink)
   etParser = main.get("parser").get("et")
   actionParser = main.get("parser").get("action")
@@ -6600,6 +6602,8 @@ def make_parser():
   def parseEmitCustomEvent(cfg, state):
     code, value = int(state.resolve_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     sink = get_sink(cfg, state)
+    if sink is None:
+      raise RuntimeError("Cannot find target sink")
     def callback(e):
       event = Event(codes.EV_CUSTOM, code, value)
       return sink(event)
