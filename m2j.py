@@ -586,7 +586,8 @@ def stc2fn(source, type, code, sep=".", nameSep="/"):
   """
   tcn = tc2ns(type, code)
   if source is not None:
-    tcn = sep.join((source, nameSep.join(*tcn)))
+    tcn = (sep.join((source, t)) for t in tcn)
+    tcn = nameSep.join(tcn)
   return tcn
 
 
