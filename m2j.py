@@ -586,7 +586,8 @@ def stc2fn(source, type, code, sep=".", nameSep="/"):
   """
   tcn = tc2ns(type, code)
   if source is not None:
-    tcn = sep.join((source, nameSep.join(*tcn)))
+    tcn = (sep.join((source, t)) for t in tcn)
+    tcn = nameSep.join(tcn)
   return tcn
 
 
@@ -1146,9 +1147,9 @@ class ClickSink:
       keyData = self.keys_[event.code]
       prevValue, prevTimestamp, prevNumClicks = keyData
       dt = event.timestamp - prevTimestamp
-      if event.value == 0 and prevValue > 0 and dt <= self.clickTime_:
+      if event.value == 0 and prevValue == 1 and dt <= self.clickTime_:
         keyData[2] += 1
-      elif event.value > 0 and prevValue == 0 and dt > self.clickTime_:
+      elif event.value == 1 and prevValue == 0 and dt > self.clickTime_:
         keyData[2] = 0
       keyData[0] = event.value
       keyData[1] = event.timestamp
