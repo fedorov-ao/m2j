@@ -4309,21 +4309,20 @@ class RateSettingJoystick:
       self.v_ = {axisId : clamp(0.0, *self.get_limits(axisId)) for axisId in self.next_.get_supported_axes()}
     return next
 
-  def update(self, tick):
+  def update(self, tick, timestamp):
     if self.next_ is None:
       return
     for axisId,value in self.v_.items():
-      if value == 0.0:
+      rateOp = self.rateOps_.get(axisId, None)
+      if rateOp is None:
         continue
-      rate = self.rates_.get(axisId, 0.0)
-      if rate == 0.0:
-        continue
-      v = rate*value*tick
-      self.next_.move_axis(axisId, v, relative=True)
+      rate = rateOp.calc(value, timestamp)
+      delta = rate*tick
+      self.next_.move_axis(axisId, delta, relative=True)
 
-  def __init__(self, next, rates, limits=None):
+  def __init__(self, next, rateOps, limits=None):
     assert(next is not None)
-    self.next_, self.rates_, self.limits_ = next, rates, {} if limits is None else limits
+    self.next_, self.rateOps_, self.limits_ = next, rateOps, {} if limits is None else limits
     self.set_next(next)
 
 
@@ -6934,11 +6933,44 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRateSettingOutput(cfg, state):
-    rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
+    class RateOp:
+      def calc(self, value, timestamp):
+        if value != self.value_ or self.timestamp_ is None:
+          self.timestamp_ = timestamp
+          self.value_ = value
+        r = value
+        if self.axisFunc_ and self.axis_:
+          r *= self.axisFunc_(self.axis_.get())
+        if self.accelFunc_:
+          dt = timestamp - self.timestamp_
+          r *= self.accelFunc_(dt)
+        return r
+      def __init__(self, axis, axisFunc, accelFunc):
+        self.value_, self.timestamp_ = 0.0, None
+        self.axis_, self.axisFunc_, self.accelFunc_ = axis, axisFunc, accelFunc
     limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
     next = state.get("parser")("output", state.resolve(cfg, "next"), state)
-    j = RateSettingJoystick(next, rates, limits)
-    state.get("main").get("updated").append(lambda tick,ts : j.update(tick))
+    rateOps = {}
+    ratesCfg = state.resolve(cfg, "rates")
+    for axisName,rateOrCfg in ratesCfg.items():
+      sensAxis, sensAxisFunc, accelFunc = None, None, None
+      if type(rateOrCfg) in (int, float):
+        class F:
+          def __call__(self, dt):
+            return self.v_
+          def __init__(self, v):
+            self.v_ = v
+        accelFunc = F(rateOrCfg)
+      else:
+        if "accelMod" in rateOrCfg:
+          accelFunc = state.get("parser")("op", state.resolve(rateOrCfg, "accelMod.op"), state)
+        if "sensMod" in rateOrCfg:
+          sensAxis = state.get_axis_by_full_name(state.resolve(rateOrCfg, "sensMod.axis"))
+          sensAxisFunc = state.get("parser")("op", state.resolve(rateOrCfg, "sensMod.op"), state)
+      axisId = name2code(axisName)
+      rateOps[axisId] = RateOp(sensAxis, sensAxisFunc, accelFunc)
+    j = RateSettingJoystick(next, rateOps, limits)
+    state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
     return j
   outputParser.add("rateSet", parseRateSettingOutput)
 
