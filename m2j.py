@@ -5306,7 +5306,8 @@ def init_main_sink(main, make_next):
       axis.remove_all_listeners()
 
   grabSink.add(None, make_next(main), 1)
-  main.set("state", config.get("initialState", False))
+  if main.get("reloading") == False:
+    main.set("state", config.get("initialState", False))
   stateSink.set_state(main.get("state"))
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
@@ -7102,7 +7103,7 @@ class Main:
       root.addHandler(logFileHandler)
 
   def init_config2(self):
-    if self.get("config") is not None and not self.reloading_:
+    if self.get("config") is not None and self.get("reloading") == False:
       return
     config = self.options_
     configNames = self.options_.get("configNames", None)
@@ -7156,7 +7157,7 @@ class Main:
         if self.loop_ is not None:
           del self.loop_
         self.loop_ = loop
-        self.reloading_ = False
+        self.set("reloading", False)
       except Exception as e:
         logger.error("Could not create or recreate loop; reason: '{}'".format(e))
         logger.error("===Traceback begin===")
@@ -7199,7 +7200,7 @@ class Main:
             cns = self.options_.setdefault("configNames", [])
             cns.append(a)
 
-        self.reloading_ = False
+        self.set("reloading", False)
         self.init_config2()
         self.init_log()
         self.init_outputs()
@@ -7210,7 +7211,7 @@ class Main:
             r = self.init_and_run()
           except ReloadException:
             logger.info("Reloading")
-            self.reloading_ = True
+            self.set("reloading", True)
           except Exception as e:
             logger.error("Unexpected exception: {}".format(e))
             raise
@@ -7241,11 +7242,11 @@ class Main:
     self.props_[propName] = propValue
 
   def __init__(self, parser=make_parser(), print_devices=lambda a:None):
-    self.reloading_ = False 
     self.loop_ = None
     self.print_devices_ = print_devices
     self.options_ = {}
     self.props_ = {}
+    self.props_["reloading"] = False
     self.props_["source"] = None
     self.props_["config"] = None
     self.props_["parser"] = parser
