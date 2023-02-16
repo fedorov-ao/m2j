@@ -266,7 +266,7 @@ class ParserState:
       if n is not None:
         o = parser(n, v, self)
       else:
-        for n in ("literal", "op", "curve", "action", "et", "output"):
+        for n in ("literal", "func", "curve", "action", "et", "output"):
           if n in v:
             o = parser(n, v, self)
             #break is needed to avoid executing the "else" block
@@ -3731,24 +3731,24 @@ class InputLinkingCurve:
 
 
 class AxisLinker:
-  """Directly links positions of 2 axes using op and offset.
+  """Directly links positions of 2 axes using func and offset.
      If controlled axis is moved externally by delta, adds this delta to offset.
      When resetting axes, reset controlling axis first, then controlled.
   """
   def reset(self):
-    self.offset_ = self.controlledAxis_.get() - self.op_(self.controllingAxis_.get())
+    self.offset_ = self.controlledAxis_.get() - self.func_(self.controllingAxis_.get())
 
   def set_state(self, state):
     if state == True:
       self.reset()
     self.state_ = state
 
-  def set_op(self, op):
-    self.op_ = op
+  def set_func(self, func):
+    self.func_ = func
     self.reset()
 
-  def get_op(self):
-    return self.op_
+  def get_func(self):
+    return self.func_
 
   def set_offset(self, offset):
     self.offset_ = offset
@@ -3762,7 +3762,7 @@ class AxisLinker:
         #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
         self.offset_ += new - old
       elif axis == self.controllingAxis_:
-        cv = self.op_(new)
+        cv = self.func_(new)
         try:
           self.busy_= True
           #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
@@ -3775,8 +3775,8 @@ class AxisLinker:
         finally:
           self.busy_= False
 
-  def __init__(self, controllingAxis, controlledAxis, op):
-    self.controllingAxis_, self.controlledAxis_, self.op_ = controllingAxis, controlledAxis, op
+  def __init__(self, controllingAxis, controlledAxis, func):
+    self.controllingAxis_, self.controlledAxis_, self.func_ = controllingAxis, controlledAxis, func
     self.offset_, self.busy_, self.state_  = 0.0, False, False
     #logger.debug("{} created".format(self))
 
@@ -5596,9 +5596,9 @@ def make_parser():
     return resolve(cfg, "literal")
   mainParser.add("literal", literalParser)
 
-  opParserKeyOp = lambda cfg,state : get_nested(cfg, "op")
-  opParser = make_double_deref_parser(keyOp=opParserKeyOp)
-  mainParser.add("op", opParser)
+  funcParserKeyOp = lambda cfg,state : get_nested(cfg, "func")
+  funcParser = make_double_deref_parser(keyOp=funcParserKeyOp)
+  mainParser.add("func", funcParser)
 
   def make_symm_wrapper(wrapped, symm):
     if symm in (1, "x"):
@@ -5610,14 +5610,14 @@ def make_parser():
 
   def constant(cfg, state):
     return ConstantFunc(state.resolve(cfg, "value"))
-  opParser.add("constant", constant)
+  funcParser.add("constant", constant)
 
   def segment(cfg, state):
     def make_op(data, symmetric):
       func = SegmentFunc(data, 1.0, True, True)
       return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
-  opParser.add("segment", segment)
+  funcParser.add("segment", segment)
 
   def poly(cfg, state):
     def make_op(data, symmetric):
@@ -5629,21 +5629,21 @@ def make_parser():
         return r
       return make_symm_wrapper(op, symmetric)
     return make_op(state.resolve(cfg, "coeffs"), state.resolve_d(cfg, "symmetric", 0))
-  opParser.add("poly", poly)
+  funcParser.add("poly", poly)
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
       func = BezierFunc(data)
       return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
-  opParser.add("bezier", bezier)
+  funcParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
     def make_op(data, symmetric):
       func = SegmentedBezierFunc(data)
       return make_symm_wrapper(func, symmetric)
     return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
-  opParser.add("sbezier", sbezier)
+  funcParser.add("sbezier", sbezier)
 
   def weighted(cfg, state):
     w = state.resolve(cfg, "weight")
@@ -5655,12 +5655,12 @@ def make_parser():
     def scaled_f(x):
       return (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > db else 0.0
     return scaled_f
-  opParser.add("weighted", weighted)
+  funcParser.add("weighted", weighted)
 
-  def get_op(cfg, state):
-    op = state.resolve(cfg, "op")
+  def get_func(cfg, state):
+    op = state.resolve(cfg, "func")
     if type(op) in (str, unicode):
-      op = state.get("parser")("op", cfg, state)
+      op = state.get("parser")("func", cfg, state)
     return op
 
   #Curves
@@ -5673,11 +5673,11 @@ def make_parser():
     """Helper"""
     pointParsers = {}
     def parseFixedPoint(cfg, state):
-      p = Point(op=get_op(cfg, state), center=state.resolve_d(cfg, "center", 0.0))
+      p = Point(op=get_func(cfg, state), center=state.resolve_d(cfg, "center", 0.0))
       return p
     pointParsers["absolute"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
-      p = Point(op=get_op(cfg, state), center=None)
+      p = Point(op=get_func(cfg, state), center=None)
       return p
     pointParsers["relative"] = parseMovingPoint
     r = {}
@@ -5794,7 +5794,7 @@ def make_parser():
   def parseOutputDeltaLinkingCurve(cfg, state):
     fullControlledAxisName = state.resolve(cfg, "axis")
     controlledAxis = state.get_axis_by_full_name(fullControlledAxisName)
-    sensOp = get_op(cfg, state)
+    sensOp = get_func(cfg, state)
     deltaOp = lambda delta, sens : delta*sens
     fullControllingAxisName = state.resolve(cfg, "controlling")
     controllingAxis = state.get_axis_by_full_name(fullControllingAxisName)
@@ -5810,7 +5810,7 @@ def make_parser():
   def parseInputDeltaLinkingCurve(cfg, state):
     fullControlledAxisName = state.resolve(cfg, "axis")
     controlledAxis = state.get_axis_by_full_name(fullControlledAxisName)
-    op = get_op(cfg, state)
+    op = get_func(cfg, state)
     fullControllingAxisName = state.resolve(cfg, "controlling")
     controllingAxis = state.get_axis_by_full_name(fullControllingAxisName)
     radius = state.resolve_d(cfg, "radius", float("inf"))
@@ -5827,7 +5827,7 @@ def make_parser():
   def parseInputLinkingCurve(cfg, state):
     fullControlledAxisName = state.resolve(cfg, "axis")
     controlledAxis = state.get_axis_by_full_name(fullControlledAxisName)
-    op = get_op(cfg, state)
+    op = get_func(cfg, state)
     fullControllingAxisName = state.resolve(cfg, "controlling")
     controllingAxis = state.get_axis_by_full_name(fullControllingAxisName)
     curve = InputLinkingCurve(controllingAxis, controlledAxis, op)
@@ -5841,7 +5841,7 @@ def make_parser():
   def parseAxisLinker(cfg, state):
     fullControlledAxisName = state.resolve(cfg, "follower")
     controlledAxis = state.get_axis_by_full_name(fullControlledAxisName)
-    op = get_op(cfg, state)
+    op = get_func(cfg, state)
     fullControllingAxisName = state.resolve(cfg, "leader")
     controllingAxis = state.get_axis_by_full_name(fullControllingAxisName)
     linker = AxisLinker(controllingAxis, controlledAxis, op)
@@ -5858,7 +5858,7 @@ def make_parser():
       return sensOp
     else:
       axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
-      func = state.get("parser")("op", state.resolve(cfg, "sensMod.op"), state)
+      func = state.get("parser")("func", state.resolve(cfg, "sensMod.func"), state)
       class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.func_(self.axis_.get()))
@@ -5885,11 +5885,11 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state.get("parser")("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
-    sensOp = FuncOp(func=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
+    sensOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "absolute"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     state.add_curve(fullAxisName, curve)
     return curve
@@ -5903,9 +5903,9 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(XDeltaOp(), AccumulateDeltaOp(state.get("parser")("op", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(XDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", relativeCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = FuncOp(func=state.get("parser")("op", state.resolve(cfg, "absolute"), state))
+    outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "absolute"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     cb = None
@@ -5954,7 +5954,7 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    relativeOutputOp = FuncOp(func=state.get("parser")("op", relativeCfg, state))
+    relativeOutputOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
     relativeInputOp = makeIterativeInputOp(cfg, relativeOutputOp, state)
     relativeChainCurve = TransformAbsChainCurve(next=None, inputOp=relativeInputOp, outputOp=relativeOutputOp)
     accumulateChainCurve.set_next(relativeChainCurve)
@@ -5963,7 +5963,7 @@ def make_parser():
     relativeChainCurve.set_next(offsetChainCurve)
     #transform offset
     absoluteCfg = state.resolve(cfg, "absolute")
-    absoluteOutputOp = FuncOp(func=state.get("parser")("op", absoluteCfg, state))
+    absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
     absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
     absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
     offsetChainCurve.set_next(absoluteChainCurve)
@@ -5986,11 +5986,11 @@ def make_parser():
     relativeCfg = state.resolve_d(cfg, "relative", None)
     if relativeCfg is not None:
       valueDDOp = SignDistanceDeltaOp()
-      resetOpCfg = state.resolve_d(relativeCfg, "resetOp", None)
-      if resetOpCfg is not None:
-        resetOp = state.get("parser")("op", resetOpCfg, state)
+      resetFuncCfg = state.resolve_d(relativeCfg, "resetFunc", None)
+      if resetFuncCfg is not None:
+        resetFunc = state.get("parser")("func", resetFuncCfg, state)
         def resetOp2(distance,dt):
-          factor = resetOp(dt)
+          factor = resetFunc(dt)
           return factor*distance
         valueDDOp = ExtDistanceDeltaOp(next=valueDDOp, op=resetOp2)
       else:
@@ -5999,7 +5999,7 @@ def make_parser():
       deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
       deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
       deltaDDOp = DistanceDeltaToDeltaOp(deltaDOp)
-      relativeOutputOp = FuncOp(func=state.get("parser")("op", relativeCfg, state))
+      relativeOutputOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
@@ -6011,7 +6011,7 @@ def make_parser():
     if absoluteCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
-      absoluteOutputOp = FuncOp(func=state.get("parser")("op", absoluteCfg, state))
+      absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
       absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
       absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
       relToAbsChainCurve.set_next(absoluteChainCurve)
@@ -6504,25 +6504,25 @@ def make_parser():
     return ResetCurves(curvesToReset)
   actionParser.add("resetCurves", parseResetCurves)
 
-  def parseSetOp(cfg, state):
-    curve, op = state.resolve(cfg, "curve"), state.resolve(cfg, "op")
+  def parseSetFunc(cfg, state):
+    curve, func = state.resolve(cfg, "curve"), state.resolve(cfg, "func")
     def worker(e):
-      curve.set_op(op)
+      curve.set_func(func)
     return worker
-  actionParser.add("setOp", parseSetOp)
+  actionParser.add("setFunc", parseSetFunc)
 
-  def parseCycleOps(cfg, state):
+  def parseCycleFuncs(cfg, state):
     curve = state.resolve(cfg, "curve")
-    ops = [state.deref(op, op) for op in state.resolve(cfg, "ops")]
+    funcs = [state.deref(func, func) for func in state.resolve(cfg, "funcs")]
     step = state.resolve(cfg, "step")
     def worker(e):
-      current = ops.index(curve.get_op())
-      n = clamp(current + step, 0, len(ops) - 1)
+      current = funcs.index(curve.get_func())
+      n = clamp(current + step, 0, len(funcs) - 1)
       if n != current:
-        curve.set_op(ops[n])
-        logger.info("Setting op {}".format(n))
+        curve.set_func(funcs[n])
+        logger.info("Setting func {}".format(n))
     return worker
-  actionParser.add("cycleOps", parseCycleOps)
+  actionParser.add("cycleFuncs", parseCycleFuncs)
 
   def createPose_(cfg, state):
     poseManager = state.setdefault("poseManager", AxisPoseManager())
@@ -6964,10 +6964,10 @@ def make_parser():
         accelFunc = F(rateOrCfg)
       else:
         if "accelMod" in rateOrCfg:
-          accelFunc = state.get("parser")("op", state.resolve(rateOrCfg, "accelMod.op"), state)
+          accelFunc = state.get("parser")("func", state.resolve(rateOrCfg, "accelMod.func"), state)
         if "sensMod" in rateOrCfg:
           sensAxis = state.get_axis_by_full_name(state.resolve(rateOrCfg, "sensMod.axis"))
-          sensAxisFunc = state.get("parser")("op", state.resolve(rateOrCfg, "sensMod.op"), state)
+          sensAxisFunc = state.get("parser")("func", state.resolve(rateOrCfg, "sensMod.func"), state)
       axisId = name2code(axisName)
       rateOps[axisId] = RateOp(sensAxis, sensAxisFunc, accelFunc)
     j = RateSettingJoystick(next, rateOps, limits)
