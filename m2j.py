@@ -4052,6 +4052,15 @@ class AxisPoseManager:
   def set_pose(self, i, l):
     self.poses_[i] = [[p[0], p[1]] for p in l]
 
+  def get_pose(self, i):
+    return self.poses_.get(i, None)
+
+  def has_pose(self, i):
+    return i in self.poses_
+
+  def get_poses(self):
+    return self.poses_
+
   def update_pose(self, i):
     #logger.debug("{}: updating pose {}".format(self, i))
     pose = self.poses_.get(i, None)
@@ -4073,9 +4082,6 @@ class AxisPoseManager:
       for p in pose:
         p[0].move(p[1], False)
       return True
-
-  def has_pose(self, i):
-    return i in self.poses_
 
   def __init__(self):
     self.poses_ = dict()
@@ -5357,7 +5363,7 @@ def init_config(configFilesNames):
         #Next config file overwrites previous
         merge_dicts(cfg, current)
     except (KeyError, ValueError, IOError) as e:
-      raise ConfigReadError(configName, e)
+      logger.warning("Cannot find config file {}".format(configName))
   return cfg
 
 
@@ -6555,6 +6561,38 @@ def make_parser():
     poseTracker = state.get("poseTracker")
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
+
+  def parseWritePoses(cfg, state):
+    main = state.get("main")
+    poseManager = state.get("poseManager")
+    fileName = state.resolve(cfg, "file")
+    update = state.resolve_d(cfg, "update", False)
+    poseNamesToWrite = state.resolve_d(cfg, "poses", None)
+    def op(e):
+      posesToWrite = None
+      if poseNamesToWrite is None:
+        posesToWrite = poseManager.get_poses()
+      else:
+        posesToWrite = { poseName : poseManager.get_pose(poseName) for poseName in poseNamesToWrite }
+      poseValuesToWrite = {}
+      for poseName,pose in posesToWrite.items():
+        poseValuesToWrite[poseName] = { main.get_full_name_by_axis(axis) : value for axis,value in pose }
+      posesCfg = {"poses" : poseValuesToWrite}
+      if update == True:
+        try:
+          with open(fileName, "r") as f:
+            oldPosesCfg = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
+            merge_dicts(oldPosesCfg, posesCfg)
+            posesCfg = oldPosesCfg
+        except IOError as e:
+          logger.debug("Cannot open poses file {}".format(fileName))
+        except ValueError as e:
+          logger.warning("Cannot decode poses file {}".format(fileName))
+      with open(fileName, "w") as f:
+        json.dump(posesCfg, f, indent=2)
+      return True
+    return op
+  actionParser.add("writePoses", parseWritePoses)
 
   def parsePlaySound(cfg, state):
     main = state.get("main")
