@@ -332,26 +332,10 @@ class ParserState:
     return r
 
   def get_axis_by_full_name(self, fullAxisName):
-    outputName, axisType, axisId = fn2stc(fullAxisName)
-    main = self.get("main")
-    allAxes = main.get("axes")
-    outputAxes = allAxes.setdefault(outputName, {})
-    key = (axisType, axisId)
-    axis = None
-    if key not in outputAxes:
-      #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
-      outputs = main.get("outputs")
-      o = outputs[outputName]
-      axis = None
-      if axisType == codes.EV_KEY:
-        axis = ReportingAxis(JoystickButtonAxis(o, axisId))
-      else:
-        isReportingJoystick = type(o) is ReportingJoystick
-        axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
-      outputAxes[key] = axis
-    else:
-      axis = outputAxes[key]
-    return axis
+    return self.get("main").get_axis_by_full_name(fullAxisName)
+
+  def get_full_name_by_axis(self, axis):
+    return self.get("main").get_full_name_by_axis(axis)
 
   def add_curve(self, fullAxisName, curve):
     axisCurves = self.at("curves", 0).setdefault(fullAxisName, [])
@@ -7241,6 +7225,31 @@ class Main:
       raise RuntimeError("Property '{}' not registered".format(propName))
     self.props_[propName] = propValue
 
+  def get_axis_by_full_name(self, fullAxisName):
+    outputName, axisType, axisId = fn2stc(fullAxisName)
+    allAxes = self.get("axes")
+    outputAxes = allAxes.setdefault(outputName, {})
+    key = (axisType, axisId)
+    axis = None
+    if key not in outputAxes:
+      #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
+      outputs = self.get("outputs")
+      o = outputs[outputName]
+      axis = None
+      if axisType == codes.EV_KEY:
+        axis = ReportingAxis(JoystickButtonAxis(o, axisId))
+      else:
+        isReportingJoystick = type(o) is ReportingJoystick
+        axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
+      outputAxes[key] = axis
+      self.get("axesToNames")[axis] = fullAxisName
+    else:
+      axis = outputAxes[key]
+    return axis
+
+  def get_full_name_by_axis(self, axis):
+    return self.get("axesToNames").get(axis, None)
+
   def __init__(self, parser=make_parser(), print_devices=lambda a:None):
     self.loop_ = None
     self.print_devices_ = print_devices
@@ -7252,6 +7261,7 @@ class Main:
     self.props_["parser"] = parser
     self.props_["updated"] = []
     self.props_["axes"] = {}
+    self.props_["axesToNames"] = {}
     self.props_["outputs"] = {}
     self.props_["sounds"] = {}
     self.props_["state"] = False
