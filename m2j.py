@@ -152,6 +152,15 @@ class CfgStack:
   DELETE = 1
 
 
+def set_nested(d, name, value, sep = "."):
+  tokens = name.split(sep)
+  dd = d
+  for t in tokens[:-1]:
+    dd = dd.setdefault(t, collections.OrderedDict())
+  dd[tokens[-1]] = value
+  return value
+
+
 def get_nested(d, name, sep = "."):
   try:
     if len(name) != 0:
@@ -6655,11 +6664,19 @@ def make_parser():
   actionParser.add("changeVar", parseChangeVar)
 
   def parseWriteVars(cfg, state):
-    vrs = state.get("main").get("varManager").get_vars()
-    varsCfg = collections.OrderedDict(((name, var.get(),) for name,var in vrs.items()))
-    varsCfg = { "vars" : varsCfg }
+    def replace_var_with_value(cfg):
+      r = collections.OrderedDict()
+      for name,value in cfg.items():
+        if type(value) in (dict, collections.OrderedDict):
+          r[name] = replace_var_with_value(value)
+        else:
+          r[name] = value.get()
+      return r
     fileName = state.resolve(cfg, "file")
     def op(e):
+      varsCfg = state.get("main").get("varManager").get_vars()
+      varsCfg = replace_var_with_value(varsCfg)
+      varsCfg = { "vars" : varsCfg }
       with open(fileName, "w") as f:
         json.dump(varsCfg, f, indent=2)
         logger.info("Vars written to {}".format(fileName))
@@ -7180,7 +7197,7 @@ class Var:
 
 class VarManager:
   def get_var(self, varName):
-    var = self.vars_.get(varName, None)
+    var = get_nested_d(self.vars_, varName, None)
     if var is None:
       raise RuntimeError("Var '{}' was not registered".format(varName))
     return var
@@ -7189,7 +7206,7 @@ class VarManager:
     return self.vars_
 
   def add_var(self, varName, var):
-    self.vars_[varName] = var
+    set_nested(self.vars_, varName, var)
 
   def __init__(self):
     self.vars_ = collections.OrderedDict()
@@ -7261,8 +7278,15 @@ class Main:
   def init_vars(self):
     varsCfg = self.get("config").get("vars", {})
     varManager = self.get("varManager")
-    for varName,varValue in varsCfg.items():
-      varManager.add_var(varName, Var(varValue))
+    def add_nested_vars(cfg, fullName=None):
+      sep = "."
+      for name,value in cfg.items():
+        n = name if fullName is None else sep.join((fullName, name))
+        if type(value) in (dict, collections.OrderedDict):
+          add_nested_vars(value, n)
+        else:
+          varManager.add_var(n, Var(value))
+    add_nested_vars(varsCfg)
 
   def init_source(self):
     #TODO Use dedicated config section?
