@@ -1876,7 +1876,6 @@ class ModeSink:
     if child is None:
       raise RuntimeError("Child is None")
     self.children_[mode] = child
-    child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if mode == self.mode_ else 0, time.time()))
     return child
 
   def get(self, modeName):
