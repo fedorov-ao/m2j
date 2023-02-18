@@ -300,7 +300,7 @@ class ParserState:
   def pop_args(self):
     self.pop("args")
 
-  def deref(self, name, dfault=None):
+  def deref(self, name, dfault=None, **kwargs):
     if type(name) in (dict, collections.OrderedDict):
       objName = get_nested_d(name, "obj", None)
       if objName is not None:
@@ -308,24 +308,32 @@ class ParserState:
       argName = get_nested_d(name, "arg", None)
       if argName is not None:
         return self.get_arg(argName)
+      varName = get_nested_d(name, "var", None)
+      if varName is not None:
+        setter = kwargs.get("setter")
+        return self.bind_var_(varName, setter)
     elif type(name) in (str, unicode):
-      pa, po = "arg:", "obj:"
-      lpa, lpo = len(pa), len(po)
+      pa, po, pv = "arg:", "obj:", "var:"
+      lpa, lpo, lpv = len(pa), len(po), len(pv)
       if name[:lpo] == po:
         objName = name[lpo:]
         return self.get_obj(objName)
       elif name[:lpa] == pa:
         argName = name[lpa:]
         return self.get_arg(argName)
+      elif name[:lpv] == pv:
+        varName = name[lpv:]
+        setter = kwargs.get("setter")
+        return self.bind_var_(varName, setter)
     #Fallback, not in else block!
     return dfault
 
-  def resolve_d(self, d, name, dfault=None):
+  def resolve_d(self, d, name, dfault=None, **kwargs):
     v = get_nested_d(d, name, dfault)
-    return self.deref(v, v)
+    return self.deref(v, v, **kwargs)
 
-  def resolve(self, d, name):
-    r = self.resolve_d(d, name, None)
+  def resolve(self, d, name, **kwargs):
+    r = self.resolve_d(d, name, None, **kwargs)
     if r is None:
       #TODO Use more appropriate exception
       raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d)))
@@ -346,6 +354,13 @@ class ParserState:
     self.values_["main"] = main
     self.values_["parser"] = main.get("parser")
     self.stacks_ = {}
+
+  def bind_var_(self, varName, setter):
+    varManager = self.get("main").get("varManager")
+    var = varManager.get_var(varName)
+    if setter is not None:
+      var.add_callback(setter)
+    return var.get()
 
 
 class SourceRegister:
@@ -1348,8 +1363,8 @@ class ScaleSink2:
   def set_sens(self, sc, s):
     sens = self.sens_.get(sc, None)
     if sens is None:
-      logger.error("No sens preinitialized for {}".format(htc2fn(*sc)))
-    elif type(sens) in (str, unicode):
+      logger.debug("No sens preinitialized for {}".format(htc2fn(*sc)))
+    if type(sens) in (str, unicode):
       self.gSens_[sens] = s
     else:
       self.sens_[sc] = s
@@ -6203,8 +6218,13 @@ def make_parser():
     try:
       name = state.resolve_d(cfg, "name", None)
       sens = state.resolve(cfg, "sens")
-      sens2 = {fn2htc(fullAxisName):value for fullAxisName,value in sens.items()}
-      scaleSink = ScaleSink2(sens=sens2, name=name)
+      scaleSink = ScaleSink2(sens={}, name=name)
+      sens2 = {}
+      for fullAxisName,value in sens.items():
+        key = fn2htc(fullAxisName)
+        setter = lambda v : scaleSink.set_sens(key, v)
+        value = state.deref(value, dfault=value, setter=setter)
+        scaleSink.set_sens(key, value)
       return scaleSink
     except RuntimeError as e:
       raise RuntimeError("'{}' (encountered when parsing '{}')".format(e, str2(sens)))
@@ -6609,6 +6629,43 @@ def make_parser():
       soundPlayer.queue(soundFileName)
     return op
   actionParser.add("playSound", parsePlaySound)
+
+  def parseSetVar(cfg, state):
+    varName = state.resolve(cfg, "varName")
+    value = state.resolve(cfg, "value")
+    var = state.get("main").get("varManager").get_var(varName)
+    def op(e):
+      var.set(value)
+      logger.info("{} is now {}".format(varName, var.get()))
+      return True
+    return op
+  actionParser.add("setVar", parseSetVar)
+
+  def parseChangeVar(cfg, state):
+    varName = state.resolve(cfg, "varName")
+    delta = state.resolve(cfg, "delta")
+    var = state.get("main").get("varManager").get_var(varName)
+    def op(e):
+      value = var.get()
+      value += delta
+      var.set(value)
+      logger.info("{} is now {}".format(varName, var.get()))
+      return True
+    return op
+  actionParser.add("changeVar", parseChangeVar)
+
+  def parseWriteVars(cfg, state):
+    vrs = state.get("main").get("varManager").get_vars()
+    varsCfg = collections.OrderedDict(((name, var.get(),) for name,var in vrs.items()))
+    varsCfg = { "vars" : varsCfg }
+    fileName = state.resolve(cfg, "file")
+    def op(e):
+      with open(fileName, "w") as f:
+        json.dump(varsCfg, f, indent=2)
+        logger.info("Vars written to {}".format(fileName))
+      return True
+    return op
+  actionParser.add("writeVars", parseWriteVars)
 
   def parseSetStateOnInit(cfg, state):
     linker = state.get("parser")("curve", cfg, state)
@@ -7101,6 +7158,43 @@ class SoundPlayer:
     self.thread_.join()
 
 
+class Var:
+  def get(self):
+    return self.value_
+
+  def set(self, value):
+    if self.validate_ is not None:
+      self.validate_(value)
+    for cb in self.callbacks_:
+      cb(value)
+    self.value_ = value
+
+  def add_callback(self, callback):
+    self.callbacks_.append(callback)
+
+  def __init__(self, value, validate=None):
+    self.value_ = value
+    self.validate_ = validate
+    self.callbacks_ = []
+
+
+class VarManager:
+  def get_var(self, varName):
+    var = self.vars_.get(varName, None)
+    if var is None:
+      raise RuntimeError("Var '{}' was not registered".format(varName))
+    return var
+
+  def get_vars(self):
+    return self.vars_
+
+  def add_var(self, varName, var):
+    self.vars_[varName] = var
+
+  def __init__(self):
+    self.vars_ = collections.OrderedDict()
+
+
 class Main:
   def print_help(self):
     print "Usage: " + sys.argv[0] + " args"
@@ -7163,6 +7257,12 @@ class Main:
     sounds = self.get("sounds")
     for soundName,soundFileName in soundsCfg.items():
       sounds[soundName] = soundFileName
+
+  def init_vars(self):
+    varsCfg = self.get("config").get("vars", {})
+    varManager = self.get("varManager")
+    for varName,varValue in varsCfg.items():
+      varManager.add_var(varName, Var(varValue))
 
   def init_source(self):
     #TODO Use dedicated config section?
@@ -7240,6 +7340,7 @@ class Main:
         self.init_log()
         self.init_outputs()
         self.init_sounds()
+        self.init_vars()
 
         while (True):
           try:
@@ -7317,3 +7418,4 @@ class Main:
     self.props_["sounds"] = {}
     self.props_["state"] = False
     self.props_["soundPlayer"] = SoundPlayer()
+    self.props_["varManager"] = VarManager()
