@@ -6516,15 +6516,20 @@ def make_parser():
   def createPose_(cfg, state):
     poseManager = state.setdefault("poseManager", AxisPoseManager())
     state.setdefault("poseTracker", PoseTracker(poseManager))
+    main = state.get("main")
     poseName = state.resolve(cfg, "pose")
-    if not poseManager.has_pose(poseName):
-      poses = state.get("main").get("config")["poses"]
-      fullAxesNamesAndValues = poses[poseName]
-      pose = []
-      for fullAxisName,value in fullAxesNamesAndValues.items():
-        axis = state.get_axis_by_full_name(fullAxisName)
-        pose.append((axis, value))
+    pose = poseManager.get_pose(poseName)
+    if pose is None:
+      posesCfg = main.get("config").get("poses")
+      if posesCfg is None:
+        raise RuntimeError("No poses were specified.")
+      poseCfg = state.resolve_d(posesCfg, poseName, None)
+      if poseCfg is None:
+        raise RuntimeError("Pose '{}' was not specified".format(poseName))
+      pose = main.get("parser")("pose", poseCfg, state)
       poseManager.set_pose(poseName, pose)
+    else:
+      return pose
 
   def parseUpdatePose(cfg, state):
     createPose_(cfg, state)
@@ -7050,6 +7055,15 @@ def make_parser():
     state.get("main").get("updated").append(lambda tick,ts : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
+
+  def parsePose(cfg, state):
+    main = state.get("main")
+    pose = []
+    for fullAxisName,value in cfg.items():
+      axis = main.get_axis_by_full_name(fullAxisName)
+      pose.append((axis, value))
+    return pose
+  mainParser.add("pose", parsePose)
 
   return mainParser
 
