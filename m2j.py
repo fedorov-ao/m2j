@@ -1356,8 +1356,6 @@ class ScaleSink2:
           sens = self.sens_.get(keys[0])
           if sens is None:
             sens = self.sens_.get(keys[1], 1.0)
-          if type(sens) in (str, unicode):
-            sens = self.gSens_[sens]
           oldValue = event.value
           event.value *= sens
       return self.next_(event) if self.next_ is not None else False
@@ -1373,14 +1371,11 @@ class ScaleSink2:
     sens = self.sens_.get(sc, None)
     if sens is None:
       logger.debug("No sens preinitialized for {}".format(htc2fn(*sc)))
-    if type(sens) in (str, unicode):
-      self.gSens_[sens] = s
-    else:
-      self.sens_[sc] = s
+    self.sens_[sc] = s
 
   def get_sens(self, sc):
     sens = self.sens_.get(sc, 0.0)
-    return self.gSens_[sens] if type(sens) in (str, unicode) else sens
+    return sens
 
   def get_name(self):
     return "" if self.name_ is None else self.name_
@@ -1390,19 +1385,6 @@ class ScaleSink2:
 
   def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code)), name = None):
     self.next_, self.sens_, self.keyOp_, self.name_ = None, sens, keyOp, name
-    for axis,value in self.sens_.items():
-      if type(value) in (str, unicode):
-        try:
-          idx = value.find(":")
-          if idx == -1:
-            self.sens_[axis] = float(value)
-          else:
-            var,val = value[:idx],value[idx+1:]
-            val = 1.0 if val == "" else float(val)
-            self.gSens_[var] = val
-            self.sens_[axis] = var
-        except ValueError as e:
-          raise RuntimeError("Bad sens value '{}' for axis '{}'".format(value, htc2fn(*axis)))
 
 
 class SensSetSink:
