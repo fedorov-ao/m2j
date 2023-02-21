@@ -7121,6 +7121,10 @@ def make_parser():
     return pose
   mainParser.add("pose", parsePose)
 
+  def parseVar(cfg, state):
+    return Var(cfg)
+  mainParser.add("var", parseVar)
+
   return mainParser
 
 
@@ -7257,22 +7261,26 @@ class Main:
     for soundName,soundFileName in soundsCfg.items():
       sounds[soundName] = soundFileName
 
-  def init_vars(self):
+  def init_vars(self, state):
+    parser = state.get("main").get("parser")
     varsCfg = self.get("config").get("vars", {})
     varManager = self.get("varManager")
-    def add_nested_vars(cfg, fullName=None):
+    def add_nested_vars(cfg, tokens):
       sep = "."
-      for name,value in cfg.items():
-        n = name if fullName is None else sep.join((fullName, name))
-        if type(value) in (dict, collections.OrderedDict):
-          add_nested_vars(value, n)
+      for name,cfg2 in cfg.items():
+        tokens.append(name)
+        if type(cfg2) in (dict, collections.OrderedDict):
+          add_nested_vars(cfg2, tokens)
         else:
-          varManager.add_var(n, Var(value))
-    add_nested_vars(varsCfg)
+          varManager.add_var(sep.join(tokens), parser("var", cfg2, state))
+        tokens.pop()
+    tokens = []
+    add_nested_vars(varsCfg, tokens)
 
   def init_source(self):
     #TODO Use dedicated config section?
     state = ParserState(self)
+    self.init_vars(state)
     self.set("source", self.get("parser")("source", self.get("config"), state))
     sink = init_main_sink(self, init_preset_config)
     self.get("source").set_sink(sink)
@@ -7346,7 +7354,6 @@ class Main:
         self.init_log()
         self.init_outputs()
         self.init_sounds()
-        self.init_vars()
 
         while (True):
           try:
