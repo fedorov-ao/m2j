@@ -5608,10 +5608,13 @@ def make_parser():
   funcParser.add("constant", constant)
 
   def segment(cfg, state):
-    def make_op(data, symmetric):
-      func = SegmentFunc(data, 1.0, True, True)
-      return make_symm_wrapper(func, symmetric)
-    return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
+    points = state.resolve(cfg, "points")
+    factor = state.resolve_d(cfg, "factor", 1.0)
+    clampLeft = state.resolve_d(cfg, "clampLeft", True)
+    clampRight = state.resolve_d(cfg, "clampRight", True)
+    func = SegmentFunc(points, factor, clampLeft, clampRight)
+    symmetric = state.resolve_d(cfg, "symmetric", 0)
+    return make_symm_wrapper(func, symmetric)
   funcParser.add("segment", segment)
 
   def poly(cfg, state):
