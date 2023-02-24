@@ -270,7 +270,7 @@ def translate_evdev_event(evdevEvent, source):
 class EvdevDevice:
   def read_one(self):
     if not self.is_ready_():
-      return
+      return None
     try:
       evdevEvent = self.dev_.read_one()
       while (evdevEvent is not None) and (evdevEvent.type in (0, 4)):
@@ -290,6 +290,7 @@ class EvdevDevice:
       logger.error("{}: device is not ready: {}".format(self.sourceName_, e))
 
   def swallow(self, s):
+    self.state_ = s
     if not self.is_ready_():
       return
     try:
@@ -305,6 +306,7 @@ class EvdevDevice:
     self.dev_, self.sourceName_, self.recreateOp_ = dev, source, recreateOp
     self.sourceHash_ = register_source(source)
     self.numEvents_ = 0
+    self.state_ = False
 
   def is_ready_(self):
     if self.dev_ is not None:
@@ -313,6 +315,7 @@ class EvdevDevice:
     if dev is not None:
       self.dev_ = dev
       logger.info("{}: device is ready".format(self.sourceName_))
+      self.swallow(self.state_)
       return True
     else:
       return False
