@@ -1263,18 +1263,20 @@ class ModifierSink:
   OVERWRITE = 1
 
   def __call__(self, event):
-    if event.type == codes.EV_KEY:
-      if self.modifiers_ is not None:
-        eventModifier = Modifier(source=event.source, code=event.code)
+    if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
+      self.clear()
+    elif event.type == codes.EV_KEY:
+      if self.addedModifiers_ is not None:
+        em = Modifier(source=event.source, code=event.code)
         #logger.debug("{}.__call__(): got: {}".format(self, eventModifier))
-        for referenceModifier in self.modifiers_:
+        for am in self.addedModifiers_:
           #logger.debug("{}.__call__(): checking against: {}".format(self, referenceModifier))
-          if cmp_modifiers(eventModifier, referenceModifier):
+          if cmp_modifiers(em, am):
             #logger.debug("{}.__call__(): {} matched {}".format(self, eventModifier, referenceModifier))
-            if event.value == 1 and eventModifier not in self.m_:
-              self.m_.append(eventModifier)
-            elif event.value == 0 and eventModifier in self.m_:
-              self.m_.remove(eventModifier)
+            if event.value == 1 and em not in self.currentModifiers_:
+              self.currentModifiers_.append(em)
+            elif event.value == 0 and em in self.currentModifiers_:
+              self.currentModifiers_.remove(em)
           else:
             #logger.debug("{}.__call__(): {} mismatched {}".format(self, eventModifier, referenceModifier))
             pass
@@ -1282,11 +1284,7 @@ class ModifierSink:
     if self.next_:
       eventWithModifiers = event.type in (codes.EV_KEY, codes.EV_REL, codes.EV_ABS)
       if not eventWithModifiers:
-        try:
-          return self.next_(event)
-        finally:
-          if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
-            self.clear()
+        return self.next_(event)
       else:
         oldModifiers = None
         try:
@@ -1294,15 +1292,15 @@ class ModifierSink:
           if self.saveModifiers_:
             oldModifiers = [m for m in event.modifiers]
           if self.mode_ == self.APPEND:
-            for rm in self.removed_:
+            for rm in self.removedModifiers_:
               for em in event.modifiers:
                 if cmp_modifiers(em, rm):
                   event.modifiers.remove(em)
-            for m in self.m_:
+            for m in self.currentModifiers_:
               if m not in event.modifiers:
                 event.modifiers.append(m)
           elif self.mode_ == self.OVERWRITE:
-            event.modifiers = [m for m in self.m_]
+            event.modifiers = [m for m in self.currentModifiers_]
           else:
             raise RuntimeError("Bad mode: {}".format(self.mode_))
           return self.next_(event)
@@ -1317,17 +1315,17 @@ class ModifierSink:
     return next
 
   def clear(self):
-    self.m_ = []
+    self.currentModifiers_ = []
 
   def __init__(self, next = None, modifierDescs = None, saveModifiers = True, mode = 0):
     #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, stc2fn(None, codes.EV_KEY, m)) for s,m in modifiers]))
-    self.m_, self.next_, self.modifiers_, self.removed_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
+    self.currentModifiers_, self.next_, self.addedModifiers_, self.removedModifiers_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
     if modifierDescs is not None:
       for md in modifierDescs:
         if md.state == True:
-          self.modifiers_.append(Modifier(md.source, md.code))
+          self.addedModifiers_.append(Modifier(md.source, md.code))
         elif md.state == False:
-          self.removed_.append(Modifier(md.source, md.code))
+          self.removedModifiers_.append(Modifier(md.source, md.code))
 
 
 class ScaleSink:
