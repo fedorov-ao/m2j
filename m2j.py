@@ -1185,66 +1185,87 @@ class HoldEvent(InputEvent):
 
 
 class HoldSink:
-  KeyData = collections.namedtuple("KeyData", "source code modifiers")
-  HT = collections.namedtuple("HT", "keyData holdTime value fireOnce")
-  class Times:
-    pass
+  KeyDesc = collections.namedtuple("KeyDesc", "source code modifiers")
+  HT = collections.namedtuple("HT", "keyDesc period value num")
 
   def __call__(self, event):
-    if event.type == codes.EV_KEY:
-      keyData = HoldSink.KeyData(event.source, event.code, tuple(m for m in event.modifiers))
+    if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
+      self.clear()
+    elif event.type == codes.EV_KEY:
       if event.value == 0:
-        for keyData in self.keys_.keys():
+        for i in range(len(self.keyData_)):
+          kd = self.keyData_[i]
           #ignore modifiers to correctly process key release if the key is modifier itself
-          if keyData.source == event.source and keyData.code == event.code:
-            del self.keys_[keyData]
+          keyDesc = HoldSink.KeyDesc(event.source, event.code, None)
+          if self.match_(kd.keyDesc, keyDesc):
+            self.keyData_[i] = None
+        self.cleanup_()
       elif event.value == 1:
-        if keyData in self.keys_:
-          return
-        times = HoldSink.Times()
-        times.timestamps, times.initialTimestamp = {}, event.timestamp
-        self.keys_[keyData] = times
+        class KD:
+          pass
+        keyDesc = HoldSink.KeyDesc(event.source, event.code, tuple(m for m in event.modifiers))
+        found = False
+        for kd in self.keyData_:
+          if kd.keyDesc == keyDesc:
+            found = True
+            break
+        if found == False:
+          for ht in self.holdTimes_:
+            if self.match_(keyDesc, ht.keyDesc):
+              kd = KD()
+              kd.keyDesc, kd.ht, kd.initial, kd.timestamp, kd.num = keyDesc, ht, event.timestamp, event.timestamp, ht.num
+              self.keyData_.append(kd)
     return self.next_(event) if self.next_ else False
 
   def update(self, tick, timestamp):
-    for keyData,times in self.keys_.items():
-      for ht in self.holdTimes_:
-        if not self.match_(keyData, ht.keyData):
-          continue
-        #logger.debug("{}: {} {}".format(self, keyData, ht))
-        initialTimestamp = times.initialTimestamp
-        previousTimestamp = times.timestamps.get(ht, initialTimestamp)
-        if previousTimestamp is None:
-          continue
-        currentHoldTime = timestamp - previousTimestamp
-        if currentHoldTime >= ht.holdTime:
-          if self.next_ is not None:
-            heldTime = timestamp - initialTimestamp
-            event = HoldEvent(keyData.code, ht.value, timestamp, keyData.source, list(keyData.modifiers), heldTime)
-            #logger.debug("{}: {}".format(self, event))
-            self.next_(event)
-          times.timestamps[ht] = None if ht.fireOnce else timestamp
+    for i in range(len(self.keyData_)):
+      kd = self.keyData_[i]
+      currentHoldTime = timestamp - kd.timestamp
+      if currentHoldTime >= kd.ht.period:
+        if self.next_ is not None:
+          heldTime = timestamp - kd.initial
+          ht = kd.ht
+          keyDesc = kd.keyDesc
+          modifiers = None if keyDesc.modifiers is None else list(keyDesc.modifiers)
+          event = HoldEvent(keyDesc.code, ht.value, timestamp, keyDesc.source, modifiers, heldTime)
+          #logger.debug("{}: {}".format(self, event))
+          self.next_(event)
+        if kd.num > 0:
+          kd.num = kd.num - 1
+          if kd.num == 0:
+            self.keyData_[i] = None
+    self.cleanup_()
 
-  def add(self, source, code, modifiers, holdTime, value, fireOnce):
+  def add(self, source, code, modifiers, period, value, num):
     modifiers = tuple(m for m in modifiers) if modifiers is not None else None
-    keyData = HoldSink.KeyData(source, code, modifiers)
-    ht = HoldSink.HT(keyData, holdTime, value, fireOnce)
+    keyDesc = HoldSink.KeyDesc(source, code, modifiers)
+    ht = HoldSink.HT(keyDesc, period, value, num)
     self.holdTimes_.append(ht)
 
   def set_next(self, next):
     self.next_ = next
     return next
 
+  def clear(self):
+    self.keyData_ = []
+
   def __init__(self):
-    self.next_, self.keys_, self.holdTimes_ = None, {}, []
+    self.next_, self.keyData_, self.holdTimes_ = None, [], []
     #logger.debug("{} created".format(self))
 
   def __del__(self):
     #logger.debug("{} destroyed".format(self))
     pass
 
-  def match_(self, keyData, ht):
-    return (ht.source is None or (ht.source == keyData.source)) and (ht.code is None or (ht.code == keyData.code)) and (ht.modifiers is None or (ht.modifiers == keyData.modifiers))
+  def match_(self, keyDesc, ht):
+    return (ht.source is None or (ht.source == keyDesc.source)) and (ht.code is None or (ht.code == keyDesc.code)) and (ht.modifiers is None or (ht.modifiers == keyDesc.modifiers))
+
+  def cleanup_(self):
+    while True:
+      try:
+        self.keyData_.remove(None)
+      except ValueError:
+        break
 
 
 Modifier = collections.namedtuple("Modifier", "source code")
@@ -5127,15 +5148,16 @@ def init_main_sink(main, make_next):
   modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
   topSink = modifierSink
   clickSink = modifierSink.set_next(ClickSink(config.get("clickTime", 0.5)))
-  holdTimesCfg = config.get("holdTimes", [])
+  holdDataCfg = config.get("holds", [])
   holdSink = clickSink.set_next(HoldSink())
-  for ht in holdTimesCfg:
-    keyFullName = ht.get("key", None)
+  for hd in holdDataCfg:
+    keyFullName = hd.get("key", None)
     keySource, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
-    modifiers = ht.get("modifiers", None)
+    modifiers = hd.get("modifiers", None)
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
-    holdSink.add(keySource, keyCode, modifiers, ht.get("holdTime"), ht.get("value"), ht.get("fireOnce"))
+    num = hd.get("num", -1)
+    holdSink.add(keySource, keyCode, modifiers, hd.get("period"), hd.get("value"), num)
   main.get("updated").append(lambda tick,ts : holdSink.update(tick, ts))
 
   sens = config.get("sens", None)
