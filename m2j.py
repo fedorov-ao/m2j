@@ -6229,6 +6229,11 @@ def make_parser():
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
+    class Setter:
+      def __call__(self, v):
+        self.scaleSink_.set_sens(self.key_, v)
+      def __init__(self, scaleSink, key):
+        self.scaleSink_, self.key_ = scaleSink, key
     try:
       name = state.resolve_d(cfg, "name", None)
       sens = state.resolve(cfg, "sens")
@@ -6236,7 +6241,7 @@ def make_parser():
       sens2 = {}
       for fullAxisName,value in sens.items():
         key = fn2htc(fullAxisName)
-        setter = lambda v : scaleSink.set_sens(key, v)
+        setter = Setter(scaleSink, key)
         value = state.deref(value, dfault=value, setter=setter)
         scaleSink.set_sens(key, value)
       return scaleSink
