@@ -6678,8 +6678,11 @@ def make_parser():
           r[name] = value.get()
       return r
     fileName = state.resolve(cfg, "file")
+    groupName = state.resolve_d(cfg, "group", None)
     def op(e):
       varsCfg = state.get("main").get("varManager").get_vars()
+      if groupName is not None:
+        varsCfg = { groupName : varsCfg.get(groupName) }
       varsCfg = replace_var_with_value(varsCfg)
       varsCfg = { "vars" : varsCfg }
       with open(fileName, "w") as f:
