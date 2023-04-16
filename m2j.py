@@ -310,32 +310,31 @@ class ParserState:
     self.pop("args")
 
   def deref(self, name, dfault=None, **kwargs):
+    prefix, suffix = None, None
     if type(name) in (dict, collections.OrderedDict):
-      objName = get_nested_d(name, "obj", None)
-      if objName is not None:
-        return self.get_obj(objName)
-      argName = get_nested_d(name, "arg", None)
-      if argName is not None:
-        return self.get_arg(argName)
-      varName = get_nested_d(name, "var", None)
-      if varName is not None:
-        setter = kwargs.get("setter")
-        return self.bind_var_(varName, setter)
+      for p in ("obj", "arg", "var"):
+        suffix = get_nested_d(name, p, None)
+        if suffix is not None:
+          prefix = p
+          break
     elif type(name) in (str, unicode):
-      pa, po, pv = "arg:", "obj:", "var:"
-      lpa, lpo, lpv = len(pa), len(po), len(pv)
-      if name[:lpo] == po:
-        objName = name[lpo:]
-        return self.get_obj(objName)
-      elif name[:lpa] == pa:
-        argName = name[lpa:]
-        return self.get_arg(argName)
-      elif name[:lpv] == pv:
-        varName = name[lpv:]
+      sep = ":"
+      i = name.find(sep)
+      if i != -1:
+        p = name[:i]
+        if p in ("obj", "arg", "var"):
+          prefix, suffix = p, name[i+1:]
+    if prefix is not None:
+      suffix = self.deref(suffix, suffix, **kwargs)
+      if prefix == "obj":
+        return self.get_obj(suffix)
+      elif prefix == "arg":
+        return self.get_arg(suffix)
+      elif prefix == "var":
         setter = kwargs.get("setter")
-        return self.bind_var_(varName, setter)
-    #Fallback, not in else block!
-    return dfault
+        return self.bind_var_(suffix, setter)
+    else:
+      return dfault
 
   def resolve_d(self, d, name, dfault=None, **kwargs):
     v = get_nested_d(d, name, dfault)
