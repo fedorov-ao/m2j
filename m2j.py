@@ -6672,6 +6672,21 @@ def make_parser():
     return op
   actionParser.add("changeVar", parseChangeVar)
 
+  def parseCycleVars(cfg, state):
+    varName = state.resolve(cfg, "varName")
+    var = state.get("main").get("varManager").get_var(varName)
+    values = [state.deref(value, value) for value in state.resolve(cfg, "values")]
+    step = state.resolve(cfg, "step")
+    def op(e):
+      current = values.index(var.get())
+      n = clamp(current + step, 0, len(values) - 1)
+      if n != current:
+        v = values[n]
+        var.set(v)
+        logger.info("Setting var {} to {}".format(varName, v))
+    return op
+  actionParser.add("cycleVars", parseCycleVars)
+
   def parseWriteVars(cfg, state):
     def replace_var_with_value(cfg):
       r = collections.OrderedDict()
