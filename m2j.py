@@ -265,9 +265,10 @@ class ParserState:
 
   def make_objs(self, cfg, cb):
     parser = self.get("parser")
+    #logger.debug("Constructing objects from '{}'".format(str2(cfg)))
     for k,v in cfg.items():
       o = None
-      #logger.debug("Constructing object: {}".format(k))
+      #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
       #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
       if type(v) not in (dict, collections.OrderedDict):
         raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
@@ -298,9 +299,11 @@ class ParserState:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
 
   def resolve_args(self, args):
+    #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.resolve_args(a) if type(a) in (dict, collections.OrderedDict) else self.deref(a, a)
+      r[n] = self.deref(a, a)
+      #logger.debug("arg '{}' -> '{}'".format(n, r[n]))
     return r
 
   def push_args(self, argsCfg):
@@ -6041,6 +6044,7 @@ def make_parser():
   curveParser.add("accel", parseAccelCurve)
 
   def parsePresetCurve(cfg, state):
+    #logger.debug("parsePresetCurve(): cfg: '{}'".format(str2(cfg)))
     config = state.get("main").get("config")
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
@@ -6051,7 +6055,9 @@ def make_parser():
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
-      state.push_args(state.resolve_d(cfg, "args", {}))
+      argsCfg = state.resolve_d(cfg, "args", {})
+      #logger.debug("parsePresetCurve(): args: '{}'".format(str2(argsCfg)))
+      state.push_args(argsCfg)
       try:
         #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
         return state.get("parser")("curve", presetCfg, state)
@@ -6208,8 +6214,8 @@ def make_parser():
 
   def parseObjects(cfg, state):
     objectsCfg = cfg.get("objects", None)
-    #logger.debug("parseObjects(): parsing objects from:".format(objectsCfg))
     if objectsCfg is not None:
+      #logger.debug("parseObjects(): parsing objects from '{}'".format(str2(objectsCfg)))
       try:
         objectsComponent = ObjectsComponent()
         state.at("sinks", 0).set("objects", objectsComponent)
