@@ -287,22 +287,28 @@ class ParserState:
         raise RuntimeError("Could not create object from: {}".format(str2(v)))
       cb(k, o)
 
-  def get_arg(self, name):
+  def get_arg(self, name, **kwargs):
+    setter,asValue = kwargs.get("setter"), kwargs.get("asValue", True)
+    r = None
     args = self.stacks_.get("args")
     if args is not None:
       r = get_nested_from_stack_d(args, name, None)
       if r is None:
         raise RuntimeError("No such arg: {}".format(str2(name)))
-      else:
-        return r
     else:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
+    if isinstance(r, BaseVar):
+      if setter is not None:
+        r.add_callback(setter)
+      if asValue == True:
+        r = r.get()
+    return r
 
   def resolve_args(self, args):
     #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.deref(a, a)
+      r[n] = self.deref(a, a, asValue=False)
       #logger.debug("arg '{}' -> '{}'".format(n, r[n]))
     return r
 
@@ -312,13 +318,34 @@ class ParserState:
   def pop_args(self):
     self.pop("args")
 
+  def get_var(self, varName, **kwargs):
+    varManager = self.get("main").get("varManager")
+    var = varManager.get_var(varName)
+    setter,mapping,asValue = kwargs.get("setter"), kwargs.get("mapping"), kwargs.get("asValue", True)
+    if mapping is not None:
+      var = MappingVar(var, mapping)
+    if setter is not None:
+      var.add_callback(setter)
+    r = var.get() if asValue == True else var
+    return r
+
   def deref(self, name, dfault=None, **kwargs):
-    prefix, suffix = None, None
+    prefix, suffix, mapping = None, None, None
+    r = dfault
     if type(name) in (dict, collections.OrderedDict):
       for p in ("obj", "arg", "var"):
         suffix = get_nested_d(name, p, None)
         if suffix is not None:
           prefix = p
+          if prefix == "var":
+            mappingCfg = self.resolve_d(name, "mapping", None)
+            if mappingCfg is not None:
+              mapping = {}
+              for k,v in mappingCfg.items():
+                k = self.deref(k, k)
+                v = self.deref(v, v)
+                mapping[k] = v
+              #logger.debug("mapping '{}' -> '{}'".format(mappingCfg, mapping))
           break
     elif type(name) in (str, unicode):
       sep = ":"
@@ -329,15 +356,19 @@ class ParserState:
           prefix, suffix = p, name[i+1:]
     if prefix is not None:
       suffix = self.deref(suffix, suffix, **kwargs)
+      setter = kwargs.get("setter")
+      asValue = kwargs.get("asValue", True)
       if prefix == "obj":
-        return self.get_obj(suffix)
+        r = self.get_obj(suffix)
       elif prefix == "arg":
-        return self.get_arg(suffix)
+        r = self.get_arg(suffix, setter=setter, asValue=asValue)
       elif prefix == "var":
-        setter = kwargs.get("setter")
-        return self.bind_var_(suffix, setter)
-    else:
-      return dfault
+        r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
+      else:
+        raise RuntimeError("Unknown prefix: '{}'".format(prefix))
+    #logger.debug("Dereferenced '{}' to '{}'".format(str2(name), str2(r)))
+    #This return statement must be at deref() scope, not in nested blocks!
+    return r
 
   def resolve_d(self, d, name, dfault=None, **kwargs):
     v = get_nested_d(d, name, dfault)
@@ -365,13 +396,6 @@ class ParserState:
     self.values_["main"] = main
     self.values_["parser"] = main.get("parser")
     self.stacks_ = {}
-
-  def bind_var_(self, varName, setter):
-    varManager = self.get("main").get("varManager")
-    var = varManager.get_var(varName)
-    if setter is not None:
-      var.add_callback(setter)
-    return var.get()
 
 
 class SourceRegister:
