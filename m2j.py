@@ -7212,16 +7212,50 @@ class SoundPlayer:
     self.thread_.join()
 
 
-class Var:
+class BaseVar:
+  def get(self):
+    pass
+
+  def add_callback(self, callback):
+    pass
+
+
+class MappingVar(BaseVar):
+  def get(self):
+    return self.map_(self.var_.get())
+
+  def __call__(self, v):
+    mv = self.map_(v)
+    for cb in self.callbacks_:
+      cb(mv)
+
+  def add_callback(self, callback):
+    self.callbacks_.append(callback)
+
+  def __init__(self, var, mapping):
+    self.callbacks_ = []
+    self.var_, self.mapping_ = var, mapping
+    self.var_.add_callback(self)
+
+  def map_(self, v):
+    if self.mapping_ is None:
+      return v
+    elif v in self.mapping_:
+      return self.mapping_[v]
+    else:
+      raise RuntimeError("{} not found in mapping".format(v))
+
+
+class Var(BaseVar):
   def get(self):
     return self.value_
 
   def set(self, value):
     if self.validate_ is not None:
       self.validate_(value)
+    self.value_ = value
     for cb in self.callbacks_:
       cb(value)
-    self.value_ = value
 
   def add_callback(self, callback):
     self.callbacks_.append(callback)
