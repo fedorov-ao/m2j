@@ -5677,8 +5677,8 @@ def make_parser():
     return scaled_f
   funcParser.add("weighted", weighted)
 
-  def get_func(cfg, state):
-    op = state.resolve(cfg, "func")
+  def get_func(cfg, state, **kwargs):
+    op = state.resolve(cfg, "func", **kwargs)
     if type(op) in (str, unicode):
       op = state.get("parser")("func", cfg, state)
     return op
@@ -5861,10 +5861,15 @@ def make_parser():
   def parseAxisLinker(cfg, state):
     fullControlledAxisName = state.resolve(cfg, "follower")
     controlledAxis = state.get_axis_by_full_name(fullControlledAxisName)
-    op = get_func(cfg, state)
+    class FuncSetter:
+      def __call__(self, func):
+        self.axisLinker.set_func(func)
+    funcSetter = FuncSetter()
+    func = get_func(cfg, state, setter=funcSetter)
     fullControllingAxisName = state.resolve(cfg, "leader")
     controllingAxis = state.get_axis_by_full_name(fullControllingAxisName)
-    linker = AxisLinker(controllingAxis, controlledAxis, op)
+    linker = AxisLinker(controllingAxis, controlledAxis, func)
+    funcSetter.axisLinker = linker
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
     #FIXME Since there is no "axis" property in config node, it does not get added to state["curves"]
