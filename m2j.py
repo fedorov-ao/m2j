@@ -239,7 +239,9 @@ class ParserState:
   def get(self, n, dfault=None):
     return self.values_.get(n, dfault)
 
-  def get_obj(self, name, nameSep=":", memberSep="."):
+  def get_obj(self, name, **kwargs):
+    nameSep = kwargs.get("nameSep", ":")
+    memberSep = kwargs.get("memberSep", ".") 
     objectName = name.split(nameSep)
     objects, i = None, 0
     while True:
@@ -288,7 +290,6 @@ class ParserState:
       cb(k, o)
 
   def get_arg(self, name, **kwargs):
-    setter,asValue = kwargs.get("setter"), kwargs.get("asValue", True)
     r = None
     args = self.stacks_.get("args")
     if args is not None:
@@ -297,12 +298,7 @@ class ParserState:
         raise RuntimeError("No such arg: {}".format(str2(name)))
     else:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
-    if isinstance(r, BaseVar):
-      if setter is not None:
-        r.add_callback(setter)
-      if asValue == True:
-        r = r.get()
-    return r
+    return self.get_var_(r, **kwargs)
 
   def resolve_args(self, args):
     #logger.debug("Resolving args '{}'".format(str2(args)))
@@ -321,15 +317,22 @@ class ParserState:
   def get_var(self, varName, **kwargs):
     varManager = self.get("main").get("varManager")
     var = varManager.get_var(varName)
-    setter,mapping,asValue = kwargs.get("setter"), kwargs.get("mapping"), kwargs.get("asValue", True)
+    mapping = kwargs.get("mapping")
     if mapping is not None:
       var = MappingVar(var, mapping)
-    if setter is not None:
-      var.add_callback(setter)
-    r = var.get() if asValue == True else var
-    return r
+    return self.get_var_(var, **kwargs)
 
   def deref(self, name, dfault=None, **kwargs):
+    def make_mapping(cfg):
+      mapping = None
+      mappingCfg = self.resolve_d(name, "mapping", None)
+      if mappingCfg is not None:
+        mapping = {}
+        for k,v in mappingCfg.items():
+          k = self.deref(k, k)
+          v = self.deref(v, v)
+          mapping[k] = v
+      return mapping
     prefix, suffix, mapping = None, None, None
     r = dfault
     if type(name) in (dict, collections.OrderedDict):
@@ -338,14 +341,7 @@ class ParserState:
         if suffix is not None:
           prefix = p
           if prefix == "var":
-            mappingCfg = self.resolve_d(name, "mapping", None)
-            if mappingCfg is not None:
-              mapping = {}
-              for k,v in mappingCfg.items():
-                k = self.deref(k, k)
-                v = self.deref(v, v)
-                mapping[k] = v
-              #logger.debug("mapping '{}' -> '{}'".format(mappingCfg, mapping))
+            mapping = make_mapping(name)
           break
     elif type(name) in (str, unicode):
       sep = ":"
@@ -359,7 +355,7 @@ class ParserState:
       setter = kwargs.get("setter")
       asValue = kwargs.get("asValue", True)
       if prefix == "obj":
-        r = self.get_obj(suffix)
+        r = self.get_obj(suffix, setter=setter, asValue=asValue)
       elif prefix == "arg":
         r = self.get_arg(suffix, setter=setter, asValue=asValue)
       elif prefix == "var":
@@ -397,6 +393,13 @@ class ParserState:
     self.values_["parser"] = main.get("parser")
     self.stacks_ = {}
 
+  def get_var_(self, var, **kwargs):
+    if isinstance(var, BaseVar):
+      setter, asValue = kwargs.get("setter"), kwargs.get("asValue", True)
+      if setter is not None:
+        var.add_callback(setter)
+      var = var.get() if asValue == True else var
+    return var
 
 class SourceRegister:
   def register_source(self, name):
