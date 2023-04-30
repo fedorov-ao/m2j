@@ -263,7 +263,7 @@ class ParserState:
         obj = obj.get(s)
         if obj is None:
           raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
-    return obj
+    return self.get_var_(obj, **kwargs)
 
   def make_objs(self, cfg, cb):
     parser = self.get("parser")
@@ -276,12 +276,18 @@ class ParserState:
         raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
       n = v.get("class", None)
       if n is not None:
-        o = parser(n, v, self)
+        if n == "var":
+          o = self.deref(v, v, asValue=False)
+        else:
+          o = parser(n, v, self)
       else:
-        for n in ("literal", "func", "curve", "action", "et", "output"):
+        for n in ("literal", "func", "curve", "action", "et", "output", "var"):
           if n in v:
-            o = parser(n, v, self)
-            #break is needed to avoid executing the "else" block
+            if n == "var":
+              o = self.deref(v, v, asValue=False)
+            else:
+              o = parser(n, v, self)
+              #break is needed to avoid executing the "else" block
             break
         else:
           o = parser("sink", v, self)
