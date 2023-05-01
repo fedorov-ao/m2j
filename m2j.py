@@ -6454,7 +6454,8 @@ def make_parser():
   def parseSetAxis(cfg, state):
     axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
     value = float(state.resolve(cfg, "value"))
-    r = MoveAxis(axis, value, False)
+    relative = state.resolve_d(cfg, "relative", False)
+    r = MoveAxis(axis, value, relative)
     return r
   actionParser.add("setAxis", parseSetAxis)
 
@@ -6466,34 +6467,26 @@ def make_parser():
 
   def parseSetAxes(cfg, state):
     axesAndValues = state.resolve(cfg, "axesAndValues")
+    allRelative = state.resolve_d(cfg, "relative", False)
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
-    if type(axesAndValues) in (dict, collections.OrderedDict):
-      axesAndValues = axesAndValues.items()
-    assert(type(axesAndValues) is list)
+    assert(type(axesAndValues) in (dict, collections.OrderedDict))
+    axesAndValues = axesAndValues.items()
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
-    for fullAxisName,value in axesAndValues:
+    for axisData in axesAndValues:
+      fullAxisName, value, relative = axisData[0], axisData[1], allRelative
+      if type(value) in (tuple, list):
+        assert(len(value) >= 2)
+        value, relative = value[0], value[1]
       axis = state.get_axis_by_full_name(state.deref(fullAxisName, fullAxisName))
       value = float(state.deref(value, value))
-      av.append([axis, value, False])
+      relative = state.deref(relative, relative)
+      av.append([axis, value, relative])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
     r = MoveAxes(av)
     return r
   actionParser.add("setAxes", parseSetAxes)
-
-  def parseSetAxesRel(cfg, state):
-    axesAndValues = state.resolve(cfg, "axesAndValues")
-    if type(axesAndValues) in (dict, collections.OrderedDict):
-      axesAndValues = axesAndValues.items()
-    av = []
-    for fullAxisName,value in axesAndValues:
-      axis = state.get_axis_by_full_name(state.deref(fullAxisName, fullAxisName))
-      value = float(state.deref(value, value))
-      av.append([axis, value, True])
-    r = MoveAxes(av)
-    return r
-  actionParser.add("setAxesRel", parseSetAxesRel)
 
   def parseSetKeyState_(cfg, state, s):
     output, key = fn2sn(state.resolve(cfg, "key"))
