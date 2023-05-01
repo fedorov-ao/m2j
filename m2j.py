@@ -6294,6 +6294,11 @@ def make_parser():
 
   @parseBasesDecorator
   def parseMode(cfg, state):
+    class ModeSetter:
+      def __call__(self, v):
+        self.msmm_.set(v, self.save_, self.current_, self.report_)
+      def __init__(self, msmm, save, current, report):
+        self.msmm_, self.save_, self.current_, self.report_ = msmm, save, current, report
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
     headSink = state.at("sinks", 0)
@@ -6313,7 +6318,11 @@ def make_parser():
             continue
           else:
             raise
-      initialMode = state.resolve_d(cfg, "initialMode", None)
+      savePolicy = nameToMSMMSavePolicy(state.resolve_d(cfg, "setter.save", "clearAndSave"))
+      current = state.resolve_d(cfg, "setter.current", None)
+      report = state.resolve_d(cfg, "setter.report", True)
+      modeSetter = ModeSetter(msmm, savePolicy, current, report)
+      initialMode = state.resolve_d(cfg, "initialMode", None, setter=modeSetter)
       if initialMode is not None:
         if not modeSink.set_mode(initialMode):
           logger.warning("Cannot set mode: {}".format(initialMode))
