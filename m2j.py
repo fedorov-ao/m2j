@@ -338,7 +338,15 @@ class ParserState:
           k = self.deref(k, k)
           v = self.deref(v, v)
           mapping[k] = v
-      return mapping
+        def op(v):
+          if v in mapping:
+            return mapping[v]
+          else:
+            raise RuntimeError("{} not found in mapping".format(v))
+          #logger.debug("Created mapping {} from {}".format(op, str2(mappingCfg)))
+        return op
+      else:
+        return None
     prefix, suffix, mapping = None, None, None
     r = dfault
     if type(name) in (dict, collections.OrderedDict):
@@ -7276,14 +7284,13 @@ class MappingVar(BaseVar):
     self.callbacks_ = []
     self.var_, self.mapping_ = var, mapping
     self.var_.add_callback(self)
+    #logger.debug("{} created for var {} and mapping {}".format(self, var, mapping))
 
   def map_(self, v):
     if self.mapping_ is None:
       return v
-    elif v in self.mapping_:
-      return self.mapping_[v]
     else:
-      raise RuntimeError("{} not found in mapping".format(v))
+      return self.mapping_(v)
 
 
 class Var(BaseVar):
