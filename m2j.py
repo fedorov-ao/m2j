@@ -358,20 +358,28 @@ class ParserState:
             mapping = make_mapping(name)
           break
     elif type(name) in (str, unicode):
-      sep = ":"
-      i = name.find(sep)
-      if i != -1:
-        p = name[:i]
-        if p in ("obj", "arg", "var"):
-          prefix, suffix = p, name[i+1:]
+      nameRe = re.compile("(.*?)(obj|arg|var):([^ +*/&|]*)(.*?)")
+      nameMatch = nameRe.match(name)
+      if nameMatch is not None:
+        prefix, suffix = nameMatch.group(2), nameMatch.group(3)
+        g1, g4 = nameMatch.group(1), nameMatch.group(4)
+        if len(g1) or len(g4):
+          expr = "{}v{}".format(g1, g4)
+          compiledExpr = compile(expr, "", "eval")
+          def op(v):
+            globs = { "v" : v }
+            #logger.debug("{}: evaluating {} with {}".format(self, expr, str2(globs)))
+            return eval(compiledExpr, globs)
+          mapping = op
+          #logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, name))
     if prefix is not None:
       suffix = self.deref(suffix, suffix, **kwargs)
       setter = kwargs.get("setter")
       asValue = kwargs.get("asValue", True)
       if prefix == "obj":
-        r = self.get_obj(suffix, setter=setter, asValue=asValue)
+        r = self.get_obj(suffix, setter=setter, mapping=mapping, asValue=asValue)
       elif prefix == "arg":
-        r = self.get_arg(suffix, setter=setter, asValue=asValue)
+        r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
       elif prefix == "var":
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
