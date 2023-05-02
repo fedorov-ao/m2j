@@ -1155,14 +1155,27 @@ def ResetCurves(curves):
 class MoveAxis:
   def __call__(self, event):
     if self.axis_ is not None:
-      self.axis_.move(self.value_, self.relative_)
+      value = self.value_
+      if self.stopAt_ is not None:
+        current = self.axis_.get()
+        proposed = current + value if self.relative_ == True else value
+        selected = None
+        for v in self.stopAt_:
+          if v == current:
+            continue
+          if clamp(v, current, proposed) == v:
+            if selected is None or (abs(v - current) < abs(selected - current)):
+              selected = v
+        if selected is not None:
+          value = selected - current if self.relative_ == True else selected
+      self.axis_.move(value, self.relative_)
     return True
 
   def set_value(self, value):
     self.value_ = value
 
-  def __init__(self, axis, value, relative=False):
-    self.axis_, self.value_, self.relative_ = axis, value, relative
+  def __init__(self, axis, value, relative=False, stopAt=None):
+    self.axis_, self.value_, self.relative_, self.stopAt_ = axis, value, relative, stopAt
 
 
 def MoveAxes(axesAndValues):
@@ -6500,7 +6513,8 @@ def make_parser():
     valueSetter = ValueSetter()
     value = float(state.resolve(cfg, "value", setter=valueSetter))
     relative = state.resolve_d(cfg, "relative", False)
-    r = MoveAxis(axis, value, relative)
+    stopAt = state.resolve_d(cfg, "stopAt", None)
+    r = MoveAxis(axis, value, relative, stopAt)
     valueSetter.set_move_axis(r)
     return r
   actionParser.add("setAxis", parseSetAxis)
