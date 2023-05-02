@@ -263,7 +263,7 @@ class ParserState:
         obj = obj.get(s)
         if obj is None:
           raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
-    return self.get_var_(obj, **kwargs)
+    return self.get_var_or_value_(obj, **kwargs)
 
   def make_objs(self, cfg, cb):
     parser = self.get("parser")
@@ -304,7 +304,7 @@ class ParserState:
         raise RuntimeError("No such arg: {}".format(str2(name)))
     else:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
-    return self.get_var_(r, **kwargs)
+    return self.get_var_or_value_(r, **kwargs)
 
   def resolve_args(self, args):
     #logger.debug("Resolving args '{}'".format(str2(args)))
@@ -323,10 +323,7 @@ class ParserState:
   def get_var(self, varName, **kwargs):
     varManager = self.get("main").get("varManager")
     var = varManager.get_var(varName)
-    mapping = kwargs.get("mapping")
-    if mapping is not None:
-      var = MappingVar(var, mapping)
-    return self.get_var_(var, **kwargs)
+    return self.get_var_or_value_(var, **kwargs)
 
   def deref(self, name, dfault=None, **kwargs):
     def make_mapping(cfg):
@@ -415,13 +412,23 @@ class ParserState:
     self.values_["parser"] = main.get("parser")
     self.stacks_ = {}
 
-  def get_var_(self, var, **kwargs):
-    if isinstance(var, BaseVar):
+  def get_var_or_value_(self, varOrValue, **kwargs):
+    r = varOrValue
+    mapping = kwargs.get("mapping")
+    isBaseVar = isinstance(varOrValue, BaseVar)
+    if isBaseVar == True:
+      var = varOrValue
       setter, asValue = kwargs.get("setter"), kwargs.get("asValue", True)
+      if mapping is not None:
+        var = MappingVar(var, mapping)
       if setter is not None:
         var.add_callback(setter)
-      var = var.get() if asValue == True else var
-    return var
+      if asValue == True:
+        r = var.get()
+    else:
+      if mapping is not None:
+        r = mapping(r)
+    return r
 
 class SourceRegister:
   def register_source(self, name):
