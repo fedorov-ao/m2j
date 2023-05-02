@@ -1952,7 +1952,7 @@ class ModeSink:
     self.children_, self.mode_, self.name_ = {}, None, name
     if reportModeSwitchCb is None:
       def smc(name, old, new):
-        logger.info("{}: Setting mode: {}".format(name, new))
+        logger.info("{}: Setting mode: {}".format(name, str2(new)))
       reportModeSwitchCb = smc
     self.reportModeSwitchCb_ = reportModeSwitchCb
 

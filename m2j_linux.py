@@ -198,7 +198,8 @@ class EvdevJoystick:
   def __del__(self):
     if self.js_ is not None:
       self.js_.close()
-    logger.debug("{} destroyed".format(self))
+    if logger is not None:
+      logger.debug("{} destroyed".format(self))
 
   def move_axis(self, axis, v, relative):
     if relative:
