@@ -417,14 +417,13 @@ class ParserState:
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(varOrValue, BaseVar)
     if isBaseVar == True:
-      var = varOrValue
       setter, asValue = kwargs.get("setter"), kwargs.get("asValue", True)
       if mapping is not None:
-        var = MappingVar(var, mapping)
+        r = MappingVar(r, mapping)
       if setter is not None:
-        var.add_callback(setter)
+        r.add_callback(setter)
       if asValue == True:
-        r = var.get()
+        r = r.get()
     else:
       if mapping is not None:
         r = mapping(r)
