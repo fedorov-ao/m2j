@@ -311,7 +311,7 @@ class ParserState:
     r = collections.OrderedDict()
     for n,a in args.items():
       r[n] = self.deref(a, a, asValue=False)
-      #logger.debug("arg '{}' -> '{}'".format(n, r[n]))
+      #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
   def push_args(self, argsCfg):
