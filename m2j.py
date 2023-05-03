@@ -282,14 +282,14 @@ class ParserState:
       n = v.get("class", None)
       if n is not None:
         if n == "var":
-          o = self.deref(v, v, asValue=False)
+          o = self.deref(v, asValue=False)
         else:
           o = parser(n, v, self)
       else:
         for n in ("literal", "func", "curve", "action", "et", "output", "var"):
           if n in v:
             if n == "var":
-              o = self.deref(v, v, asValue=False)
+              o = self.deref(v, asValue=False)
             else:
               o = parser(n, v, self)
               #break is needed to avoid executing the "else" block
@@ -315,7 +315,7 @@ class ParserState:
     #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.deref(a, a, asValue=False)
+      r[n] = self.deref(a, asValue=False)
       #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
@@ -337,8 +337,8 @@ class ParserState:
       if mappingCfg is not None:
         mapping = {}
         for k,v in mappingCfg.items():
-          k = self.deref(k, k)
-          v = self.deref(v, v)
+          k = self.deref(k)
+          v = self.deref(v)
           mapping[k] = v
         def op(v):
           if v in mapping:
@@ -375,7 +375,7 @@ class ParserState:
           mapping = op
           #logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
     if prefix is not None:
-      suffix = self.deref(suffix, suffix, **kwargs)
+      suffix = self.deref(suffix, **kwargs)
       setter = kwargs.get("setter")
       asValue = kwargs.get("asValue", True)
       if prefix == "obj":
@@ -582,7 +582,7 @@ def split_full_name2(s, state, sep="."):
     st = False
     s = s[1:]
   if state is not None:
-    s = state.deref(s, s)
+    s = state.deref(s)
   i = s.find(sep)
   source = None if i == -1 else s[:i]
   shash = None if source is None else get_source_hash(source)
@@ -5605,7 +5605,7 @@ class IntrusiveSelectParser:
 class DerefSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
-    r = state.deref(key, None)
+    r = state.deref(key)
     return self.p_(key, cfg, state) if r == key else r
 
   def add(self, key, parser):
@@ -5623,7 +5623,7 @@ class DerefSelectParser:
 
 class DerefParser:
   def __call__(self, cfg, state):
-    r = state.deref(cfg, None)
+    r = state.deref(cfg)
     return self.p_(cfg, state) if r == cfg else r
 
   def add(self, key, parser):
@@ -6213,7 +6213,7 @@ def make_parser():
         name = state.resolve(cfg, "name")
       #logger.debug("Parsing {} '{}'".format(propName, name))
       #preset or class name can be specified by arg, so need to deref it here
-      name = state.deref(name, name)
+      name = state.deref(name)
       cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
       if cfg2 is None:
         raise RuntimeError("No class {}".format(str2(name)))
@@ -6343,7 +6343,7 @@ def make_parser():
       for fullAxisName,value in sens.items():
         key = fn2htc(fullAxisName)
         setter = Setter(scaleSink, key)
-        value = state.deref(value, dfault=value, setter=setter)
+        value = state.deref(value, setter=setter)
         scaleSink.set_sens(key, value)
       return scaleSink
     except RuntimeError as e:
@@ -6503,14 +6503,14 @@ def make_parser():
     curves = {}
     for fullInputAxisName,curveCfg in axesData.items():
       curve = state.get("parser")("curve", curveCfg, state)
-      curves[fn2hc(state.deref(fullInputAxisName, fullInputAxisName))] = curve
+      curves[fn2hc(state.deref(fullInputAxisName))] = curve
     op = None
     if state.resolve(cfg, "op") == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif state.resolve(cfg, "op") == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
     elif state.resolve(cfg, "op") == "thresholds":
-      op = MCSThresholdOp(thresholds = {fn2hc(state.deref(fullInputAxisName, fullInputAxisName)):state.deref(threshold, threshold) for fullInputAxisName,threshold in state.resolve(cfg, "thresholds").items()})
+      op = MCSThresholdOp(thresholds = {fn2hc(state.deref(fullInputAxisName)):state.deref(threshold) for fullInputAxisName,threshold in state.resolve(cfg, "thresholds").items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
     mcs = MultiCurveSink(curves, op)
@@ -6556,9 +6556,9 @@ def make_parser():
       if type(value) in (tuple, list):
         assert(len(value) >= 2)
         value, relative = value[0], value[1]
-      axis = state.get_axis_by_full_name(state.deref(fullAxisName, fullAxisName))
-      value = float(state.deref(value, value))
-      relative = state.deref(relative, relative)
+      axis = state.get_axis_by_full_name(state.deref(fullAxisName))
+      value = float(state.deref(value))
+      relative = state.deref(relative)
       av.append([axis, value, relative])
       #logger.debug("parseSetAxes(): {}, {}, {}".format(fullAxisName, axis, value))
     #logger.debug("parseSetAxes(): {}".format(av))
@@ -6629,7 +6629,7 @@ def make_parser():
     assert(allCurves is not None)
     if "axes" in cfg:
       for fullAxisName in state.resolve(cfg, "axes"):
-        curves = allCurves.get(state.deref(fullAxisName, fullAxisName), None)
+        curves = allCurves.get(state.deref(fullAxisName), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fullAxisName, str2(cfg)))
         else:
@@ -6655,7 +6655,7 @@ def make_parser():
 
   def parseCycleFuncs(cfg, state):
     curve = state.resolve(cfg, "curve")
-    funcs = [state.deref(func, func) for func in state.resolve(cfg, "funcs")]
+    funcs = [state.deref(func) for func in state.resolve(cfg, "funcs")]
     step = state.resolve(cfg, "step")
     def worker(e):
       current = funcs.index(curve.get_func())
@@ -6790,7 +6790,7 @@ def make_parser():
   def parseCycleVars(cfg, state):
     varName = state.resolve(cfg, "varName")
     var = state.get("main").get("varManager").get_var(varName)
-    values = [state.deref(value, value) for value in state.resolve(cfg, "values")]
+    values = [state.deref(value) for value in state.resolve(cfg, "values")]
     step = state.resolve(cfg, "step")
     def op(e):
       current = values.index(var.get())
