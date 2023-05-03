@@ -2316,9 +2316,11 @@ class SegmentFunc:
       y = self.y_[len(self.y_)-1]
     else:
       y = self.y_[i] + dy*((x - self.x_[i])/dx)**self.factor_
+    if self.tracker_ is not None:
+      self.tracker_(self, x, y)
     return y
 
-  def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False):
+  def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
     temp = [(float(d[0]), float(d[1])) for d in data if len(d) == 2]
     temp.sort(key = lambda d : d[0])
     if len(temp) == 0:
@@ -2327,6 +2329,7 @@ class SegmentFunc:
       self.x_, self.y_ = zip(*temp)
     self.factor_ = factor
     self.clampLeft_, self.clampRight_ = clampLeft, clampRight
+    self.tracker_ = tracker
 
 
 class SigmoidFunc:
@@ -5707,7 +5710,13 @@ def make_parser():
     factor = state.resolve_d(cfg, "factor", 1.0)
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
-    func = SegmentFunc(points, factor, clampLeft, clampRight)
+    tracker = None
+    if state.resolve_d(cfg, "report", False) == True:
+      reporterName = state.resolve_d(cfg, "reporterName", "")
+      def op(func, x, y):
+        logger.info("{}: x:{:+.3f} y:{:+.3f}".format(reporterName, x, y))
+      tracker = op
+    func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("segment", segment)
