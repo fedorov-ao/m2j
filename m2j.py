@@ -215,6 +215,11 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
+class ArgNotFoundError(RuntimeError):
+  def __init__(self, argName):
+    RuntimeError.__init__(self, argName)
+
+
 class ParserState:
   def push(self, n, v):
     self.stacks_.setdefault(n, [])
@@ -301,7 +306,7 @@ class ParserState:
     if args is not None:
       r = get_nested_from_stack_d(args, name, None)
       if r is None:
-        raise RuntimeError("No such arg: {}".format(str2(name)))
+        raise ArgNotFoundError(name)
     else:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
     return self.get_var_or_value_(r, **kwargs)
@@ -325,10 +330,10 @@ class ParserState:
     var = varManager.get_var(varName)
     return self.get_var_or_value_(var, **kwargs)
 
-  def deref(self, name, dfault=None, **kwargs):
+  def deref(self, refOrValue, dfault=None, **kwargs):
     def make_mapping(cfg):
       mapping = None
-      mappingCfg = self.resolve_d(name, "mapping", None)
+      mappingCfg = self.resolve_d(refOrValue, "mapping", None)
       if mappingCfg is not None:
         mapping = {}
         for k,v in mappingCfg.items():
@@ -345,21 +350,21 @@ class ParserState:
       else:
         return None
     prefix, suffix, mapping = None, None, None
-    r = dfault
-    if type(name) in (dict, collections.OrderedDict):
+    r = refOrValue
+    if type(refOrValue) in (dict, collections.OrderedDict):
       for p in ("obj", "arg", "var"):
-        suffix = get_nested_d(name, p, None)
+        suffix = get_nested_d(refOrValue, p, None)
         if suffix is not None:
           prefix = p
           if prefix == "var":
-            mapping = make_mapping(name)
+            mapping = make_mapping(refOrValue)
           break
-    elif type(name) in (str, unicode):
-      nameRe = re.compile("(.*?)(obj|arg|var):([^ +*/&|]*)(.*?)")
-      nameMatch = nameRe.match(name)
-      if nameMatch is not None:
-        prefix, suffix = nameMatch.group(2), nameMatch.group(3)
-        g1, g4 = nameMatch.group(1), nameMatch.group(4)
+    elif type(refOrValue) in (str, unicode):
+      refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +*/&|]*)(.*?)")
+      refOrValueMatch = refOrValueRe.match(refOrValue)
+      if refOrValueMatch is not None:
+        prefix, suffix = refOrValueMatch.group(2), refOrValueMatch.group(3)
+        g1, g4 = refOrValueMatch.group(1), refOrValueMatch.group(4)
         if len(g1) or len(g4):
           expr = "{}v{}".format(g1, g4)
           compiledExpr = compile(expr, "", "eval")
@@ -368,7 +373,7 @@ class ParserState:
             #logger.debug("{}: evaluating {} with {}".format(self, expr, str2(globs)))
             return eval(compiledExpr, globs)
           mapping = op
-          #logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, name))
+          #logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
     if prefix is not None:
       suffix = self.deref(suffix, suffix, **kwargs)
       setter = kwargs.get("setter")
@@ -376,18 +381,22 @@ class ParserState:
       if prefix == "obj":
         r = self.get_obj(suffix, setter=setter, mapping=mapping, asValue=asValue)
       elif prefix == "arg":
-        r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
+        try:
+          r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
+        except ArgNotFoundError as e:
+          #logger.debug("{}".format(e))
+          r = dfault
       elif prefix == "var":
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
         raise RuntimeError("Unknown prefix: '{}'".format(prefix))
-    #logger.debug("Dereferenced '{}' to '{}'".format(str2(name), str2(r)))
+    #logger.debug("Dereferenced '{}' to '{}'".format(str2(refOrValue), str2(r)))
     #This return statement must be at deref() scope, not in nested blocks!
     return r
 
   def resolve_d(self, d, name, dfault=None, **kwargs):
     v = get_nested_d(d, name, dfault)
-    return self.deref(v, v, **kwargs)
+    return self.deref(v, dfault, **kwargs)
 
   def resolve(self, d, name, **kwargs):
     r = self.resolve_d(d, name, None, **kwargs)
@@ -5597,7 +5606,7 @@ class DerefSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
     r = state.deref(key, None)
-    return self.p_(key, cfg, state) if r is None else r
+    return self.p_(key, cfg, state) if r == key else r
 
   def add(self, key, parser):
     self.p_.add(key, parser)
@@ -5615,7 +5624,7 @@ class DerefSelectParser:
 class DerefParser:
   def __call__(self, cfg, state):
     r = state.deref(cfg, None)
-    return self.p_(cfg, state) if r is None else r
+    return self.p_(cfg, state) if r == cfg else r
 
   def add(self, key, parser):
     self.p_.add(key, parser)
