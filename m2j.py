@@ -5230,40 +5230,41 @@ def init_info(**kwargs):
   return info
 
 
-def init_main_sink(main, make_next):
+def init_main_sink(state, make_next):
   #logger.debug("init_main_sink()")
+  main = state.get("main")
   config = main.get("config")
 
   defaultModifierDescs = [
     SourceCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
-  modifiers = config.get("modifiers", None)
+  modifiers = state.resolve_d(config, "modifiers", None)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
   modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
   topSink = modifierSink
-  clickSink = modifierSink.set_next(ClickSink(config.get("clickTime", 0.5)))
-  holdDataCfg = config.get("holds", [])
+  clickSink = modifierSink.set_next(ClickSink(state.resolve_d(config, "clickTime", 0.5)))
+  holdDataCfg = state.resolve_d(config, "holds", [])
   holdSink = clickSink.set_next(HoldSink())
   for hd in holdDataCfg:
-    keyFullName = hd.get("key", None)
+    keyFullName = state.resolve_d(hd, "key", None)
     keySource, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
-    modifiers = hd.get("modifiers", None)
+    modifiers = state.resolve_d(hd, "modifiers", None)
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
-    num = hd.get("num", -1)
-    holdSink.add(keySource, keyCode, modifiers, hd.get("period"), hd.get("value"), num)
+    num = state.resolve_d(hd, "num", -1)
+    holdSink.add(keySource, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
   main.get("updated").append(lambda tick,ts : holdSink.update(tick, ts))
 
-  sens = config.get("sens", None)
-  if sens is not None:
-    sensSet = config.get("sensSet", None)
-    if sensSet not in sens:
+  sensSetsCfg = state.resolve_d(config, "sens", None)
+  sens = {}
+  if sensSetsCfg is not None:
+    sensSet = state.resolve_d(config, "sensSet", None)
+    if sensSet not in sensSetsCfg:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
-    sens = sens[sensSet]
-    sens = {fn2htc(s[0]):s[1] for s in sens.items()}
-  else:
-    sens = {}
+    sens = state.resolve(sensSetsCfg, sensSet)
+    for s in sens.items():
+      sens[fn2htc(state.deref(s[0]))] = state.deref(s[1])
   scaleSink = holdSink.set_next(ScaleSink2(sens))
 
   mainSink = scaleSink.set_next(BindSink())
@@ -5283,14 +5284,15 @@ def init_main_sink(main, make_next):
     def __init__(self, sink):
       self.sink_, self.s_ = sink, False
 
-  state = ParserState(main)
   state.push("sinks", topSink)
 
   toggler = Toggler(stateSink)
   etParser = main.get("parser").get("et")
   actionParser = main.get("parser").get("action")
 
-  released = config.get("released", ())
+  released = state.resolve_d(config, "released", [])
+  for i in range(len(released)):
+    released[i] = state.deref(released[i])
   sourceFilterOp = SourceFilterOp(released)
   filterSink = stateSink.set_next(FilterSink(sourceFilterOp))
   namesOfReleasedStr = ", ".join(released)
@@ -5307,18 +5309,19 @@ def init_main_sink(main, make_next):
     axisAccumulators[sourceName] = axisAccumulator
     et = PropTestsEventTest((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
     mainSink.add(et, axisAccumulator)
-  info = init_info(cfg=config.get("info", {}), main=main, axisAccumulators=axisAccumulators)
+  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, axisAccumulators=axisAccumulators)
 
-  binds = config.get("binds", None)
+  binds = state.resolve_d(config, "binds", None)
   enabled = [True]
   if binds is not None:
     for bind in binds:
+      bind = state.deref(bind)
       onCfg = state.resolve_d(bind, "on", state.resolve_d(bind, "input", None))
       if onCfg is None:
         raise RuntimeError("Cannot get 'on' or 'input' from {}".format(str2(onCfg)))
       on = etParser(onCfg, state)
       doCfg = state.resolve_d(bind, "do", state.resolve_d(bind, "output", None))
-      action = doCfg["action"]
+      action = state.resolve(doCfg, "action")
       if action == "changeSens":
         def make_sens_op(htc, step):
           def op(e):
@@ -5358,11 +5361,11 @@ def init_main_sink(main, make_next):
         action = op
       elif action == "grab":
         inputs = get_nested_d(doCfg, "inputs", None)
-        inputs = released if inputs is None else inputs
+        inputs = released if inputs is None else [state.deref(i) for i in inputs]
         action = SwallowSource(main.get("source"), [(n,True) for n in inputs])
       elif action == "ungrab":
         inputs = get_nested_d(doCfg, "inputs", None)
-        inputs = released if inputs is None else inputs
+        inputs = released if inputs is None else [state.deref(i) for i in inputs]
         action = SwallowSource(main.get("source"), [(n,False) for n in inputs])
       elif action == "showInfo":
         def op(e):
@@ -5383,12 +5386,12 @@ def init_main_sink(main, make_next):
             aa.reset()
         action = op
       elif action == "toggleAxisAccumulator":
-        s = [False]
+        aaState = [False]
         def op(e):
-          s[0] = not s[0]
+          aaState[0] = not aaState[0]
           for aa in axisAccumulators.values():
             aa.reset()
-            aa.set_state(s[0])
+            aa.set_state(aaState[0])
         action = op
       else:
         action = actionParser(doCfg, state)
@@ -5397,7 +5400,9 @@ def init_main_sink(main, make_next):
           continue
       mainSink.add(on, action, 0)
 
-  grabbed = config.get("grabbed", ())
+  grabbed = state.resolve_d(config, "grabbed", [])
+  for i in range(len(grabbed)):
+    grabbed[i] = state.deref(grabbed[i])
   namesOfGrabbedStr = ", ".join(grabbed)
 
   def print_enabled(event):
@@ -5417,7 +5422,7 @@ def init_main_sink(main, make_next):
 
   grabSink.add(None, make_next(main), 1)
   if main.get("reloading") == False:
-    main.set("state", config.get("initialState", False))
+    main.set("state", state.resolve_d(config, "initialState", False))
   stateSink.set_state(main.get("state"))
   toggler.s_ = stateSink.get_state()
   logger.info("Initialization successfull")
@@ -7483,7 +7488,7 @@ class Main:
     state = ParserState(self)
     self.init_vars(state)
     self.set("source", self.get("parser")("source", self.get("config"), state))
-    sink = init_main_sink(self, init_preset_config)
+    sink = init_main_sink(state, init_preset_config)
     self.get("source").set_sink(sink)
 
   def init_and_run(self):
