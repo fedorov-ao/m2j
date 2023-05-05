@@ -3852,27 +3852,30 @@ class AxisLinker:
     return self.offset_
 
   def on_move_axis(self, axis, old, new):
-    if self.state_:
-      if not self.busy_ and axis == self.controlledAxis_:
-        #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
-        self.offset_ += new - old
-      elif axis == self.controllingAxis_:
-        cv = self.func_(new)
-        try:
-          self.busy_= True
-          #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
-          desired = cv + self.offset_
-          actual = self.controlledAxis_.move(desired, relative=False)
-          if actual != desired:
-            self.offset_ -= (desired - actual)
-        except:
-          raise
-        finally:
-          self.busy_= False
+    if self.state_ == False:
+      return
+    if not self.busy_ and axis == self.controlledAxis_:
+      #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
+      if self.old_ is None:
+        self.old_ = old
+    elif axis == self.controllingAxis_:
+      if self.old_ is not None:
+        self.offset_ += self.controlledAxis_.get() - self.old_
+        self.old_ = None
+      cv = self.func_(new)
+      try:
+        self.busy_= True
+        #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
+        desired = cv + self.offset_
+        actual = self.controlledAxis_.move(desired, relative=False)
+        if actual != desired:
+          self.offset_ -= (desired - actual)
+      finally:
+        self.busy_= False
 
   def __init__(self, controllingAxis, controlledAxis, func):
     self.controllingAxis_, self.controlledAxis_, self.func_ = controllingAxis, controlledAxis, func
-    self.offset_, self.busy_, self.state_  = 0.0, False, False
+    self.old_, self.offset_, self.busy_, self.state_  = None, 0.0, False, False
     #logger.debug("{} created".format(self))
 
   def __del__(self):
