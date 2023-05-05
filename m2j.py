@@ -5430,34 +5430,6 @@ def init_main_sink(state, make_next):
   return topSink
 
 
-def preinit_log(level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
-  root = logging.getLogger()
-  root.setLevel(level)
-  handler.setLevel(logging.NOTSET)
-  handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
-  root.addHandler(handler)
-
-
-def init_log(main):
-  config = main.get("config")
-  logLevelName = config.get("logLevel", "NOTSET").upper()
-  logLevel = name2loglevel(logLevelName)
-  root = logging.getLogger()
-  root.setLevel(logLevel)
-  print("Setting log level to {}".format(logLevelName))
-  logFileName = config.get("logFile", None)
-  if logFileName is not None:
-    logFileFmt = config.get("logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
-    logFileDateFmt = config.get("logFileDateFmt", "%T")
-    logFileLevelName = config.get("logFileLevel", "NOTSET").upper()
-    logFileLevel = name2loglevel(logFileLevelName)
-    logFile = open(logFileName, "w")
-    logFileHandler = logging.StreamHandler(logFile)
-    logFileHandler.setLevel(logFileLevel)
-    logFileHandler.setFormatter(logging.Formatter(fmt=logFileFmt, datefmt=logFileDateFmt))
-    root.addHandler(logFileHandler)
-
-
 class ConfigReadError(RuntimeError):
   def __init__(self, configName, e):
     self.configName, self.e = configName, e
@@ -7421,18 +7393,18 @@ class Main:
     handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
     root.addHandler(handler)
 
-  def init_log(self):
+  def init_log(self, state):
     config = self.get("config")
-    logLevelName = config.get("logLevel", "NOTSET").upper()
+    logLevelName = state.resolve_d(config, "logLevel", "NOTSET").upper()
     logLevel = name2loglevel(logLevelName)
     root = logging.getLogger()
     root.setLevel(logLevel)
     print("Setting log level to {}".format(logLevelName))
-    logFileName = config.get("logFile", None)
+    logFileName = state.resolve_d(config, "logFile", None)
     if logFileName is not None:
-      logFileFmt = config.get("logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
-      logFileDateFmt = config.get("logFileDateFmt", "%T")
-      logFileLevelName = config.get("logFileLevel", "NOTSET").upper()
+      logFileFmt = state.resolve_d(config, "logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
+      logFileDateFmt = state.resolve_d(config, "logFileDateFmt", "%T")
+      logFileLevelName = state.resolve_d(config, "logFileLevel", "NOTSET").upper()
       logFileLevel = name2loglevel(logFileLevelName)
       logFile = open(logFileName, "w")
       logFileHandler = logging.StreamHandler(logFile)
@@ -7452,20 +7424,20 @@ class Main:
     self.set("config", config)
     logger.info("Configs loaded successfully")
 
-  def init_outputs(self):
+  def init_outputs(self, state):
     nameParser = lambda key,state : key
     parser = self.get("parser")
     outputParser = parser.get("output")
-    orderOp = lambda i : i[1].get("seq", 100000)
-    cfg = self.get("config")["outputs"]
+    orderOp = lambda i : state.resolve_d(i[1], "seq", 100000)
+    cfg = state.resolve(self.get("config"), "outputs")
     state = ParserState(self)
     parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
 
-  def init_sounds(self):
-    soundsCfg = self.get("config").get("sounds", {})
+  def init_sounds(self, state):
+    soundsCfg = state.resolve_d(self.get("config"), "sounds", {})
     sounds = self.get("sounds")
     for soundName,soundFileName in soundsCfg.items():
-      sounds[soundName] = soundFileName
+      sounds[soundName] = state.deref(soundFileName)
 
   def init_vars(self, state):
     parser = state.get("main").get("parser")
@@ -7475,6 +7447,7 @@ class Main:
       sep = "."
       for name,cfg2 in cfg.items():
         tokens.append(name)
+        #TODO This implies that a var cannot be a dictionary. Too restrictive?
         if type(cfg2) in (dict, collections.OrderedDict):
           add_nested_vars(cfg2, tokens)
         else:
@@ -7484,11 +7457,27 @@ class Main:
     add_nested_vars(varsCfg, tokens)
 
   def init_source(self, state):
-    #TODO Use dedicated config section?
-    self.init_vars(state)
+    #TODO Use dedicated config section for source?
     self.set("source", self.get("parser")("source", self.get("config"), state))
     sink = init_main_sink(state, init_preset_config)
     self.get("source").set_sink(sink)
+
+  def init_loop(self, state):
+    refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0)
+    step = 1.0 / refreshRate
+    source = self.get("source")
+    assert(source is not None)
+    def run_source(tick, ts):
+      source.run_once()
+    updated = self.get("updated")
+    def run_updated(tick, ts):
+      for u in updated:
+        u(tick, ts)
+    callbacks = [run_source, run_updated]
+    loop = Loop(callbacks, step)
+    if self.loop_ is not None:
+      del self.loop_
+    self.loop_ = loop
 
   def init_and_run(self):
     state = ParserState(self)
@@ -7496,22 +7485,9 @@ class Main:
     try:
       try:
         self.init_config2()
+        self.init_vars(state)
         self.init_source(state)
-        refreshRate = self.get("config").get("refreshRate", 100.0)
-        step = 1.0 / refreshRate
-        source = self.get("source")
-        assert(source is not None)
-        def run_source(tick, ts):
-          source.run_once()
-        updated = self.get("updated")
-        def run_updated(tick, ts):
-          for u in updated:
-            u(tick, ts)
-        callbacks = [run_source, run_updated]
-        loop = Loop(callbacks, step)
-        if self.loop_ is not None:
-          del self.loop_
-        self.loop_ = loop
+        self.init_loop(state)
         self.set("reloading", False)
       except Exception as e:
         logger.error("Could not create or recreate loop; reason: '{}'".format(e))
@@ -7524,9 +7500,8 @@ class Main:
         else:
           raise Exception("No valid state to fall back to.")
 
-      loop = self.loop_
-      assert(loop is not None)
-      loop.run()
+      assert(self.loop_ is not None)
+      self.loop_.run()
     finally:
       if oldUpdated is not None:
         self.set("updated", oldUpdated)
@@ -7557,9 +7532,10 @@ class Main:
 
         self.set("reloading", False)
         self.init_config2()
-        self.init_log()
-        self.init_outputs()
-        self.init_sounds()
+        state = ParserState(self)
+        self.init_log(state)
+        self.init_outputs(state)
+        self.init_sounds(state)
 
         while (True):
           try:
