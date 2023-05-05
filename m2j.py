@@ -5420,7 +5420,7 @@ def init_main_sink(state, make_next):
     for axisId, axis in oAxes.items():
       axis.remove_all_listeners()
 
-  grabSink.add(None, make_next(main), 1)
+  grabSink.add(None, make_next(state), 1)
   if main.get("reloading") == False:
     main.set("state", state.resolve_d(config, "initialState", False))
   stateSink.set_state(main.get("state"))
@@ -5492,19 +5492,19 @@ def init_config(configFilesNames):
   return cfg
 
 
-def init_preset_config(main):
+def init_preset_config(state):
+  main = state.get("main")
   config = main.get("config")
-  presetName = get_nested(config, "preset")
+  presetName = state.resolve(config, "preset")
   logger.info("Using '{}' preset from config".format(presetName))
-  sectNames = ("presets",)
-  cfg = get_nested_from_sections_d(config, sectNames, presetName, None)
-  if cfg is None:
+  presetsCfg = state.resolve_d(config, "presets", {})
+  presetCfg = state.resolve_d(presetsCfg, presetName, None)
+  if presetCfg is None:
     raise Exception("'{}' preset not found in config".format(presetName))
   else:
     try:
       parser = main.get("parser")
-      state = ParserState(main)
-      r = parser("sink", cfg, state)
+      r = parser("sink", presetCfg, state)
       return r
     except KeyError2 as e:
       logger.error("Error while initializing config preset '{}': cannot find key '{}' in {}".format(presetName, e.key, e.keys))
@@ -7483,20 +7483,20 @@ class Main:
     tokens = []
     add_nested_vars(varsCfg, tokens)
 
-  def init_source(self):
+  def init_source(self, state):
     #TODO Use dedicated config section?
-    state = ParserState(self)
     self.init_vars(state)
     self.set("source", self.get("parser")("source", self.get("config"), state))
     sink = init_main_sink(state, init_preset_config)
     self.get("source").set_sink(sink)
 
   def init_and_run(self):
+    state = ParserState(self)
     oldUpdated = [v for v in self.get("updated")]
     try:
       try:
         self.init_config2()
-        self.init_source()
+        self.init_source(state)
         refreshRate = self.get("config").get("refreshRate", 100.0)
         step = 1.0 / refreshRate
         source = self.get("source")
