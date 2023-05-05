@@ -4900,12 +4900,15 @@ class AxisAccumulator:
     if self.state_ and e.type == codes.EV_REL:
       v = self.values_.get(axisID, 0.0)
       v += e.value * self.scales_.get(axisID, 1.0)
-      v = clamp(v, -1.0, 1.0)
+      v = clamp(v, *self.get_limits(axisID))
       self.values_[axisID] = v
     return False
 
   def get_axis_value(self, axisID):
     return self.values_.get(axisID, 0.0)
+
+  def get_limits(self, axisID):
+    return (-1.0, 1.0)
 
   def get_supported_axes(self):
     return self.values_.keys()
@@ -4949,27 +4952,32 @@ class Info:
       self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = area, vpx, vpy, shapes, size
   class AxesArea:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
-      def make_vp(vp, scale=1.0):
+      def make_vp(vp, scale=None):
         if type(vp) in (str, unicode):
-          if vp[0] == "-":
-            vp, scale = vp[1:], -1.0
-          elif vp[0] == "+":
+          s = vp[0]
+          sm = 1.0
+          if s in ("+", "-"):
             vp = vp[1:]
+            sm = 1.0 if s == "+" else -1.0
           outputName, axisId = fn2sc(vp)
           if self.get_output_ is None:
             raise RuntimeError("Outputs locator is not set")
           output = self.get_output_(outputName)
           if output is None:
             raise RuntimeError("Cannot get output '{}'".format(outputName))
+          if scale is None:
+            limits = output.get_limits(axisId)
+            scale = 2.0 / abs(limits[1] - limits[0])
+          scale *= sm
           return lambda : scale*output.get_axis_value(axisId)
         elif type(vp) in (int, float):
           return lambda : vp
         else:
           return vp
-      sx, sy = kwargs.get("sx", 1.0), kwargs.get("sy", 1.0)
+      sx, sy = kwargs.get("sx", None), kwargs.get("sy", None)
       vpx, vpy = make_vp(vpx, sx), make_vp(vpy, sy)
       size = kwargs.get("size", (11, 11))
-      shapes = self.create_shapes_(self.canvas_, shapeType, **kwargs)
+      shapes = self.create_shapes_(shapeType, **kwargs)
       marker = Info.Marker(self, vpx, vpy, shapes, size)
       marker.update()
       self.markers_.append(marker)
@@ -4989,6 +4997,7 @@ class Info:
         nameLabel = tk.Label(frame, text=name)
         nameLabel.pack()
       canvas = tk.Canvas(frame, bg=kwargs.get("canvasBg", "black"))
+      self.canvas_ = canvas
       canvasSize = kwargs.get("canvasSize", (200, 20))
       fill = "both"
       if layout == "box":
@@ -5000,16 +5009,16 @@ class Info:
       elif layout == "v":
         canvas["width"], canvas["height"] = canvasSize[1], canvasSize[0]
         fill = "y"
-      self.add_grid_(canvas, layout, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
+      self.add_grid_(layout, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
       canvas.pack()
       canvas.pack_configure(expand=True, fill=fill)
-      self.canvas_ = canvas
       self.markers_ = []
       self.get_output_ = kwargs.get("getOutput", None)
-    def create_shapes_(self, canvas, shapeType, **kwargs):
+    def create_shapes_(self, shapeType, **kwargs):
       size = kwargs.get("size", (11, 11))
       color = kwargs.get("color", "white")
       width = kwargs.get("width", 1)
+      canvas = self.canvas_
       if shapeType == "oval":
         return [canvas.create_oval(0,0,size[0],size[1], fill=color)]
       elif shapeType == "rect":
@@ -5025,9 +5034,10 @@ class Info:
         return [canvas.create_line(0,0,0,size[1], fill=color, width=width)]
       else:
         raise RuntimeError("Unknown shape type: '{}'".format(shapeType))
-    def add_grid_(self, canvas, layout, **kwargs):
+    def add_grid_(self, layout, **kwargs):
       width = kwargs.get("width", 1)
       color = kwargs.get("color", "white")
+      canvas = self.canvas_
       if layout == "box":
         cw, ch = canvas.winfo_width(), canvas.winfo_height()
         vline = canvas.create_line(0.5*cw, 0.0, 0.5*cw, ch, fill=color, width=width),
@@ -5202,11 +5212,6 @@ class Info:
 
 
 def init_info(**kwargs):
-  def calc_scale(fn, outputs):
-    name, code = fn2sc(fn)
-    limits = outputs[name].get_limits(code)
-    return 1.0/limits[1]
-
   main = kwargs["main"]
   axisAccumulators = kwargs["axisAccumulators"]
   outputs = main.get("outputs")
