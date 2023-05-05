@@ -6383,10 +6383,10 @@ def make_parser():
       current = state.resolve_d(cfg, "setter.current", None)
       report = state.resolve_d(cfg, "setter.report", True)
       modeSetter = ModeSetter(msmm, savePolicy, current, report)
-      initialMode = state.resolve_d(cfg, "initialMode", None, setter=modeSetter)
-      if initialMode is not None:
-        if not modeSink.set_mode(initialMode):
-          logger.warning("Cannot set mode: {}".format(initialMode))
+      mode = state.resolve_d(cfg, "mode", None, setter=modeSetter)
+      if mode is not None:
+        if not modeSink.set_mode(mode):
+          logger.warning("Cannot set mode: {}".format(mode))
       #Saving initial mode in msmm afer modeSink was initialized
       msmm.save()
       return modeSink
