@@ -2326,7 +2326,7 @@ class SegmentFunc:
     else:
       y = self.y_[i] + dy*((x - self.x_[i])/dx)**self.factor_
     if self.tracker_ is not None:
-      self.tracker_(self, x, y)
+      self.tracker_(self, x=x, y=y, k=dy/dx)
     return y
 
   def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
@@ -5726,10 +5726,10 @@ def make_parser():
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
     tracker = None
-    if state.resolve_d(cfg, "report", False) == True:
-      reporterName = state.resolve_d(cfg, "reporterName", "")
-      def op(func, x, y):
-        logger.info("{}: x:{:+.3f} y:{:+.3f}".format(reporterName, x, y))
+    if state.resolve_d(cfg, "track", False) == True:
+      reporterName = state.resolve_d(cfg, "trackerName", "")
+      def op(func, **kwargs):
+        logger.info("{}: x:{:+.3f} y:{:+.3f} k:{:+.3f}".format(reporterName, kwargs.get("x"), kwargs.get("y"), kwargs.get("k")))
       tracker = op
     func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
