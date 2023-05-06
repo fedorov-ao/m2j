@@ -7500,85 +7500,87 @@ class Main:
       del self.loop_
     self.loop_ = loop
 
-  def init_and_run(self):
-    state = ParserState(self)
+  def reinit_or_fallback(self):
+    try:
+      self.init_config2()
+      state = ParserState(self)
+      self.init_vars(state)
+      self.init_source(state)
+      self.init_loop(state)
+      self.set("reloading", False)
+    except Exception as e:
+      logger.error("Could not create or recreate loop; reason: '{}'".format(e))
+      logger.error("===Traceback begin===")
+      for l in traceback.format_exc().splitlines()[-31:]:
+        logger.error(l)
+      logger.error("===Traceback end===")
+      if self.loop_ is not None:
+        logger.error("Falling back to previous state.")
+      else:
+        raise Exception("No valid state to fall back to.")
+
+  def reinit_and_run(self):
     oldUpdated = [v for v in self.get("updated")]
     try:
-      try:
-        self.init_config2()
-        self.init_vars(state)
-        self.init_source(state)
-        self.init_loop(state)
-        self.set("reloading", False)
-      except Exception as e:
-        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-        logger.error("===Traceback begin===")
-        for l in traceback.format_exc().splitlines()[-31:]:
-          logger.error(l)
-        logger.error("===Traceback end===")
-        if self.loop_ is not None:
-          logger.error("Falling back to previous state.")
-        else:
-          raise Exception("No valid state to fall back to.")
-
+      self.reinit_or_fallback()
       assert(self.loop_ is not None)
       self.loop_.run()
     finally:
-      if oldUpdated is not None:
-        self.set("updated", oldUpdated)
+      self.set("updated", oldUpdated)
+
+  def preinit(self):
+    self.preinit_log()
+    if (len(sys.argv)) == 1:
+      self.print_help()
+      raise ExitException
+
+    opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
+    for o, a in opts:
+      if o in ("-h", "--help"):
+        self.print_help()
+        raise ExitException
+      elif o in ("-d", "--devices"):
+        self.print_devices_(a)
+        raise ExitException
+      if o in ("-p", "--preset"):
+        self.options_["preset"] = a
+      elif o in ("-v", "--logLevel"):
+        self.options_["logLevel"] = a
+      elif o in ("-c", "--config"):
+        cns = self.options_.setdefault("configNames", [])
+        cns.append(a)
+
+    self.set("reloading", False)
+    self.init_config2()
+    state = ParserState(self)
+    self.init_log(state)
+    self.init_outputs(state)
+    self.init_sounds(state)
 
   def run(self):
     try:
-      self.preinit_log()
-      try:
-        if (len(sys.argv)) == 1:
-          self.print_help()
-          return 0
+      self.preinit()
+      while (True):
+        try:
+          r = self.reinit_and_run()
+        except ReloadException:
+          logger.info("Reloading")
+          self.set("reloading", True)
+        except Exception as e:
+          logger.error("Unexpected exception: {}".format(e))
+          raise
+        finally:
+          self.get("source").swallow(None, False)
 
-        opts, args = getopt.getopt(sys.argv[1:], "hd:p:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
-        for o, a in opts:
-          if o in ("-h", "--help"):
-            self.print_help()
-            return 0
-          elif o in ("-d", "--devices"):
-            self.print_devices_(a)
-            return 0
-          if o in ("-p", "--preset"):
-            self.options_["preset"] = a
-          elif o in ("-v", "--logLevel"):
-            self.options_["logLevel"] = a
-          elif o in ("-c", "--config"):
-            cns = self.options_.setdefault("configNames", [])
-            cns.append(a)
-
-        self.set("reloading", False)
-        self.init_config2()
-        state = ParserState(self)
-        self.init_log(state)
-        self.init_outputs(state)
-        self.init_sounds(state)
-
-        while (True):
-          try:
-            r = self.init_and_run()
-          except ReloadException:
-            logger.info("Reloading")
-            self.set("reloading", True)
-          except Exception as e:
-            logger.error("Unexpected exception: {}".format(e))
-            raise
-          finally:
-            self.get("source").swallow(None, False)
-
-      except KeyboardInterrupt:
-        logger.info("Exiting normally")
-        return 0
-      except ExitException:
-        logger.info("Exiting normally")
-        return 0
-      except ConfigReadError as e:
-        logger.error(e)
-        return 1
+    except KeyboardInterrupt:
+      logger.info("Exiting normally")
+      return 0
+    except ExitException:
+      logger.info("Exiting normally")
+      return 0
+    except ConfigReadError as e:
+      logger.error(e)
+      return 1
     finally:
       self.get("soundPlayer").quit()
 
