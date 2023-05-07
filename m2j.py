@@ -2297,15 +2297,21 @@ class PolynomialFunc:
   def __call__(self, v):
     v += self.off_
     r = 0.0
-    for i in range(0, len(self.coeffs_)):
-      c = self.coeffs_[i]
-      if c == 0.0:
+    for k, p in self.coeffs_:
+      if k == 0.0:
         continue
-      r += c*v**i
+      r += k*v**p
+    if self.tracker_ is not None:
+      gain = 0.0
+      for k, p in self.coeffs_:
+        if k == 0.0:
+          continue
+        gain += p*k*v**(p-1)
+      self.tracker_(self, x=v, y=r, gain=gain)
     return r
 
-  def __init__(self, coeffs, off=0.0):
-    self.coeffs_, self.off_ = coeffs, off
+  def __init__(self, coeffs, off=0.0, tracker=None):
+    self.coeffs_, self.off_, self.tracker_ = coeffs, off, tracker
 
 
 class SegmentFunc:
@@ -2326,7 +2332,7 @@ class SegmentFunc:
     else:
       y = self.y_[i] + dy*((x - self.x_[i])/dx)**self.factor_
     if self.tracker_ is not None:
-      self.tracker_(self, x=x, y=y, k=dy/dx, x0=self.x_[i], x1=self.x_[j], y0=self.y_[i], y1=self.y_[j])
+      self.tracker_(self, x=x, y=y, gain=dy/dx, x0=self.x_[i], x1=self.x_[j], y0=self.y_[i], y1=self.y_[j])
     return y
 
   def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
@@ -5729,8 +5735,8 @@ def make_parser():
     if state.resolve_d(cfg, "track", False) == True:
       trackerName = state.resolve_d(cfg, "trackerName", "")
       def op(func, **kwargs):
-        fmt = "{}: segment x:{:+.3f} y:{:+.3f} k:{:+.3f} x0:{:+.3f} x1:{:+.3f} y0:{:+.3f} y1:{:+.3f}"
-        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("k"), kwargs.get("x0"), kwargs.get("x1"), kwargs.get("y0"), kwargs.get("y1"))
+        fmt = "{}: segment x:{:+.3f} y:{:+.3f} gain:{:+.3f} x0:{:+.3f} x1:{:+.3f} y0:{:+.3f} y1:{:+.3f}"
+        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("gain"), kwargs.get("x0"), kwargs.get("x1"), kwargs.get("y0"), kwargs.get("y1"))
         logger.info(msg)
       tracker = op
     func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
@@ -5739,15 +5745,20 @@ def make_parser():
   funcParser.add("segment", segment)
 
   def poly(cfg, state):
-    def make_op(data, symmetric):
-      d = [(k,int(p)) for p,k in data.items()]
-      def op(x):
-        r = 0.0
-        for k,p in d:
-          r += k*x**p
-        return r
-      return make_symm_wrapper(op, symmetric)
-    return make_op(state.resolve(cfg, "coeffs"), state.resolve_d(cfg, "symmetric", 0))
+    coeffs = state.resolve(cfg, "coeffs")
+    coeffs = tuple( ((k,int(p)) for p,k in coeffs.items()) )
+    offset = state.resolve_d(cfg, "offset", 0.0)
+    tracker = None
+    if state.resolve_d(cfg, "track", False) == True:
+      trackerName = state.resolve_d(cfg, "trackerName", "")
+      def op(func, **kwargs):
+        fmt = "{}: poly x:{:+.3f} y:{:+.3f} gain:{:+.3f}"
+        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("gain"))
+        logger.info(msg)
+      tracker = op
+    func = PolynomialFunc(coeffs, offset, tracker)
+    symmetric = state.resolve_d(cfg, "symmetric", 0)
+    return make_symm_wrapper(func, symmetric)
   funcParser.add("poly", poly)
 
   def bezier(cfg, state):
