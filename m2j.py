@@ -183,17 +183,18 @@ def get_nested(d, name, sep = "."):
 
 
 def get_nested_d(d, name, dfault = None, sep = "."):
+  r = dfault
   if len(name) != 0:
     tokens = name.split(sep)
     for t in tokens:
-      nd = d.get(t)
-      if nd is None:
-        return dfault
-      d = nd
+      if d is None or type(d) not in (dict, collections.OrderedDict):
+        d = None
+        break
+      d = d.get(t)
     if d is not None:
-      return d
+      r = d
   #Fallback
-  return dfault
+  return r
 
 
 def get_nested_from_sections_d(d, sectNames, name, dfault = None):
@@ -402,7 +403,7 @@ class ParserState:
     r = self.resolve_d(d, name, None, **kwargs)
     if r is None:
       #TODO Use more appropriate exception
-      raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d)))
+      raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d, 100)))
     return r
 
   def get_axis_by_full_name(self, fullAxisName):
