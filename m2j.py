@@ -1174,8 +1174,9 @@ class MoveAxis:
           if v == current:
             continue
           if clamp(v, current, proposed) == v:
-            if selected is None or (abs(v - current) < abs(selected - current)):
+            if selected is None or (abs(v - current) < absSelectedDelta):
               selected = v
+              absSelectedDelta = abs(selected - current)
         if selected is not None:
           value = selected - current if self.relative_ == True else selected
       self.axis_.move(value, self.relative_)
