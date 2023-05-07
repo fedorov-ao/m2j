@@ -2326,7 +2326,7 @@ class SegmentFunc:
     else:
       y = self.y_[i] + dy*((x - self.x_[i])/dx)**self.factor_
     if self.tracker_ is not None:
-      self.tracker_(self, x=x, y=y, k=dy/dx)
+      self.tracker_(self, x=x, y=y, k=dy/dx, x0=self.x_[i], x1=self.x_[j], y0=self.y_[i], y1=self.y_[j])
     return y
 
   def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
@@ -5727,9 +5727,11 @@ def make_parser():
     clampRight = state.resolve_d(cfg, "clampRight", True)
     tracker = None
     if state.resolve_d(cfg, "track", False) == True:
-      reporterName = state.resolve_d(cfg, "trackerName", "")
+      trackerName = state.resolve_d(cfg, "trackerName", "")
       def op(func, **kwargs):
-        logger.info("{}: x:{:+.3f} y:{:+.3f} k:{:+.3f}".format(reporterName, kwargs.get("x"), kwargs.get("y"), kwargs.get("k")))
+        fmt = "{}: segment x:{:+.3f} y:{:+.3f} k:{:+.3f} x0:{:+.3f} x1:{:+.3f} y0:{:+.3f} y1:{:+.3f}"
+        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("k"), kwargs.get("x0"), kwargs.get("x1"), kwargs.get("y0"), kwargs.get("y1"))
+        logger.info(msg)
       tracker = op
     func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
