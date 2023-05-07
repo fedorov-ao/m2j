@@ -178,7 +178,7 @@ def get_nested(d, name, sep = "."):
     #Fallback
     return None
   except:
-    logger.error("get_nested(): Error while getting '{}' from '{}'".format(name, d))
+    logger.error("get_nested(): Error while getting '{}' from '{}'".format(name, str2(d, 100)))
     raise
 
 
@@ -5734,13 +5734,10 @@ def make_parser():
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
     tracker = None
-    if state.resolve_d(cfg, "track", False) == True:
-      trackerName = state.resolve_d(cfg, "trackerName", "")
-      def op(func, **kwargs):
-        fmt = "{}: segment x:{:+.3f} y:{:+.3f} gain:{:+.3f} x0:{:+.3f} x1:{:+.3f} y0:{:+.3f} y1:{:+.3f}"
-        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("gain"), kwargs.get("x0"), kwargs.get("x1"), kwargs.get("y0"), kwargs.get("y1"))
-        logger.info(msg)
-      tracker = op
+    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    if trackerCfg is not None:
+      tracker = state.get("parser")("tracker", trackerCfg, state)
+      assert(tracker is not None)
     func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
@@ -5751,13 +5748,10 @@ def make_parser():
     coeffs = tuple( ((k,int(p)) for p,k in coeffs.items()) )
     offset = state.resolve_d(cfg, "offset", 0.0)
     tracker = None
-    if state.resolve_d(cfg, "track", False) == True:
-      trackerName = state.resolve_d(cfg, "trackerName", "")
-      def op(func, **kwargs):
-        fmt = "{}: poly x:{:+.3f} y:{:+.3f} gain:{:+.3f}"
-        msg = fmt.format(trackerName, kwargs.get("x"), kwargs.get("y"), kwargs.get("gain"))
-        logger.info(msg)
-      tracker = op
+    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    if trackerCfg is not None:
+      tracker = state.get("parser")("tracker", trackerCfg, state)
+      assert(tracker is not None)
     func = PolynomialFunc(coeffs, offset, tracker)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
@@ -7297,6 +7291,21 @@ def make_parser():
   def parseVar(cfg, state):
     return Var(cfg)
   mainParser.add("var", parseVar)
+
+  trackerParserKeyOp=lambda cfg,state : get_nested(cfg, "tracker")
+  trackerParser = make_double_deref_parser(keyOp=trackerParserKeyOp)
+  mainParser.add("tracker", trackerParser)
+
+  def parseConsoleTracker(cfg, state):
+    fmt = state.resolve(cfg, "fmt")
+    keys = state.resolve_d(cfg, "keys", ())
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    def op(func, **kwargs):
+      args = (kwargs.get(k) for k in keys)
+      msg = fmt.format(*args)
+      logger.log(level, msg)
+    return op
+  trackerParser.add("console", parseConsoleTracker)
 
   return mainParser
 
