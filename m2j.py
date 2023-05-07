@@ -6045,14 +6045,11 @@ def make_parser():
     outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "absolute"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
-    cb = None
-    if state.resolve_d(cfg, "print", 0) == 1:
-      cb = InputBasedCurve2PrintCB(fullAxisName, state.resolve_d(cfg, "deltaOrder", 3), state.resolve_d(cfg, "ivOrder", 3), state.resolve_d(cfg, "ovOrder", 3))
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
     resetOpsOnAxisMove = state.resolve_d(cfg, "resetOpsOnAxisMove", True)
     ivLimits = state.resolve_d(cfg, "inputLimits", (-1.0, 1.0))
-    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=cb, resetOpsOnAxisMove=resetOpsOnAxisMove)
+    curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, cb=None, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     state.add_curve(fullAxisName, curve)
     return curve
@@ -6065,11 +6062,6 @@ def make_parser():
     fullAxisName = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fullAxisName)
     axis.add_listener(curve)
-    #print
-    if state.resolve_d(cfg, "print", False) == True:
-      printCurve = PrintRelChainCurve(None, axis, fullAxisName, state.resolve_d(cfg, "avOrder", 3))
-      top.set_next(printCurve)
-      curve = printCurve
     #accumulate
     #Order of ops should not matter
     relativeCfg = state.resolve(cfg, "relative")
@@ -6183,7 +6175,7 @@ def make_parser():
     else:
       presetCfgStack = CfgStack(presetCfg)
       try:
-        for n in ("axis", "controlling", "leader", "follower", "print"):
+        for n in ("axis", "controlling", "leader", "follower"):
           if n in cfg:
             presetCfgStack.push(n, cfg[n])
         curve = state.get("parser")("curve", presetCfg, state)
