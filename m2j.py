@@ -187,7 +187,7 @@ def get_nested_d(d, name, dfault = None, sep = "."):
   if len(name) != 0:
     tokens = name.split(sep)
     for t in tokens:
-      if d is None or type(d) not in (dict, collections.OrderedDict):
+      if hasattr(d, "get") == False:
         d = None
         break
       d = d.get(t)
