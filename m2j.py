@@ -7440,6 +7440,7 @@ class VarManager:
       if self.make_var_ is not None:
         var = self.make_var_()
         set_nested(self.vars_, varName, var)
+        assert(get_nested(self.vars_, varName) == var)
       else:
         raise RuntimeError("Var '{}' was not registered".format(varName))
     return var
