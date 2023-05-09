@@ -5242,6 +5242,7 @@ class Info:
 
 def init_info(**kwargs):
   main = kwargs["main"]
+  state = kwargs["state"]
   axisAccumulators = kwargs["axisAccumulators"]
   outputs = main.get("outputs")
   getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
@@ -5338,7 +5339,7 @@ def init_main_sink(state, make_next):
     axisAccumulators[sourceName] = axisAccumulator
     et = PropTestsEventTest((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
     mainSink.add(et, axisAccumulator)
-  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, axisAccumulators=axisAccumulators)
+  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, axisAccumulators=axisAccumulators, state=state)
 
   binds = state.resolve_d(config, "binds", None)
   enabled = [True]
