@@ -7307,6 +7307,18 @@ def make_parser():
     return op
   trackerParser.add("console", parseConsoleTracker)
 
+  def parseValueTracker(cfg, state):
+    keys = state.resolve_d(cfg, "keys", None)
+    valueName = state.resolve(cfg, "value")
+    value = state.get("main").get("valueManager").get_var(valueName)
+    if value is None:
+      raise RuntimeError("No such value: '{}'".format(valueName))
+    def op(func, **kwargs):
+      kwargs = kwargs if keys is None else { k:kwargs[k] for k in keys }
+      value.set(kwargs)
+    return op
+  trackerParser.add("value", parseValueTracker)
+
   return mainParser
 
 
@@ -7658,3 +7670,4 @@ class Main:
     self.props_["state"] = False
     self.props_["soundPlayer"] = SoundPlayer()
     self.props_["varManager"] = VarManager()
+    self.props_["valueManager"] = VarManager(make_var = lambda : Var(None))
