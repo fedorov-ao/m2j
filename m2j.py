@@ -5197,6 +5197,22 @@ class Info:
       source = kwargs.get("source", None)
       if source is not None:
         self.add_axes_from(source, **kwargs)
+  class ValueArea:
+    def update(self):
+      v = self.var_.get()
+      msg = "{}: ".format(self.name_)
+      if v is not None:
+        args = (v.get(k) for k in self.keys_)
+        msg += self.fmt_.format(*args)
+      self.valueLabel_["text"] = msg
+    def __init__(self, **kwargs):
+      self.valueLabel_ = tk.Label(master=kwargs.get("master", None))
+      self.valueLabel_.grid(row=kwargs["r"], column=kwargs["c"], rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1), sticky=kwargs.get("sticky", "nsew"))
+      self.name_ = kwargs["name"]
+      self.var_ = kwargs["var"]
+      self.keys_ = kwargs.get("keys", ())
+      self.fmt_ = kwargs["fmt"]
+      self.update()
 
   def add_area(self, **kwargs):
     kwargs["getOutput"] = self.get_output_
@@ -5210,6 +5226,8 @@ class Info:
       area = self.ButtonsArea(window=self.w_, **kwargs)
     elif t == "axesValues":
       area = self.AxesValuesArea(window=self.w_, **kwargs)
+    elif t == "value":
+      area = self.ValueArea(master=self.w_, **kwargs)
     else:
       logger.warning("Unknown area type: {}".format(t))
     self.areas_.append(area)
@@ -5248,13 +5266,19 @@ def init_info(**kwargs):
   getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
 
   infoCfg = kwargs["cfg"]
-  title = infoCfg.get("title", "")
+  title = state.resolve_d(infoCfg, "title", "")
   info = Info(title=title, getOutput=getOutput)
-  for areaCfg in infoCfg.get("areas", ()):
+  for areaCfg in state.resolve_d(infoCfg, "areas", ()):
+    areaType = state.resolve(areaCfg, "type")
+    if areaType == "value":
+      valueName = state.resolve(areaCfg, "value")
+      var = main.get("valueManager").get_var(valueName)
+      areaCfg["var"] = var
     area = info.add_area(**areaCfg)
-    if areaCfg.get("type", None) == "axes":
-      for markerCfg in areaCfg.get("markers", ()):
+    if areaType == "axes":
+      for markerCfg in state.resolve_d(areaCfg, "markers", ()):
         area.add_marker(**markerCfg)
+
   main.get("updated").append(lambda tick,ts : info.update())
 
   return info
