@@ -7400,7 +7400,11 @@ class VarManager:
   def get_var(self, varName):
     var = get_nested_d(self.vars_, varName, None)
     if var is None:
-      raise RuntimeError("Var '{}' was not registered".format(varName))
+      if self.make_var_ is not None:
+        var = self.make_var_()
+        set_nested(self.vars_, varName, var)
+      else:
+        raise RuntimeError("Var '{}' was not registered".format(varName))
     return var
 
   def get_vars(self):
@@ -7409,8 +7413,9 @@ class VarManager:
   def add_var(self, varName, var):
     set_nested(self.vars_, varName, var)
 
-  def __init__(self):
+  def __init__(self, make_var = None):
     self.vars_ = collections.OrderedDict()
+    self.make_var_ = make_var
 
 
 class Main:
