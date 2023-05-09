@@ -5259,16 +5259,8 @@ class Info:
 
 
 def init_info(**kwargs):
-  main = kwargs["main"]
-  state = kwargs["state"]
-  axisAccumulators = kwargs["axisAccumulators"]
-  outputs = main.get("outputs")
-  getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
-
-  infoCfg = kwargs["cfg"]
-  title = state.resolve_d(infoCfg, "title", "")
-  info = Info(title=title, getOutput=getOutput)
-  for areaCfg in state.resolve_d(infoCfg, "areas", ()):
+  def parse_area(areaCfg, info, state):
+    main = kwargs.get("main")
     areaType = state.resolve(areaCfg, "type")
     if areaType == "value":
       valueName = state.resolve(areaCfg, "value")
@@ -5278,6 +5270,31 @@ def init_info(**kwargs):
     if areaType == "axes":
       for markerCfg in state.resolve_d(areaCfg, "markers", ()):
         area.add_marker(**markerCfg)
+  state = kwargs["state"]
+  axisAccumulators = kwargs["axisAccumulators"]
+  main = kwargs.get("main")
+  outputs = main.get("outputs")
+  getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
+
+  infoCfg = kwargs["cfg"]
+  f = state.resolve_d(infoCfg, "format", 1)
+  title = state.resolve_d(infoCfg, "title", "")
+  info = Info(title=title, getOutput=getOutput)
+  areas = state.resolve_d(infoCfg, "areas", ())
+  if f == 1:
+    for areaCfg in areas:
+      parse_area(areaCfg, info, state)
+  elif f == 2:
+    r, c = 0, 0
+    for row in areas:
+      for col in row:
+        col["r"], col["c"] = r, c
+        parse_area(col, info, state)
+        c += state.resolve_d(col, "cs", 1)
+      c = 0
+      r += 1
+  else:
+    raise RuntimeError("Unknown format: {}".format(f))
 
   main.get("updated").append(lambda tick,ts : info.update())
 
