@@ -5212,7 +5212,7 @@ class Info:
       v = self.var_.get()
       msg = "{}: ".format(self.name_)
       if v is not None:
-        args = (v.get(k) for k in self.keys_)
+        args = (v.get(k, None) for k in self.keys_)
         msg += self.fmt_.format(*args)
       self.valueLabel_["text"] = msg
     def __init__(self, **kwargs):
