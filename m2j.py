@@ -7356,7 +7356,7 @@ def make_parser():
     if value is None:
       raise RuntimeError("No such value: '{}'".format(valueName))
     def op(func, **kwargs):
-      kwargs = kwargs if keys is None else { k:kwargs[k] for k in keys }
+      kwargs = kwargs if keys is None else { k:kwargs.get(k, None) for k in keys }
       value.set(kwargs)
     return op
   trackerParser.add("value", parseValueTracker)
