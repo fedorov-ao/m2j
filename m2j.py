@@ -2350,13 +2350,23 @@ class SegmentFunc:
 
 
 class SigmoidFunc:
+  """https://en.wikipedia.org/wiki/Logistic_function"""
   def __call__(self, x):
-    x = self.k_*x + self.b_
-    ex = math.e**x
-    return self.c_*ex/(ex + 1) + self.d_
+    ert = math.e**(self.r_ * (x - self.s_))
+    y =  (self.k_ * self.p0_ * ert) / (self.k_ + self.p0_ * (ert - 1.0))
+    if self.tracker_ is not None:
+      dx = x - self.x_
+      self.x_ = x
+      dy = y - self.y_
+      self.y_ = y
+      gain = 0.0 if dx == 0.0 else dy/dx
+      self.tracker_(self, x=x, y=y, gain=gain)
+    return y
 
-  def __init__(self, k, b, c, d):
-    self.k_, self.b_, self.c_, self.d_ = k, b, c, d
+  def __init__(self, k, p0, r, s, tracker = None):
+    self.k_, self.p0_, self.r_, self.s_ = k, p0, r, s
+    self.tracker_ = tracker
+    self.x_, self.y_ = 0.0, 0.0
 
 
 def calc_bezier(points, t):
@@ -5798,6 +5808,21 @@ def make_parser():
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("poly", poly)
+
+  def sigmoid(cfg, state):
+    k = state.resolve_d(cfg, "k", 1.0)
+    p0 = state.resolve_d(cfg, "p0", 0.5)
+    r = state.resolve_d(cfg, "r", 1.0)
+    s = state.resolve_d(cfg, "s", 0.0)
+    tracker = None
+    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    if trackerCfg is not None:
+      tracker = state.get("parser")("tracker", trackerCfg, state)
+      assert(tracker is not None)
+    func = SigmoidFunc(k, p0, r, s, tracker)
+    symmetric = state.resolve_d(cfg, "symmetric", 0)
+    return make_symm_wrapper(func, symmetric)
+  funcParser.add("sigmoid", sigmoid)
 
   def bezier(cfg, state):
     def make_op(data, symmetric):
