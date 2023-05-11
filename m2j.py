@@ -5212,15 +5212,16 @@ class Info:
       v = self.var_.get()
       msg = "{}: ".format(self.name_)
       if v is not None:
-        args = (v.get(k, None) for k in self.keys_)
-        msg += self.fmt_.format(*args)
+        try:
+          msg += self.fmt_.format(**v)
+        except Exception as e:
+          msg = "Cannot format ({})".format(e)
       self.valueLabel_["text"] = msg
     def __init__(self, **kwargs):
       self.valueLabel_ = tk.Label(master=kwargs.get("master", None))
       self.valueLabel_.grid(row=kwargs["r"], column=kwargs["c"], rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1), sticky=kwargs.get("sticky", "nsew"))
       self.name_ = kwargs["name"]
       self.var_ = kwargs["var"]
-      self.keys_ = kwargs.get("keys", ())
       self.fmt_ = kwargs["fmt"]
       self.update()
 
@@ -7365,23 +7366,19 @@ def make_parser():
 
   def parseConsoleTracker(cfg, state):
     fmt = state.resolve(cfg, "fmt")
-    keys = state.resolve_d(cfg, "keys", ())
     level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
     def op(func, **kwargs):
-      args = (kwargs.get(k) for k in keys)
-      msg = fmt.format(*args)
+      msg = fmt.format(**kwargs)
       logger.log(level, msg)
     return op
   trackerParser.add("console", parseConsoleTracker)
 
   def parseValueTracker(cfg, state):
-    keys = state.resolve_d(cfg, "keys", None)
     valueName = state.resolve(cfg, "value")
     value = state.get("main").get("valueManager").get_var(valueName)
     if value is None:
       raise RuntimeError("No such value: '{}'".format(valueName))
     def op(func, **kwargs):
-      kwargs = kwargs if keys is None else { k:kwargs.get(k, None) for k in keys }
       value.set(kwargs)
     return op
   trackerParser.add("value", parseValueTracker)
