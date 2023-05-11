@@ -5848,7 +5848,7 @@ def make_parser():
     fDB = f(db)
     def scaled_f(x):
       return (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > db else 0.0
-    return scaled_f
+    return make_symm_wrapper(scaled_f, state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("weighted", weighted)
 
   def get_func(cfg, state, **kwargs):
