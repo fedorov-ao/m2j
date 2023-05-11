@@ -2304,12 +2304,7 @@ class PolynomialFunc:
         continue
       r += k*v**p
     if self.tracker_ is not None:
-      gain = 0.0
-      for k, p in self.coeffs_:
-        if k == 0.0:
-          continue
-        gain += p*k*v**(p-1)
-      self.tracker_(self, x=v, y=r, gain=gain)
+      self.tracker_({ "caller" : self, "x" : v, "y" : r })
     return r
 
   def __init__(self, coeffs, off=0.0, tracker=None):
@@ -2334,7 +2329,7 @@ class SegmentFunc:
     else:
       y = self.y_[i] + dy*((x - self.x_[i])/dx)**self.factor_
     if self.tracker_ is not None:
-      self.tracker_(self, x=x, y=y, gain=dy/dx, x0=self.x_[i], x1=self.x_[j], y0=self.y_[i], y1=self.y_[j])
+      self.tracker_({ "caller" : self, "x" : x, "y" : y, "x0" : self.x_[i], "x1" : self.x_[j], "y0" : self.y_[i], "y1" : self.y_[j] })
     return y
 
   def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
@@ -2355,18 +2350,12 @@ class SigmoidFunc:
     ert = math.e**(self.r_ * (x - self.s_))
     y =  (self.k_ * self.p0_ * ert) / (self.k_ + self.p0_ * (ert - 1.0))
     if self.tracker_ is not None:
-      dx = x - self.x_
-      self.x_ = x
-      dy = y - self.y_
-      self.y_ = y
-      gain = 0.0 if dx == 0.0 else dy/dx
-      self.tracker_(self, x=x, y=y, gain=gain)
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
   def __init__(self, k, p0, r, s, tracker = None):
     self.k_, self.p0_, self.r_, self.s_ = k, p0, r, s
     self.tracker_ = tracker
-    self.x_, self.y_ = 0.0, 0.0
 
 
 def calc_bezier(points, t):
@@ -2428,16 +2417,31 @@ class WeightedFunc:
     fDB = f(self.deadband_)
     y = (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > self.deadband_ else 0.0
     if self.tracker_ is not None:
-      dx = x - self.x_
-      self.x_ = x
-      dy = y - self.y_
-      self.y_ = y
-      gain = 0.0 if dx == 0.0 else dy/dx
-      self.tracker_(self, x=x, y=y, gain=gain)
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
   def __init__(self, degree, weight, deadband, tracker):
     self.degree_, self.weight_, self.deadband_, self.tracker_ = degree, weight, deadband, tracker
+
+
+class GainTracker:
+  def __call__(self, values):
+    x = values["x"]
+    dx = values["x"] - self.x_
+    self.x_ = x
+    y = values["y"]
+    dy = values["y"] - self.y_
+    self.y_ = y
+    gain = 0.0 if dx == 0.0 else dy/dx
+    values["gain"] = gain
+    if self.next_ is not None:
+      self.next_(values)
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next):
+    self.next_ = next
     self.x_, self.y_ = 0.0, 0.0
 
 
@@ -7509,10 +7513,10 @@ def make_parser():
   def parseConsoleTracker(cfg, state):
     fmt = state.resolve(cfg, "fmt")
     level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
-    def op(func, **kwargs):
-      msg = fmt.format(**kwargs)
+    def op(values):
+      msg = fmt.format(values)
       logger.log(level, msg)
-    return op
+    return GainTracker(op)
   trackerParser.add("console", parseConsoleTracker)
 
   def parseValueTracker(cfg, state):
@@ -7520,9 +7524,9 @@ def make_parser():
     value = state.get("main").get("valueManager").get_var(valueName)
     if value is None:
       raise RuntimeError("No such value: '{}'".format(valueName))
-    def op(func, **kwargs):
-      value.set(kwargs)
-    return op
+    def op(values):
+      value.set(values)
+    return GainTracker(op)
   trackerParser.add("value", parseValueTracker)
 
   return mainParser
