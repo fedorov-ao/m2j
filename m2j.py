@@ -6292,26 +6292,14 @@ def make_parser():
     #Order of ops should not matter
     relativeCfg = state.resolve_d(cfg, "relative", None)
     if relativeCfg is not None:
-      valueDDOp = SignDistanceDeltaOp()
-      resetFuncCfg = state.resolve_d(relativeCfg, "resetFunc", None)
-      if resetFuncCfg is not None:
-        resetFunc = state.get("parser")("func", resetFuncCfg, state)
-        def resetOp2(distance, delta, timestamp, dt):
-          factor = resetFunc(dt)
-          return factor*distance
-        valueDDOp = ExtDistanceDeltaOp(next=valueDDOp, op=resetOp2)
-      else:
-        valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
-      deltaDOp = ReturnDeltaOp()
-      deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
-      deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
-      deltaDDOp = DistanceDeltaToDeltaOp(deltaDOp)
+      valueDDOp = makeInputValueDDOp(relativeCfg, state)
+      deltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
       relativeOutputOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
       accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=relativeOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
-      top.set_next(accelChainCurve)
+      bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #transform
     absoluteCfg = state.resolve_d(cfg, "absolute", None)
