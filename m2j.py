@@ -3545,7 +3545,7 @@ class DeltaRelChainCurve:
       self.dirty_ = False
 
 
-class DeltaFromValueRelChainCurve:
+class FullChangeRelChainCurve:
   def move_by(self, x, timestamp):
     """x is relative."""
     #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
@@ -6337,7 +6337,7 @@ def make_parser():
       inputDeltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
       relativeOutputValueOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = DeltaFromValueRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
+      accelChainCurve = FullChangeRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate and transform
