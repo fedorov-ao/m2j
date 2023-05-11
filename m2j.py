@@ -2421,6 +2421,26 @@ class SegmentedBezierFunc:
     self.points_ = [p for p in points]
 
 
+class WeightedFunc:
+  def __call__(self, x):
+    def f(x):
+      return self.weight_*x**self.degree_ + (1.0 - self.weight_)*x
+    fDB = f(self.deadband_)
+    y = (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > self.deadband_ else 0.0
+    if self.tracker_ is not None:
+      dx = x - self.x_
+      self.x_ = x
+      dy = y - self.y_
+      self.y_ = y
+      gain = 0.0 if dx == 0.0 else dy/dx
+      self.tracker_(self, x=x, y=y, gain=gain)
+    return y
+
+  def __init__(self, degree, weight, deadband, tracker):
+    self.degree_, self.weight_, self.deadband_, self.tracker_ = degree, weight, deadband, tracker
+    self.x_, self.y_ = 0.0, 0.0
+
+
 class JoystickAxis:
   def move(self, v, relative):
     assert(self.j_)
@@ -5840,15 +5860,15 @@ def make_parser():
   funcParser.add("sbezier", sbezier)
 
   def weighted(cfg, state):
-    w = state.resolve(cfg, "weight")
     o = state.resolve(cfg, "degree")
-    def f(x):
-      return w*x**o + (1.0 - w)*x
+    w = state.resolve(cfg, "weight")
     db = state.resolve_d(cfg, "deadband", 0.0)
-    fDB = f(db)
-    def scaled_f(x):
-      return (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > db else 0.0
-    return make_symm_wrapper(scaled_f, state.resolve_d(cfg, "symmetric", 0))
+    tracker = None
+    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    if trackerCfg is not None:
+      tracker = state.get("parser")("tracker", trackerCfg, state)
+      assert(tracker is not None)
+    return make_symm_wrapper(WeightedFunc(o, w, db, tracker), state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("weighted", weighted)
 
   def get_func(cfg, state, **kwargs):
