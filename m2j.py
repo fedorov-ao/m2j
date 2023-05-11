@@ -3441,6 +3441,9 @@ class DistanceDeltaToDeltaOp:
 
 #Chain curves
 class AccumulateRelChainCurve:
+  """
+  Computes value by accumulating input deltas and passes this value to next (absolute) curve.
+  """
   def move_by(self, x, timestamp):
     """x is relative."""
     self.update_()
@@ -3538,7 +3541,80 @@ class DeltaRelChainCurve:
       self.dirty_ = False
 
 
+class DeltaFromValueRelChainCurve:
+  def move_by(self, x, timestamp):
+    """x is relative."""
+    #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
+    #  if input value was adjusted, compute new stored output value
+    #adjust input delta (for sens etc.)
+    #add input delta to stored input value
+    #compute new output value
+    #compute new output delta by subtracting stored output value from new output value
+    #set store output value to new output value
+    #return output delta
+    assert(self.next_ is not None)
+    self.update_()
+    inputValue = self.inputValueDDOp_.calc(self.inputValue_, x, timestamp)
+    if inputValue != self.inputValue_:
+      self.outputValue_ = self.outputValueOp_.calc(inputValue)
+    self.inputValue_ = inputValue
+    inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
+    self.inputValue_ += inputDelta
+    outputValue = self.outputValueOp_.calc(inputValue)
+    outputDelta = outputValue - self.outputValue_
+    self.outputValue_ = outputValue
+    self.next_.move_by(outputDelta, timestamp)
+    return outputDelta
+
+  def reset(self):
+    assert(self.next_ is not None)
+    self.next_.reset()
+    self.reset_self_()
+
+  def on_move_axis(self, axis, old, new):
+    self.dirty_ = True
+    self.next_.on_move_axis(axis, old, new)
+
+  def get_value(self):
+    self.update_()
+    return self.inputValue_
+
+  def set_next(self, next):
+    self.next_ = next
+
+  def __init__(self, next, inputValueDDOp, inputDeltaDDOp, outputValueOp, resetOnMoveAxis):
+    """
+    next: Next curve (relative).
+    inputValueDDOp: Adjusts input value based on current input value, input delta and timestamp. Is reset on call to reset(), so can have state.
+    inputDeltaDDOp: Adjusts input delta based on current input value, input delta and timestamp. Is reset on call to reset(), so can have state.
+    outputValueOp: Computes output value from input value. Is not reset on call to reset(), so supposed to be stateless.
+    resetOnMoveAxis: If True, curve will be reset after call to on_move_axis().
+    """
+    self.next_, self.inputValueDDOp_, self.outputValueOp_, self.inputDeltaDDOp_ = next, inputValueDDOp, outputValueOp, inputDeltaDDOp
+    self.resetOnMoveAxis_ = resetOnMoveAxis
+    self.inputValue_ = 0.0
+    self.outputValue_ = self.outputValueOp_.calc(self.inputValue_)
+    self.dirty_ = False
+
+  def reset_self_(self):
+    self.inputValue_ = 0.0
+    self.outputValue_ = self.outputValueOp_.calc(self.inputValue_)
+    self.inputValueDDOp_.reset()
+    self.inputDeltaDDOp_.reset()
+    self.dirty_ = False
+
+  def update_(self):
+    if self.dirty_ == True:
+      if self.resetOnMoveAxis_ == True:
+        self.reset_self_()
+      self.dirty = False
+
+
 class RelToAbsChainCurve:
+  """
+  Gets value from next (absolute) curve, adds delta and passes new value to next curve.
+  Is stateless.
+  """
   def move_by(self, x, timestamp):
     """x is relative."""
     nextValue = self.next_.get_value()
@@ -6185,6 +6261,26 @@ def make_parser():
     return top
   curveParser.add("offset", parseOffsetCurve)
 
+  def makeInputValueDDOp(cfg, state):
+    inputValueDDOp = SignDistanceDeltaOp()
+    resetFuncCfg = state.resolve_d(cfg, "resetFunc", None)
+    if resetFuncCfg is not None:
+      resetFunc = state.get("parser")("func", resetFuncCfg, state)
+      def resetOp2(distance, delta, timestamp, dt):
+        factor = resetFunc(dt)
+        return factor*distance
+      inputValueDDOp = ExtDistanceDeltaOp(next=inputValueDDOp, op=resetOp2)
+    else:
+      inputValueDDOp = TimeDistanceDeltaOp(next=inputValueDDOp, resetTime=cfg.get("resetTime", float("inf")), holdTime=cfg.get("holdTime", 0.0))
+    return inputValueDDOp
+
+  def makeInputDeltaDDOp(cfg, state):
+    inputDeltaDOp = ReturnDeltaOp()
+    inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, cfg.get("deadzone", 0.0))
+    inputDeltaDOp = makeSensModOp(cfg, state, inputDeltaDOp)
+    inputDeltaDDOp = DistanceDeltaToDeltaOp(inputDeltaDOp)
+    return inputDeltaDDOp
+
   def parseAccelCurve(cfg, state):
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
@@ -6233,6 +6329,44 @@ def make_parser():
     state.add_curve(fullAxisName, top)
     return top
   curveParser.add("accel", parseAccelCurve)
+
+  def parseAccelValueCurve(cfg, state):
+    #axis tracker
+    top = AxisTrackerChainCurve(next=None)
+    bottom = top
+    fullAxisName = state.resolve(cfg, "axis")
+    axis = state.get_axis_by_full_name(fullAxisName)
+    axis.add_listener(top)
+    #accelerate
+    #Order of ops should not matter
+    relativeCfg = state.resolve_d(cfg, "relative", None)
+    if relativeCfg is not None:
+      inputValueDDOp = makeInputValueDDOp(relativeCfg, state)
+      inputDeltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
+      relativeOutputValueOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
+      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
+      accelChainCurve = DeltaFromValueRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
+      bottom.set_next(accelChainCurve)
+      bottom = accelChainCurve
+    #accumulate and transform
+    absoluteCfg = state.resolve_d(cfg, "absolute", None)
+    if absoluteCfg is not None:
+      #accumulate
+      relToAbsChainCurve = RelToAbsChainCurve(next=None)
+      bottom.set_next(relToAbsChainCurve)
+      bottom = relToAbsChainCurve
+      #transform
+      absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
+      absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
+      absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
+      bottom.set_next(absoluteChainCurve)
+      bottom = absoluteChainCurve
+    #move axis
+    axisChainCurve = AxisChainCurve(axis=axis)
+    bottom.set_next(axisChainCurve)
+    state.add_curve(fullAxisName, top)
+    return top
+  curveParser.add("accelv", parseAccelValueCurve)
 
   def parsePresetCurve(cfg, state):
     #logger.debug("parsePresetCurve(): cfg: '{}'".format(str2(cfg)))
