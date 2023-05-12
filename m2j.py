@@ -3545,7 +3545,7 @@ class DeltaRelChainCurve:
       self.dirty_ = False
 
 
-class FullChangeRelChainCurve:
+class FullDeltaRelChainCurve:
   def move_by(self, x, timestamp):
     """x is relative."""
     #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
@@ -6322,7 +6322,7 @@ def make_parser():
     return top
   curveParser.add("accel", parseAccelCurve)
 
-  def parseAccelValueCurve(cfg, state):
+  def parseFullDeltaCurve(cfg, state):
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
     bottom = top
@@ -6337,7 +6337,7 @@ def make_parser():
       inputDeltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
       relativeOutputValueOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = FullChangeRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
+      accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate and transform
@@ -6358,7 +6358,7 @@ def make_parser():
     bottom.set_next(axisChainCurve)
     state.add_curve(fullAxisName, top)
     return top
-  curveParser.add("accelv", parseAccelValueCurve)
+  curveParser.add("fulldelta", parseFullDeltaCurve)
 
   def parsePresetCurve(cfg, state):
     #logger.debug("parsePresetCurve(): cfg: '{}'".format(str2(cfg)))
