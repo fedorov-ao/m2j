@@ -7397,42 +7397,51 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRateSettingOutput(cfg, state):
-    class RateOp:
+    class TimeRateOp:
       def calc(self, value, timestamp):
         if value != self.value_ or self.timestamp_ is None:
-          self.timestamp_ = timestamp
-          self.value_ = value
-        r = value
-        if self.axisFunc_ and self.axis_:
-          r *= self.axisFunc_(self.axis_.get())
-        if self.accelFunc_:
-          dt = timestamp - self.timestamp_
-          r *= self.accelFunc_(dt)
-        return r
-      def __init__(self, axis, axisFunc, accelFunc):
+          self.value_, self.timestamp_ = value, timestamp
+        if self.next_ is not None:
+          value = self.next_.calc(value, timestamp)
+        dt = timestamp - self.timestamp_
+        return value * self.func_(dt)
+      def __init__(self, next, func):
         self.value_, self.timestamp_ = 0.0, None
-        self.axis_, self.axisFunc_, self.accelFunc_ = axis, axisFunc, accelFunc
+        self.next_, self.func_ = next, func
+    class AxisRateOp:
+      def calc(self, value, timestamp):
+        if self.next_ is not None:
+          value = self.next_.calc(value, timestamp)
+        return value * self.func_(self.axis_.get())
+      def __init__(self, next, axis, func):
+        self.next_, self.axis_, self.func_ = next, axis, func
+    class ConstantRateOp:
+      def calc(self, value, timestamp):
+        return value * self.rate_
+      def init(self, rate):
+        self.rate_ = rate
     limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
     next = state.get("parser")("output", state.resolve(cfg, "next"), state)
     rateOps = {}
     ratesCfg = state.resolve(cfg, "rates")
     for axisName,rateOrCfg in ratesCfg.items():
-      sensAxis, sensAxisFunc, accelFunc = None, None, None
+      rateOp = None
       if type(rateOrCfg) in (int, float):
-        class F:
-          def __call__(self, dt):
-            return self.v_
-          def __init__(self, v):
-            self.v_ = v
-        accelFunc = F(rateOrCfg)
+        rateOp = ConstantRateOp(rateOrCfg)
       else:
-        if "accelMod" in rateOrCfg:
-          accelFunc = state.get("parser")("func", state.resolve(rateOrCfg, "accelMod.func"), state)
-        if "sensMod" in rateOrCfg:
-          sensAxis = state.get_axis_by_full_name(state.resolve(rateOrCfg, "sensMod.axis"))
-          sensAxisFunc = state.get("parser")("func", state.resolve(rateOrCfg, "sensMod.func"), state)
+        for opCfg in rateOrCfg:
+          t = state.resolve(opCfg, "type")
+          if t == "time":
+            func = state.get("parser")("func", state.resolve(opCfg, "func"), state)
+            rateOp = TimeRateOp(rateOp, func)
+          elif t == "axis":
+            axis = state.get_axis_by_full_name(state.resolve(opCfg, "axis"))
+            func = state.get("parser")("func", state.resolve(opCfg, "func"), state)
+            rateOp = AxisRateOp(rateOp, axis, func)
+          else:
+            raise RuntimeError("Unknown op type : '{}'".format(t))
       axisId = name2code(axisName)
-      rateOps[axisId] = RateOp(sensAxis, sensAxisFunc, accelFunc)
+      rateOps[axisId] = rateOp
     j = RateSettingJoystick(next, rateOps, limits)
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
     return j
