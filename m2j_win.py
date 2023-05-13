@@ -47,25 +47,25 @@ def CTL_CODE(DeviceType,Function,Method,Access):
   return (((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))
 
 class PPJoystick:
-  def move_axis(self, axis, value, relative):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    desired = value if not relative else self.get_axis_value(axis)+value
-    actual = clamp(desired, *self.get_limits(axis))
-    self.a_[axis] = actual
+  def move_axis(self, tcAxis, value, relative):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    desired = value if not relative else self.get_axis_value(tcAxis)+value
+    actual = clamp(desired, *self.get_limits(tcAxis))
+    self.a_[tcAxis] = actual
     #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
     self.dirty_ = True
     return value - (actual - desired) if relative else actual
 
-  def get_axis_value(self, axis):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.a_[axis]
+  def get_axis_value(self, tcAxis):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    return self.a_[tcAxis]
 
-  def get_limits(self, axis):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.limits_[axis]
+  def get_limits(self, tcAxis):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    return self.limits_[tcAxis]
 
   def get_supported_axes(self):
     return self.axes_[:self.numAxes_]
@@ -101,8 +101,8 @@ class PPJoystick:
     self.numAxes_, self.numButtons_ = numAxes, numButtons
 
     self.limits_ = {}
-    for axis in self.get_supported_axes():
-      self.limits_[axis] = (-1.0, 1.0) if (limits is None or axis not in limits) else limits[axis]
+    for tcAxis in self.get_supported_axes():
+      self.limits_[tcAxis] = (-1.0, 1.0) if (limits is None or tcAxis not in limits) else limits[tcAxis]
 
     self.factors_ = factors if factors is not None else {}
 
@@ -124,7 +124,7 @@ class PPJoystick:
     #Have to explicitly specify little-endiannes
     self.fmt_ = "<Lb{:d}lb{:d}b".format(self.NUM_ANALOG, self.NUM_DIGITAL)
     self.dataSize_ = struct.calcsize(self.fmt_)
-    self.a_ = {axis : 0.0 for axis in self.axes_}
+    self.a_ = {tcAxis : 0.0 for tcAxis in self.axes_}
     self.d_ = [0 for i in range(self.NUM_DIGITAL)]
     self.dirty_ = True
 
@@ -133,7 +133,7 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    analog = tuple(lerp(self.factors_.get(axis, 1.0)*self.a_[axis], self.limits_[axis][0], self.limits_[axis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for axis in self.axes_)
+    analog = tuple(lerp(self.factors_.get(tcAxis, 1.0)*self.a_[tcAxis], self.limits_[tcAxis][0], self.limits_[tcAxis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for tcAxis in self.axes_)
     digital = tuple(d for d in self.d_)
     data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
     return data
@@ -145,17 +145,17 @@ class PPJoystick:
   PPJOY_AXIS_MIN = 1
   PPJOY_AXIS_MAX = 32767
   IOCTL_PPORTJOY_SET_STATE = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x0, METHOD_BUFFERED, FILE_ANY_ACCESS)
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+  axes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER))
 
 
 @make_reporting_joystick
 def parsePPJoystickOutput(cfg, state):
   limits = cfg.get("limits")
   if limits is not None:
-    limits = {name2code(n) : v for n,v in limits.items()}
+    limits = {fn2tc(n) : v for n,v in limits.items()}
   factors = cfg.get("factors")
   if factors is not None:
-    factors = {name2code(n) : v for n,v in factors.items()}
+    factors = {fn2tc(n) : v for n,v in factors.items()}
   j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
   state.get_settings()["updated"].append(lambda tick, ts : j.update())
   return j
@@ -169,25 +169,24 @@ class VJoystick:
   def open_dll(cls, path="vJoyInterface.dll"):
     cls.dll_ = ctypes.CDLL(path)
 
-  def move_axis(self, axis, value, relative):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    desired = value if not relative else self.get_axis_value(axis)+value
-    actual = clamp(desired, *self.get_limits(axis))
-    self.a_[axis] = actual
-    #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
+  def move_axis(self, tcAxis, value, relative):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    desired = value if not relative else self.get_axis_value(tcAxis)+value
+    actual = clamp(desired, *self.get_limits(tcAxis))
+    self.a_[tcAxis] = actual
     self.dirty_ = True
     return value - (actual - desired) if relative else actual
 
-  def get_axis_value(self, axis):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.a_[axis]
+  def get_axis_value(self, tcAxis):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    return self.a_[tcAxis]
 
-  def get_limits(self, axis):
-    if axis not in self.get_supported_axes():
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    return self.limits_[axis]
+  def get_limits(self, tcAxis):
+    if tcAxis not in self.get_supported_axes():
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    return self.limits_[tcAxis]
 
   def get_supported_axes(self):
     return self.axes_[:self.numAxes_]
@@ -239,17 +238,18 @@ class VJoystick:
     if vjdStatus != self.VJD_STAT_FREE:
       raise RuntimeError("vJoy {} is not free".format(self.i_)
     self.i_, self.numAxes, self.numButtons_ = i, numAxes, numButtons,
-    self.limits_ = [l for l in limits] if limits is not None else None
-    self.factors_ = [f for f in factors] if factors is not None else None
-    for axisID in self.get_supported_axes():
-      nativeAxisID = self.w2n_axis_(axisID)
+    self.limits_ = limits if limits is not None else {}
+    self.factors_ = factors if factors is not None else {}
+    self.nativeLimits_ = {}
+    for tcAxis in self.get_supported_axes():
+      nativeAxisID = self.w2n_axis_(tcAxis)
       nativeAxisMin, nativeAxisMax = LONG(), LONG()
       if self.dll_.getVJDAxisMin(self.i_, nativeAxisID, byref(nativeAxisMin)) == False:
         raise RuntimeError("Failed to get min native axis value")
       if self.dll_.getVJDAxisMax(self.i_, nativeAxisID, byref(nativeAxisMax)) == False:
         raise RuntimeError("Failed to get max native axis value")
-      self.nativeLimits_[axisID] = (nativeAxisMin, nativeAxisMax)
-    self.a_ = [0.0 for i in self.numAxes_]
+      self.nativeLimits_[tcAxis] = (nativeAxisMin, nativeAxisMax)
+    self.a_ = { tcAxis : 0.0 for tcAxis in self.axes_ }
     self.d_ = 0
     self.open()
     self.update()
@@ -292,10 +292,11 @@ class VJoystick:
         DWORD   bHatsEx3;   // 16-bit of continuous HAT switch
     } JOYSTICK_POSITION, *PJOYSTICK_POSITION;
     """
-    def av(axidID):
-      limit = self.limits_[axisID]
-      nativeLimit = self.nativeLimits_[axisID]
-      return lerp(self.factors_.get(axisID, 1.0)*self.a_[axisID], limit[0], limit[1], nativeLimit[0], nativeLimit[1])
+    def av(cAxis):
+      tcAxis = TypeCode(codes.EV_ABS, cAxis)
+      limit = self.limits_[tcAxis]
+      nativeLimit = self.nativeLimits_[tcAxis]
+      return lerp(self.factors_.get(tcAxis, 1.0)*self.a_[tcAxis], limit[0], limit[1], nativeLimit[0], nativeLimit[1])
     fmt = "BlllllllllllllllllllIIII"
     data = struct.pack(
       fmt,
@@ -326,7 +327,7 @@ class VJoystick:
     )
     return data
 
-    def w2n_axis_(self, axisID):
+    def w2n_axis_(self, tcAxis):
       HID_USAGE_X   = 0x30
       HID_USAGE_Y   = 0x31
       HID_USAGE_Z   = 0x32
@@ -338,12 +339,12 @@ class VJoystick:
       HID_USAGE_WHL = 0x38
       HID_USAGE_POV = 0x39
       mapping = { codes.ABS_X : HID_USAGE_X, codes.ABS_Y : HID_USAGE_Y, codes.ABS_Z : HID_USAGE_Z, codes.ABS_RX : HID_USAGE_RX, codes.ABS_RY : HID_USAGE_RY, codes.ABS_RZ : HID_USAGE_RZ, codes.ABS_THROTTLE : HID_USAGE_SL0, codes.ABS_RUDDER : HID_USAGE_SL1 }
-      nativeAxisID = mapping.get(axisID, None)
+      nativeAxisID = mapping.get(tcAxis.code, None)
       if nativeAxisID is None:
-        raise LogicError("No native axis ID for  axis ID: {}".format(axisID))
+        raise LogicError("No native axis ID for  axis ID: {}".format(tcAxis))
       return nativeAxisID
 
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER)
+  axes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER))
 
   VJD_STAT_OWN  = 0 #The  vJoy Device is owned by this application.
   VJD_STAT_FREE = 1 #The  vJoy Device is NOT owned by any application (including this one).
@@ -364,10 +365,10 @@ def parseVJoystickOutput(cfg, state):
   numButtons=cfg.get("numButtons", 16)
   limits = cfg.get("limits")
   if limits is not None:
-    limits = {name2code(n) : v for n,v in limits.items()}
+    limits = {fn2tc(n) : v for n,v in limits.items()}
   factors = cfg.get("factors")
   if factors is not None:
-    factors = {name2code(n) : v for n,v in factors.items()}
+    factors = {fn2tc(n) : v for n,v in factors.items()}
   j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
   state.get_settings()["updated"].append(lambda tick,ts : j.update())
   return j

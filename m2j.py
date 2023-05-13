@@ -632,6 +632,16 @@ def fn2hc(s, sep="."):
   return SourceCode(source=h, code=r.code)
 
 
+def fn2tc(s, sep="."):
+  """
+  Splits full name into type and code.
+  'mouse.REL_X' -> TypeCode(codes.EV_REL, codes.REL_X)
+  'REL_X' -> TypeCode(codes.EV_REL, codes.REL_X)
+  """
+  r = fn2sn(s, sep)
+  return TypeCode(type=name2type(r.name), code=name2code(r.name))
+
+
 def fn2stc(s, sep="."):
   """
   Splits full name into source, type and code.
@@ -775,8 +785,8 @@ class NullJoystick:
         self.v_[a] = v
     self.limits_ = {}
     if limits is not None:
-      for a,l in limits.items():
-        self.limits_[a] = l
+      for tca,l in limits.items():
+        self.limits_[tca] = l
     self.b_ = {}
     if buttons is not None:
       for b,s in buttons.limits():
@@ -787,31 +797,31 @@ class NullJoystick:
     #logger.debug("{} destroyed".format(self))
     pass
 
-  def move_axis(self, axis, v, relative):
+  def move_axis(self, tcAxis, v, relative):
     if relative:
-      return self.move_axis_by(axis, v)
+      return self.move_axis_by(tcAxis, v)
     else:
-      return self.move_axis_to(axis, v)
+      return self.move_axis_to(tcAxis, v)
 
-  def move_axis_by(self, axis, v):
-    desired = self.get_axis_value(axis)+v
-    actual = self.move_axis_to(axis, desired)
+  def move_axis_by(self, tcAxis, v):
+    desired = self.get_axis_value(tcAxis)+v
+    actual = self.move_axis_to(tcAxis, desired)
     return v - (desired - actual)
 
-  def move_axis_to(self, axis, v):
-    limits = self.get_limits(axis)
+  def move_axis_to(self, tcAxis, v):
+    limits = self.get_limits(tcAxis)
     v = clamp(v, *limits)
-    if axis in self.v_:
-      self.v_[axis] = v
+    if tcAxis in self.v_:
+      self.v_[tcAxis] = v
       return v
     else:
       return 0.0
 
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.v_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.limits_.get(axis, (-float("inf"), float("inf")))
+  def get_limits(self, tcAxis):
+    return self.limits_.get(tcAxis, (-float("inf"), float("inf")))
 
   def get_supported_axes(self):
     return self.v_.keys()
@@ -828,23 +838,23 @@ class NullJoystick:
 
 
 class CompositeJoystick:
-  def move_axis(self, axis, v, relative):
-    if axis not in self.get_supported_axes():
+  def move_axis(self, tcAxis, v, relative):
+    if tcAxis not in self.get_supported_axes():
       return 0.0 if relative else v
-    desired = self.get_axis_value(axis) + v if relative else v
-    limits = self.get_limits(axis)
+    desired = self.get_axis_value(tcAxis) + v if relative else v
+    limits = self.get_limits(tcAxis)
     actual = clamp(desired, *limits)
-    children = self.a2c_[axis] if self.checkChild_ else self.children_
+    children = self.a2c_[tcAxis] if self.checkChild_ else self.children_
     for c in children:
-      c.move_axis(axis, actual, relative=False)
-    self.axes_[axis] = actual
+      c.move_axis(tcAxis, actual, relative=False)
+    self.axes_[tcAxis] = actual
     return v - (desired - actual) if relative else actual
 
-  def get_axis_value(self, axis):
-    return self.axes_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.axes_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.limits_.get(axis, [0.0, 0.0])
+  def get_limits(self, tcAxis):
+    return self.limits_.get(tcAxis, [0.0, 0.0])
 
   def get_supported_axes(self):
     return self.axes_.keys()
@@ -876,27 +886,27 @@ class CompositeJoystick:
       op(axes, set(c.get_supported_axes()))
       op(buttons, set(c.get_supported_buttons()))
     #setting limits and initial values
-    for axis in axes:
+    for tcAxis in axes:
       #limits
       l = [-float("inf"), float("inf")]
       for c in self.children_:
-        if axis in c.get_supported_axes():
-          cl = list(c.get_limits(axis))
+        if tcAxis in c.get_supported_axes():
+          cl = list(c.get_limits(tcAxis))
           if cl[0] > cl[1] : cl[0], cl[1] = cl[1], cl[0]
           l[0], l[1] = max(l[0], cl[0]), min(l[1], cl[1])
           if l[0] >= l[1]:
             l = [0.0, 0.0]
-      self.limits_[axis] = l
+      self.limits_[tcAxis] = l
       #values and axis-to-children mapping
       v = 0.0
       v = clamp(v, *l)
-      self.axes_[axis] = v
+      self.axes_[tcAxis] = v
       a2c = []
-      self.a2c_[axis] = a2c
+      self.a2c_[tcAxis] = a2c
       for c in self.children_:
-        if axis in c.get_supported_axes():
+        if tcAxis in c.get_supported_axes():
           a2c.append(c)
-          c.move_axis(axis, v, relative=False)
+          c.move_axis(tcAxis, v, relative=False)
     #buttons and button-to-children mapping
     v = False
     for button in buttons:
@@ -972,8 +982,8 @@ class EventCompressorDevice:
       event = self.next_.read_one()
       if event is None:
         if len(self.events_) != 0:
-          axisId, event = self.events_.items()[0]
-          del self.events_[axisId]
+          k, event = self.events_.items()[0]
+          del self.events_[k]
         break
       elif event.type == codes.EV_REL:
         k = (event.source, event.code)
@@ -1086,8 +1096,8 @@ class MoveCurve:
 
 
 class SetJoystickAxis:
-  def __init__(self, joystick, axis, value):
-    self.js_, self.axis_, self.value_ = joystick, axis, value
+  def __init__(self, joystick, tcAxis, value):
+    self.js_, self.axis_, self.value_ = joystick, tcAxis, value
     #logger.debug("{} created".format(self))
 
   def __del__(self):
@@ -1101,8 +1111,8 @@ class SetJoystickAxis:
 
 def SetJoystickAxes(joystick, axesAndValues):
   def op(event):
-    for axis, value in axesAndValues:
-      joystick.move_axis(axis, value, False)
+    for tcAxis, value in axesAndValues:
+      joystick.move_axis(tcAxis, value, False)
     return True
   return op
 
@@ -2448,19 +2458,19 @@ class GainTracker:
 class JoystickAxis:
   def move(self, v, relative):
     assert(self.j_)
-    return self.j_.move_axis(self.a_, v, relative)
+    return self.j_.move_axis(self.tcAxis_, v, relative)
 
   def get(self):
     assert(self.j_)
-    return self.j_.get_axis_value(self.a_)
+    return self.j_.get_axis_value(self.tcAxis_)
 
   def limits(self):
     assert(self.j_)
-    return self.j_.get_limits(self.a_)
+    return self.j_.get_limits(self.tcAxis_)
 
-  def __init__(self, j, a):
+  def __init__(self, j, tcAxis):
     assert(j)
-    self.j_, self.a_ = j, a
+    self.j_, self.tcAxis_ = j, tcAxis
 
 
 class JoystickButtonAxis:
@@ -4122,19 +4132,19 @@ class SwallowSource:
 class Opentrack:
   """Opentrack head movement emulator. Don't forget to call send()!"""
 
-  def move_axis(self, axis, v, relative = True):
-    if axis not in self.axes_:
+  def move_axis(self, tcAxis, v, relative = True):
+    if tcAxis not in self.axes_:
       return 0.0
-    desired = self.v_.get(axis, 0.0)+v if relative else v
-    actual = clamp(desired, *self.get_limits(axis))
+    desired = self.v_.get(tcAxis, 0.0)+v if relative else v
+    actual = clamp(desired, *self.get_limits(tcAxis))
     self.v_[axis] = actual
     self.dirty_ = True
     return v - (desired - actual) if relative else actual
 
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.v_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
+  def get_limits(self, tcAxis):
     return (-1.0, 1.0)
 
   def get_supported_axes(self):
@@ -4154,34 +4164,34 @@ class Opentrack:
     self.ip_, self.port_ = ip, port
     self.v_ = {a:0.0 for a in self.axes_}
 
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+  axes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ))
 
 
 class UdpJoystick:
-  """Generick joystick that sends axes positions over UDP. Don't forget to call send()!"""
+  """Generic joystick that sends axes positions over UDP. Don't forget to call send()!"""
 
-  def move_axis(self, axis, v, relative = True):
-    if axis not in self.axes_:
+  def move_axis(self, tcAxis, v, relative = True):
+    if tcAxis not in self.tcAxes_:
       return 0.0 if relative else v
-    desired = self.v_.get(axis, 0.0)+v if relative else v
-    actual = clamp(v, *self.get_limits(axis))
-    self.v_[axis] = actual
+    desired = self.v_.get(tcAxis, 0.0)+v if relative else v
+    actual = clamp(v, *self.get_limits(tcAxis))
+    self.v_[tcAxis] = actual
     self.dirty_ = True
     return v - (desired - actual) if relative else actual
 
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.v_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.limits_.get(axis, (0.0, 0.0))
+  def get_limits(self, tcAxis):
+    return self.limits_.get(tcAxis, (0.0, 0.0))
 
-  def set_limits(self, axis, limits):
-    self.limits_[axis] = limits
-    self.v_[axis] = clamp(self.v_.get(axis, 0.0), *limits)
+  def set_limits(self, tcAxis, limits):
+    self.limits_[tcAxis] = limits
+    self.v_[tcAxis] = clamp(self.v_.get(tcAxis, 0.0), *limits)
     self.dirty_ = True
 
   def get_supported_axes(self):
-    return self.axes_
+    return self.tcAxes_
 
   def set_button_state(self, button, state):
     if button not in self.buttons_:
@@ -4210,14 +4220,14 @@ class UdpJoystick:
     self.ip_, self.port_, self.make_packet_, self.numPackets_ = ip, port, make_packet, numPackets
     self.limits_ = {}
     self.v_ = {}
-    for a in self.axes_:
+    for tcAxis in self.tcAxes_:
       v = 0.0
-      self.move_axis(a, v, False)
+      self.move_axis(tcAxis, v, False)
     self.b_ = {}
     for b in self.buttons_:
       self.set_button_state(b, False)
 
-  axes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ)
+  tcAxes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RY, codes.ABS_RX, codes.ABS_RZ))
   buttons_ = tuple(b for b in range (codes.BTN_0, codes.BTN_15+1))
 
 
@@ -4232,7 +4242,7 @@ def make_opentrack_packet(**kwargs):
     (codes.ABS_RZ, 1.0)
   )
   v = kwargs["axes"]
-  values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
+  values = (dd[1]*v.get(TypeCode(codes.EV_ABS, dd[0]), 0.0) for dd in d)
   packet = struct.pack("<dddddd", *values)
   return packet
 
@@ -4246,7 +4256,7 @@ def make_il2_packet(**kwargs):
     (codes.ABS_RZ, 1.0)
   )
   v = kwargs["axes"]
-  values = [dd[1]*v.get(dd[0], 0.0) for dd in d]
+  values = [dd[1]*v.get(TypeCode(codes.EV_ABS, dd[0]), 0.0) for dd in d]
   result = "R/11\\{:f}\\{:f}\\{:f}".format(*values)
   return result
 
@@ -4263,7 +4273,7 @@ def make_il2_6dof_packet(**kwargs):
     (codes.ABS_Y, -1.0)
   )
   v = kwargs["axes"]
-  values = (dd[1]*v.get(dd[0], 0.0) for dd in d)
+  values = (dd[1]*v.get(TypeCode(codes.EV_ABS, dd[0]), 0.0) for dd in d)
   result = "R/11\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}\\{:f}".format(*values)
   return result
 
@@ -4377,23 +4387,22 @@ class PoseTracker:
 
 class MappingJoystick:
   """Forwards calls to contained joysticks with axis mapping"""
-
-  def move_axis(self, axis, value, relative):
-    if axis not in self.adata_:
+  def move_axis(self, tcAxis, value, relative):
+    if tcAxis not in self.adata_:
       return 0.0 if relative else value
-    d = self.adata_[axis]
-    return d.toJoystick.move_axis(d.toAxis, d.factor*value, relative)
+    d = self.adata_[tcAxis]
+    return d.toJoystick.move_axis(d.tcToAxis, d.factor*value, relative)
 
-  def get_axis_value(self, axis):
-    if axis not in self.adata_:
+  def get_axis_value(self, tcAxis):
+    if tcAxis not in self.adata_:
       return 0.0
-    d = self.adata_[axis]
-    value = d.toJoystick.get_axis_value(d.toAxis)
+    d = self.adata_[tcAxis]
+    value = d.toJoystick.get_axis_value(d.tcToAxis)
     return d.factor*value
 
-  def get_limits(self, axis):
-    d = self.adata_[axis]
-    return (d.factor*l for l in d.toJoystick.get_limits(d.toAxis))
+  def get_limits(self, tcAxis):
+    d = self.adata_[tcAxis]
+    return (d.factor*l for l in d.toJoystick.get_limits(d.tcToAxis))
 
   def get_supported_axes(self):
     return self.adata_.keys()
@@ -4414,12 +4423,12 @@ class MappingJoystick:
   def get_supported_buttons(self):
     return self.bdata_.keys()
 
-  def add_axis(self, fromAxis, toJoystick, toAxis, factor=1.0):
+  def add_axis(self, tcFromAxis, tcToJoystick, toAxis, factor=1.0):
     class D:
       pass
     d = D()
-    d.toJoystick, d.toAxis, d.factor = toJoystick, toAxis, factor
-    self.adata_[fromAxis] = d
+    d.toJoystick, d.tcToAxis, d.factor = toJoystick, tcToAxis, factor
+    self.adata_[tcFromAxis] = d
 
   def add_button(self, fromButton, toJoystick, toButton, negate=False):
     class D:
@@ -4433,15 +4442,15 @@ class MappingJoystick:
 
 
 class NodeJoystick(object):
-  def move_axis(self, axis, value, relative):
+  def move_axis(self, tcAxis, value, relative):
     if self.next_ is not None:
-      return self.next_.move_axis(axis, value, relative)
+      return self.next_.move_axis(tcAxis, value, relative)
 
-  def get_axis_value(self, axis):
-    return self.next_.get_axis_value(axis) if self.next_ else 0
+  def get_axis_value(self, tcAxis):
+    return self.next_.get_axis_value(tcAxis) if self.next_ else 0
 
-  def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ else (0.0, 0.0)
+  def get_limits(self, tcAxis):
+    return self.next_.get_limits(tcAxis) if self.next_ else (0.0, 0.0)
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ is not None else ()
@@ -4464,20 +4473,20 @@ class NodeJoystick(object):
 
 
 class RateLimititngJoystick:
-  def move_axis(self, axis, value, relative):
-    if self.next_ is None or axis not in self.v_:
+  def move_axis(self, tcAxis, value, relative):
+    if self.next_ is None or tcAxis not in self.v_:
       return 0.0 if relative else value
     else:
-      desired = self.v_[axis]+value if relative else value
-      actual = clamp(desired, *self.get_limits(axis))
-      self.v_[axis] = actual
+      desired = self.v_[tcAxis]+value if relative else value
+      actual = clamp(desired, *self.get_limits(tcAxis))
+      self.v_[tcAxis] = actual
       return value - (desired - actual) if relative else actual
 
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.v_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.next_.get_limits(axis) if self.next_ is not None else (0.0, 0.0)
+  def get_limits(self, tcAxis):
+    return self.next_.get_limits(tcAxis) if self.next_ is not None else (0.0, 0.0)
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ is not None else ()
@@ -4495,43 +4504,44 @@ class RateLimititngJoystick:
   def set_next(self, next):
     self.next_ = next
     if self.next_ is not None:
-      self.v_ = {axisId:self.next_.get_axis_value(axisId) for axisId in self.next_.get_supported_axes()}
+      self.v_ = {tcAxis:self.next_.get_axis_value(tcAxis) for tcAxis in self.next_.get_supported_axes()}
     return next
 
   def update(self, tick):
     if self.next_ is not None:
-      for axisId,value in self.v_.items():
-        current = self.next_.get_axis_value(axisId)
+      for tcAxis,value in self.v_.items():
+        current = self.next_.get_axis_value(tcAxis)
         delta = value - current
         if delta != 0.0:
-          if axisId in self.rates_:
-            value = current + sign(delta)*min(abs(delta), self.rates_[axisId]*tick)
+          if tcAxis in self.rates_:
+            value = current + sign(delta)*min(abs(delta), self.rates_[tcAxis]*tick)
             delta = value - current
-          self.next_.move_axis(axisId, delta, True)
+          self.next_.move_axis(tcAxis, delta, True)
 
   def __init__(self, next, rates):
     self.next_, self.rates_ = next, rates
+    self.v_ = {}
     self.set_next(next)
 
 
 class RateSettingJoystick:
-  def move_axis(self, axis, value, relative):
-    if self.next_ is None or axis not in self.v_:
+  def move_axis(self, tcAxis, value, relative):
+    if self.next_ is None or tcAxis not in self.v_:
       return 0.0 if relative else value
     else:
-      desired = self.v_[axis]+value if relative else value
-      actual = clamp(desired, *self.get_limits(axis))
-      self.v_[axis] = actual
+      desired = self.v_[tcAxis]+value if relative else value
+      actual = clamp(desired, *self.get_limits(tcAxis))
+      self.v_[tcAxis] = actual
       return value - (desired - actual) if relative else actual
 
-  def get_axis_value(self, axis):
-    return self.v_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.v_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.limits_.get(axis, (0.0, 0.0))
+  def get_limits(self, tcAxis):
+    return self.limits_.get(tcAxis, (0.0, 0.0))
 
-  def set_limits(self, axis, limits):
-    self.limits_[axis] = limits
+  def set_limits(self, tcAxis, limits):
+    self.limits_[tcAxis] = limits
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ else ()
@@ -4549,31 +4559,32 @@ class RateSettingJoystick:
   def set_next(self, next):
     self.next_ = next
     if self.next_ is not None:
-      self.v_ = {axisId : clamp(0.0, *self.get_limits(axisId)) for axisId in self.next_.get_supported_axes()}
+      self.v_ = {tcAxis : clamp(0.0, *self.get_limits(tcAxis)) for tcAxis in self.next_.get_supported_axes()}
     return next
 
   def update(self, tick, timestamp):
     if self.next_ is None:
       return
-    for axisId,value in self.v_.items():
-      rateOp = self.rateOps_.get(axisId, None)
+    for tcAxis,value in self.v_.items():
+      rateOp = self.rateOps_.get(tcAxis, None)
       if rateOp is None:
         continue
       rate = rateOp.calc(value, timestamp)
       delta = rate*tick
-      self.next_.move_axis(axisId, delta, relative=True)
+      self.next_.move_axis(tcAxis, delta, relative=True)
 
   def __init__(self, next, rateOps, limits=None):
     assert(next is not None)
     self.next_, self.rateOps_, self.limits_ = next, rateOps, {} if limits is None else limits
+    self.v_ = {}
     self.set_next(next)
 
 
 class NotifyingJoystick(NodeJoystick):
-  def move_axis(self, axis, value, relative):
-    r = super(NotifyingJoystick, self).move_axis(axis, value, relative)
+  def move_axis(self, tcAxis, value, relative):
+    r = super(NotifyingJoystick, self).move_axis(tcAxis, value, relative)
     if not relative and self.sink_() is not None:
-      self.sink_()(Event(codes.EV_ABS, axis, value, time.time()))
+      self.sink_()(Event(tcAxis.type, tcAxis.code, value, time.time()))
     return r
 
   def set_sink(self, sink):
@@ -4586,19 +4597,19 @@ class NotifyingJoystick(NodeJoystick):
 
 
 class MetricsJoystick:
-  def move_axis(self, axis, value, relative):
-    if axis not in self.data_:
-      self.data_[axis] = [0.0, None, 0.0]
+  def move_axis(self, tcAxis, value, relative):
+    if tcAxis not in self.data_:
+      self.data_[tcAxis] = [0.0, None, 0.0]
     if relative:
-      self.data_[axis][0] += value
+      self.data_[tcAxis][0] += value
     else:
-      self.data_[axis][0] = value
+      self.data_[tcAxis][0] = value
     return value
 
-  def get_axis_value(self, axis):
-    return self.data_.get(axis, 0.0)[0]
+  def get_axis_value(self, tcAxis):
+    return self.data_.get(tcAxis, 0.0)[0]
 
-  def get_limits(self, axis):
+  def get_limits(self, tcAxis):
     return (-1.0, 1.0)
 
   def set_button_state(self, button, state):
@@ -4611,13 +4622,12 @@ class MetricsJoystick:
     return ()
 
   def check(self):
-    for a in self.data_:
-      d = self.data_[a]
+    for tcAxis,d in self.data_.items():
       if d[1] is None:
         continue
       error = abs(d[0] - d[1])
       d[2] = 0.5*error + 0.5*d[2]
-      print("{}: {: .3f} {: .3f}".format(self.axisToName[a], error, d[2]))
+      print("{}: {: .3f} {: .3f}".format(stc2fn(None, tcAxis.type, tcAxis.code), error, d[2]))
 
   def reset(self):
     for a in self.data_:
@@ -4626,26 +4636,24 @@ class MetricsJoystick:
         continue
       d[0],d[2] = d[1],0.0
 
-  def set_target(self, axis, target):
-    if axis not in self.data_:
-      self.data_[axis] = [0.0, None, 0.0]
-    self.data_[axis][1] = target
+  def set_target(self, tcAxis, target):
+    if tcAxis not in self.data_:
+      self.data_[tcAxis] = [0.0, None, 0.0]
+    self.data_[tcAxis][1] = target
 
   def __init__(self):
     self.data_ = dict()
 
-  axisToName = {p[1]:p[0] for p in {"x":codes.ABS_X, "y":codes.ABS_Y, "z":codes.ABS_Z, "rx":codes.ABS_RX, "ry":codes.ABS_RY, "rz":codes.ABS_RZ, "rudder":codes.ABS_RUDDER, "throttle":codes.ABS_THROTTLE}.items()}
-
 
 class ReportingJoystickAxis:
   def move(self, v, relative):
-    return self.joystick_.move_axis(self.axis_, v, relative)
+    return self.joystick_.move_axis(self.tcAxis_, v, relative)
 
   def get(self):
-    return self.joystick_.get_axis_value(self.axis_)
+    return self.joystick_.get_axis_value(self.tcAxis_)
 
   def limits(self):
-    return self.joystick_.get_limits(self.axis_)
+    return self.joystick_.get_limits(self.tcAxis_)
 
   def add_listener(self, listener):
     self.listeners_.append(weakref.ref(listener))
@@ -4674,8 +4682,8 @@ class ReportingJoystickAxis:
     if dirty:
       self.cleanup_()
 
-  def __init__(self, joystick, axis):
-    self.joystick_, self.axis_, self.listeners_ = joystick, axis, []
+  def __init__(self, joystick, tcAxis):
+    self.joystick_, self.tcAxis_, self.listeners_ = joystick, tcAxis, []
     #logger.debug("{} created".format(self))
 
   def __del__(self):
@@ -4693,12 +4701,12 @@ class ReportingJoystickAxis:
 
 
 class ReportingJoystick(NodeJoystick):
-  def move_axis(self, axis, value, relative):
-    old = self.get_axis_value(axis)
-    r = NodeJoystick.move_axis(self, axis, value, relative)
-    new = self.get_axis_value(axis)
+  def move_axis(self, tcAxis, value, relative):
+    old = self.get_axis_value(tcAxis)
+    r = NodeJoystick.move_axis(self, tcAxis, value, relative)
+    new = self.get_axis_value(tcAxis)
     dirty = False
-    for a in self.axes_.get(axis, ()):
+    for a in self.axes_.get(tcAxis, ()):
       aa = a()
       if aa is not None:
         aa.on_move(old, new)
@@ -4708,10 +4716,10 @@ class ReportingJoystick(NodeJoystick):
       self.cleanup_()
     return r
 
-  def make_axis(self, axisId):
-    a = ReportingJoystickAxis(self, axisId)
-    self.axes_.setdefault(axisId, [])
-    self.axes_[axisId].append(weakref.ref(a))
+  def make_axis(self, tcAxis):
+    a = ReportingJoystickAxis(self, tcAxis)
+    self.axes_.setdefault(tcAxis, [])
+    self.axes_[tcAxis].append(weakref.ref(a))
     return a
 
   def __init__(self, next):
@@ -4719,7 +4727,7 @@ class ReportingJoystick(NodeJoystick):
     self.axes_ = {}
 
   def cleanup_(self):
-    for axisId, axes in self.axes_.items():
+    for tcAxis, axes in self.axes_.items():
       i = 0
       while i < len(axes):
         if axes[i]() is None:
@@ -4811,10 +4819,10 @@ def vec_copy(v):
 
 
 class RelativeHeadMovementJoystick:
-  posAxes_ = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-  angleAxes_ = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+  tcPosAxes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z))
+  tcAngleAxes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ))
 
-  def move_axis(self, axis, value, relative):
+  def move_axis(self, tcAxis, value, relative):
     """Sets view angles and position.
        ABS_RX, ABS_RY and ABS_RZ are angles that represent yaw, pitch and roll angles of view ((0,0,0) is forward).
        ABS_X, ABS_Y and ABS_Z are position axes that repersent x, y and z positions of view ((0,0,0) is center).
@@ -4826,23 +4834,24 @@ class RelativeHeadMovementJoystick:
     if self.next_ is None:
       return 0.0 if relative else value
 
-    if axis in self.posAxes_:
+    if tcAxis in self.tcPosAxes_:
       self.update_dirs_()
 
       point = None
 
       #Get offset in global cs
-      offset = [self.next_.get_axis_value(a) for a in self.posAxes_]
+      offset = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
 
       #If relative - add to current pos in global cs
+      iAxis = self.tcPosAxes_.index(tcAxis)
       if relative:
         #Convert to global cs
-        point = vec_mul(self.dirs_[axis], value)
+        point = vec_mul(self.dirs_[iAxis], value)
         point = vec_add(point, offset)
       else:
         #Convert offset to local cs, replace the value for given axis, and convert back to global cs
         t = self.global_to_local_(offset)
-        t[self.posAxes_.index(axis)] = value
+        t[iAxis] = value
         point = self.local_to_global_(t)
 
       #Clamp to sphere in global cs
@@ -4851,76 +4860,49 @@ class RelativeHeadMovementJoystick:
         return 0.0 if relative else value
 
       #Clamp to limits of next sink and move, both in global cs
-      for a in self.posAxes_:
-        limits = self.next_.get_limits(a)
-        ia = self.posAxes_.index(a)
+      for ia in range(len(self.tcPosAxes_)):
+        tca = self.tcPosAxes_[ia]
+        limits = self.next_.get_limits(tca)
         c, o = clamped[ia], offset[ia]
         c = clamp(c, *limits)
         if relative:
-          self.next_.move_axis(a, c-o, relative=True)
+          self.next_.move_axis(tca, c-o, relative=True)
         else:
-          self.next_.move_axis(a, c, relative=False)
+          self.next_.move_axis(tca, c, relative=False)
 
       self.limitsDirty_ = True
       return value
-    elif axis in self.angleAxes_:
+    elif tcAxis in self.tcAngleAxes_:
       self.dirsDirty_ = True
-    return self.next_.move_axis(axis, value, relative)
+    return self.next_.move_axis(tcAxis, value, relative)
 
 
-  #TODO Unused
-  def move_axes(self, data):
-    """Moves axes as batch."""
-    angleAxes = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
-    for axis in angleAxes:
-      for a,v in data:
-        if a == axis:
-          self.next_.move_axis(a, v, False)
-
-    self.update_dirs_()
-
-    posAxes = (codes.ABS_X, codes.ABS_Y, codes.ABS_Z)
-    gp = [self.next_.get_axis_value(a) for a in posAxes]
-    lp = self.global_to_local_(gp)
-    for axis in posAxes:
-      for a,v in data:
-        if a == axis:
-          lp[posAxes.index(a)] = v
-    ngp = self.local_to_global_(lp)
-    for a in posAxes:
-      self.next_.move_axis(a, ngp[axes.index(a)], False)
-
-    for a,v in data:
-      if a not in angleAxes and a not in posAxes:
-        self.next_.move_axis(a, v)
-
-
-  def get_axis_value(self, axis):
+  def get_axis_value(self, tcAxis):
     """Returns local axis value."""
     if self.next_ is None:
       return 0.0
-    elif axis in self.posAxes_:
+    elif tcAxis in self.tcPosAxes_:
       self.update_dirs_()
-      gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
+      gp = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
       l = 0.0
-      d = self.dirs_[self.posAxes_.index(axis)]
+      d = self.dirs_[self.tcPosAxes_.index(tcAxis)]
       for i in range(len(gp)):
         l += gp[i]*d[i]
       return l
     else:
-      return self.next_.get_axis_value(axis)
+      return self.next_.get_axis_value(tcAxis)
 
 
-  def get_limits(self, axis):
+  def get_limits(self, tcAxis):
     """Returns relative, local limits for position axes, calls next sink for other."""
     self.update_limits_()
     if self.next_ is None:
       return (0.0, 0.0)
-    elif axis in self.posAxes_:
-      ia = self.posAxes_.index(axis)
+    elif tcAxis in self.tcPosAxes_:
+      ia = self.tcPosAxes_.index(tcAxis)
       return self.limits_[ia]
     else:
-      return self.next_.get_limits(axis)
+      return self.next_.get_limits(tcAxis)
 
   def get_supported_axes(self):
     return self.next_.get_supported_axes() if self.next_ is not None else ()
@@ -4948,7 +4930,7 @@ class RelativeHeadMovementJoystick:
 
   def update_dirs_(self):
     if self.dirsDirty_ == True and self.next_ is not None:
-      dYaw, dPitch, dRoll = (a for a in (self.next_.get_axis_value(axis) for axis in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)))
+      dYaw, dPitch, dRoll = (tca for tca in (self.next_.get_axis_value(tcAxis) for tcAxis in self.tcAngleAxes_))
       #Angles should be negated for correct calculation
       #Can instead negate sines or adjust signs in dirs_ calculation
       rYaw, rPitch, rRoll = (-math.radians(a) for a in (dYaw, dPitch, dRoll))
@@ -4969,43 +4951,46 @@ class RelativeHeadMovementJoystick:
       self.update_dirs_()
 
       #Finding points where orts intersect clamping sphere in global cs
-      gp = [self.next_.get_axis_value(a) for a in self.posAxes_]
-      intersections = [None for i in range(len(self.posAxes_))] 
-      for ort in self.posAxes_:
-        iort = self.posAxes_.index(ort)
+      gp = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
+      intersections = [None for i in range(len(self.tcPosAxes_))]
+      for ort in self.tcPosAxes_:
+        iort = self.tcPosAxes_.index(ort)
         intersections[iort] = calc_sphere_intersection_points(gp, self.dirs_[iort], self.r_)
 
       #Finding limits in global cs
       limits = []
-      for coord in self.posAxes_:
-        icoord = self.posAxes_.index(coord)
+      #TODO for icoord in len(self.tcPosAxes_) ?
+      for coord in self.tcPosAxes_:
+        icoord = self.tcPosAxes_.index(coord)
         mn, mx = 0.0, 0.0
         for ip in intersections:
           if ip is None:
             continue
           assert(len(ip) == 2)
           for i in ip:
-            assert(len(i) == len(self.posAxes_))
+            assert(len(i) == len(self.tcPosAxes_))
             v = i[icoord]
             mn, mx = min(mn, v), max(mx, v)
         limits.append((mn, mx))
 
       #Clamping to limits of next in global cs
+      #TODO for ia in len(self.tcPosAxes_) ?
       if self.next_ is not None:
-        for a in self.posAxes_:
-          ia = self.posAxes_.index(a)
-          nextLimits = self.next_.get_limits(a)
+        for tca in self.tcPosAxes_:
+          ia = self.tcPosAxes_.index(tca)
+          nextLimits = self.next_.get_limits(tca)
           assert(len(nextLimits) == 2)
           assert(nextLimits[0] <= nextLimits[1])
           limits[ia] = [clamp(l, *nextLimits) for l in limits[ia]]
 
       #Converting limits to local cs
       gpmin, gpmax = [l[0] for l in limits], [l[1] for l in limits]
-      assert(len(gpmin) == len(self.posAxes_))
-      assert(len(gpmax) == len(self.posAxes_))
+      assert(len(gpmin) == len(self.tcPosAxes_))
+      assert(len(gpmax) == len(self.tcPosAxes_))
       lpmin, lpmax = self.global_to_local_(gpmin), self.global_to_local_(gpmax)
-      for coord in self.posAxes_:
-        icoord = self.posAxes_.index(coord)
+      #TODO for icoord in len(self.tcPosAxes_) ?
+      for coord in self.tcPosAxes_:
+        icoord = self.tcPosAxes_.index(coord)
         n, x = lpmin[icoord], lpmax[icoord]
         n, x = min(n, x), max(n, x)
         self.limits_[icoord] = (n, x)
@@ -5015,8 +5000,9 @@ class RelativeHeadMovementJoystick:
 
   def global_to_local_(self, gp):
     lp = [0.0 for i in range(len(gp))]
-    for a in self.posAxes_:
-      ia = self.posAxes_.index(a)
+    #TODO for ia in len(self.tcPosAxes_) ?
+    for tca in self.tcPosAxes_:
+      ia = self.tcPosAxes_.index(tca)
       for j in range(len(self.dirs_)):
         lp[j] += gp[ia]*self.dirs_[j][ia]
     #logger.debug("global_to_local(): dirs{}; gp:{}; lp:{}".format(self.dirs_, gp, lp))
@@ -5025,8 +5011,9 @@ class RelativeHeadMovementJoystick:
 
   def local_to_global_(self, lp):
     gp = [0.0 for i in range(len(lp))]
-    for a in self.posAxes_:
-      ia = self.posAxes_.index(a)
+    #TODO for ia in len(self.tcPosAxes_) ?
+    for tca in self.tcPosAxes_:
+      ia = self.tcPosAxes_.index(a)
       for j in range(len(self.dirs_)):
         gp[ia] += lp[ia]*self.dirs_[j][ia]
     #logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
@@ -5035,18 +5022,18 @@ class RelativeHeadMovementJoystick:
 
 class AxisAccumulator:
   def __call__(self, e):
-    axisID = e.code
     if self.state_ and e.type == codes.EV_REL:
-      v = self.values_.get(axisID, 0.0)
-      v += e.value * self.scales_.get(axisID, 1.0)
-      v = clamp(v, *self.get_limits(axisID))
-      self.values_[axisID] = v
+      tcAxis = TypeCode(e.type, e.code)
+      v = self.values_.get(tcAxis, 0.0)
+      v += e.value * self.scales_.get(tcAxis, 1.0)
+      v = clamp(v, *self.get_limits(tcAxis))
+      self.values_[tcAxis] = v
     return False
 
-  def get_axis_value(self, axisID):
-    return self.values_.get(axisID, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.values_.get(tcAxis, 0.0)
 
-  def get_limits(self, axisID):
+  def get_limits(self, tcAxis):
     return (-1.0, 1.0)
 
   def get_supported_axes(self):
@@ -5098,17 +5085,18 @@ class Info:
           if s in ("+", "-"):
             vp = vp[1:]
             sm = 1.0 if s == "+" else -1.0
-          outputName, axisId = fn2sc(vp)
+          outputName, tAxis, cAxis = fn2stc(vp)
+          tcAxis = TypeCode(tAxis, cAxis)
           if self.get_output_ is None:
             raise RuntimeError("Outputs locator is not set")
           output = self.get_output_(outputName)
           if output is None:
             raise RuntimeError("Cannot get output '{}'".format(outputName))
           if scale is None:
-            limits = output.get_limits(axisId)
-            scale = 2.0 / abs(limits[1] - limits[0])
+            limits = output.get_limits(tcAxis)
+            scale = 0.0 if limits[0] == limits[1] else 2.0 / abs(limits[1] - limits[0])
           scale *= sm
-          return lambda : scale*output.get_axis_value(axisId)
+          return lambda : scale*output.get_axis_value(tcAxis)
         elif type(vp) in (int, float):
           return lambda : vp
         else:
@@ -5288,17 +5276,17 @@ class Info:
   class AxesValuesArea(EntriesArea):
     class GetAxisValue:
       def __call__(self):
-        return self.output_.get_axis_value(self.axisID_)
-      def __init__(self, output, axisID):
-        self.output_, self.axisID_ = output, axisID
+        return self.output_.get_axis_value(self.tcAxis_)
+      def __init__(self, output, tcAxis):
+        self.output_, self.tcAxis_ = output, tcAxis
     def add_axes_from(self, output, **kwargs):
       output = self.get_output_(output) if type(output) in (str, unicode) else output
       if output is None:
         return
-      axisIDs = output.get_supported_axes()
-      for axisID in axisIDs:
-        name=tc2ns(codes.EV_ABS, axisID)[0][4:]
-        getAxisValue = self.GetAxisValue(output, axisID)
+      tcAxiss = output.get_supported_axes()
+      for tcAxis in tcAxiss:
+        name=tc2ns(codes.EV_ABS, tcAxis)[0][4:]
+        getAxisValue = self.GetAxisValue(output, tcAxis)
         axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
@@ -5599,7 +5587,7 @@ def init_main_sink(state, make_next):
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
   for oName, oAxes in main.get("axes").items():
-    for axisId, axis in oAxes.items():
+    for tcAxis, axis in oAxes.items():
       axis.remove_all_listeners()
 
   grabSink.add(None, make_next(state), 1)
@@ -7373,10 +7361,10 @@ def make_parser():
   def parseNullJoystickOutput(cfg, state):
     values = get_nested_d(cfg, "values")
     if values is not None:
-      values = {name2code(n) : v for n,v in values.items()}
+      values = {fn2tc(n) : v for n,v in values.items()}
     limits = get_nested_d(cfg, "limits")
     if limits is not None:
-      limits = {name2code(n) : v for n,v in limits.items()}
+      limits = {fn2tc(n) : v for n,v in limits.items()}
     j = NullJoystick(values=values, limits=limits)
     return j
   outputParser.add("null", parseNullJoystickOutput)
@@ -7388,7 +7376,7 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRateLimitOutput(cfg, state):
-    rates = {name2code(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
+    rates = {fn2tc(axisName):value for axisName,value in state.resolve(cfg, "rates").items()}
     next = state.get("parser")("output", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick))
@@ -7420,7 +7408,7 @@ def make_parser():
         return value * self.rate_
       def init(self, rate):
         self.rate_ = rate
-    limits = {name2code(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
+    limits = {fn2tc(axisName):value for axisName,value in state.resolve(cfg, "limits").items()}
     next = state.get("parser")("output", state.resolve(cfg, "next"), state)
     rateOps = {}
     ratesCfg = state.resolve(cfg, "rates")
@@ -7440,8 +7428,8 @@ def make_parser():
             rateOp = AxisRateOp(rateOp, axis, func)
           else:
             raise RuntimeError("Unknown op type : '{}'".format(t))
-      axisId = name2code(axisName)
-      rateOps[axisId] = rateOp
+      tcAxis = fn2tc(axisName)
+      rateOps[tcAxis] = rateOp
     j = RateSettingJoystick(next, rateOps, limits)
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
     return j
@@ -7472,7 +7460,7 @@ def make_parser():
       toJoystick, toAxis = fn2sc(state.resolve(to, "to"))
       toJoystick = get_or_make_output(toJoystick, state)
       factor = state.resolve_d(to, "factor", 1.0)
-      j.add_axis(name2code(fromAxis), toJoystick, toAxis, factor)
+      j.add_axis(fn2tc(fromAxis), toJoystick, toAxis, factor)
     for fromButton,to in state.resolve_d(cfg, "buttonMapping", {}).items():
       toJoystick, toButton = fn2sc(state.resolve(to, "to"))
       toJoystick = get_or_make_output(toJoystick, state)
@@ -7496,8 +7484,8 @@ def make_parser():
       "opentrack" : make_opentrack_packet
     }
     j = UdpJoystick(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")), packetMakers[state.resolve(cfg, "format")], int(state.resolve_d(cfg, "numPackets", 1)))
-    for a,l in state.resolve_d(cfg, "limits", {}).items():
-      j.set_limits(name2code(a), l)
+    for axisName,l in state.resolve_d(cfg, "limits", {}).items():
+      j.set_limits(fn2tc(axisName), l)
     state.get("main").get("updated").append(lambda tick,ts : j.send())
     return j
   outputParser.add("udpJoystick", parseUdpJoystickOutput)
@@ -7849,25 +7837,26 @@ class Main:
     self.props_[propName] = propValue
 
   def get_axis_by_full_name(self, fullAxisName):
-    outputName, axisType, axisId = fn2stc(fullAxisName)
     allAxes = self.get("axes")
+    outputName, tAxis, cAxis = fn2stc(fullAxisName)
+    tcAxis = TypeCode(tAxis, cAxis)
     outputAxes = allAxes.setdefault(outputName, {})
-    key = (axisType, axisId)
     axis = None
-    if key not in outputAxes:
+    if tcAxis not in outputAxes:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fullAxisName))
       outputs = self.get("outputs")
       o = outputs[outputName]
       axis = None
-      if axisType == codes.EV_KEY:
-        axis = ReportingAxis(JoystickButtonAxis(o, axisId))
+      if tAxis == codes.EV_KEY:
+        cButton = cAxis
+        axis = ReportingAxis(JoystickButtonAxis(o, cButton))
       else:
         isReportingJoystick = type(o) is ReportingJoystick
-        axis = o.make_axis(axisId) if isReportingJoystick else ReportingAxis(JoystickAxis(o, axisId))
-      outputAxes[key] = axis
+        axis = o.make_axis(tcAxis) if isReportingJoystick else ReportingAxis(JoystickAxis(o, tcAxis))
+      outputAxes[tcAxis] = axis
       self.get("axesToNames")[axis] = fullAxisName
     else:
-      axis = outputAxes[key]
+      axis = outputAxes[tcAxis]
     return axis
 
   def get_full_name_by_axis(self, axis):

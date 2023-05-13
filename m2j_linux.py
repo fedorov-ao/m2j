@@ -43,12 +43,12 @@ class ExternalEvdevJoystick:
 
     cap = self.js_.capabilities(absinfo=True)
     for nativeAxis,absInfo in cap.get(ecodes.EV_ABS, ()):
-      axis = ecode2code(nativeAxis)
+      tcAxis = TypeCode(codes.EV_ABS, ecode2code(nativeAxis))
       nl = (absInfo.min, absInfo.max,)
-      self.nlimits_[axis] = nl
-      l = self.limits_.get(axis)
+      self.nlimits_[tcAxis] = nl
+      l = self.limits_.get(tcAxis)
       value = lerp(absInfo.value, l[0], l[1], nl[0], nl[1])
-      self.axes_[axis] = value
+      self.axes_[tcAxis] = value
 
     #TODO Determine actual button state
     for nativeButton in cap.get(ecodes.EV_KEY, ()):
@@ -59,39 +59,39 @@ class ExternalEvdevJoystick:
   def __del__(self):
     logger.debug("{} destroyed".format(self))
 
-  def move_axis(self, axis, v, relative):
+  def move_axis(self, tcAxis, v, relative):
     if relative:
-      return self.move_axis_by(axis, v)
+      return self.move_axis_by(tcAxis, v)
     else:
-      return self.move_axis_to(axis, v)
+      return self.move_axis_to(tcAxis, v)
 
-  def move_axis_by(self, axis, v):
-    desired = self.get_axis_value(axis)+v
-    actual = self.move_axis_to(axis, desired)
+  def move_axis_by(self, tcAxis, v):
+    desired = self.get_axis_value(tcAxis)+v
+    actual = self.move_axis_to(tcAxis, desired)
     return v - (actual - desired)
 
-  def move_axis_to(self, axis, v):
-    if axis not in self.axes_:
-      raise RuntimeError("Axis not supported: {}".format(axis))
-    l = self.limits_.get(axis, (0.0, 0.0,))
+  def move_axis_to(self, tcAxis, v):
+    if tcAxis not in self.axes_:
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
+    l = self.limits_.get(tcAxis, (0.0, 0.0,))
     v = clamp(v, *l)
-    self.axes_[axis] = v
-    nl = self.nlimits_.get(axis, (0.0, 0.0,))
+    self.axes_[tcAxis] = v
+    nl = self.nlimits_.get(tcAxis, (0.0, 0.0,))
     nv = lerp(v, l[0], l[1], nl[0], nl[1])
     nv = int(nv)
     #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
-    self.js_.write(ecodes.EV_ABS, code2ecode(axis), nv)
+    self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nv)
     if self.immediateSyn_ == True:
       self.syn()
     else:
       self.dirty_ = True
     return v
 
-  def get_axis_value(self, axis):
-    return self.axes_.get(axis, 0.0)
+  def get_axis_value(self, tcAxis):
+    return self.axes_.get(tcAxis, 0.0)
 
-  def get_limits(self, axis):
-    return self.limits_.get(axis, [0.0, 0.0])
+  def get_limits(self, tcAxis):
+    return self.limits_.get(tcAxis, [0.0, 0.0])
 
   def get_supported_axes(self):
     return self.axes_.keys()
@@ -127,10 +127,10 @@ class EvdevJoystick2(ExternalEvdevJoystick):
   def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767):
     cap = {}
     axesData = []
-    for a,l in limits.items():
+    for tca,l in limits.items():
       value = (l[1] + l[0])/2
       value = lerp(value, l[0], l[1], -nativeLimit, nativeLimit)
-      axesData.append((code2ecode(a), AbsInfo(value=value, min=-nativeLimit, max=nativeLimit, fuzz=0, flat=0, resolution=0)))
+      axesData.append((code2ecode(tca.code), AbsInfo(value=value, min=-nativeLimit, max=nativeLimit, fuzz=0, flat=0, resolution=0)))
     cap[ecodes.EV_ABS] = axesData
 
     if buttons is not None:
@@ -176,13 +176,15 @@ class EvdevJoystick:
     class TrimmedAxisData:
       def __init__(self, limits, nativeLimits, value):
         self.limits, self.nativeLimits, self.value = limits, nativeLimits, value
+
     self.axesDatum_ = {}
     cap = {}
     nativeAxesDatum = []
-    for axisID,axisData in axesDatum.items():
-      self.axesDatum_[axisID] = TrimmedAxisData(limits=axisData.limits, nativeLimits=axisData.nativeLimits, value=axisData.value)
+
+    for tcAxis,axisData in axesDatum.items():
+      self.axesDatum_[tcAxis] = TrimmedAxisData(limits=axisData.limits, nativeLimits=axisData.nativeLimits, value=axisData.value)
       absInfo = AbsInfo(value=axisData.value, min=axisData.nativeLimits[0], max=axisData.nativeLimits[1], fuzz=axisData.fuzz, flat=axisData.flat, resolution=axisData.resolution)
-      nativeAxesDatum.append((axisID, absInfo))
+      nativeAxesDatum.append((code2ecode(tcAxis.code), absInfo))
     cap[ecodes.EV_ABS] = nativeAxesDatum
 
     if buttons is not None:
@@ -201,40 +203,40 @@ class EvdevJoystick:
     if logger is not None:
       logger.debug("{} destroyed".format(self))
 
-  def move_axis(self, axis, v, relative):
+  def move_axis(self, tcAxis, v, relative):
     if relative:
-      return self.move_axis_by(axis, v)
+      return self.move_axis_by(tcAxis, v)
     else:
-      return self.move_axis_to(axis, v)
+      return self.move_axis_to(tcAxis, v)
 
-  def move_axis_by(self, axis, v):
-    desired = self.get_axis_value(axis)+v
-    actual = self.move_axis_to(axis, desired)
+  def move_axis_by(self, tcAxis, v):
+    desired = self.get_axis_value(tcAxis)+v
+    actual = self.move_axis_to(tcAxis, desired)
     return v - (actual - desired)
 
-  def move_axis_to(self, axis, v):
-    axisData = self.axesDatum_.get(axis, None)
+  def move_axis_to(self, tcAxis, v):
+    axisData = self.axesDatum_.get(tcAxis, None)
     if axisData is None:
-      raise RuntimeError("Axis not supported: {}".format(axis))
+      raise RuntimeError("Axis not supported: {}".format(tcAxis))
     limits, nativeLimits = axisData.limits, axisData.nativeLimits
     v = clamp(v, *limits)
     axisData.value = v
     nativeValue = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
     nativeValue = int(nativeValue)
     #logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
-    self.js_.write(ecodes.EV_ABS, code2ecode(axis), nativeValue)
+    self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nativeValue)
     if self.immediateSyn_ == True:
       self.js_.syn()
     else:
       self.dirty_ = True
     return v
 
-  def get_axis_value(self, axis):
-    axisData = self.axesDatum_.get(axis, None)
+  def get_axis_value(self, tcAxis):
+    axisData = self.axesDatum_.get(tcAxis, None)
     return 0.0 if axisData is None else axisData.value
 
-  def get_limits(self, axis):
-    axisData = self.axesDatum_.get(axis, None)
+  def get_limits(self, tcAxis):
+    axisData = self.axesDatum_.get(tcAxis, None)
     return [0.0, 0.0] if axisData is None else axisData.limits
 
   def get_supported_axes(self):
@@ -412,19 +414,19 @@ def parseEvdevJoystickOutput(cfg, state):
   axesDatumCfg = cfg.get("axesDatum", None)
   if axesDatumCfg is not None:
     for axisName,axisDataCfg in axesDatumCfg.items():
-      axisID = code2ecode(name2code(axisName))
+      tcAxis = fn2tc(axisName)
       value = axisDataCfg.get("value", 0.0)
       limits = axisDataCfg.get("limits", (-1.0, 1.0))
       nativeLimits = axisDataCfg.get("nativeLimits", (-nativeLimit, nativeLimit))
       fuzz = axisDataCfg.get("fuzz", 0)
       flat = axisDataCfg.get("flat", 0)
       resolution = axisDataCfg.get("resolution", 0)
-      axesDatum[axisID] = EvdevJoystick.AxisData(limits=limits, nativeLimits=nativeLimits, value=value, fuzz=fuzz, flat=flat, resolution=resolution)
+      axesDatum[tcAxis] = EvdevJoystick.AxisData(limits=limits, nativeLimits=nativeLimits, value=value, fuzz=fuzz, flat=flat, resolution=resolution)
   else:
-    limits = {code2ecode(name2code(a)):l for a,l in cfg.get("limits", {}).items()}
+    limits = {fn2tc(a):l for a,l in cfg.get("limits", {}).items()}
     #j = EvdevJoystick2(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
-    for axisID,limit in limits.items():
-      axesDatum[axisID] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
+    for tcAxis,limit in limits.items():
+      axesDatum[tcAxis] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
