@@ -5289,8 +5289,10 @@ class Info:
       if output is None:
         return
       tcAxiss = output.get_supported_axes()
+      tcAxiss.sort(key=lambda tc : tc.code)
       for tcAxis in tcAxiss:
-        name=tc2ns(codes.EV_ABS, tcAxis)[0][4:]
+        namesList=tc2ns(*tcAxis)
+        name=namesList[0][4:]
         getAxisValue = self.GetAxisValue(output, tcAxis)
         axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
