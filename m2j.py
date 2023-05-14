@@ -5481,7 +5481,7 @@ def init_main_sink(state, make_next):
 
   axisAccumulators = {}
   for sourceName,sourceObj in main.get("config").get("sources").iteritems():
-    scales = { codes.REL_X : 1.0, codes.REL_Y : 1.0, codes.REL_WHEEL : 1.0 }
+    scales = { TypeCode(codes.EV_REL, codes.REL_X) : 1.0, TypeCode(codes.EV_REL, codes.REL_Y) : 1.0, TypeCode(codes.EV_REL, codes.REL_WHEEL) : 1.0 }
     axisAccumulator = AxisAccumulator(state=False, scales=scales)
     axisAccumulators[sourceName] = axisAccumulator
     et = PropTestsEventTest((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
