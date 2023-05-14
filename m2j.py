@@ -556,16 +556,21 @@ def type2names(type):
   return t2ps.get(type, ())
 
 
-typeCode2Name = None
+class TypeCode2Name:
+  def get(self, t, dfault):
+    return self.tc2n_.get(t, dfault)
+
+  def __init__(self, codesDict):
+    self.tc2n_ = {}
+    for n,c in codesDict.items():
+      codeToNames = self.tc2n_.setdefault(name2type(n), {})
+      names = codeToNames.setdefault(c, [])
+      names.append(n)
+
+typeCode2Name = TypeCode2Name(codesDict)
 
 def tc2ns(t, c):
   global typeCode2Name
-  if typeCode2Name is None:
-    typeCode2Name = {}
-    for n,c in codesDict.items():
-      codeToNames = typeCode2Name.setdefault(name2type(n), {})
-      names = codeToNames.setdefault(c, [])
-      names.append(n)
   dfault = [""]
   codeToNames = typeCode2Name.get(t, None)
   if codeToNames is None:
