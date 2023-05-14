@@ -5957,11 +5957,11 @@ def make_parser():
     def parseFixedPoint(cfg, state):
       p = Point(op=get_func(cfg, state), center=state.resolve_d(cfg, "center", 0.0))
       return p
-    pointParsers["absolute"] = parseFixedPoint
+    pointParsers["static"] = parseFixedPoint
     def parseMovingPoint(cfg, state):
       p = Point(op=get_func(cfg, state), center=None)
       return p
-    pointParsers["relative"] = parseMovingPoint
+    pointParsers["dynamic"] = parseMovingPoint
     r = {}
     for n,d in cfg.items():
       state["point"] = n
@@ -5998,9 +5998,9 @@ def make_parser():
     deltaOp = DeltaOp()
     curve = OutputBasedCurve(deltaOp, vpo, axis)
 
-    if "relative" in points:
-      point = points["relative"]
-      pointCfg = state.resolve(cfg, "points")["relative"]
+    if "dynamic" in points:
+      point = points["dynamic"]
+      pointCfg = state.resolve(cfg, "points")["dynamic"]
       def getValueOp(curve):
         return curve.get_axis().get()
       def make_center_op(newRatio, l):
@@ -6036,7 +6036,7 @@ def make_parser():
     fnAxis = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fnAxis)
     points = parsePoints(state.resolve(cfg, "points"), state)
-    fp = points["absolute"]
+    fp = points["static"]
     interpolationDistance = state.resolve_d(cfg, "interpolationDistance", 0.3)
     interpolationFactor = state.resolve_d(cfg, "interpolationFactor", 1.0)
     posLimits = state.resolve_d(cfg, "posLimits", (-1.1, 1.1))
@@ -6051,12 +6051,12 @@ def make_parser():
     fnAxis = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fnAxis)
     points = parsePoints(state.resolve(cfg, "points"), state)
-    fp = points["absolute"]
-    mp = points.get("relative", Point(op=lambda x : 0.0, center=None))
+    fp = points["static"]
+    mp = points.get("dynamic", Point(op=lambda x : 0.0, center=None))
     interpolationDistance = state.resolve_d(cfg, "interpolationDistance", 0.3)
     interpolationFactor = state.resolve_d(cfg, "interpolationFactor", 1.0)
-    resetDistance = 0.0 if "relative" not in state.resolve(cfg, "points") else state.resolve(cfg, "points")["relative"].get("resetDistance", 0.4)
-    resetTime = float("inf") if "relative" not in state.resolve(cfg, "points") else state.resolve(cfg, "points")["relative"].get("resetTime", float("inf"))
+    resetDistance = 0.0 if "dynamic" not in state.resolve(cfg, "points") else state.resolve(cfg, "points")["dynamic"].get("resetDistance", 0.4)
+    resetTime = float("inf") if "dynamic" not in state.resolve(cfg, "points") else state.resolve(cfg, "points")["dynamic"].get("resetTime", float("inf"))
     posLimits = state.resolve_d(cfg, "posLimits", (-1.1, 1.1))
     interpolateOp = FMPosInterpolateOp(fp=fp, mp=mp, interpolationDistance=interpolationDistance, factor=interpolationFactor, posLimits=posLimits, eps=0.001)
     curve = InputBasedCurve(op=interpolateOp, axis=axis, posLimits=posLimits)
@@ -6167,16 +6167,16 @@ def make_parser():
   def parseCombinedCurve(cfg, state):
     fnAxis = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fnAxis)
-    relativeCfg = state.resolve(cfg, "relative")
+    dynamicCfg = state.resolve(cfg, "dynamic")
     signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
+    timeDDOp = TimeDistanceDeltaOp(resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", dynamicCfg, state), ops=[signDDOp, timeDDOp]))
     )
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
-    sensOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "absolute"), state))
+    sensOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "static"), state))
     curve = OutputBasedCurve(deltaOp=deltaOp, valueOp=sensOp, axis=axis)
     state.add_curve(fnAxis, curve)
     return curve
@@ -6185,14 +6185,14 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     fnAxis = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fnAxis)
-    relativeCfg = state.resolve(cfg, "relative")
+    dynamicCfg = state.resolve(cfg, "dynamic")
     signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
+    timeDDOp = TimeDistanceDeltaOp(resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", relativeCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", dynamicCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "absolute"), state))
+    outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "static"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     deltaOp = makeSensModOp(cfg, state, deltaOp)
@@ -6214,12 +6214,12 @@ def make_parser():
     axis.add_listener(curve)
     #accumulate
     #Order of ops should not matter
-    relativeCfg = state.resolve(cfg, "relative")
+    dynamicCfg = state.resolve(cfg, "dynamic")
     valueDDOp = SignDistanceDeltaOp()
-    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=relativeCfg.get("resetTime", float("inf")), holdTime=relativeCfg.get("holdTime", 0.0))
+    valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaDOp = ReturnDeltaOp()
-    deltaDOp = DeadzoneDeltaOp(deltaDOp, relativeCfg.get("deadzone", 0.0))
-    deltaDOp = makeSensModOp(relativeCfg, state, deltaDOp)
+    deltaDOp = DeadzoneDeltaOp(deltaDOp, dynamicCfg.get("deadzone", 0.0))
+    deltaDOp = makeSensModOp(dynamicCfg, state, deltaDOp)
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
@@ -6233,22 +6233,22 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    relativeOutputOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
-    relativeInputOp = makeIterativeInputOp(cfg, relativeOutputOp, state)
-    relativeChainCurve = TransformAbsChainCurve(next=None, inputOp=relativeInputOp, outputOp=relativeOutputOp)
-    accumulateChainCurve.set_next(relativeChainCurve)
+    dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
+    dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state)
+    dymamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
+    accumulateChainCurve.set_next(dymamicChainCurve)
     #offset transformed
     offsetChainCurve = OffsetAbsChainCurve(next=None)
-    relativeChainCurve.set_next(offsetChainCurve)
+    dymamicChainCurve.set_next(offsetChainCurve)
     #transform offset
-    absoluteCfg = state.resolve(cfg, "absolute")
-    absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
-    absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
-    absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
-    offsetChainCurve.set_next(absoluteChainCurve)
+    staticCfg = state.resolve(cfg, "static")
+    staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+    staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+    staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+    offsetChainCurve.set_next(staticChainCurve)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
-    absoluteChainCurve.set_next(axisChainCurve)
+    staticChainCurve.set_next(axisChainCurve)
     state.add_curve(fnAxis, curve)
     return top
   curveParser.add("offset", parseOffsetCurve)
@@ -6282,27 +6282,27 @@ def make_parser():
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    relativeCfg = state.resolve_d(cfg, "relative", None)
-    if relativeCfg is not None:
-      valueDDOp = makeInputValueDDOp(relativeCfg, state)
-      deltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
-      relativeOutputOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
+    dynamicCfg = state.resolve_d(cfg, "dynamic", None)
+    if dynamicCfg is not None:
+      valueDDOp = makeInputValueDDOp(dynamicCfg, state)
+      deltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
+      dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=relativeOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
+      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #transform
-    absoluteCfg = state.resolve_d(cfg, "absolute", None)
-    if absoluteCfg is not None:
+    staticCfg = state.resolve_d(cfg, "static", None)
+    if staticCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
-      absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
-      absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
-      absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
-      relToAbsChainCurve.set_next(absoluteChainCurve)
-      bottom = absoluteChainCurve
+      staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+      staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+      relToAbsChainCurve.set_next(staticChainCurve)
+      bottom = staticChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
@@ -6319,28 +6319,28 @@ def make_parser():
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    relativeCfg = state.resolve_d(cfg, "relative", None)
-    if relativeCfg is not None:
-      inputValueDDOp = makeInputValueDDOp(relativeCfg, state)
-      inputDeltaDDOp = makeInputDeltaDDOp(relativeCfg, state)
-      relativeOutputValueOp = FuncOp(func=state.get("parser")("func", relativeCfg, state))
+    dynamicCfg = state.resolve_d(cfg, "dynamic", None)
+    if dynamicCfg is not None:
+      inputValueDDOp = makeInputValueDDOp(dynamicCfg, state)
+      inputDeltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
+      dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=relativeOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
+      accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=dynamicOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate and transform
-    absoluteCfg = state.resolve_d(cfg, "absolute", None)
-    if absoluteCfg is not None:
+    staticCfg = state.resolve_d(cfg, "static", None)
+    if staticCfg is not None:
       #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
       bottom = relToAbsChainCurve
       #transform
-      absoluteOutputOp = FuncOp(func=state.get("parser")("func", absoluteCfg, state))
-      absoluteInputOp = makeIterativeInputOp(cfg, absoluteOutputOp, state)
-      absoluteChainCurve = TransformAbsChainCurve(next=None, inputOp=absoluteInputOp, outputOp=absoluteOutputOp)
-      bottom.set_next(absoluteChainCurve)
-      bottom = absoluteChainCurve
+      staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+      staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+      bottom.set_next(staticChainCurve)
+      bottom = staticChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
