@@ -1694,7 +1694,7 @@ class BindSink:
     for c in self.children_:
       if c.level > level:
         if processed == True:
-          return True
+          break
         else:
           level = c.level
       if c.op is None or c.op(event) == True:
