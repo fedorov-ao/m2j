@@ -1230,6 +1230,7 @@ def SetButtonState(output, button, state):
   def op(event):
     output.set_button_state(button, state)
     #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, stc2fn(None, codes.EV_KEY, button), button, state))
+    return True
   return op
 
 
