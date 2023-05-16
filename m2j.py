@@ -1649,14 +1649,6 @@ class AttrsEventTest:
     self.attrs_, self.cmp_ = attrs, cmp
 
 
-#TODO Remove
-def make_event_test_op(attrsOrOp, cmp):
-  if type(attrsOrOp) in (list, tuple):
-    return AttrsEventTest(attrsOrOp, cmp)
-  else:
-    return attrsOrOp
-
-
 class PropTestsEventTest:
   __slots__ = ("pd_",)
 
@@ -1810,25 +1802,6 @@ class ModifiersPropTest(PropTest):
 
   def __init__(self, v):
     self.v_ = v
-
-
-#TODO Remove
-class CmpWithModifiers:
-  fi = float("inf")
-  def __call__(self, name, eventValue, attrValue):
-    if isinstance(attrValue, PropTest):
-      return attrValue(eventValue)
-    elif name == "value" and abs(attrValue) == self.fi:
-      return sign(attrValue) == sign(eventValue)
-    elif name == "source":
-      return (attrValue is None) or (eventValue == attrValue)
-    elif name == "modifiers":
-      return cmp_modifiers_with_descs(eventValue, attrValue, self.allowExtraModifiers_)
-    else:
-      return eventValue == attrValue
-
-  def __init__(self, allowExtraModifiers=False):
-    self.allowExtraModifiers_ = allowExtraModifiers
 
 
 class ET:
