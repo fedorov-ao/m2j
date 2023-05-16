@@ -1,0 +1,104 @@
+diff -ur evdev-1.6.1/evdev/device.py evdev-1.6.1-py27/evdev/device.py
+--- evdev-1.6.1/evdev/device.py	2022-07-17 23:32:40.000000000 +0300
++++ evdev-1.6.1-py27/evdev/device.py	2023-05-16 10:35:33.163944697 +0300
+@@ -296,7 +296,7 @@
+     def close(self):
+         if self.fd > -1:
+             try:
+-                super().close()
++                EventIO.close(self)
+                 os.close(self.fd)
+             finally:
+                 self.fd = -1
+diff -ur evdev-1.6.1/evdev/genecodes.py evdev-1.6.1-py27/evdev/genecodes.py
+--- evdev-1.6.1/evdev/genecodes.py	2023-01-20 17:35:36.000000000 +0300
++++ evdev-1.6.1-py27/evdev/genecodes.py	2023-05-16 10:21:07.387971829 +0300
+@@ -47,6 +47,7 @@
+     { NULL, NULL, 0, NULL}
+ };
+ 
++#if PY_MAJOR_VERSION >= 3
+ static struct PyModuleDef moduledef = {
+     PyModuleDef_HEAD_INIT,
+     MODULE_NAME,
+@@ -58,17 +59,38 @@
+     NULL,        /* m_clear */
+     NULL,        /* m_free */
+ };
++#endif
+ 
+-PyMODINIT_FUNC
+-PyInit__ecodes(void)
++static PyObject *
++moduleinit(void)
+ {
++
++#if PY_MAJOR_VERSION >= 3
+     PyObject* m = PyModule_Create(&moduledef);
++#else
++    PyObject* m = Py_InitModule3(MODULE_NAME, MethodTable, MODULE_HELP);
++#endif
++
+     if (m == NULL) return NULL;
+ 
+ %s
+ 
+     return m;
+ }
++
++#if PY_MAJOR_VERSION >= 3
++PyMODINIT_FUNC
++PyInit__ecodes(void)
++{
++    return moduleinit();
++}
++#else
++PyMODINIT_FUNC
++init_ecodes(void)
++{
++    moduleinit();
++}
++#endif
+ '''
+ 
+ def parse_header(header):
+diff -ur evdev-1.6.1/evdev/uinput.py evdev-1.6.1-py27/evdev/uinput.py
+--- evdev-1.6.1/evdev/uinput.py	2022-07-17 23:32:40.000000000 +0300
++++ evdev-1.6.1-py27/evdev/uinput.py	2023-05-16 10:34:47.031946143 +0300
+@@ -34,7 +34,7 @@
+     )
+ 
+     @classmethod
+-    def from_device(cls, *devices, filtered_types=(ecodes.EV_SYN, ecodes.EV_FF), **kwargs):
++    def from_device(cls, devices, filtered_types=(ecodes.EV_SYN, ecodes.EV_FF), **kwargs):
+         '''
+         Create an UInput device with the capabilities of one or more input
+         devices.
+diff -ur evdev-1.6.1/setup.py evdev-1.6.1-py27/setup.py
+--- evdev-1.6.1/setup.py	2023-01-20 18:15:19.000000000 +0300
++++ evdev-1.6.1-py27/setup.py	2023-05-16 10:22:32.511969161 +0300
+@@ -3,7 +3,7 @@
+ import os
+ import sys
+ import textwrap
+-from pathlib import Path
++from pathlib2 import Path
+ 
+ 
+ #-----------------------------------------------------------------------------
+@@ -96,12 +96,12 @@
+         sys.stderr.write(textwrap.dedent(msg))
+         sys.exit(1)
+ 
+-    from subprocess import run
++    from subprocess import call
+ 
+     print('writing %s (using %s)' % (ecodes_path, ' '.join(headers)))
+     with ecodes_path.open('w') as fh:
+-        cmd = [sys.executable, 'evdev/genecodes.py', *headers]
+-        run(cmd, check=True, stdout=fh)
++        cmd = [sys.executable, 'evdev/genecodes.py'] + headers
++        call(cmd, stdout=fh)
+ 
+ 
+ #-----------------------------------------------------------------------------

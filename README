@@ -15,6 +15,15 @@ $pip install evdev
 Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from evdev dir to ~/.local/lib/python2.7/site-packages/evdev/ (~ is home dir).
 $cp evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/
 
+Installing evdev-1.6.1 for python 2.7
+$pip install pathlib2
+$pip download evdev
+$tar -xf evdev-1.6.1.tar.gz
+$cd evdev-1.6.1
+$patch -p1 < path/to/evdev-1.6.1-py27.patch
+$./setup.py build
+$./setup.py install --prefix ~/.local/
+
 May need to
 #modprobe -i uinput
 
