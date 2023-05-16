@@ -2270,36 +2270,32 @@ class MCSThresholdOp:
     self.thresholds_, self.distances_, self.selected_ = thresholds, {}, None
 
 
-class PowerFunc:
-  def __call__(self, v):
-    return sign(v)*self.k*abs(v)**self.n
-
-  def __init__(self, k, n):
-    self.k, self.n = k, n
-
-
+#Funcs
 class ConstantFunc:
-  def __call__(self, v):
+  def __call__(self, x):
+    if self.tracker_ is not None:
+      self.tracker_({ "caller" : self, "x" : x, "y" : self.value_ })
     return self.value_
 
-  def __init__(self, value):
+  def __init__(self, value, tracker=None):
     self.value_ = value
+    self.tracker_ = tracker
 
 
 class PolynomialFunc:
-  def __call__(self, v):
-    v += self.off_
-    r = 0.0
+  def __call__(self, x):
+    x += self.off_
+    y = 0.0
     for k, p in self.coeffs_:
       if k == 0.0:
         continue
-      r += k*v**p
+      y += k*x**p
     if self.tracker_ is not None:
-      self.tracker_({ "caller" : self, "x" : v, "y" : r })
-    return r
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
+    return y
 
   def __init__(self, coeffs, off=0.0, tracker=None):
-    self.coeffs_, self.off_, self.tracker_ = coeffs, off, tracker
+    self.coeffs_, self.off_, self.tracker_ = tuple(c for c in coeffs), off, tracker
 
 
 class SegmentFunc:
@@ -2344,7 +2340,7 @@ class SigmoidFunc:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
-  def __init__(self, k, p0, r, s, tracker = None):
+  def __init__(self, k, p0, r, s, tracker=None):
     self.k_, self.p0_, self.r_, self.s_ = k, p0, r, s
     self.tracker_ = tracker
 
@@ -2362,15 +2358,19 @@ class BezierFunc:
   def __call__(self, x):
     l, r = self.points_[0][0], self.points_[len(self.points_)-1][0]
     x = clamp(x, l, r)
+    #TODO Is this correct?
     t = (x - l) / (r - l)
     points = [p for p in self.points_]
     #logger.debug("{}: points: {}, t: {}".format(self, points, t))
-    r = calc_bezier(points, t)[1]
-    #logger.debug("{}: result: {: .3f}".format(self, r))
-    return r
+    y = calc_bezier(points, t)[1]
+    #logger.debug("{}: result: {: .3f}".format(self, y))
+    if self.tracker_ is not None:
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
+    return y
 
-  def __init__(self, points):
-    self.points_ = [(p[0],p[1]) for p in points]
+  def __init__(self, points, tracker=None):
+    self.points_ = tuple((p[0],p[1]) for p in points)
+    self.tracker_ = tracker
 
 
 class SegmentedBezierFunc:
@@ -2384,6 +2384,7 @@ class SegmentedBezierFunc:
     leftPoints, rightPoints = self.points_[i], self.points_[j]
     l, r = leftPoints["c"][0], rightPoints["c"][0]
     x = clamp(x, l, r)
+    #TODO Is this correct?
     t = (x - l) / (r - l)
 
     points = []
@@ -2393,12 +2394,15 @@ class SegmentedBezierFunc:
     points.append(rightPoints["c"])
 
     #logger.debug("{}: points: {}".format(self, points))
-    r = calc_bezier(points, t)[1]
-    #logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, r))
-    return r
+    y = calc_bezier(points, t)[1]
+    #logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, y))
+    if self.tracker_ is not None:
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
+    return y
 
-  def __init__(self, points):
-    self.points_ = [p for p in points]
+  def __init__(self, points, tracker=None):
+    self.points_ = tuple(p for p in points)
+    self.tracker_ = tracker
 
 
 class WeightedFunc:
@@ -2436,6 +2440,7 @@ class GainTracker:
     self.x_, self.y_ = 0.0, 0.0
 
 
+#Axes
 class JoystickAxis:
   def move(self, v, relative):
     assert(self.j_)
@@ -5848,8 +5853,16 @@ def make_parser():
     else:
       return wrapped
 
+  def make_tracker(cfg, state):
+    tracker = None
+    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    if trackerCfg is not None:
+      tracker = state.get("parser")("tracker", trackerCfg, state)
+      assert(tracker is not None)
+    return tracker
+
   def constant(cfg, state):
-    return ConstantFunc(state.resolve(cfg, "value"))
+    return ConstantFunc(state.resolve(cfg, "value"), make_tracker(cfg, state))
   funcParser.add("constant", constant)
 
   def segment(cfg, state):
@@ -5857,12 +5870,7 @@ def make_parser():
     factor = state.resolve_d(cfg, "factor", 1.0)
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
-    tracker = None
-    trackerCfg = state.resolve_d(cfg, "tracker", None)
-    if trackerCfg is not None:
-      tracker = state.get("parser")("tracker", trackerCfg, state)
-      assert(tracker is not None)
-    func = SegmentFunc(points, factor, clampLeft, clampRight, tracker)
+    func = SegmentFunc(points, factor, clampLeft, clampRight, make_tracker(cfg, state))
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("segment", segment)
@@ -5871,12 +5879,7 @@ def make_parser():
     coeffs = state.resolve(cfg, "coeffs")
     coeffs = tuple( ((k,int(p)) for p,k in coeffs.items()) )
     offset = state.resolve_d(cfg, "offset", 0.0)
-    tracker = None
-    trackerCfg = state.resolve_d(cfg, "tracker", None)
-    if trackerCfg is not None:
-      tracker = state.get("parser")("tracker", trackerCfg, state)
-      assert(tracker is not None)
-    func = PolynomialFunc(coeffs, offset, tracker)
+    func = PolynomialFunc(coeffs, offset, make_tracker(cfg, state))
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("poly", poly)
@@ -5886,40 +5889,30 @@ def make_parser():
     p0 = state.resolve_d(cfg, "p0", 0.5)
     r = state.resolve_d(cfg, "r", 1.0)
     s = state.resolve_d(cfg, "s", 0.0)
-    tracker = None
-    trackerCfg = state.resolve_d(cfg, "tracker", None)
-    if trackerCfg is not None:
-      tracker = state.get("parser")("tracker", trackerCfg, state)
-      assert(tracker is not None)
-    func = SigmoidFunc(k, p0, r, s, tracker)
+    func = SigmoidFunc(k, p0, r, s, make_tracker(cfg, state))
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("sigmoid", sigmoid)
 
   def bezier(cfg, state):
-    def make_op(data, symmetric):
-      func = BezierFunc(data)
-      return make_symm_wrapper(func, symmetric)
-    return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
+    points = state.resolve(cfg, "points")
+    func = BezierFunc(points, make_tracker(cfg, state))
+    symmetric = state.resolve_d(cfg, "symmetric", 0)
+    return make_symm_wrapper(func, symmetric)
   funcParser.add("bezier", bezier)
 
   def sbezier(cfg, state):
-    def make_op(data, symmetric):
-      func = SegmentedBezierFunc(data)
-      return make_symm_wrapper(func, symmetric)
-    return make_op(state.resolve(cfg, "points"), state.resolve_d(cfg, "symmetric", 0))
+    points = state.resolve(cfg, "points")
+    func = SegmentedBezierFunc(points, make_tracker(cfg, state))
+    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("sbezier", sbezier)
 
   def weighted(cfg, state):
     o = state.resolve(cfg, "degree")
     w = state.resolve(cfg, "weight")
     db = state.resolve_d(cfg, "deadband", 0.0)
-    tracker = None
-    trackerCfg = state.resolve_d(cfg, "tracker", None)
-    if trackerCfg is not None:
-      tracker = state.get("parser")("tracker", trackerCfg, state)
-      assert(tracker is not None)
-    return make_symm_wrapper(WeightedFunc(o, w, db, tracker), state.resolve_d(cfg, "symmetric", 0))
+    func = WeightedFunc(o, w, db, make_tracker(cfg, state))
+    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("weighted", weighted)
 
   def get_func(cfg, state, **kwargs):
