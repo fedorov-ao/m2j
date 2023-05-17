@@ -2456,6 +2456,8 @@ class JoystickAxis:
 
   def __init__(self, j, tcAxis):
     assert(j)
+    if tcAxis not in j.get_supported_axes():
+      raise RuntimeError("Axis '{}' is not supported by {}".format(tc2ns(*tcAxis)[0], j))
     self.j_, self.tcAxis_ = j, tcAxis
 
 
@@ -4097,6 +4099,8 @@ class ReportingJoystickAxis:
       self.cleanup_()
 
   def __init__(self, joystick, tcAxis):
+    if tcAxis not in joystick.get_supported_axes():
+      raise RuntimeError("Axis '{}' is not supported by {}".format(tc2ns(*tcAxis)[0], joystick))
     self.joystick_, self.tcAxis_, self.listeners_ = joystick, tcAxis, []
     #logger.debug("{} created".format(self))
 
@@ -6519,11 +6523,11 @@ def make_parser():
       mainParser = state.get("parser")
       ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
-        logger.warning("No 'on' objects  were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'on' objects were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
       dos = parseGroup("do", parseActionOrSink, cfg, state)
       if len(dos) == 0:
-        logger.warning("No 'do' objects  were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'do' objects were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
       return ((on,do) for on in ons for do in dos)
 
@@ -7060,7 +7064,11 @@ class Main:
     if tcAxis not in outputAxes:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fnAxis))
       outputs = self.get("outputs")
-      o = outputs[outputName]
+      o = outputs.get(outputName)
+      if o is None:
+        raise RuntimeError("Cannot find '{}' because '{}' is missing".format(fnAxis, outputName))
+      if tcAxis not in o.get_supported_axes():
+        raise RuntimeError("Axis '{}' is not supported by '{}'".format(tc2ns(*tcAxis)[0], outputName))
       axis = None
       if tAxis == codes.EV_KEY:
         cButton = cAxis
