@@ -2973,7 +2973,7 @@ class ExtDistanceDeltaOp:
     self.timestamp_ = None
 
 
-class DistanceDeltaToDeltaOp:
+class DistanceDeltaFromDeltaOp:
   def calc(self, distance, delta, timestamp):
     """distance is absolute, delta is relative."""
     return self.next_.calc(delta, timestamp)
@@ -5411,7 +5411,6 @@ def make_parser():
     )
     outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "static"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
-    #TODO Add ref axis like in parseCombinedCurve() ? Will need to implement special op.
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
     resetOpsOnAxisMove = state.resolve_d(cfg, "resetOpsOnAxisMove", True)
@@ -5487,7 +5486,7 @@ def make_parser():
     inputDeltaDOp = ReturnDeltaOp()
     inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, cfg.get("deadzone", 0.0))
     inputDeltaDOp = makeSensModOp(cfg, state, inputDeltaDOp)
-    inputDeltaDDOp = DistanceDeltaToDeltaOp(inputDeltaDOp)
+    inputDeltaDDOp = DistanceDeltaFromDeltaOp(inputDeltaDOp)
     return inputDeltaDDOp
 
   def parseAccelCurve(cfg, state):
