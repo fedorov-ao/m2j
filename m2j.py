@@ -5667,7 +5667,15 @@ def make_parser():
 
   @parseBasesDecorator
   def parseSink(cfg, state):
-    """Assembles sink components in certain order."""
+    """
+    Constructs sink chain from components as specified in cfg.
+    At the top of this chain is a HeadSink that stores all initialized components.
+    Some of initialized components are then linked one after another.
+    Each component is described by dedicated section in cfg. If a section is missing, components is not intialized.
+    next and modes components are mutually exclusive.
+    Init order: objects, (next or modes), state, sens, modifiers, binds
+    Link order: modifiers, sens, binds, state, (next or modes)
+    """
     parser = state.get("parser").get("sc")
     state.push_args(state.resolve_d(cfg, "args", {}))
     state.push("curves", {})
@@ -5717,6 +5725,7 @@ def make_parser():
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
+      #Linking is performed in reverse order - from "tail" to "head", with linking "tail" to "head"
       linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("sens", set_next), ("modifiers", set_next))
       assert headSink is state.at("sinks", 0)
       for p in linkOrder:
