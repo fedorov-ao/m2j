@@ -6452,7 +6452,7 @@ def make_parser():
       if type(ev) in dicts and type(pv) in dicts:
         for n,v in pv.items():
           vv = ev.get(n, None)
-          if vv != v:
+          if not eq_dict(vv, v):
             return False
         return True
       else:
@@ -6547,15 +6547,19 @@ def make_parser():
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
       def checkDo(o):
-        return 10 if type(o) in (dict, collections.OrderedDict) and o.get("action", o.get("type", None)) in ("resetCurve", "resetCurves") else 0
+        if type(o) in (dict, collections.OrderedDict):
+          actionName = o.get("action", o.get("type", None))
+          if actionName in ("resetCurve", "resetCurves"):
+            return 10
+        else:
+          return 0
       r = 0
       do = b.get("output", b.get("do", None))
-      if cfg:
-        r = checkDo(do)
+      if type(do) is list:
+        for d in do:
+          r = max(r, checkDo(d))
       else:
-        dos = b.get("outputs", b.get("dos", None))
-        for do in dos:
-          r = max(r, checkDo(dos))
+        r = checkDo(do)
       return r
     binds.sort(key=bindsKey)
     bindingSink = BindSink()
