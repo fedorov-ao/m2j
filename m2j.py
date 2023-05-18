@@ -320,7 +320,8 @@ class ParserState:
       #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
-  def push_args(self, argsCfg):
+  def push_args(self, cfg):
+    argsCfg = self.resolve_d(cfg, "args", {})
     self.push("args", self.resolve_args(argsCfg))
 
   def pop_args(self):
@@ -5580,9 +5581,8 @@ def make_parser():
       raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
-      argsCfg = state.resolve_d(cfg, "args", {})
       #logger.debug("parsePresetCurve(): args: '{}'".format(str2(argsCfg)))
-      state.push_args(argsCfg)
+      state.push_args(cfg)
       try:
         #logger.debug("{} -> {}".format(get_nested(cfg, "args"), args))
         return state.get("parser")("curve", presetCfg, state)
@@ -5643,12 +5643,12 @@ def make_parser():
       #logger.debug("Parsing {} '{}'".format(propName, name))
       #preset or class name can be specified by arg, so need to deref it here
       name = state.deref(name)
-      cfg2 = get_nested_from_sections_d(config, groupNames, name, None)
-      if cfg2 is None:
+      externalCfg = get_nested_from_sections_d(config, groupNames, name, None)
+      if externalCfg is None:
         raise RuntimeError("No class {}".format(str2(name)))
-      state.push_args(state.resolve_d(cfg, "args", {}))
+      state.push_args(cfg)
       try:
-        return state.get("parser")("sink", cfg2, state)
+        return state.get("parser")("sink", externalCfg, state)
       finally:
         state.pop_args()
     return parseExternalOp
@@ -5677,7 +5677,7 @@ def make_parser():
     Link order: modifiers, sens, binds, state, (next or modes)
     """
     parser = state.get("parser").get("sc")
-    state.push_args(state.resolve_d(cfg, "args", {}))
+    state.push_args(cfg)
     state.push("curves", {})
     #Init headsink
     parent = state.at("sinks", 0)
