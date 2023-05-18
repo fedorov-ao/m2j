@@ -5694,11 +5694,13 @@ def make_parser():
     def set_next(next, sink):
       if next is not None:
         sink.set_next(next)
-    def add(next, sink):
+    def add_default_bind(next, sink):
       if next is not None:
         #By default next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
-        sink.add(None, next, state.resolve_d(cfg, "bindsNextLevel", 0))
+        defaultBindET = state.resolve_d(cfg, "defaultBind.on", None)
+        defaultBindLevel = state.resolve_d(cfg, "defaultBind.level", 0)
+        sink.add(defaultBindET, next, defaultBindLevel)
     try:
       #TODO Refactor
       if len(cfg) == 0:
@@ -5715,7 +5717,7 @@ def make_parser():
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
-      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add), ("sens", set_next), ("modifiers", set_next))
+      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("sens", set_next), ("modifiers", set_next))
       assert headSink is state.at("sinks", 0)
       for p in linkOrder:
         link_component(p[0], p[1])
