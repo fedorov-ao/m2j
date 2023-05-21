@@ -6203,13 +6203,24 @@ def make_parser():
     return op
   actionParser.add("playSound", parsePlaySound)
 
+  def parsePrintVar(cfg, state):
+    varName = state.resolve(cfg, "varName")
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    var = state.get("main").get("varManager").get_var(varName)
+    def op(e):
+      logger.log(level, "{} is {}".format(varName, var.get()))
+      return True
+    return op
+  actionParser.add("printVar", parsePrintVar)
+
   def parseSetVar(cfg, state):
     varName = state.resolve(cfg, "varName")
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
     value = state.resolve(cfg, "value")
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       var.set(value)
-      logger.info("{} is now {}".format(varName, var.get()))
+      logger.log(level, "{} is now {}".format(varName, var.get()))
       return True
     return op
   actionParser.add("setVar", parseSetVar)
