@@ -6309,14 +6309,6 @@ def make_parser():
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
 
-  def parsePrint(cfg, state):
-    message = state.resolve(cfg, "message")
-    def callback(e):
-      print message
-      return True
-    return callback
-  actionParser.add("print", parsePrint)
-
   def parseLog(cfg, state):
     message, level = state.resolve(cfg, "message"), state.resolve(cfg, "level")
     def callback(e):
@@ -6325,12 +6317,13 @@ def make_parser():
     return callback
   actionParser.add("log", parseLog)
 
-  def parsePrintEvent(cfg, state):
+  def parseLogEvent(cfg, state):
+    level = state.resolve(cfg, "level")
     def callback(e):
-      print e
+      logger.log(name2loglevel(level), str2(e))
       return True
     return callback
-  actionParser.add("printEvent", parsePrintEvent)
+  actionParser.add("logEvent", parseLogEvent)
 
   #Event types
   def etParserKeyOp(cfg, state):
