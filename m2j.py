@@ -1772,6 +1772,11 @@ class CmpPropTest(PropTest):
 
 
 def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
+  """
+  Returns False if some event modifiers were unmatched, else True.
+  KEY_ANY matches all keys (from given source if source is specified),
+  so it should be specified last in modifier descs.
+  """
   r = False
   if attrModifierDescs is None:
     r = eventModifiers is None
@@ -1780,20 +1785,22 @@ def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
   elif len(attrModifierDescs) == 0:
     r = len(eventModifiers) == 0
   else:
-    r = True
+    r, ems = True, eventModifiers[:]
     for am in attrModifierDescs:
       found = am.code == codes.KEY_ANY
-      for em in eventModifiers:
+      for em in ems:
         sourceFound = am.source is None or am.source == em.source
         codeFound = am.code == codes.KEY_ANY or am.code == em.code
         found = sourceFound and codeFound
         if found:
+          ems.remove(em)
           break
       if am.state == False:
         found = not found
       r = r and found
       if not r:
         break
+    r = r and (len(ems) == 0)
   return r
 
 
