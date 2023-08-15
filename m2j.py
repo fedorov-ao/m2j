@@ -1092,13 +1092,16 @@ def Call(*ops):
 class MoveCurve:
   def __call__(self, event):
     if self.curve_ is not None and event.type in (codes.EV_REL,):
-      self.curve_.move_by(event.value, event.timestamp)
+      self.curve_.move_by(event.value*self.factor_, event.timestamp)
       return True
     else:
       return False
 
-  def __init__(self, curve):
-    self.curve_ = curve
+  def set_factor(self, factor):
+    self.factor_ = factor
+
+  def __init__(self, curve, factor=1.0):
+    self.curve_, self.factor_ = curve, factor
 
 
 class SetJoystickAxis:
@@ -5941,8 +5944,16 @@ def make_parser():
   actionParser.add("changeSens", parseChangeSens)
 
   def parseMove(cfg, state):
+    class FactorSetter:
+      def __call__(self, factor):
+        self.mc_.set_factor(factor)
+      def __init__(self, mc):
+        self.mc_ = mc
     curve = state.get("parser")("curve", cfg, state)
-    return MoveCurve(curve)
+    mc = MoveCurve(curve)
+    factor = state.resolve_d(cfg, "factor", 1.0, setter=FactorSetter(mc))
+    mc.set_factor(factor)
+    return mc
   actionParser.add("move", parseMove)
 
   def parseMoveOneOf(cfg, state):
