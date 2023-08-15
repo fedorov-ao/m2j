@@ -1788,22 +1788,23 @@ def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
   elif len(attrModifierDescs) == 0:
     r = len(eventModifiers) == 0
   else:
-    r, ems = True, eventModifiers[:]
+    r, numMatches = True, 0
     for am in attrModifierDescs:
       found = am.code == codes.KEY_ANY
-      for em in ems:
+      for em in eventModifiers:
         sourceFound = am.source is None or am.source == em.source
         codeFound = am.code == codes.KEY_ANY or am.code == em.code
         found = sourceFound and codeFound
         if found:
-          ems.remove(em)
           break
       if am.state == False:
         found = not found
       r = r and found
       if not r:
         break
-    r = r and (len(ems) == 0)
+      else:
+        numMatches += 1
+    r = r and (numMatches >= len(eventModifiers))
   return r
 
 
