@@ -6227,7 +6227,7 @@ def make_parser():
     level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
-      logger.log(level, "{} is {}".format(varName, var.get()))
+      logger.log(level, "{} is {}".format(varName, str2(var.get())))
       return True
     return op
   actionParser.add("printVar", parsePrintVar)
@@ -6236,10 +6236,17 @@ def make_parser():
     varName = state.resolve(cfg, "varName")
     level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
     value = state.resolve(cfg, "value")
+    key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
+      v = None
+      if key is not None and type(value) in (dict, collections.OrderedDict):
+        v = var.get()
+        v[key] = value
+      else:
+        v = value
       var.set(value)
-      logger.log(level, "{} is now {}".format(varName, var.get()))
+      logger.log(level, "{} is now {}".format(varName, str2(var.get())))
       return True
     return op
   actionParser.add("setVar", parseSetVar)
@@ -6247,12 +6254,16 @@ def make_parser():
   def parseChangeVar(cfg, state):
     varName = state.resolve(cfg, "varName")
     delta = state.resolve(cfg, "delta")
+    key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       value = var.get()
-      value += delta
+      if key is not None and type(value) in (dict, collections.OrderedDict):
+        value[key] += delta
+      else:
+        value += delta
       var.set(value)
-      logger.info("{} is now {}".format(varName, var.get()))
+      logger.info("{} is now {}".format(varName, str2(var.get())))
       return True
     return op
   actionParser.add("changeVar", parseChangeVar)
