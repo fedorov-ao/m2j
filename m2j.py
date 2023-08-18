@@ -6977,11 +6977,14 @@ class Main:
       sep = "."
       for name,cfg2 in cfg.items():
         tokens.append(name)
-        #TODO This implies that a var cannot be a dictionary. Too restrictive?
-        if type(cfg2) in (dict, collections.OrderedDict):
-          add_nested_vars(cfg2, tokens)
-        else:
+        isDict = type(cfg2) in (dict, collections.OrderedDict)
+        isValueDict = True if isDict and cfg2.get("_value") else False
+        if isValueDict:
+          del cfg2["_value"]
+        if not isDict or isValueDict:
           varManager.add_var(sep.join(tokens), parser("var", cfg2, state))
+        else:
+          add_nested_vars(cfg2, tokens)
         tokens.pop()
     tokens = []
     add_nested_vars(varsCfg, tokens)
