@@ -2298,7 +2298,7 @@ class PolynomialFunc:
   def __call__(self, x):
     x += self.off_
     y = 0.0
-    for k, p in self.coeffs_:
+    for p,k in self.coeffs_.items():
       if k == 0.0:
         continue
       y += k*x**p
@@ -2306,8 +2306,11 @@ class PolynomialFunc:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
+  def set_coeffs(self, coeffs):
+    self.coeffs_ = coeffs
+
   def __init__(self, coeffs, off=0.0, tracker=None):
-    self.coeffs_, self.off_, self.tracker_ = tuple(c for c in coeffs), off, tracker
+    self.coeffs_, self.off_, self.tracker_ = coeffs, off, tracker
 
 
 class SegmentFunc:
@@ -5320,10 +5323,23 @@ def make_parser():
   funcParser.add("segment", segment)
 
   def poly(cfg, state):
-    coeffs = state.resolve(cfg, "coeffs")
-    coeffs = tuple( ((k,int(p)) for p,k in coeffs.items()) )
+    class CoeffsSetter:
+      def __call__(self, coeffs):
+        if self.func_ is not None:
+          coeffs = {int(p) : k for p,k in coeffs.items()}
+          self.func_.set_coeffs(coeffs)
+      def set_func(self, func):
+        self.func_ = func
+      def __init__(self, func=None):
+        self.func_ = func
+    coeffsSetter = CoeffsSetter()
+    coeffs = state.resolve(cfg, "coeffs", setter=coeffsSetter)
+    if type(coeffs) not in (dict, collections.OrderedDict):
+      raise RuntimeError("coeffs should be dict-like")
+    coeffs = {int(p) : k for p,k in coeffs.items()}
     offset = state.resolve_d(cfg, "offset", 0.0)
     func = PolynomialFunc(coeffs, offset, make_tracker(cfg, state))
+    coeffsSetter.set_func(func)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("poly", poly)
