@@ -6905,12 +6905,15 @@ class Main:
     -c configFileName | --config=configFileName : use config file configFileName\n\
     -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
 
+  def add_logging_handler(self, logger, handler, level=logging.NOTSET, fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    logger.addHandler(handler)
+
   def preinit_log(self, level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
     root = logging.getLogger()
     root.setLevel(level)
-    handler.setLevel(logging.NOTSET)
-    handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
-    root.addHandler(handler)
+    self.add_logging_handler(root, handler, level, fmt, datefmt)
 
   def init_log(self, state):
     config = self.get("config")
@@ -6918,18 +6921,26 @@ class Main:
     logLevel = name2loglevel(logLevelName)
     root = logging.getLogger()
     root.setLevel(logLevel)
-    print("Setting log level to {}".format(logLevelName))
-    logFileName = state.resolve_d(config, "logFile", None)
-    if logFileName is not None:
-      logFileFmt = state.resolve_d(config, "logFileFmt", "%(levelname)s:%(asctime)s:%(message)s")
-      logFileDateFmt = state.resolve_d(config, "logFileDateFmt", "%T")
-      logFileLevelName = state.resolve_d(config, "logFileLevel", "NOTSET").upper()
-      logFileLevel = name2loglevel(logFileLevelName)
-      logFile = open(logFileName, "w")
-      logFileHandler = logging.StreamHandler(logFile)
-      logFileHandler.setLevel(logFileLevel)
-      logFileHandler.setFormatter(logging.Formatter(fmt=logFileFmt, datefmt=logFileDateFmt))
-      root.addHandler(logFileHandler)
+    print("Setting global log level to {}".format(logLevelName))
+    logsCfg = state.resolve_d(config, "logs", None)
+    if logsCfg is not None:
+      for logCfg in logsCfg:
+        t = state.resolve(logCfg, "type")
+        name = state.resolve(logCfg, "name")
+        stream = None
+        if t == "stream":
+          streams = { "stdout" : sys.stdout, "stderr" : sys.stderr }
+          stream = streams.get(name, None)
+        elif t == "file":
+          stream = open(name, "w")
+        if stream is None:
+          raise RuntimeError("Cannot create log handler '{}' of type '{}'".format(name, t))
+        fmt = state.resolve_d(logCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
+        datefmt = state.resolve_d(logCfg, "datefmt", "%T")
+        levelName = state.resolve_d(logCfg, "level", "NOTSET").upper()
+        level = name2loglevel(levelName)
+        handler = logging.StreamHandler(stream)
+        self.add_logging_handler(root, handler, level, fmt, datefmt)
 
   def init_config2(self):
     if self.get("config") is not None and self.get("reloading") == False:
