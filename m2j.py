@@ -6241,9 +6241,13 @@ def make_parser():
   def parsePrintVar(cfg, state):
     varName = state.resolve(cfg, "varName")
     level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
-      logger.log(level, "{} is {}".format(varName, str2(var.get())))
+      value = var.get()
+      if key is not None and type(value) in (dict, collections.OrderedDict):
+        value = value[key]
+      logger.log(level, "{} is {}".format(varName, str2(value)))
       return True
     return op
   actionParser.add("printVar", parsePrintVar)
@@ -6261,7 +6265,7 @@ def make_parser():
         v[key] = value
       else:
         v = value
-      var.set(value)
+      var.set(v)
       logger.log(level, "{} is now {}".format(varName, str2(var.get())))
       return True
     return op
