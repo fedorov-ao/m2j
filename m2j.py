@@ -6266,7 +6266,7 @@ def make_parser():
       else:
         v = value
       var.set(v)
-      logger.log(level, "{} is now {}".format(varName, str2(var.get())))
+      logger.log(level, "{} is now {}".format(varName, str2(value)))
       return True
     return op
   actionParser.add("setVar", parseSetVar)
@@ -6278,12 +6278,16 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       value = var.get()
+      v = None
       if key is not None and type(value) in (dict, collections.OrderedDict):
-        value[key] += delta
+        v = value[key]
+        v += delta
+        value[key] = v
       else:
         value += delta
+        v = value
       var.set(value)
-      logger.info("{} is now {}".format(varName, str2(var.get())))
+      logger.info("{} is now {}".format(varName, str2(v)))
       return True
     return op
   actionParser.add("changeVar", parseChangeVar)
