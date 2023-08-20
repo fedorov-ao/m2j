@@ -982,7 +982,7 @@ class EventCompressorDevice:
      Other events are unchanged and passed to the caller immediately.
      Sends compressed events after underlying device is exhausted (returns None from read_one())
      in an unspecified order.
-     Assumes there are no  modifiers in relative axis movement events."""
+  """
   def read_one(self):
     while True:
       event = self.next_.read_one()
@@ -992,7 +992,7 @@ class EventCompressorDevice:
           del self.events_[k]
         break
       elif event.type == codes.EV_REL:
-        k = (event.source, event.code)
+        k = (event.source, event.code, None if event.modifiers is None else tuple(m for m in event.modifiers))
         e = self.events_.get(k)
         if e is None:
           self.events_[k] = event
