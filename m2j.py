@@ -6645,7 +6645,9 @@ def make_parser():
     config = main.get("config")
     j = outputs.get(name, None)
     if j is None:
-      j = state.get("parser")("output", config["outputs"][name], state)
+      outputsCfg = state.resolve(config, "outputs")
+      outputCfg = state.resolve(outputsCfg, name)
+      j = state.get("parser")("output", outputCfg, state)
       outputs[name] = j
     assert name in main.get("outputs")
     return j
