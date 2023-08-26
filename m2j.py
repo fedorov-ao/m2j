@@ -6372,9 +6372,10 @@ def make_parser():
   actionParser.add("log", parseLog)
 
   def parseLogEvent(cfg, state):
-    level = state.resolve(cfg, "level")
+    levelName = state.resolve_d(cfg, "level", "INFO")
+    level = name2loglevel(levelName)
     def callback(e):
-      logger.log(name2loglevel(level), str2(e))
+      logger.log(level, str2(e))
       return True
     return callback
   actionParser.add("logEvent", parseLogEvent)

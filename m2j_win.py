@@ -216,8 +216,8 @@ class VJoystick:
     data = self.make_data_()
     vjdStatus = self.dll_.GetVJDStatus(self.i_)
     if vjdStatus != self.VJD_STAT_OWN:
-      raise RuntimeError("vJoy {} is not owned".format(self.i_)
-    if not self.get_dll_().UpdateVJD(self.i_, data):
+      raise RuntimeError("vJoy {} is not owned".format(self.i_))
+    if self.get_dll_().UpdateVJD(self.i_, data):
       raise RuntimeError("Failed to update vJoy {}".format(self.i_))
     self.dirty_ = False
 
@@ -236,7 +236,7 @@ class VJoystick:
       raise RuntimeError("Number of buttons must be in range from 0 to 32, got {}".format(numButtons))
     vjdStatus = self.dll_.GetVJDStatus(self.i_)
     if vjdStatus != self.VJD_STAT_FREE:
-      raise RuntimeError("vJoy {} is not free".format(self.i_)
+      raise RuntimeError("vJoy {} is not free".format(self.i_))
     self.i_, self.numAxes, self.numButtons_ = i, numAxes, numButtons,
     self.limits_ = limits if limits is not None else {}
     self.factors_ = factors if factors is not None else {}
@@ -1179,7 +1179,7 @@ class RawInputEventSource:
         class DevInfo:
           pass
         di = DevInfo()
-        di.source, di.hash = source, register_source(di.source)
+        di.source, di.hash = source, register_source(source)
         self.devs_[d.handle] = di
         logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
         return
@@ -1210,7 +1210,7 @@ class RawInputEventSource:
       def __str__(self):
         return "{} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage)
     devices = []
-    for i in range(uiNumDevices):
+    for i in range(uiNumDevices.value):
       ridl = rawInputDeviceList[i]
       #Get required device name string length
       pName = 0
