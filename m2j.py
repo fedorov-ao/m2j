@@ -6558,7 +6558,7 @@ def make_parser():
   def parseBinds(cfg, state):
     def parseOnsDos(cfg, state):
       def parseGroup(name, parser, cfg, state):
-        cfgs = cfg.get(name, None)
+        cfgs = state.resolve(cfg, name)
         tcfgs = type(cfgs)
         if tcfgs in (list, tuple):
           pass
@@ -6645,7 +6645,9 @@ def make_parser():
     config = main.get("config")
     j = outputs.get(name, None)
     if j is None:
-      j = state.get("parser")("output", config["outputs"][name], state)
+      outputsCfg = state.resolve(config, "outputs")
+      outputCfg = state.resolve(outputsCfg, name)
+      j = state.get("parser")("output", outputCfg, state)
       outputs[name] = j
     assert name in main.get("outputs")
     return j
