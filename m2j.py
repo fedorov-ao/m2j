@@ -6558,7 +6558,7 @@ def make_parser():
   def parseBinds(cfg, state):
     def parseOnsDos(cfg, state):
       def parseGroup(name, parser, cfg, state):
-        cfgs = state.resolve(cfg, name)
+        cfgs = cfg.get(name, None)
         tcfgs = type(cfgs)
         if tcfgs in (list, tuple):
           pass
