@@ -6645,8 +6645,12 @@ def make_parser():
     config = main.get("config")
     j = outputs.get(name, None)
     if j is None:
-      outputsCfg = state.resolve(config, "outputs")
-      outputCfg = state.resolve(outputsCfg, name)
+      outputsCfg = state.resolve_d(config, "outputs", None)
+      if outputsCfg is None:
+        raise RuntimeError("Cannot find 'outputs' section in configs")
+      outputCfg = state.resolve_d(outputsCfg, name, None)
+      if outputCfg is None:
+        raise RuntimeError("Cannot find section for output '{}' in configs".format(name))
       j = state.get("parser")("output", outputCfg, state)
       outputs[name] = j
     assert name in main.get("outputs")
@@ -7159,7 +7163,7 @@ class Main:
       outputs = self.get("outputs")
       o = outputs.get(outputName)
       if o is None:
-        raise RuntimeError("Cannot find '{}' because '{}' is missing".format(fnAxis, outputName))
+        raise RuntimeError("Cannot find axis '{}' because output '{}' is missing".format(fnAxis, outputName))
       if tcAxis not in o.get_supported_axes():
         raise RuntimeError("Axis '{}' is not supported by '{}'".format(tc2ns(*tcAxis)[0], outputName))
       axis = None
