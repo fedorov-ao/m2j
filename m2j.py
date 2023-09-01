@@ -2731,8 +2731,7 @@ class LimitedOpToOp:
 
 class LookupOp:
   def calc(self, outputValue):
-    ie = bisect.bisect_right(self.ovs_, outputValue)
-    ie = self.fill_(ie, outputValue)
+    ie = self.fill_(outputValue)
     ob, oe = self.ovs_[ie-1], self.ovs_[ie]
     if not (ob <= outputValue and outputValue <= oe):
       raise RuntimeError("Wrong interval [{}, {}] for value {} (ie: {}; ivs: {}; ovs: {})".format(ob, oe, outputValue, ie, self.ivs_, self.ovs_))
@@ -2767,9 +2766,10 @@ class LookupOp:
     if s == 0:
       raise RuntimeError("Cannot determine whether function is increasing or decreasing")
     self.s_ = s
-    self.fill_(0, 0.0)
+    self.fill_(0.0)
 
-  def fill_(self, ie, outputValue):
+  def fill_(self, outputValue):
+    ie = bisect.bisect_right(self.ovs_, outputValue)
     if ie <= 0:
       iv = self.ivs_[0] if len(self.ivs_) else 0.0
       while True:
