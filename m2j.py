@@ -6991,6 +6991,7 @@ class Main:
       config = externalConfig
     self.set("config", config)
     logger.info("Configs loaded successfully")
+    self.set("numTraceLines", config.get("numTraceLines", 0))
 
   def init_outputs(self, state):
     nameParser = lambda key,state : key
@@ -7060,10 +7061,12 @@ class Main:
       self.set("reloading", False)
     except Exception as e:
       logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-      logger.error("===Traceback begin===")
-      for l in traceback.format_exc().splitlines()[-31:]:
-        logger.error(l)
-      logger.error("===Traceback end===")
+      numTraceLines = self.props_["numTraceLines"]
+      if numTraceLines > 0:
+        logger.error("===Traceback begin===")
+        for l in traceback.format_exc().splitlines()[-numTraceLines:]:
+          logger.error(l)
+        logger.error("===Traceback end===")
       if self.loop_ is not None:
         logger.error("Falling back to previous state.")
       else:
@@ -7190,6 +7193,7 @@ class Main:
     self.props_["outputs"] = {}
     self.props_["sounds"] = {}
     self.props_["state"] = False
+    self.props_["numTraceLines"] = 0
     self.props_["soundPlayer"] = SoundPlayer()
     self.props_["varManager"] = VarManager()
     self.props_["valueManager"] = VarManager(make_var = lambda : Var(None))
