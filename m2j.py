@@ -5065,7 +5065,7 @@ def init_config(configFilesNames):
         #Next config file overwrites previous
         merge_dicts(cfg, current)
     except (KeyError, ValueError, IOError) as e:
-      logger.warning("Cannot find config file {}".format(configName))
+      logger.warning("Cannot load config file {} ({})".format(configName, str2(e)))
   return cfg
 
 
