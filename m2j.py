@@ -282,18 +282,12 @@ class ParserState:
         raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
       n = v.get("class", None)
       if n is not None:
-        if n == "var":
-          o = self.deref(v, asValue=False)
-        else:
-          o = parser(n, v, self)
+        o = parser(n, v, self)
       else:
         for n in ("literal", "func", "curve", "action", "et", "output", "var"):
           if n in v:
-            if n == "var":
-              o = self.deref(v, asValue=False)
-            else:
-              o = parser(n, v, self)
-              #break is needed to avoid executing the "else" block
+            o = parser(n, v, self)
+            #break is needed to avoid executing the "else" block
             break
         else:
           o = parser("sink", v, self)
@@ -6799,8 +6793,12 @@ def make_parser():
   mainParser.add("pose", parsePose)
 
   def parseVar(cfg, state):
-    return Var(cfg)
+    return state.deref(cfg, asValue=False)
   mainParser.add("var", parseVar)
+
+  def parseNVar(cfg, state):
+    return Var(cfg)
+  mainParser.add("nvar", parseNVar)
 
   trackerParserKeyOp=lambda cfg,state : get_nested(cfg, "tracker")
   trackerParser = make_double_deref_parser(keyOp=trackerParserKeyOp)
@@ -7025,7 +7023,7 @@ class Main:
         if isValueDict:
           del cfg2["_value"]
         if not isDict or isValueDict:
-          varManager.add_var(sep.join(tokens), parser("var", cfg2, state))
+          varManager.add_var(sep.join(tokens), parser("nvar", cfg2, state))
         else:
           add_nested_vars(cfg2, tokens)
         tokens.pop()
