@@ -218,7 +218,18 @@ def get_nested_from_stack_d(stack, name, dfault = None):
 
 class ArgNotFoundError(RuntimeError):
   def __init__(self, argName):
-    RuntimeError.__init__(self, argName)
+    self.argName = argName
+
+  def __str__(self):
+    return "Argument '{}' was not found".format(self.argName)
+
+
+class ObjNotFoundError(RuntimeError):
+  def __init__(self, objName):
+    self.objName = objName
+
+  def __str__(self):
+    return "Object '{}' was not found".format(self.objName)
 
 
 class ParserState:
@@ -254,16 +265,15 @@ class ParserState:
       sink = self.at("sinks", i)
       if sink is None:
         break
+      assert isinstance(sink, HeadSink)
       objects = sink.get("objects", None)
       if objects is not None:
         obj = objects.get(objectName[0])
         if obj is not None:
           break
       i += 1
-    if objects is None:
-      raise RuntimeError("No objects were initialized, so cannot get object '{}'".format(name))
-    if obj is None:
-      raise RuntimeError("Object '{}' was not created.".format(str2(name)))
+    if objects is None or obj is None:
+      raise ObjNotFoundError(name)
     if len(objectName) > 1:
       for s in objectName[1].split(memberSep):
         obj = obj.get(s)
@@ -4834,6 +4844,8 @@ def init_main_sink(state, make_next):
   main = state.get("main")
   config = main.get("config")
 
+  headSink = HeadSink()
+  topSink = headSink
   defaultModifierDescs = [
     SourceCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
@@ -4841,7 +4853,7 @@ def init_main_sink(state, make_next):
   modifiers = state.resolve_d(config, "modifiers", None)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
   modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
-  topSink = modifierSink
+  headSink.set_next(modifierSink)
   clickSink = modifierSink.set_next(ClickSink(state.resolve_d(config, "clickTime", 0.5)))
   holdDataCfg = state.resolve_d(config, "holds", [])
   holdSink = clickSink.set_next(HoldSink())
@@ -6587,11 +6599,11 @@ def make_parser():
       mainParser = state.get("parser")
       ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
-        logger.warning("No 'on' objects were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'on' instances were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
       dos = parseGroup("do", parseActionOrSink, cfg, state)
       if len(dos) == 0:
-        logger.warning("No 'do' objects were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'do' instances were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
       return ((on,do) for on in ons for do in dos)
 
