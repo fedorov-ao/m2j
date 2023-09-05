@@ -1570,6 +1570,28 @@ class SensSetSink:
     logger.info("Setting sensitivity set: {}".format(s))
 
 
+class MappingSink:
+  def __call__(self, event):
+    frm = SourceTypeCode(event.source, event.type, event.code)
+    to = self.mapping_.get(frm, None)
+    if to is not None:
+      event.source, event.type, event.code = to.source, to.type, to.code
+    try:
+      if self.next_ is not None:
+        return self.next_(event)
+    finally:
+      if to is not None:
+        event.source, event.type, event.code = frm.source, frm.type, frm.code
+
+  def set_next(self, next):
+    self.next_ = next
+    return next
+
+  def __init__(self, mapping):
+    assert type(mapping) in (dict, collections.OrderedDict)
+    self.mapping_ = mapping
+
+
 class CalibratingSink:
   def __call__(self, event):
     if self.mode_ == 0:
@@ -4846,6 +4868,11 @@ def init_main_sink(state, make_next):
 
   headSink = HeadSink()
   topSink = headSink
+  bottomSink = topSink
+  mappingSink = state.get("parser").get("sc").get("mapping")(config, state)
+  if mappingSink is not None:
+    bottomSink.set_next(mappingSink)
+    bottomSink = mappingSink
   defaultModifierDescs = [
     SourceCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
@@ -4853,7 +4880,7 @@ def init_main_sink(state, make_next):
   modifiers = state.resolve_d(config, "modifiers", None)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
   modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
-  headSink.set_next(modifierSink)
+  bottomSink.set_next(modifierSink)
   clickSink = modifierSink.set_next(ClickSink(state.resolve_d(config, "clickTime", 0.5)))
   holdDataCfg = state.resolve_d(config, "holds", [])
   holdSink = clickSink.set_next(HoldSink())
@@ -5754,12 +5781,12 @@ def make_parser():
       def set_component(headSink, name, t):
         headSink.set_component(name, t)
       assert headSink is state.at("sinks", 0)
-      parseOrder = (("objects", None), ("next", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component))
+      parseOrder = (("objects", None), ("next", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component), ("mapping", set_component) )
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
       #Linking is performed in reverse order - from "tail" to "head", with linking "tail" to "head"
-      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("sens", set_next), ("modifiers", set_next))
+      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("sens", set_next), ("modifiers", set_next), ("mapping", set_next))
       assert headSink is state.at("sinks", 0)
       for p in linkOrder:
         link_component(p[0], p[1])
@@ -5780,6 +5807,18 @@ def make_parser():
   #Sink components cfgs are supposed to be specified in sink cfg, they cannot be referenced as args or objs, so using regular SelectParser.
   scParser = SelectParser()
   mainParser.add("sc", scParser)
+
+  def parseMapping(cfg, state):
+    mappingCfg = cfg.get("mapping", None)
+    if mappingCfg is not None:
+      mapping = {}
+      for frm,to in mappingCfg.items():
+        mapping[fn2htc(frm)] = fn2htc(to)
+      mappingSink = MappingSink(mapping)
+      return mappingSink
+    else:
+      return None
+  scParser.add("mapping", parseMapping)
 
   def parseObjects(cfg, state):
     objectsCfg = cfg.get("objects", None)
