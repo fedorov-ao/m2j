@@ -6359,12 +6359,14 @@ def make_parser():
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
+    etype = state.resolve_d(cfg, "etype", None)
+    etype = codes.EV_CUSTOM if etype is None else name2code(etype)
     code, value = int(state.resolve_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     sink = get_sink(cfg, state)
     if sink is None:
       raise RuntimeError("Cannot find target sink")
     def callback(e):
-      event = Event(codes.EV_CUSTOM, code, value)
+      event = Event(etype, code, value)
       return sink(event)
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
