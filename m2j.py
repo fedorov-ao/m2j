@@ -1809,20 +1809,21 @@ def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
   r = False
   if attrModifierDescs is None:
     r = eventModifiers is None
-  elif eventModifiers is None:
-    r = False
   elif len(attrModifierDescs) == 0:
-    r = len(eventModifiers) == 0
+    r = eventModifiers is None or len(eventModifiers) == 0
   else:
     r, numMatches = True, 0
     for am in attrModifierDescs:
       found = am.code == codes.KEY_ANY
-      for em in eventModifiers:
-        sourceFound = am.source is None or am.source == em.source
-        codeFound = am.code == codes.KEY_ANY or am.code == em.code
-        found = sourceFound and codeFound
-        if found:
-          break
+      #checking for eventModifiers None-ness here ensures that result would be True
+      #if eventModifiers is None and attrModifierDescs requires a modifier to be missing
+      if eventModifiers is not None:
+        for em in eventModifiers:
+          sourceFound = am.source is None or am.source == em.source
+          codeFound = am.code == codes.KEY_ANY or am.code == em.code
+          found = sourceFound and codeFound
+          if found:
+            break
       if am.state == False:
         found = not found
       r = r and found
