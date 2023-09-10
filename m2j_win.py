@@ -1340,11 +1340,12 @@ def parseRawInputEventSource(cfg, state):
   return source
 
 
-def print_devices(fname):
+def print_devices(fname, **kwargs):
   r = []
   devices = RawInputEventSource().get_devices()
   for d in devices:
-    r.append("name: {}\nhandle: {}\ntype: {} ({})\n".format(d.name, d.handle, rimtype2str(d.type), d.type))
+    name = d.name.replace("\\", "\\\\") if kwargs.get("escape", False) else d.name
+    r.append("name: {}\nhandle: {}\ntype: {} ({})\n".format(name, d.handle, rimtype2str(d.type), d.type))
   if fname == "-":
     for l in r:
       print l

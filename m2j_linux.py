@@ -446,7 +446,7 @@ def parseEvdevEventSource(cfg, state):
   return EventSource(sources, None)
 
 
-def print_devices(fname):
+def print_devices(fname, **kwargs):
   """Prints source devices info."""
   r = []
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
