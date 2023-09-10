@@ -1138,6 +1138,9 @@ class RawInputEventSource:
 
     self.devs_ = dict()
     self.upu_ = set()
+    self.buf_ = 0
+    self.bufSize_ = 0
+    self.heap_ = windll.kernel32.GetProcessHeap()
     logger.debug("{}: created".format(self))
 
   def __del__(self):
@@ -1159,6 +1162,7 @@ class RawInputEventSource:
         raise RuntimeError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
       else:
         del self.wndclass
+    self.free_buf_()
 
   def run_once(self):
     #logger.debug("{}.run_once()".format(self))
@@ -1167,9 +1171,16 @@ class RawInputEventSource:
     while windll.user32.PeekMessageA(byref(msg), self.hwnd, 0, 0, PM_REMOVE) != 0:
       if msg.message == WM_INPUT:
         #logger.debug("{}.run_once(): got WM_INPUT".format(self))
-        raw = RAWINPUT()
-        dwSize = c_uint(sizeof(RAWINPUT))
-        if windll.user32.GetRawInputData(msg.lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER)) > 0:
+        dwSize = c_uint(0)
+        r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
+        if r < 0:
+          raise RuntimeError("Failed to get buffer size")
+        buf = self.get_buf_(dwSize)
+        r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
+        if r < 0:
+          raise RuntimeError("Failed to fill buffer")
+        elif r > 0:
+          raw = cast(buf, POINTER(RAWINPUT)).contents
           hd = raw.header.hDevice
           if hd in self.devs_:
             sourceHash = self.devs_[hd].hash
@@ -1321,6 +1332,21 @@ class RawInputEventSource:
     #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
     r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source)
     return (r,)
+
+  def get_buf_(self, dwSize):
+    if dwSize.value > self.bufSize_:
+      #logger.debug("Extending buffer from {} to {}".format(self.bufSize_, dwSize.value))
+      self.free_buf_()
+      buf = windll.kernel32.HeapAlloc(self.heap_, 0x8, dwSize)
+      if buf == 0:
+        raise RuntimeError("Failed to allocate buffer")
+      self.buf_, self.bufSize_ = buf, dwSize.value
+    return self.buf_
+
+  def free_buf_(self):
+    #logger.debug("Freeing buffer")
+    windll.kernel32.HeapFree(self.heap_, 0, self.buf_)
+    self.buf_ = 0
 
 
 def parseRawInputEventSource(cfg, state):
