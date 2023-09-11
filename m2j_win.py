@@ -68,7 +68,7 @@ class PPJoystick:
     return self.limits_[tcAxis]
 
   def get_supported_axes(self):
-    return self.axes_[:self.numAxes_]
+    return self.AXES[:self.numAxes]
 
   def set_button_state(self, button, state):
     n = button - 256
@@ -90,7 +90,6 @@ class PPJoystick:
     if not self.dirty_:
       return
     data = self.make_data_()
-    #logger.debug("{}.update(): data: {}".format(self, struct.unpack(self.fmt_, data)))
     try:
       win32file.DeviceIoControl(self.devHandle_, self.IOCTL_PPORTJOY_SET_STATE, data, 0, None)
     except Exception as e:
@@ -98,7 +97,7 @@ class PPJoystick:
     self.dirty_ = False
 
   def __init__(self, i, numAxes=8, numButtons=16, limits=None, factors=None):
-    self.numAxes_, self.numButtons_ = numAxes, numButtons
+    self.numAxes, self.numButtons_ = numAxes, numButtons
 
     self.limits_ = {}
     for tcAxis in self.get_supported_axes():
@@ -111,20 +110,7 @@ class PPJoystick:
       self.devHandle_ = win32file.CreateFile(devName, win32file.GENERIC_WRITE, win32file.FILE_SHARE_WRITE, None, win32file.OPEN_EXISTING, 0, None);
     except Exception as e:
       raise RuntimeError("CreateFile failed with error code 0x{:x} trying to open {} device ({})".format(windll.kernel32.GetLastError(), devName, e))
-    """
-    typedef struct
-    {
-     unsigned long	Signature;				/* Signature to identify packet to PPJoy IOCTL */
-     char			NumAnalog;				/* Num of analog values we pass */
-     long			Analog[NUM_ANALOG];		/* Analog values */
-     char			NumDigital;				/* Num of digital values we pass */
-     char			Digital[NUM_DIGITAL];	/* Digital values */
-    }	JOYSTICK_STATE;
-    """
-    #Have to explicitly specify little-endiannes
-    self.fmt_ = "<Lb{:d}lb{:d}b".format(self.NUM_ANALOG, self.NUM_DIGITAL)
-    self.dataSize_ = struct.calcsize(self.fmt_)
-    self.a_ = {tcAxis : 0.0 for tcAxis in self.axes_}
+    self.a_ = {tcAxis : 0.0 for tcAxis in self.AXES}
     self.d_ = [0 for i in range(self.NUM_DIGITAL)]
     self.dirty_ = True
 
@@ -133,19 +119,38 @@ class PPJoystick:
       win32file.CloseHandle(self.devHandle_)
 
   def make_data_(self):
-    analog = tuple(lerp(self.factors_.get(tcAxis, 1.0)*self.a_[tcAxis], self.limits_[tcAxis][0], self.limits_[tcAxis][1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX) for tcAxis in self.axes_)
-    digital = tuple(d for d in self.d_)
-    data = struct.pack(self.fmt_, *((self.JOYSTICK_STATE_V1, self.numAxes_,) + analog + (self.numButtons_,) + digital))
+    def get_scaled_axis_value(tcAxis):
+      v = self.a_[tcAxis]
+      f = self.factors_.get(tcAxis, 1.0)
+      limits = self.limits_[tcAxis]
+      return lerp(f*v, limits[0], limits[1], self.PPJOY_AXIS_MIN, self.PPJOY_AXIS_MAX)
+    args = [self.JOYSTICK_STATE_V1, self.numAxes]
+    args.extend((get_scaled_axis_value(tcAxis) for tcAxis in self.AXES))
+    args.append(self.numButtons_)
+    args.extend(self.d_)
+    data = struct.pack(self.FMT, *args)
     return data
 
   JOYSTICK_STATE_V1 = 0x53544143
   PPJOY_IOCTL_DEVNAME_PREFIX = "\\\\.\\PPJoyIOCTL"
   NUM_ANALOG = 8
   NUM_DIGITAL = 16
+  """
+  typedef struct
+  {
+   unsigned long	Signature;				/* Signature to identify packet to PPJoy IOCTL */
+   char			NumAnalog;				/* Num of analog values we pass */
+   long			Analog[NUM_ANALOG];		/* Analog values */
+   char			NumDigital;				/* Num of digital values we pass */
+   char			Digital[NUM_DIGITAL];	/* Digital values */
+  }	JOYSTICK_STATE;
+  """
+  #Have to explicitly specify little-endiannes
+  FMT = "<Lb{:d}lb{:d}b".format(8, 16)
   PPJOY_AXIS_MIN = 1
   PPJOY_AXIS_MAX = 32767
   IOCTL_PPORTJOY_SET_STATE = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x0, METHOD_BUFFERED, FILE_ANY_ACCESS)
-  axes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER))
+  AXES = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z, codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ, codes.ABS_THROTTLE, codes.ABS_RUDDER))
 
 
 @make_reporting_joystick
@@ -157,7 +162,7 @@ def parsePPJoystickOutput(cfg, state):
   if factors is not None:
     factors = {fn2tc(n) : v for n,v in factors.items()}
   j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
-  state.get_settings()["updated"].append(lambda tick, ts : j.update())
+  state.get("main").get("updated").append(lambda tick, ts : j.update())
   return j
 
 
@@ -370,7 +375,7 @@ def parseVJoystickOutput(cfg, state):
   if factors is not None:
     factors = {fn2tc(n) : v for n,v in factors.items()}
   j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
-  state.get_settings()["updated"].append(lambda tick,ts : j.update())
+  state.get("main").get("updated").append(lambda tick,ts : j.update())
   return j
 
 
@@ -997,7 +1002,7 @@ class RAWHID(Structure):
     _fields_ = [
         ("dwSizeHid", DWORD),
         ("dwCount", DWORD),
-        ("bRawData", BYTE),
+        ("bRawData", BYTE*1),
     ]
 
 
