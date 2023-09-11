@@ -883,6 +883,7 @@ class INPUT(Structure):
 class DirectInputKeyboard:
   MODE_VK = 0
   MODE_SCANCODE = 1
+
   def set_key_state(self, key, state):
     #logger.debug("{}: Setting key {} (0x{:X}) to {}".format(self, typecode2name(codes.EV_KEY, key), key, state))
     extra = ULONG(0)
