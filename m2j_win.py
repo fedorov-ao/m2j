@@ -1539,7 +1539,6 @@ class RawInputEventSource:
         events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
     #axes
     valueCaps = deviceInfo.valueCaps
-    #Relies on fact that axes codes are consecutive from 0 to 7
     axesValues = deviceInfo.axes
     for vc in valueCaps:
       axisUsage = vc.Range.UsageMin
@@ -1547,11 +1546,11 @@ class RawInputEventSource:
       if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
         raise RuntimeError("Failed to get axis value")
       axisCode = au2c(axisUsage)
-      #TODO What if scaling should be done to other range than [-1.0, 1.0]?
-      scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
-      if scaledValue != axesValues[axisCode]:
+      if value.value != axesValues[axisCode]:
+        #TODO What if scaling should be done to other range than [-1.0, 1.0]?
+        scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
         events.append(InputEvent(codes.EV_ABS, axisCode, scaledValue, ts, source))
-        axesValues[axisCode] = scaledValue
+        axesValues[axisCode] = value.value
     return events
 
 
