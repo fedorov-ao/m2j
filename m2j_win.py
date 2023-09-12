@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 #Mouse to joystick emulator for Windows
 
 #Dependencies:
@@ -384,6 +382,7 @@ MAX_PATH = 255
 WM_INPUT = 255
 WNDPROC = WINFUNCTYPE(c_long, c_int, c_uint, c_int, c_int)
 
+RIDI_PREPARSEDDATA = 0x20000005
 RIDI_DEVICENAME = 0x20000007
 RIDI_DEVICEINFO = 0x2000000b
 
@@ -444,6 +443,54 @@ HID_USAGE_GENERIC_GAMEPAD = 0x05
 HID_USAGE_GENERIC_KEYBOARD = 0x06
 HID_USAGE_GENERIC_KEYPAD = 0x07
 HID_USAGE_GENERIC_MULTI_AXIS_CONTROLLER = 0x08
+
+HID_USAGE_GENERIC_X = 0x30
+HID_USAGE_GENERIC_Y = 0x31
+HID_USAGE_GENERIC_Z = 0x32
+HID_USAGE_GENERIC_RX = 0x33
+HID_USAGE_GENERIC_RY = 0x34
+HID_USAGE_GENERIC_RZ = 0x35
+HID_USAGE_GENERIC_SLIDER = 0x36
+HID_USAGE_GENERIC_DIAL = 0x37
+HID_USAGE_GENERIC_WHEEL = 0x38
+HID_USAGE_GENERIC_HATSWITCH = 0x39
+HID_USAGE_GENERIC_COUNTED_BUFFER = 0x3a
+HID_USAGE_GENERIC_BYTE_COUNT = 0x3b
+HID_USAGE_GENERIC_MOTION_WAKEUP = 0x3c
+HID_USAGE_GENERIC_VX = 0x40
+HID_USAGE_GENERIC_VY = 0x41
+HID_USAGE_GENERIC_VZ = 0x42
+HID_USAGE_GENERIC_VBRX = 0x43
+HID_USAGE_GENERIC_VBRY = 0x44
+HID_USAGE_GENERIC_VBRZ = 0x45
+HID_USAGE_GENERIC_VNO = 0x46
+HID_USAGE_GENERIC_SYSCTL_POWER = 0x81
+HID_USAGE_GENERIC_SYSCTL_SLEEP = 0x82
+HID_USAGE_GENERIC_SYSCTL_WAKE = 0x83
+HID_USAGE_GENERIC_SYSCTL_CONTEXT_MENU = 0x84
+HID_USAGE_GENERIC_SYSCTL_MAIN_MENU = 0x85
+HID_USAGE_GENERIC_SYSCTL_APP_MENU = 0x86
+HID_USAGE_GENERIC_SYSCTL_HELP_MENU = 0x87
+HID_USAGE_GENERIC_SYSCTL_MENU_EXIT = 0x88
+HID_USAGE_GENERIC_SYSCTL_MENU_SELECT = 0x89
+HID_USAGE_GENERIC_SYSCTL_MENU_RIGHT = 0x8a
+HID_USAGE_GENERIC_SYSCTL_MENU_LEFT = 0x8b
+HID_USAGE_GENERIC_SYSCTL_MENU_UP = 0x8c
+HID_USAGE_GENERIC_SYSCTL_MENU_DOWN = 0x8d
+HID_USAGE_SIMULATION_RUDDER = 0xba
+HID_USAGE_SIMULATION_THROTTLE = 0xbb
+
+def HIDP_ERROR_CODES(SEV, CODE):
+  FACILITY_HID_ERROR_CODE = 0x11
+  return (SEV << 28) | (FACILITY_HID_ERROR_CODE << 16) | CODE
+
+HIDP_STATUS_SUCCESS = HIDP_ERROR_CODES(0x0, 0)
+HIDP_STATUS_INVALID_PREPARSED_DATA = HIDP_ERROR_CODES(0xc, 1)
+
+#HIDP_REPORT_TYPE
+HidP_Input = 0
+HidP_Output = 1
+HidP_Feature = 2
 
 VK_LBUTTON = 0x01
 VK_RBUTTON = 0x02
@@ -879,6 +926,108 @@ class INPUT(Structure):
   ]
   _anonymous_ = ("_u1", )
 
+UCHAR = c_ubyte
+USAGE = USHORT
+PUSAGE = POINTER(USHORT)
+
+
+class HIDP_CAPS(Structure):
+  _fields_ = [
+    ("Usage", USAGE),
+    ("UsagePage", USAGE),
+    ("InputReportByteLength", USHORT),
+    ("OutputReportByteLength", USHORT),
+    ("FeatureReportByteLength", USHORT),
+    ("Reserved", USHORT*17),
+    ("NumberLinkCollectionNodes", USHORT),
+    ("NumberInputButtonCaps", USHORT),
+    ("NumberInputValueCaps", USHORT),
+    ("NumberInputDataIndices", USHORT),
+    ("NumberOutputButtonCaps", USHORT),
+    ("NumberOutputValueCaps", USHORT),
+    ("NumberOutputDataIndices", USHORT),
+    ("NumberFeatureButtonCaps", USHORT),
+    ("NumberFeatureValueCaps", USHORT),
+    ("NumberFeatureDataIndices", USHORT)
+  ]
+
+
+class RangeNotRange(Union):
+  class Range(Structure):
+    _fields_ = [
+      ("UsageMin", USAGE),
+      ("UsageMax", USAGE),
+      ("StringMin", USHORT),
+      ("StringMax", USHORT),
+      ("DesignatorMin", USHORT),
+      ("DesignatorMax", USHORT),
+      ("DataIndexMin", USHORT),
+      ("DataIndexMax", USHORT)
+    ]
+  class NotRange(Structure):
+    _fields_ = [
+      ("Usage", USAGE),
+      ("Reserved1", USAGE),
+      ("StringIndex", USHORT),
+      ("Reserved2", USHORT),
+      ("DesignatorIndex", USHORT),
+      ("Reserved3", USHORT),
+      ("DataIndex", USHORT),
+      ("Reserved4", USHORT)
+    ]
+  _fields_ = [
+    ("Range", Range),
+    ("NotRange", NotRange)
+  ]
+
+
+class HIDP_BUTTON_CAPS(Structure):
+  _fields_ = [
+    ("UsagePage", USAGE),
+    ("ReportID", UCHAR),
+    ("IsAlias", BOOLEAN),
+    ("BitField", USHORT),
+    ("LinkCollection", USHORT),
+    ("LinkUsage", USAGE),
+    ("LinkUsagePage", USAGE),
+    ("IsRange", BOOLEAN),
+    ("IsStringRange", BOOLEAN),
+    ("IsDesignatorRange", BOOLEAN),
+    ("IsAbsolute", BOOLEAN),
+    ("Reserved", ULONG*10),
+    ("_u1", RangeNotRange)
+  ]
+  _anonymous_ = ("_u1",)
+
+
+class HIDP_VALUE_CAPS(Structure):
+  _fields_ = [
+    ("UsagePage", USAGE),
+    ("ReportID", UCHAR),
+    ("IsAlias", BOOLEAN),
+    ("BitField", USHORT),
+    ("LinkCollection", USHORT),
+    ("LinkUsage", USAGE),
+    ("LinkUsagePage", USAGE),
+    ("IsRange", BOOLEAN),
+    ("IsStringRange", BOOLEAN),
+    ("IsDesignatorRange", BOOLEAN),
+    ("IsAbsolute", BOOLEAN),
+    ("HasNull", BOOLEAN),
+    ("Reserved", UCHAR),
+    ("BitSize", USHORT),
+    ("ReportCount", USHORT),
+    ("Reserved2", USHORT*5),
+    ("UnitsExp", ULONG),
+    ("Units", ULONG),
+    ("LogicalMin", LONG),
+    ("LogicalMax", LONG),
+    ("PhysicalMin", LONG),
+    ("PhysicalMax", LONG),
+    ("_u1", RangeNotRange)
+  ]
+  _anonymous_ = ("_u1",)
+
 
 class DirectInputKeyboard:
   MODE_VK = 0
@@ -1139,9 +1288,6 @@ class RawInputEventSource:
 
     self.devs_ = dict()
     self.upu_ = set()
-    self.buf_ = 0
-    self.bufSize_ = 0
-    self.heap_ = windll.kernel32.GetProcessHeap()
     logger.debug("{}: created".format(self))
 
   def __del__(self):
@@ -1163,7 +1309,6 @@ class RawInputEventSource:
         raise RuntimeError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
       else:
         del self.wndclass
-    self.free_buf_()
 
   def run_once(self):
     #logger.debug("{}.run_once()".format(self))
@@ -1176,7 +1321,8 @@ class RawInputEventSource:
         r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
         if r < 0:
           raise RuntimeError("Failed to get buffer size")
-        buf = self.get_buf_(dwSize)
+        #TODO Use create_string_buffer()
+        buf = create_string_buffer(dwSize.value)
         r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
         if r < 0:
           raise RuntimeError("Failed to fill buffer")
@@ -1196,8 +1342,7 @@ class RawInputEventSource:
               events = self.make_kbd_event_(raw, sourceHash)
             elif raw.header.dwType == RIM_TYPEHID:
               #logger.debug("{}: Got HID event".format(self))
-              #TODO Process HID events
-              pass
+              events = self.make_hid_event_(raw, sourceHash)
             if events is not None:
               for e in events:
                 #logger.debug("{}: sending event: {}".format(self, e))
@@ -1224,6 +1369,8 @@ class RawInputEventSource:
           pass
         di = DevInfo()
         di.source, di.hash = source, register_source(source)
+        if d.usage == HID_USAGE_GENERIC_JOYSTICK:
+          self.init_hid_(d.handle, di)
         self.devs_[d.handle] = di
         logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
         return
@@ -1334,20 +1481,110 @@ class RawInputEventSource:
     r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source)
     return (r,)
 
-  def get_buf_(self, dwSize):
-    if dwSize.value > self.bufSize_:
-      #logger.debug("Extending buffer from {} to {}".format(self.bufSize_, dwSize.value))
-      self.free_buf_()
-      buf = windll.kernel32.HeapAlloc(self.heap_, 0x8, dwSize)
-      if buf == 0:
-        raise RuntimeError("Failed to allocate buffer")
-      self.buf_, self.bufSize_ = buf, dwSize.value
-    return self.buf_
+  def make_hid_event_(self, raw, source):
+    def au2c(usage):
+      mapping = {
+        HID_USAGE_GENERIC_X : codes.ABS_X,
+        HID_USAGE_GENERIC_Y : codes.ABS_Y,
+        HID_USAGE_GENERIC_Z : codes.ABS_Z,
+        HID_USAGE_GENERIC_RX : codes.ABS_RX,
+        HID_USAGE_GENERIC_RY : codes.ABS_RY,
+        HID_USAGE_GENERIC_RZ : codes.ABS_RZ,
+        HID_USAGE_GENERIC_SLIDER : codes.ABS_THROTTLE,
+        HID_USAGE_GENERIC_DIAL : codes.ABS_RUDDER
+      }
+      axisCode = mapping.get(usage, None)
+      if axisCode is None:
+        raise LogicError("No axis for usage {}".format(usage))
+      return axisCode
+    ts, events = time.time(), []
+    hid = raw.hid
+    hDevice = raw.header.hDevice
+    deviceInfo = self.devs_[hDevice]
+    preparsedData = deviceInfo.preparsedData
+    #buttons
+    buttonCaps = deviceInfo.buttonCaps
+    if not buttonCaps.IsRange:
+      raise RuntimeError("Not implemented")
+    def bu2c(usage):
+      return usage - buttonCaps.Range.UsageMin + codes.BTN_0
+    numberOfButtons = ULONG(buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1)
+    #numberOfButtons is total number of buttons
+    usage = (USAGE*numberOfButtons.value)()
+    buttonValues = deviceInfo.buttons
+    if windll.hid.HidP_GetUsages(HidP_Input, buttonCaps.UsagePage, 0, usage, byref(numberOfButtons), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+      raise RuntimeError("Failed to get button states")
+    #numberOfButtons was overwritten and is number of buttons currently pressed
+    for i in range(numberOfButtons.value):
+      buttonIdx = bu2c(usage[i]) - codes.BTN_0
+      if buttonValues[buttonIdx] == 0:
+        #press
+        buttonValues[buttonIdx] = 3
+      elif buttonValues[buttonIdx] == 1:
+        #hold
+        buttonValues[buttonIdx] = 2
+    for i in range(len(buttonValues)):
+      et = None
+      if buttonValues[i] == 3:
+        #press event
+        et, buttonValues[i] = 1, 1
+      elif buttonValues[i] == 2:
+        #button is held, no event
+        buttonValues[i] = 1
+      elif buttonValues[i] == 1:
+        #release event
+        et, buttonValues[i] = 0, 0
+      if et is not None:
+        buttonCode = i + codes.BTN_0
+        events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
+    #axes
+    valueCaps = deviceInfo.valueCaps
+    #Relies on fact that axes codes are consecutive from 0 to 7
+    axesValues = deviceInfo.axes
+    for vc in valueCaps:
+      axisUsage = vc.Range.UsageMin
+      value = LONG()
+      if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+        raise RuntimeError("Failed to get axis value")
+      axisCode = au2c(axisUsage)
+      #TODO What if scaling should be done to other range than [-1.0, 1.0]?
+      scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
+      if scaledValue != axesValues[axisCode]:
+        events.append(InputEvent(codes.EV_ABS, axisCode, scaledValue, ts, source))
+        axesValues[axisCode] = scaledValue
+    return events
 
-  def free_buf_(self):
-    #logger.debug("Freeing buffer")
-    windll.kernel32.HeapFree(self.heap_, 0, self.buf_)
-    self.buf_ = 0
+
+  def init_hid_(self, hDevice, deviceInfo):
+    bufSize = c_uint(0)
+    if windll.user32.GetRawInputDeviceInfoA(hDevice, RIDI_PREPARSEDDATA, 0, byref(bufSize)) != 0:
+      raise RuntimeError("Failed to get preparsed data size");
+    preparsedData = create_string_buffer(bufSize.value)
+    if windll.user32.GetRawInputDeviceInfoA(hDevice, RIDI_PREPARSEDDATA, preparsedData, byref(bufSize)) < 0:
+      raise RuntimeError("Failed to get preparsed data");
+    deviceInfo.preparsedData = preparsedData
+    caps = HIDP_CAPS()
+    if windll.hid.HidP_GetCaps(preparsedData, byref(caps)) != HIDP_STATUS_SUCCESS:
+      raise RuntimeError("Failed to get caps")
+    #buttons
+    buttonCapsLength = USHORT(caps.NumberInputButtonCaps)
+    buttonCaps = (HIDP_BUTTON_CAPS*buttonCapsLength.value)()
+    if windll.hid.HidP_GetButtonCaps(HidP_Input, buttonCaps, byref(buttonCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
+      raise RuntimeError("Failed to get button caps")
+    #TODO What about other button caps?
+    buttonCaps = buttonCaps[0]
+    deviceInfo.buttonCaps = buttonCaps
+    if not buttonCaps.IsRange:
+      raise RuntimeError("Not implemented")
+    deviceInfo.buttons = [0 for i in range(buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1)]
+    #axes
+    valueCapsLength = USHORT(caps.NumberInputValueCaps)
+    valueCaps = (HIDP_VALUE_CAPS*valueCapsLength.value)()
+    #Relies on fact that axes codes are consecutive from 0 to 7
+    if windll.hid.HidP_GetValueCaps(HidP_Input, valueCaps, byref(valueCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
+      raise RuntimeError("Failed to get value caps")
+    deviceInfo.valueCaps = valueCaps
+    deviceInfo.axes = [0.0 for i in range(valueCapsLength.value)]
 
 
 def parseRawInputEventSource(cfg, state):
