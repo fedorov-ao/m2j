@@ -1505,67 +1505,63 @@ class RawInputEventSource:
     preparsedData = deviceInfo.preparsedData
     #buttons
     buttonCaps = deviceInfo.buttonCaps
-    numberOfButtons, usageMin = None, None
-    if buttonCaps.IsRange:
-      numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1
-      usageMin = buttonCaps.Range.UsageMin
-    else:
-      numberOfButtons = 1
-      usageMin = buttonCaps.NotRange.Usage
-    def bu2c(usage):
-      return usage - usageMin + codes.BTN_0
-    numberOfButtons = ULONG(numberOfButtons)
-    #numberOfButtons is total number of buttons
-    usage = (USAGE*numberOfButtons.value)()
-    buttonValues = deviceInfo.buttons
-    if windll.hid.HidP_GetUsages(HidP_Input, buttonCaps.UsagePage, 0, usage, byref(numberOfButtons), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
-      raise RuntimeError("Failed to get button states")
-    #numberOfButtons was overwritten and is number of buttons currently pressed
-    for i in range(numberOfButtons.value):
-      buttonIdx = bu2c(usage[i]) - codes.BTN_0
-      if buttonValues[buttonIdx] == 0:
-        #press
-        buttonValues[buttonIdx] = 3
-      elif buttonValues[buttonIdx] == 1:
-        #hold
-        buttonValues[buttonIdx] = 2
-    for i in range(len(buttonValues)):
-      et = None
-      if buttonValues[i] == 3:
-        #press event
-        et, buttonValues[i] = 1, 1
-      elif buttonValues[i] == 2:
-        #button is held, no event
-        buttonValues[i] = 1
-      elif buttonValues[i] == 1:
-        #release event
-        et, buttonValues[i] = 0, 0
-      if et is not None:
-        buttonCode = i + codes.BTN_0
-        events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
+    if buttonCaps is not None:
+      buttonValues = deviceInfo.buttons
+      usageMin = deviceInfo.buttonUsageMin
+      def bu2c(usage):
+        return usage - usageMin + codes.BTN_0
+      numberOfButtons = ULONG(len(buttonValues))
+      #numberOfButtons is total number of buttons
+      usage = (USAGE*numberOfButtons.value)()
+      if windll.hid.HidP_GetUsages(HidP_Input, buttonCaps.UsagePage, 0, usage, byref(numberOfButtons), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+        raise RuntimeError("Failed to get button states")
+      #numberOfButtons was overwritten and is number of buttons currently pressed
+      for i in range(numberOfButtons.value):
+        buttonIdx = bu2c(usage[i]) - codes.BTN_0
+        if buttonValues[buttonIdx] == 0:
+          #press
+          buttonValues[buttonIdx] = 3
+        elif buttonValues[buttonIdx] == 1:
+          #hold
+          buttonValues[buttonIdx] = 2
+      for i in range(len(buttonValues)):
+        et = None
+        if buttonValues[i] == 3:
+          #press event
+          et, buttonValues[i] = 1, 1
+        elif buttonValues[i] == 2:
+          #button is held, no event
+          buttonValues[i] = 1
+        elif buttonValues[i] == 1:
+          #release event
+          et, buttonValues[i] = 0, 0
+        if et is not None:
+          buttonCode = i + codes.BTN_0
+          events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
     #axes
     valueCaps = deviceInfo.valueCaps
-    axesValues = deviceInfo.axes
-    for vc in valueCaps:
-      usageMin, usageMax = None, None
-      if vc.IsRange:
-        usageMin, usageMax = vc.Range.UsageMin, vc.Range.UsageMax
-      else:
-        usageMin = usageMax = vc.NotRange.Usage
-      for axisUsage in range(usageMin, usageMax+1):
-        value = LONG()
-        if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
-          raise RuntimeError("Failed to get axis value")
-        axisCode, eventType = au2c(axisUsage), None
-        if vc.IsAbsolute:
-          if value.value != axesValues[axisCode]:
-            eventType = codes.EV_ABS
-            axesValues[axisCode] = value.value
+    if valueCaps is not None:
+      axesValues = deviceInfo.axes
+      for vc in valueCaps:
+        usageMin, usageMax = None, None
+        if vc.IsRange:
+          usageMin, usageMax = vc.Range.UsageMin, vc.Range.UsageMax
         else:
-          eventType = codes.EV_REL
-        if eventType is not None:
-          #Assuming that axis codes for absolute and relative axes match
-          events.append(InputEvent(eventType, axisCode, value.value, ts, source))
+          usageMin = usageMax = vc.NotRange.Usage
+        for axisUsage in range(usageMin, usageMax+1):
+          value = LONG()
+          if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+            raise RuntimeError("Failed to get axis value")
+          axisCode, eventType = au2c(axisUsage), None
+          if vc.IsAbsolute:
+            if value.value != axesValues[axisCode]:
+              eventType = codes.EV_ABS
+              axesValues[axisCode] = value.value
+          else:
+            eventType = codes.EV_REL
+          if eventType is not None:
+            #Assuming that axis codes for absolute and relative axes match
+            events.append(InputEvent(eventType, axisCode, value.value, ts, source))
     return events
 
 
@@ -1585,17 +1581,28 @@ class RawInputEventSource:
     buttonCaps = (HIDP_BUTTON_CAPS*buttonCapsLength.value)()
     if windll.hid.HidP_GetButtonCaps(HidP_Input, buttonCaps, byref(buttonCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
       raise RuntimeError("Failed to get button caps")
-    #TODO What about other button caps?
-    buttonCaps = buttonCaps[0]
-    if buttonCaps.UsagePage != HID_USAGE_PAGE_BUTTON:
-      raise RuntimeError("Not a button caps")
+    for bc in buttonCaps:
+      if bc.UsagePage == HID_USAGE_PAGE_BUTTON:
+        buttonCaps = bc
+        break
+    else:
+      buttonCaps = None
     deviceInfo.buttonCaps = buttonCaps
-    numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1 if buttonCaps.IsRange else 1
+    numberOfButtons = 0
+    buttonUsageMin = None
+    if buttonCaps is None:
+      numberOfButtons = 0
+    if buttonCaps.IsRange:
+      numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1
+      buttonUsageMin = buttonCaps.Range.UsageMin
+    else:
+      numberOfButtons = 1
+      buttonUsageMin = buttonCaps.NotRange.Usage
     deviceInfo.buttons = [0 for i in range(numberOfButtons)]
+    deviceInfo.buttonUsageMin = buttonUsageMin
     #axes
     valueCapsLength = USHORT(caps.NumberInputValueCaps)
     valueCaps = (HIDP_VALUE_CAPS*valueCapsLength.value)()
-    #Relies on fact that axes codes are consecutive from 0 to 7
     if windll.hid.HidP_GetValueCaps(HidP_Input, valueCaps, byref(valueCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
       raise RuntimeError("Failed to get value caps")
     deviceInfo.valueCaps = valueCaps
