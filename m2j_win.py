@@ -1556,10 +1556,16 @@ class RawInputEventSource:
         value = LONG()
         if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
           raise RuntimeError("Failed to get axis value")
-        axisCode = au2c(axisUsage)
-        if value.value != axesValues[axisCode]:
-          events.append(InputEvent(codes.EV_ABS, axisCode, value.value, ts, source))
-          axesValues[axisCode] = value.value
+        axisCode, eventType = au2c(axisUsage), None
+        if vc.IsAbsolute:
+          if value.value != axesValues[axisCode]:
+            eventType = codes.EV_ABS
+            axesValues[axisCode] = value.value
+        else:
+          eventType = codes.EV_REL
+        if eventType is not None:
+          #Assuming that axis codes for absolute and relative axes match
+          events.append(InputEvent(eventType, axisCode, value.value, ts, source))
     return events
 
 
