@@ -1491,7 +1491,8 @@ class RawInputEventSource:
         HID_USAGE_GENERIC_RY : codes.ABS_RY,
         HID_USAGE_GENERIC_RZ : codes.ABS_RZ,
         HID_USAGE_GENERIC_SLIDER : codes.ABS_THROTTLE,
-        HID_USAGE_GENERIC_DIAL : codes.ABS_RUDDER
+        HID_USAGE_GENERIC_DIAL : codes.ABS_RUDDER,
+        HID_USAGE_GENERIC_WHEEL : codes.ABS_WHEEL
       }
       axisCode = mapping.get(usage, None)
       if axisCode is None:
@@ -1504,11 +1505,16 @@ class RawInputEventSource:
     preparsedData = deviceInfo.preparsedData
     #buttons
     buttonCaps = deviceInfo.buttonCaps
-    if not buttonCaps.IsRange:
-      raise RuntimeError("Not implemented")
+    numberOfButtons, usageMin = None, None
+    if buttonCaps.IsRange:
+      numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1
+      usageMin = buttonCaps.Range.UsageMin
+    else:
+      numberOfButtons = 1
+      usageMin = buttonCaps.NotRange.Usage
     def bu2c(usage):
-      return usage - buttonCaps.Range.UsageMin + codes.BTN_0
-    numberOfButtons = ULONG(buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1)
+      return usage - usageMin + codes.BTN_0
+    numberOfButtons = ULONG(numberOfButtons)
     #numberOfButtons is total number of buttons
     usage = (USAGE*numberOfButtons.value)()
     buttonValues = deviceInfo.buttons
@@ -1541,16 +1547,21 @@ class RawInputEventSource:
     valueCaps = deviceInfo.valueCaps
     axesValues = deviceInfo.axes
     for vc in valueCaps:
-      axisUsage = vc.Range.UsageMin
-      value = LONG()
-      if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
-        raise RuntimeError("Failed to get axis value")
-      axisCode = au2c(axisUsage)
-      if value.value != axesValues[axisCode]:
-        #TODO What if scaling should be done to other range than [-1.0, 1.0]?
-        scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
-        events.append(InputEvent(codes.EV_ABS, axisCode, scaledValue, ts, source))
-        axesValues[axisCode] = value.value
+      usageMin, usageMax = None, None
+      if vc.IsRange:
+        usageMin, usageMax = vc.Range.UsageMin, vc.Range.UsageMax
+      else:
+        usageMin = usageMax = vc.NotRange.Usage
+      for axisUsage in range(usageMin, usageMax+1):
+        value = LONG()
+        if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+          raise RuntimeError("Failed to get axis value")
+        axisCode = au2c(axisUsage)
+        if value.value != axesValues[axisCode]:
+          #TODO What if scaling should be done to other range than [-1.0, 1.0]?
+          scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
+          events.append(InputEvent(codes.EV_ABS, axisCode, scaledValue, ts, source))
+          axesValues[axisCode] = value.value
     return events
 
 
@@ -1572,10 +1583,11 @@ class RawInputEventSource:
       raise RuntimeError("Failed to get button caps")
     #TODO What about other button caps?
     buttonCaps = buttonCaps[0]
+    if buttonCaps.UsagePage != HID_USAGE_PAGE_BUTTON:
+      raise RuntimeError("Not a button caps")
     deviceInfo.buttonCaps = buttonCaps
-    if not buttonCaps.IsRange:
-      raise RuntimeError("Not implemented")
-    deviceInfo.buttons = [0 for i in range(buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1)]
+    numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1 if buttonCaps.IsRange else 1
+    deviceInfo.buttons = [0 for i in range(numberOfButtons)]
     #axes
     valueCapsLength = USHORT(caps.NumberInputValueCaps)
     valueCaps = (HIDP_VALUE_CAPS*valueCapsLength.value)()
