@@ -1483,6 +1483,7 @@ class RawInputEventSource:
 
   def make_hid_event_(self, raw, source):
     def au2c(usage):
+      """Maps axis usage to code."""
       mapping = {
         HID_USAGE_GENERIC_X : codes.ABS_X,
         HID_USAGE_GENERIC_Y : codes.ABS_Y,
@@ -1498,6 +1499,9 @@ class RawInputEventSource:
       if axisCode is None:
         raise LogicError("No axis for usage {}".format(usage))
       return axisCode
+    def bu2c(usage):
+      """Maps button usage to code."""
+      return usage - 1 + codes.BTN_0
     ts, events = time.time(), []
     hid = raw.hid
     hDevice = raw.header.hDevice
@@ -1505,19 +1509,25 @@ class RawInputEventSource:
     preparsedData = deviceInfo.preparsedData
     #buttons
     buttonCaps = deviceInfo.buttonCaps
-    if buttonCaps is not None:
-      buttonValues = deviceInfo.buttons
-      usageMin = deviceInfo.buttonUsageMin
-      def bu2c(usage):
-        return usage - usageMin + codes.BTN_0
+    for i in range(len(buttonCaps)):
+      bc = deviceInfo.buttonCaps[i]
+      bd = deviceInfo.buttonData[i]
+      def bu2idx(usage):
+        """Maps button usage to list index."""
+        return usage - bd.umin
+      def idx2bu(idx):
+        """Maps list index to button usage."""
+        return idx + bd.umin
+      buttonValues = bd.buttons
       numberOfButtons = ULONG(len(buttonValues))
       #numberOfButtons is total number of buttons
       usage = (USAGE*numberOfButtons.value)()
-      if windll.hid.HidP_GetUsages(HidP_Input, buttonCaps.UsagePage, 0, usage, byref(numberOfButtons), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
+      r = windll.hid.HidP_GetUsages(HidP_Input, bc.UsagePage, 0, usage, byref(numberOfButtons), preparsedData, hid.bRawData, hid.dwSizeHid)
+      if r != HIDP_STATUS_SUCCESS:
         raise RuntimeError("Failed to get button states")
       #numberOfButtons was overwritten and is number of buttons currently pressed
       for i in range(numberOfButtons.value):
-        buttonIdx = bu2c(usage[i]) - codes.BTN_0
+        buttonIdx = bu2idx(usage[i])
         if buttonValues[buttonIdx] == 0:
           #press
           buttonValues[buttonIdx] = 3
@@ -1536,36 +1546,43 @@ class RawInputEventSource:
           #release event
           et, buttonValues[i] = 0, 0
         if et is not None:
-          buttonCode = i + codes.BTN_0
+          buttonCode = bu2c(idx2bu(i))
           events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
     #axes
     valueCaps = deviceInfo.valueCaps
-    if valueCaps is not None:
-      axesValues = deviceInfo.axes
-      for vc in valueCaps:
-        usageMin, usageMax = None, None
-        if vc.IsRange:
-          usageMin, usageMax = vc.Range.UsageMin, vc.Range.UsageMax
+    for i in range(len(valueCaps)):
+      vc = deviceInfo.valueCaps[i]
+      vd = deviceInfo.valueData[i]
+      def vu2idx(usage):
+        """Maps value usage to list index."""
+        return usage - vd.umin
+      for usage in range(vd.umin, vd.umax+1):
+        value = LONG()
+        r = windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, usage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid)
+        if r != HIDP_STATUS_SUCCESS:
+          raise RuntimeError("Failed to get axis value")
+        eventType = None
+        if vc.IsAbsolute:
+          valueIdx = vu2idx(usage)
+          if value.value != vd.values[valueIdx]:
+            eventType = codes.EV_ABS
+            vd.values[valueIdx] = value.value
         else:
-          usageMin = usageMax = vc.NotRange.Usage
-        for axisUsage in range(usageMin, usageMax+1):
-          value = LONG()
-          if windll.hid.HidP_GetUsageValue(HidP_Input, vc.UsagePage, 0, axisUsage, byref(value), preparsedData, hid.bRawData, hid.dwSizeHid) != HIDP_STATUS_SUCCESS:
-            raise RuntimeError("Failed to get axis value")
-          axisCode, eventType = au2c(axisUsage), None
-          if vc.IsAbsolute:
-            if value.value != axesValues[axisCode]:
-              eventType = codes.EV_ABS
-              axesValues[axisCode] = value.value
-          else:
-            eventType = codes.EV_REL
-          if eventType is not None:
-            #Assuming that axis codes for absolute and relative axes match
-            events.append(InputEvent(eventType, axisCode, value.value, ts, source))
+          eventType = codes.EV_REL
+        if eventType is not None:
+          #Assuming that axis codes for absolute and relative axes match
+          axisCode = au2c(usage)
+          events.append(InputEvent(eventType, axisCode, value.value, ts, source))
     return events
 
 
   def init_hid_(self, hDevice, deviceInfo):
+    def get_usage_range(caps):
+      if caps.IsRange:
+        umin, umax = caps.Range.UsageMin, caps.Range.UsageMax
+      else:
+        umin = umax = caps.NotRange.Usage
+      return (umin, umax,)
     bufSize = c_uint(0)
     if windll.user32.GetRawInputDeviceInfoA(hDevice, RIDI_PREPARSEDDATA, 0, byref(bufSize)) != 0:
       raise RuntimeError("Failed to get preparsed data size");
@@ -1581,32 +1598,33 @@ class RawInputEventSource:
     buttonCaps = (HIDP_BUTTON_CAPS*buttonCapsLength.value)()
     if windll.hid.HidP_GetButtonCaps(HidP_Input, buttonCaps, byref(buttonCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
       raise RuntimeError("Failed to get button caps")
-    for bc in buttonCaps:
-      if bc.UsagePage == HID_USAGE_PAGE_BUTTON:
-        buttonCaps = bc
-        break
-    else:
-      buttonCaps = None
     deviceInfo.buttonCaps = buttonCaps
-    numberOfButtons = 0
-    buttonUsageMin = None
-    if buttonCaps is None:
-      numberOfButtons = 0
-    if buttonCaps.IsRange:
-      numberOfButtons = buttonCaps.Range.UsageMax - buttonCaps.Range.UsageMin + 1
-      buttonUsageMin = buttonCaps.Range.UsageMin
-    else:
-      numberOfButtons = 1
-      buttonUsageMin = buttonCaps.NotRange.Usage
-    deviceInfo.buttons = [0 for i in range(numberOfButtons)]
-    deviceInfo.buttonUsageMin = buttonUsageMin
+    deviceInfo.buttonData = []
+    for bc in buttonCaps:
+      umin, umax = get_usage_range(bc)
+      numButtons = umax - umin + 1
+      class ButtonData:
+        pass
+      bd = ButtonData()
+      bd.buttons = [0 for i in range(numButtons)]
+      bd.umin, bd.umax = umin, umax
+      deviceInfo.buttonData.append(bd)
     #axes
     valueCapsLength = USHORT(caps.NumberInputValueCaps)
     valueCaps = (HIDP_VALUE_CAPS*valueCapsLength.value)()
     if windll.hid.HidP_GetValueCaps(HidP_Input, valueCaps, byref(valueCapsLength), preparsedData) != HIDP_STATUS_SUCCESS:
       raise RuntimeError("Failed to get value caps")
     deviceInfo.valueCaps = valueCaps
-    deviceInfo.axes = [0.0 for i in range(valueCapsLength.value)]
+    deviceInfo.valueData = []
+    for vc in valueCaps:
+      umin, umax = get_usage_range(vc)
+      numValues = umax - umin + 1
+      class ValueData:
+        pass
+      vd = ValueData()
+      vd.values = [0.0 for i in range(numValues)]
+      vd.umin, vd.umax = umin, umax
+      deviceInfo.valueData.append(vd)
 
 
 def parseRawInputEventSource(cfg, state):
