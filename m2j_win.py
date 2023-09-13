@@ -1558,9 +1558,7 @@ class RawInputEventSource:
           raise RuntimeError("Failed to get axis value")
         axisCode = au2c(axisUsage)
         if value.value != axesValues[axisCode]:
-          #TODO What if scaling should be done to other range than [-1.0, 1.0]?
-          scaledValue = lerp(value.value, vc.LogicalMin, vc.LogicalMax, -1.0, 1.0)
-          events.append(InputEvent(codes.EV_ABS, axisCode, scaledValue, ts, source))
+          events.append(InputEvent(codes.EV_ABS, axisCode, value.value, ts, source))
           axesValues[axisCode] = value.value
     return events
 
