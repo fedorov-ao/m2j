@@ -4832,10 +4832,9 @@ def init_info(**kwargs):
       for markerCfg in state.resolve_d(areaCfg, "markers", ()):
         area.add_marker(**markerCfg)
   state = kwargs["state"]
-  axisAccumulators = kwargs["axisAccumulators"]
   main = kwargs.get("main")
   outputs = main.get("outputs")
-  getOutput = lambda name : axisAccumulators.get(name, outputs.get(name, None))
+  getOutput = lambda name : outputs.get(name, None)
 
   infoCfg = kwargs["cfg"]
   f = state.resolve_d(infoCfg, "format", 1)
@@ -4941,14 +4940,7 @@ def init_main_sink(state, make_next):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  axisAccumulators = {}
-  for sourceName,sourceObj in main.get("config").get("sources").iteritems():
-    scales = { TypeCode(codes.EV_REL, codes.REL_X) : 1.0, TypeCode(codes.EV_REL, codes.REL_Y) : 1.0, TypeCode(codes.EV_REL, codes.REL_WHEEL) : 1.0 }
-    axisAccumulator = AxisAccumulator(state=False, scales=scales)
-    axisAccumulators[sourceName] = axisAccumulator
-    et = PropTestsEventTest((("source", EqPropTest(get_source_hash(sourceName))), ("type", EqPropTest(codes.EV_REL)),))
-    mainSink.add(et, axisAccumulator)
-  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, axisAccumulators=axisAccumulators, state=state)
+  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, state=state)
 
   binds = state.resolve_d(config, "binds", None)
   enabled = [True]
@@ -5032,19 +5024,6 @@ def init_main_sink(state, make_next):
           def op(e):
             s = not info.get_state()
             info.set_state(s)
-          action = op
-        elif action == "resetAxisAccumulator":
-          def op(e):
-            for aa in axisAccumulators.values():
-              aa.reset()
-          action = op
-        elif action == "toggleAxisAccumulator":
-          aaState = [False]
-          def op(e):
-            aaState[0] = not aaState[0]
-            for aa in axisAccumulators.values():
-              aa.reset()
-              aa.set_state(aaState[0])
           action = op
         else:
           action = actionParser(doCfg, state)
