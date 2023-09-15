@@ -4867,8 +4867,8 @@ def init_main_sink(state, make_next):
   config = main.get("config")
 
   headSink = HeadSink()
-  topSink = headSink
-  bottomSink = topSink
+  state.push("sinks", headSink)
+  topSink = bottomSink = headSink
   mappingSink = state.get("parser").get("sc").get("mapping")(config, state)
   if mappingSink is not None:
     bottomSink.set_next(mappingSink)
@@ -4905,9 +4905,6 @@ def init_main_sink(state, make_next):
       sens[fn2htc(state.deref(s[0]))] = state.deref(s[1])
   scaleSink = holdSink.set_next(ScaleSink2(sens))
 
-  mainSink = scaleSink.set_next(BindSink())
-  stateSink = mainSink.add(None, StateSink(), 1)
-
   class Toggler:
     def make_toggle(self):
       def op(event):
@@ -4922,11 +4919,8 @@ def init_main_sink(state, make_next):
     def __init__(self, sink):
       self.sink_, self.s_ = sink, False
 
-  state.push("sinks", topSink)
-
+  stateSink = StateSink()
   toggler = Toggler(stateSink)
-  etParser = main.get("parser").get("et")
-  actionParser = main.get("parser").get("action")
 
   released = state.resolve_d(config, "released", [])
   for i in range(len(released)):
@@ -4942,98 +4936,79 @@ def init_main_sink(state, make_next):
 
   info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, state=state)
 
-  binds = state.resolve_d(config, "binds", None)
   enabled = [True]
-  if binds is not None:
-    for bind in binds:
-      bind = state.deref(bind)
-      ons, dos = [], []
-      def get_cfgs(bind, name, state):
-        cfg = state.resolve_d(bind, name)
-        if cfg is None:
-          raise RuntimeError("Cannot get '{}' from {}".format(name, str2(onCfg)))
-        tcfg = type(cfg)
-        if tcfg in (list, tuple):
-          pass
-        elif tcfg in (dict, collections.OrderedDict):
-          cfg = (cfg,)
-        else:
-          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} (encountered when parsing {})".format(name, tcfg, str2(cfg, 100)))
-        return cfg
-      #on
-      for onCfg in get_cfgs(bind, "on", state):
-        on = etParser(onCfg, state)
-        ons.append(on)
-      #do
-      for doCfg in get_cfgs(bind, "do", state):
-        action = state.resolve(doCfg, "action")
-        if action == "changeSens":
-          def make_sens_op(htc, step):
-            def op(e):
-              sens = scaleSink.get_sens(htc) + step
-              scaleSink.set_sens(htc, sens)
-              logger.info("{} sens is now {}".format(htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
-            return op
-          htc = fn2htc(state.resolve(doCfg, "axis"))
-          delta = state.resolve(doCfg, "delta")
-          action = make_sens_op(htc, delta)
-        elif action == "toggle":
-          action = toggler.make_toggle()
-        elif action == "reload":
-          def op(e):
-            main.set("state", stateSink.get_state())
-            raise ReloadException()
-          action = op
-        elif action == "exit":
-          def op(e):
-            raise ExitException()
-          action = op
-        elif action == "enable":
-          callbacks = (SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
-          def op(event):
-            if stateSink.get_state() and not enabled[0]:
-              for cb in callbacks:
-                cb(event)
-              enabled[0] = True
-          action = op
-        elif action == "disable":
-          callbacks2 = (SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
-          def op(event):
-            if stateSink.get_state() and enabled[0]:
-              for cb in callbacks2:
-                cb(event)
-              enabled[0] = False
-          action = op
-        elif action == "grab":
-          inputs = get_nested_d(doCfg, "inputs", None)
-          inputs = released if inputs is None else [state.deref(i) for i in inputs]
-          action = SwallowSource(main.get("source"), [(n,True) for n in inputs])
-        elif action == "ungrab":
-          inputs = get_nested_d(doCfg, "inputs", None)
-          inputs = released if inputs is None else [state.deref(i) for i in inputs]
-          action = SwallowSource(main.get("source"), [(n,False) for n in inputs])
-        elif action == "showInfo":
-          def op(e):
-            info.set_state(True)
-          action = op
-        elif action == "hideInfo":
-          def op(e):
-            info.set_state(False)
-          action = op
-        elif action == "toggleInfo":
-          def op(e):
-            s = not info.get_state()
-            info.set_state(s)
-          action = op
-        else:
-          action = actionParser(doCfg, state)
-          if action is None:
-            logger.error("Unknown action: {}", action)
-            continue
-        dos.append(action)
-      for on in ons:
-        for do in dos:
-          mainSink.add(on, do, 0)
+  actionParser = main.get("parser").get("action")
+
+  def parseToggle(cfg, state):
+    return toggler.make_toggle()
+  actionParser.add("toggle", parseToggle)
+
+  def parseReload(cfg, state):
+    def op(e):
+      main.set("state", stateSink.get_state())
+      raise ReloadException()
+    return op
+  actionParser.add("reload", parseReload)
+
+  def parseExit(cfg, state):
+    def op(e):
+      raise ExitException()
+    return op
+  actionParser.add("exit", parseExit)
+
+  def parseEnable(cfg, state):
+    callbacks = (SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
+    def op(event):
+      if stateSink.get_state() and not enabled[0]:
+        for cb in callbacks:
+          cb(event)
+        enabled[0] = True
+    return op
+  actionParser.add("enable", parseEnable)
+
+  def parseDisable(cfg, state):
+    callbacks2 = (SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
+    def op(event):
+      if stateSink.get_state() and enabled[0]:
+        for cb in callbacks2:
+          cb(event)
+        enabled[0] = False
+    return op
+  actionParser.add("disable", parseDisable)
+
+  def parseGrab(cfg, state):
+    inputs = get_nested_d(cfg, "inputs", None)
+    inputs = released if inputs is None else [state.deref(i) for i in inputs]
+    return SwallowSource(main.get("source"), [(n,True) for n in inputs])
+  actionParser.add("grab", parseGrab)
+
+  def parseUngrab(cfg, state):
+    inputs = get_nested_d(cfg, "inputs", None)
+    inputs = released if inputs is None else [state.deref(i) for i in inputs]
+    return SwallowSource(main.get("source"), [(n,False) for n in inputs])
+  actionParser.add("ungrab", parseUngrab)
+
+  def parseShowInfo(cfg, state):
+    def op(e):
+      info.set_state(True)
+    return op
+  actionParser.add("showInfo", parseShowInfo)
+
+  def parseHideInfo(cfg, state):
+    def op(e):
+      info.set_state(False)
+    return op
+  actionParser.add("hideInfo", parseHideInfo)
+
+  def parseToggleInfo(cfg, state):
+    def op(e):
+      info.set_state(not info.get_state())
+    return op
+  actionParser.add("toggleInfo", parseToggleInfo)
+
+  bindSink = main.get("parser").get("sc").get("binds")(config, state)
+  bindSink.add(None, stateSink, 1)
+  scaleSink.set_next(bindSink)
 
   grabbed = state.resolve_d(config, "grabbed", [])
   for i in range(len(grabbed)):
