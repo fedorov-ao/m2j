@@ -21,7 +21,7 @@ import re
 import evdev
 from evdev import UInput, AbsInfo, ecodes
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("m2j_linux")
 
 def code2ecode(code):
   return code

@@ -19,7 +19,7 @@ import getopt
 import playsound
 import threading
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("m2j")
 
 class KeyError2(KeyError):
   def __init__(self, key, keys):
@@ -6971,6 +6971,8 @@ class Main:
     -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
 
   def add_logging_handler(self, logger, handler, level=logging.NOTSET, fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
+    if handler is None:
+      return
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
     logger.addHandler(handler)
@@ -6987,11 +6989,14 @@ class Main:
     root = logging.getLogger()
     root.setLevel(logLevel)
     print("Setting global log level to {}".format(logLevelName))
-    logsCfg = state.resolve_d(config, "logs", None)
-    if logsCfg is not None:
-      for logCfg in logsCfg:
-        t = state.resolve(logCfg, "type")
-        name = state.resolve(logCfg, "name")
+    def parse_logger(logger, config, state):
+      childrenCfg = state.resolve_d(config, "children", {})
+      for childName,childCfg in childrenCfg.items():
+        child = logger.getChild(childName)
+        parse_logger(child, childCfg, state)
+      for handlerCfg in state.resolve_d(config, "handlers", ()):
+        t = state.resolve(handlerCfg, "type")
+        name = state.resolve(handlerCfg, "name")
         stream = None
         if t == "stream":
           streams = { "stdout" : sys.stdout, "stderr" : sys.stderr }
@@ -7000,12 +7005,13 @@ class Main:
           stream = open(name, "w")
         if stream is None:
           raise RuntimeError("Cannot create log handler '{}' of type '{}'".format(name, t))
-        fmt = state.resolve_d(logCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
-        datefmt = state.resolve_d(logCfg, "datefmt", "%T")
-        levelName = state.resolve_d(logCfg, "level", "NOTSET").upper()
+        fmt = state.resolve_d(handlerCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
+        datefmt = state.resolve_d(handlerCfg, "datefmt", "%T")
+        levelName = state.resolve_d(handlerCfg, "level", "NOTSET").upper()
         level = name2loglevel(levelName)
         handler = logging.StreamHandler(stream)
-        self.add_logging_handler(root, handler, level, fmt, datefmt)
+        self.add_logging_handler(logger, handler, level, fmt, datefmt)
+    parse_logger(root, state.resolve_d(config, "logs", {}), state)
 
   def init_config2(self):
     if self.get("config") is not None and self.get("reloading") == False:

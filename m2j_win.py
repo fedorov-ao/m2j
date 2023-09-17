@@ -34,7 +34,7 @@ from ctypes import *
 from ctypes.wintypes import *
 import win32file
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("m2j_win")
 
 
 #PPJoystick
