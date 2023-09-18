@@ -6557,19 +6557,18 @@ def make_parser():
           if op(event) == True:
             self.i_ = 0
             return False
-        else:
-          t = self.inputs_[self.i_](event)
-          if t == True:
-            self.i_ += 1
-            if self.i_ == len(self.inputs_):
-              self.i_ = 0
-              return True
-          return False
+        t = self.inputs_[self.i_](event)
+        if t == True:
+          self.i_ += 1
+          if self.i_ == len(self.inputs_):
+            self.i_ = 0
+            return True
+        return False
       __slots__ = ("inputs_", "resetOn_", "i_")
       def __init__(self, inputs, resetOn=[lambda event : False]):
         self.inputs_, self.resetOn_ = inputs, resetOn
         self.i_ = 0
-    inputs = state.resolve(cfg, "inputs")
+    inputs = state.resolve(cfg, "ets")
     inputs = [etParser(inpt, state) for inpt in inputs]
     resetOn = state.resolve_d(cfg, "resetOn", [])
     resetOn = [etParser(rst, state) for rst in resetOn]
