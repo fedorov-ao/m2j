@@ -1265,13 +1265,15 @@ class ClickSink:
       keyData = self.keys_[event.code]
       prevValue, prevTimestamp, prevNumClicks = keyData
       dt = event.timestamp - prevTimestamp
+      r = 0
       if event.value == 0 and prevValue == 1 and dt <= self.clickTime_:
         keyData[2] += 1
+        r = keyData[2]
       elif event.value == 1 and prevValue == 0 and dt > self.clickTime_:
         keyData[2] = 0
       keyData[0] = event.value
       keyData[1] = event.timestamp
-      return keyData[2]
+      return r
     else:
       return 0
 
