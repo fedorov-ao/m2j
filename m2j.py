@@ -1794,6 +1794,20 @@ class EqPropTest(PropTest):
     self.v_ = v
 
 
+class EqInPropTest(PropTest):
+  def __call__(self, v):
+    return v in self.v_ if type(self.v_) in (list, tuple) else self.v_ == v
+
+  def __str__(self):
+    return "EqInPropTest({})".format(self.v_)
+
+  def __repr__(self):
+    return str(self)
+
+  def __init__(self, v):
+    self.v_ = v
+
+
 class CmpPropTest(PropTest):
   def __call__(self, v):
     return self.cmp_(v, self.v_)
@@ -1987,6 +2001,17 @@ class SourceFilterOp:
     self.sources_, self.state_ = [get_source_hash(s) for s in sources], state
 
 
+class ModeInitEvent(Event):
+  def __str__(self):
+    return Event.__str__(self) + ", other: {}".format(self.other)
+
+  def __init__(self, state, timestamp=None, other=None):
+    if timestamp is None:
+      timestamp = time.time()
+    Event.__init__(self, codes.EV_BCT, codes.BCT_INIT, state, timestamp)
+    self.other = other
+
+
 class ModeSink:
   def __call__(self, event):
     #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
@@ -2006,9 +2031,10 @@ class ModeSink:
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
       return False
-    self.set_active_child_state_(False)
+    self.set_active_child_state_(0, mode)
+    old = self.mode_
     self.mode_ = mode
-    self.set_active_child_state_(True)
+    self.set_active_child_state_(1, old)
     return True
 
   def get_mode(self):
@@ -2024,12 +2050,12 @@ class ModeSink:
   def get(self, modeName):
     return self.children_.get(modeName, None)
 
-  def set_active_child_state_(self, state):
+  def set_active_child_state_(self, state, other):
     if self.mode_ in self.children_:
       child = self.children_.get(self.mode_, None)
       if child is not None:
         #logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
-        child(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
+        child(ModeInitEvent(state=state, other=other))
 
   def __init__(self, name="", reportModeSwitchCb=None):
     self.children_, self.mode_, self.name_ = {}, None, name
@@ -6512,12 +6538,15 @@ def make_parser():
   @make_et
   def parseInit(cfg, state):
     r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT))]
-    eventName = get_nested_d(cfg, "event")
+    eventName = state.resolve_d(cfg, "event")
     if eventName is not None:
       value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
       assert(value is not None)
       r.append(("value", EqPropTest(value)))
     return r
+    other = state.resolve_d(cfg, "other")
+    if other is not None:
+      r.append("other", EqInPropTest(other))
   etParser.add("init", parseInit)
 
   @make_et
