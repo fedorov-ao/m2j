@@ -5767,6 +5767,8 @@ def make_parser():
         #By default next sink is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
         defaultBindET = state.resolve_d(cfg, "defaultBind.on", None)
+        if defaultBindET is not None:
+          defaultBindET = state.get("parser")("et", defaultBindET, state)
         defaultBindLevel = state.resolve_d(cfg, "defaultBind.level", 0)
         sink.add(defaultBindET, next, defaultBindLevel)
     try:
