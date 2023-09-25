@@ -3832,6 +3832,22 @@ class AxisPoseManager:
         p[0].move(p[1], False)
       return True
 
+  def merge_pose(self, frm, to):
+    f = self.poses_.get(frm)
+    if f is None:
+      return False
+    t = self.poses_.get(to, [])
+    r = []
+    for i in range(len(f)):
+      for j in range(len(t)):
+        if f[i][0] == t[j][0]:
+          t[j][1] = f[i][1]
+          break
+      else:
+       r.append([f[i][0], f[i][1]])
+    t.extend(r)
+    return True
+
   def __init__(self):
     self.poses_ = dict()
 
@@ -3845,6 +3861,12 @@ def PoseTo(poseManager, pose):
 def UpdatePose(poseManager, pose):
   def op(event):
     return poseManager.update_pose(pose)
+  return op
+
+
+def MergePose(poseManager, frm, to):
+  def op(event):
+    return poseManager.merge_pose(frm, to)
   return op
 
 
@@ -6188,11 +6210,11 @@ def make_parser():
     return worker
   actionParser.add("cycleFuncs", parseCycleFuncs)
 
-  def createPose_(cfg, state):
+  def createPose_(cfg, state, propName="pose"):
     poseManager = state.setdefault("poseManager", AxisPoseManager())
     state.setdefault("poseTracker", PoseTracker(poseManager))
     main = state.get("main")
-    poseName = state.resolve(cfg, "pose")
+    poseName = state.resolve(cfg, propName)
     pose = poseManager.get_pose(poseName)
     if pose is None:
       posesCfg = main.get("config").get("poses")
@@ -6219,6 +6241,13 @@ def make_parser():
     poseManager = state.get("poseManager")
     return PoseTo(poseManager, poseName)
   actionParser.add("poseTo", parsePoseTo)
+
+  def parseMergePose(cfg, state):
+    createPose_(cfg, state, "from")
+    frmPoseName, toPoseName  = state.resolve(cfg, "from"), state.resolve(cfg, "to")
+    poseManager = state.get("poseManager")
+    return MergePose(poseManager, frmPoseName, toPoseName)
+  actionParser.add("mergePose", parseMergePose)
 
   def parseIncPoseCount(cfg, state):
     createPose_(cfg, state)
