@@ -6210,69 +6210,45 @@ def make_parser():
     return worker
   actionParser.add("cycleFuncs", parseCycleFuncs)
 
-  def createPose_(cfg, state, propName="pose"):
-    poseManager = state.setdefault("poseManager", AxisPoseManager())
-    state.setdefault("poseTracker", PoseTracker(poseManager))
-    main = state.get("main")
-    poseName = state.resolve(cfg, propName)
-    pose = poseManager.get_pose(poseName)
-    if pose is None:
-      posesCfg = main.get("config").get("poses")
-      if posesCfg is None:
-        raise RuntimeError("No poses were specified.")
-      poseCfg = state.resolve_d(posesCfg, poseName, None)
-      if poseCfg is None:
-        raise RuntimeError("Pose '{}' was not specified".format(poseName))
-      pose = main.get("parser")("pose", poseCfg, state)
-      poseManager.set_pose(poseName, pose)
-    else:
-      return pose
-
   def parseUpdatePose(cfg, state):
-    createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseManager = state.get("poseManager")
+    poseManager = state.get("main").get("poseManager")
     return UpdatePose(poseManager, poseName)
   actionParser.add("updatePose", parseUpdatePose)
 
   def parsePoseTo(cfg, state):
-    createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseManager = state.get("poseManager")
+    poseManager = state.get("main").get("poseManager")
     return PoseTo(poseManager, poseName)
   actionParser.add("poseTo", parsePoseTo)
 
   def parseMergePose(cfg, state):
-    createPose_(cfg, state, "from")
     frmPoseName, toPoseName  = state.resolve(cfg, "from"), state.resolve(cfg, "to")
-    poseManager = state.get("poseManager")
+    poseManager = state.get("main").get("poseManager")
     return MergePose(poseManager, frmPoseName, toPoseName)
   actionParser.add("mergePose", parseMergePose)
 
   def parseIncPoseCount(cfg, state):
-    createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state.get("poseTracker")
+    poseTracker = state.get("main").get("poseTracker")
     return lambda e : poseTracker.inc(poseName)
   actionParser.add("incPoseCount", parseIncPoseCount)
 
   def parseDecPoseCount(cfg, state):
-    createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state.get("poseTracker")
+    poseTracker = state.get("main").get("poseTracker")
     return lambda e : poseTracker.dec(poseName)
   actionParser.add("decPoseCount", parseDecPoseCount)
 
   def parseResetPoseCount(cfg, state):
-    createPose_(cfg, state)
     poseName = state.resolve(cfg, "pose")
-    poseTracker = state.get("poseTracker")
+    poseTracker = state.get("main").get("poseTracker")
     return lambda e : poseTracker.reset(poseName)
   actionParser.add("resetPoseCount", parseResetPoseCount)
 
   def parseWritePoses(cfg, state):
     main = state.get("main")
-    poseManager = state.get("poseManager")
+    poseManager = main.get("poseManager")
     fileName = state.resolve(cfg, "file")
     update = state.resolve_d(cfg, "update", False)
     poseNamesToWrite = state.resolve_d(cfg, "poses", None)
@@ -7122,6 +7098,15 @@ class Main:
     tokens = []
     add_nested_vars(varsCfg, tokens)
 
+  def init_poses(self, state):
+    poseManager = self.get("poseManager")
+    poseParser = self.get("parser").get("pose")
+    posesCfg = self.get("config").get("poses")
+    if posesCfg is not None:
+      for poseName,poseCfg in posesCfg.items():
+        pose = poseParser(poseCfg, state)
+        poseManager.set_pose(poseName, pose)
+
   def init_source(self, state):
     #TODO Use dedicated config section for source?
     self.set("source", self.get("parser")("source", self.get("config"), state))
@@ -7150,6 +7135,7 @@ class Main:
       self.init_config2()
       state = ParserState(self)
       self.init_vars(state)
+      self.init_poses(state)
       self.init_source(state)
       self.init_loop(state)
       self.set("reloading", False)
@@ -7298,3 +7284,6 @@ class Main:
     self.props_["soundPlayer"] = SoundPlayer()
     self.props_["varManager"] = VarManager()
     self.props_["valueManager"] = VarManager(make_var = lambda : Var(None))
+    poseManager = AxisPoseManager()
+    self.props_["poseManager"] = poseManager
+    self.props_["poseTracker"] = PoseTracker(poseManager)
