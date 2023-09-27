@@ -1729,10 +1729,11 @@ class BindSink:
     return processed
 
   def add(self, op, child, level=0, name=None):
+    """Adds one child for given op and level."""
     #logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
     assert(child is not None)
     for ci in self.children_:
-      if op == ci.op:
+      if op == ci.op and level == ci.level:
         ci.children.append(self.ChildInfo(child, name))
         break
     else:
@@ -1741,18 +1742,18 @@ class BindSink:
     return child
 
   def add_several(self, op, children, level=0, names=None):
+    """Adds several children for given op and level."""
     if names is None:
       names = (None for i in range(len(children)))
-    else:
-      if len(names) != len(children):
+    elif len(names) != len(children):
         raise RuntimeError("children and names lenghts must be equal")
-    childInfos = (self.ChildInfo(child, name) for child,name in zip(children, names))
+    childInfos = [self.ChildInfo(child, name) for child,name in zip(children, names)]
     for ci in self.children_:
-      if op == ci.op:
+      if op == ci.op and level == ci.level:
         ci.children.extend(childInfos)
         break
     else:
-      self.children_.append(self.ChildrenInfo(op, level, [ci for ci in childInfos]))
+      self.children_.append(self.ChildrenInfo(op, level, childInfos))
     self.dirty_ = True
 
   def clear(self):
