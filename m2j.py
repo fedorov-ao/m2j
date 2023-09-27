@@ -3877,7 +3877,17 @@ class AxisPoseManager:
         p[1] = p[0].get()
       return True
 
+  def update_poses(self, poses):
+    r = False
+    for p in poses:
+      r = self.update_pose(p) or r
+    return r
+
+  #TODO Remove
   def pose_to(self, i):
+    return self.apply_pose(i)
+
+  def apply_pose(self, i):
     #logger.debug("{}: poseping to {}".format(self, i))
     pose = self.poses_.get(i, None)
     if pose is None:
@@ -3887,6 +3897,12 @@ class AxisPoseManager:
       for p in pose:
         p[0].move(p[1], False)
       return True
+
+  def apply_poses(self, poses):
+    r = False
+    for p in poses:
+      r = self.apply_pose(p) or r
+    return r
 
   def merge_pose(self, frm, to):
     f = self.poses_.get(frm)
@@ -3908,6 +3924,7 @@ class AxisPoseManager:
     self.poses_ = dict()
 
 
+#TODO Remove
 def PoseTo(poseManager, pose):
   def op(event):
     return poseManager.pose_to(pose)
@@ -6280,11 +6297,35 @@ def make_parser():
     return UpdatePose(poseManager, poseName)
   actionParser.add("updatePose", parseUpdatePose)
 
+  def parseUpdatePoses(cfg, state):
+    poseNames = state.resolve(cfg, "poses")
+    poseManager = state.get("main").get("poseManager")
+    def op(event):
+      return poseManager.update_poses(poseNames)
+    return op
+  actionParser.add("updatePoses", parseUpdatePoses)
+
   def parsePoseTo(cfg, state):
     poseName = state.resolve(cfg, "pose")
     poseManager = state.get("main").get("poseManager")
     return PoseTo(poseManager, poseName)
   actionParser.add("poseTo", parsePoseTo)
+
+  def parseApplyPose(cfg, state):
+    poseName = state.resolve(cfg, "pose")
+    poseManager = state.get("main").get("poseManager")
+    def op(event):
+      return poseManager.apply_pose(poseName)
+    return op
+  actionParser.add("applyPose", parseApplyPose)
+
+  def parseApplyPoses(cfg, state):
+    poseNames = state.resolve(cfg, "poses")
+    poseManager = state.get("main").get("poseManager")
+    def op(event):
+      return poseManager.apply_poses(poseNames)
+    return op
+  actionParser.add("applyPoses", parseApplyPoses)
 
   def parseMergePose(cfg, state):
     frmPoseName, toPoseName  = state.resolve(cfg, "from"), state.resolve(cfg, "to")
