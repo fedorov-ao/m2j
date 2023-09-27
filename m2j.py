@@ -5340,7 +5340,7 @@ def make_parser():
   mainParser = SelectParser()
 
   def literalParser(cfg, state):
-    return resolve(cfg, "literal")
+    return state.resolve(cfg, "literal")
   mainParser.add("literal", literalParser)
 
   funcParserKeyOp = lambda cfg,state : get_nested(cfg, "func")
@@ -6550,10 +6550,10 @@ def make_parser():
       value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
       assert(value is not None)
       r.append(("value", EqPropTest(value)))
-    return r
     other = state.resolve_d(cfg, "other")
     if other is not None:
       r.append("other", EqInPropTest(other))
+    return r
   etParser.add("init", parseInit)
 
   @make_et
