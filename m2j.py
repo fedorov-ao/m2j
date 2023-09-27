@@ -6417,6 +6417,15 @@ def make_parser():
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
 
+  def parseForwardEvent(cfg, state):
+    sink = get_sink(cfg, state)
+    if sink is None:
+      raise RuntimeError("Cannot find target sink")
+    def callback(e):
+      return sink(e)
+    return callback
+  actionParser.add("forward", parseForwardEvent)
+
   def parseLog(cfg, state):
     message, level = state.resolve(cfg, "message"), state.resolve(cfg, "level")
     def callback(e):
