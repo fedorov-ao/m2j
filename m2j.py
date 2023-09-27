@@ -1740,6 +1740,21 @@ class BindSink:
     self.dirty_ = True
     return child
 
+  def add_several(self, op, children, level=0, names=None):
+    if names is None:
+      names = (None for i in range(len(children)))
+    else:
+      if len(names) != len(children):
+        raise RuntimeError("children and names lenghts must be equal")
+    childInfos = (self.ChildInfo(child, name) for child,name in zip(children, names))
+    for ci in self.children_:
+      if op == ci.op:
+        ci.children.extend(childInfos)
+        break
+    else:
+      self.children_.append(self.ChildrenInfo(op, level, [ci for ci in childInfos]))
+    self.dirty_ = True
+
   def clear(self):
     del self.children_[:]
 
@@ -6805,7 +6820,7 @@ def make_parser():
       if len(dos) == 0:
         logger.warning("No 'do' instances were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
 
-      return ((on,do) for on in ons for do in dos)
+      return ((on,dos) for on in ons)
 
     binds = state.resolve_d(cfg, "binds", [])
     #logger.debug("binds: {}".format(binds))
@@ -6829,8 +6844,10 @@ def make_parser():
     binds.sort(key=bindsKey)
     bindingSink = BindSink()
     for bind in binds:
-      for on,do in parseOnsDos(bind, state):
-        bindingSink.add(on, do, state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None))
+      level, name = state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None)
+      for on,dos in parseOnsDos(bind, state):
+        names = None if name is None else (name for i in range(len(dos)))
+        bindingSink.add_several(on, dos, level, names)
     return bindingSink
 
   scParser.add("binds", parseBinds)
