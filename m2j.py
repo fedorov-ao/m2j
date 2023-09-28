@@ -4969,7 +4969,10 @@ def init_info(**kwargs):
     area = info.add_area(**areaCfg)
     if areaType == "axes":
       for markerCfg in state.resolve_d(areaCfg, "markers", ()):
-        area.add_marker(**markerCfg)
+        try:
+          area.add_marker(**markerCfg)
+        except Exception as e:
+          logger.error("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
   state = kwargs["state"]
   main = kwargs.get("main")
   outputs = main.get("outputs")
@@ -5262,14 +5265,23 @@ def parse_dict_live(d, cfg, state, kp, vp, update):
   return d
 
 
-def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update):
+def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update, exceptionHandler=None):
   items = cfg.items()
   items.sort(key=op)
   for key,value in items:
-    k = kp(key, state)
-    if k in d and not update:
-      continue
-    d[k] = vp(value, state)
+    try:
+      k = kp(key, state)
+      if k in d and not update:
+        continue
+      d[k] = vp(value, state)
+    except Exception as e:
+      if exceptionHandler is not None:
+        if exceptionHandler(key, value, e):
+          continue
+        else:
+          break
+      else:
+        raise
   return d
 
 
@@ -6868,6 +6880,7 @@ def make_parser():
     outputs = main.get("outputs")
     config = main.get("config")
     j = outputs.get(name, None)
+    #TODO Redundant, because all outputs should be already created by init_outputs()?
     if j is None:
       outputsCfg = state.resolve_d(config, "outputs", None)
       if outputsCfg is None:
@@ -7235,10 +7248,13 @@ class Main:
     nameParser = lambda key,state : key
     parser = self.get("parser")
     outputParser = parser.get("output")
+    def exception_handler(key, value, e):
+      logger.error("Cannot create output '{}' ({})".format(key, e))
+      return True
     orderOp = lambda i : state.resolve_d(i[1], "seq", 100000)
     cfg = state.resolve(self.get("config"), "outputs")
     state = ParserState(self)
-    parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False)
+    parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False, exceptionHandler=exception_handler)
 
   def init_sounds(self, state):
     soundsCfg = state.resolve_d(self.get("config"), "sounds", {})
@@ -7272,8 +7288,11 @@ class Main:
     posesCfg = self.get("config").get("poses")
     if posesCfg is not None:
       for poseName,poseCfg in posesCfg.items():
-        pose = poseParser(poseCfg, state)
-        poseManager.set_pose(poseName, pose)
+        try:
+          pose = poseParser(poseCfg, state)
+          poseManager.set_pose(poseName, pose)
+        except Exception as e:
+          logger.error("Cannot create pose '{}' ({})".format(poseName, e))
 
   def init_source(self, state):
     #TODO Use dedicated config section for source?
@@ -7378,7 +7397,9 @@ class Main:
           logger.error("Unexpected exception: {}".format(e))
           raise
         finally:
-          self.get("source").swallow(None, False)
+          source = self.get("source")
+          if source is not None:
+            source.swallow(None, False)
 
     except KeyboardInterrupt:
       logger.info("Exiting normally")
@@ -7389,6 +7410,9 @@ class Main:
     except ConfigReadError as e:
       logger.error(e)
       return 1
+    except Exception as e:
+      logger.error("Unexpected exception: {}".format(e))
+      raise
     finally:
       self.get("soundPlayer").quit()
 
