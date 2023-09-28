@@ -285,25 +285,28 @@ class ParserState:
     parser = self.get("parser")
     #logger.debug("Constructing objects from '{}'".format(str2(cfg)))
     for k,v in cfg.items():
-      o = None
-      #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
-      #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
-      if type(v) not in (dict, collections.OrderedDict):
-        raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
-      n = v.get("class", None)
-      if n is not None:
-        o = parser(n, v, self)
-      else:
-        for n in ("literal", "func", "curve", "action", "et", "output", "var"):
-          if n in v:
-            o = parser(n, v, self)
-            #break is needed to avoid executing the "else" block
-            break
+      try:
+        o = None
+        #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
+        #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
+        if type(v) not in (dict, collections.OrderedDict):
+          raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
+        n = v.get("class", None)
+        if n is not None:
+          o = parser(n, v, self)
         else:
-          o = parser("sink", v, self)
-      if o is None:
-        raise RuntimeError("Could not create object from: {}".format(str2(v)))
-      cb(k, o)
+          for n in ("literal", "func", "curve", "action", "et", "output", "var"):
+            if n in v:
+              o = parser(n, v, self)
+              #break is needed to avoid executing the "else" block
+              break
+          else:
+            o = parser("sink", v, self)
+        if o is None:
+          raise RuntimeError()
+        cb(k, o)
+      except Exception as e:
+        logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v), e))
 
   def get_arg(self, name, **kwargs):
     r = None
@@ -4972,7 +4975,7 @@ def init_info(**kwargs):
         try:
           area.add_marker(**markerCfg)
         except Exception as e:
-          logger.error("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
+          logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
   state = kwargs["state"]
   main = kwargs.get("main")
   outputs = main.get("outputs")
@@ -5955,7 +5958,7 @@ def make_parser():
         state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
         return objectsComponent
       except RuntimeError as e:
-        raise RuntimeError("{} (encountered when parsing objects cfg {})".format(e, str2(objectsCfg, 100)))
+        raise RuntimeError("{} ({})".format(e, str2(objectsCfg, 100)))
     else:
       return None
   scParser.add("objects", parseObjects)
@@ -5984,7 +5987,7 @@ def make_parser():
         scaleSink.set_sens(key, value)
       return scaleSink
     except RuntimeError as e:
-      raise RuntimeError("'{}' (encountered when parsing '{}')".format(e, str2(sens)))
+      raise RuntimeError("'{}' ({})".format(e, str2(sens)))
   scParser.add("sens", parseSens)
 
   @parseBasesDecorator
@@ -6220,10 +6223,12 @@ def make_parser():
   actionParser.add("setAxes", parseSetAxes)
 
   def parseSetKeyState_(cfg, state, s):
-    output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state.get("main").get("outputs")[output]
-    key = name2code(key)
-    return SetButtonState(output, key, s)
+    fnKey = state.resolve(cfg, "key")
+    nOutput, cKey = fn2sc(fnKey)
+    output = state.get("main").get("outputs").get(nOutput)
+    if output is None:
+      raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
+    return SetButtonState(output, cKey, s)
 
   def parseSetKeyState(cfg, state):
     s = int(state.resolve(cfg, "state"))
@@ -6239,9 +6244,11 @@ def make_parser():
   actionParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    output, key = fn2sn(state.resolve(cfg, "key"))
-    output = state.get("main").get("outputs")[output]
-    key = name2code(key)
+    fnKey = state.resolve(cfg, "key")
+    nOutput, cKey = fn2sc(fnKey)
+    output = state.get("main").get("outputs").get(nOutput)
+    if output is None:
+      raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
     numClicks = int(state.resolve_d(cfg, "numClicks", 1))
     delay = float(state.resolve_d(cfg, "delay", 0.0))
     class Clicker:
@@ -6269,7 +6276,7 @@ def make_parser():
       def __init__(self, output, key, numClicks, delay):
         self.output_, self.key_, self.numClicks_, self.delay_ = output, key, numClicks, delay
         self.timestamp_, self.i_ = None, 0
-    clicker = Clicker(output, key, numClicks, delay)
+    clicker = Clicker(output, cKey, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
     state.get("main").get("updated").append(updateOp)
@@ -6284,7 +6291,7 @@ def make_parser():
       for fnAxis in state.resolve(cfg, "axes"):
         curves = allCurves.get(state.deref(fnAxis), None)
         if curves is None:
-          logger.warning("No curves were initialized for '{}' axis (encountered when parsing '{}')".format(fnAxis, str2(cfg)))
+          logger.warning("No curves were initialized for '{}' axis ({})".format(fnAxis, str2(cfg)))
         else:
           curvesToReset += curves
     elif "objects" in cfg:
@@ -6799,7 +6806,7 @@ def make_parser():
         elif tcfgs in (dict, collections.OrderedDict):
           cfgs = (cfgs,)
         else:
-          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} (encountered when parsing {})".format(name, tcfgs, str2(cfg, 100)))
+          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} ({})".format(name, tcfgs, str2(cfg, 100)))
         r, t = [], None
         for c in cfgs:
           try:
@@ -6827,11 +6834,11 @@ def make_parser():
       mainParser = state.get("parser")
       ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
-        logger.warning("No 'on' instances were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'on' instances were constructed ({})".format(str2(cfg, 100)))
 
       dos = parseGroup("do", parseActionOrSink, cfg, state)
       if len(dos) == 0:
-        logger.warning("No 'do' instances were constructed (encountered when parsing '{}')".format(str2(cfg, 100)))
+        logger.warning("No 'do' instances were constructed ({})".format(str2(cfg, 100)))
 
       return ((on,dos) for on in ons)
 
@@ -7393,9 +7400,6 @@ class Main:
         except ReloadException:
           logger.info("Reloading")
           self.set("reloading", True)
-        except Exception as e:
-          logger.error("Unexpected exception: {}".format(e))
-          raise
         finally:
           source = self.get("source")
           if source is not None:
@@ -7408,7 +7412,7 @@ class Main:
       logger.info("Exiting normally")
       return 0
     except ConfigReadError as e:
-      logger.error(e)
+      logger.error("Error reading config: {}".format(e))
       return 1
     except Exception as e:
       logger.error("Unexpected exception: {}".format(e))
