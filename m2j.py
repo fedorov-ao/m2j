@@ -305,7 +305,7 @@ class ParserState:
         if o is None:
           raise RuntimeError()
         cb(k, o)
-      except Exception as e:
+      except RuntimeError as e:
         logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v), e))
 
   def get_arg(self, name, **kwargs):
@@ -447,21 +447,21 @@ class ParserState:
         r = mapping(r)
     return r
 
-class SourceRegister:
-  def register_source(self, name):
-    """Input event source __init__() should call this with the name of source."""
+class DevRegister:
+  def register_dev(self, name):
+    """Input event dev __init__() should call this with the name of dev."""
     hsh = self.hash_
     self.hash_ += 1
-    self.sources_[hsh] = name
+    self.devs_[hsh] = name
     self.hashes_[name] = hsh
     return hsh
 
   def get_name(self, hsh):
     if hsh is None:
       return None
-    r = self.sources_.get(hsh, None)
+    r = self.devs_.get(hsh, None)
     if r is None:
-      raise RuntimeError("Source with hash {} not registered".format(hsh))
+      raise RuntimeError("Dev with hash {} not registered".format(hsh))
     return r
 
   def get_hash(self, name):
@@ -470,25 +470,25 @@ class SourceRegister:
     r = self.hashes_.get(name, None)
     if r is None:
       if self.addMissing_:
-        r = self.register_source(name)
+        r = self.register_dev(name)
       else:
-        raise RuntimeError("Source with name {} not registered".format(name))
+        raise RuntimeError("Dev with name {} not registered".format(name))
     return r
 
   def __init__(self, addMissing=True):
-    self.sources_, self.hashes_, self.addMissing_ = dict(), dict(), addMissing
+    self.devs_, self.hashes_, self.addMissing_ = dict(), dict(), addMissing
     self.hash_ = 0
 
-g_sr = SourceRegister(addMissing=True)
+g_sr = DevRegister(addMissing=True)
 
-def register_source(source):
-  """Input event source __init__() should call this with the name of source."""
-  return g_sr.register_source(source)
+def register_dev(dev):
+  """Input event dev __init__() should call this with the name of dev."""
+  return g_sr.register_dev(dev)
 
-def get_source_name(hsh):
+def get_dev_name(hsh):
   return g_sr.get_name(hsh)
 
-def get_source_hash(name):
+def get_dev_hash(name):
   return g_sr.get_hash(name)
 
 class Derivatives:
@@ -586,7 +586,7 @@ def tc2ns(t, c):
   return codeToNames.get(c, dfault)
 
 
-SplitName = collections.namedtuple("SplitName", "state source shash type code")
+SplitName = collections.namedtuple("SplitName", "state dev shash type code")
 
 def split_full_name2(s, state, sep="."):
   st = True
@@ -598,51 +598,51 @@ def split_full_name2(s, state, sep="."):
   if state is not None:
     s = state.deref(s)
   i = s.find(sep)
-  source = None if i == -1 else s[:i]
-  shash = None if source is None else get_source_hash(source)
+  dev = None if i == -1 else s[:i]
+  shash = None if dev is None else get_dev_hash(dev)
   name = s if i == -1 else s[i+1:]
   code = name2code(name)
   type = name2type(name)
-  return SplitName(state=st, source=source, shash=shash, type=type, code=code)
+  return SplitName(state=st, dev=dev, shash=shash, type=type, code=code)
 
 
-SourceName = collections.namedtuple("SourceName", "source name")
-SourceCode = collections.namedtuple("SourceCode", "source code")
-SourceNameState = collections.namedtuple("SourceNameState", "source name state")
-SourceCodeState = collections.namedtuple("SourceCodeState", "source code state")
+DevName = collections.namedtuple("DevName", "dev name")
+DevCode = collections.namedtuple("DevCode", "dev code")
+DevNameState = collections.namedtuple("DevNameState", "dev name state")
+DevCodeState = collections.namedtuple("DevCodeState", "dev code state")
 TypeCode = collections.namedtuple("TypeCode", "type code")
-SourceTypeCode = collections.namedtuple("SourceTypeCode", "source type code")
-SourceTypeCodeState = collections.namedtuple("SourceTypeCodeState", "source type code state")
+DevTypeCode = collections.namedtuple("DevTypeCode", "dev type code")
+DevTypeCodeState = collections.namedtuple("DevTypeCodeState", "dev type code state")
 
-def fn2sn(s, sep="."):
+def fn2dn(s, sep="."):
   """
-  Splits full name into source and name.
+  Splits full name into dev and name.
   'mouse.REL_X' -> ('mouse', 'REL_X')
   'REL_X' -> (None, 'REL_X')
   """
   i = s.find(sep)
-  return SourceName(None, s) if i == -1 else SourceName(s[:i], s[i+1:])
+  return DevName(None, s) if i == -1 else DevName(s[:i], s[i+1:])
 
 
-def fn2sc(s, sep="."):
+def fn2dc(s, sep="."):
   """
-  Splits full name into source and code.
+  Splits full name into dev and code.
   'mouse.REL_X' -> ('mouse', codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
-  r = fn2sn(s, sep)
-  return SourceCode(source=r.source, code=name2code(r.name))
+  r = fn2dn(s, sep)
+  return DevCode(dev=r.dev, code=name2code(r.name))
 
 
 def fn2hc(s, sep="."):
   """
-  Splits full name into source hash and code.
-  'mouse.REL_X' -> (get_source_hash('mouse'), codes.REL_X)
+  Splits full name into dev hash and code.
+  'mouse.REL_X' -> (get_dev_hash('mouse'), codes.REL_X)
   'REL_X' -> (None, codes.REL_X)
   """
-  r = fn2sc(s, sep)
-  h = get_source_hash(r.source)
-  return SourceCode(source=h, code=r.code)
+  r = fn2dc(s, sep)
+  h = get_dev_hash(r.dev)
+  return DevCode(dev=h, code=r.code)
 
 
 def fn2tc(s, sep="."):
@@ -651,57 +651,57 @@ def fn2tc(s, sep="."):
   'mouse.REL_X' -> TypeCode(codes.EV_REL, codes.REL_X)
   'REL_X' -> TypeCode(codes.EV_REL, codes.REL_X)
   """
-  r = fn2sn(s, sep)
+  r = fn2dn(s, sep)
   return TypeCode(type=name2type(r.name), code=name2code(r.name))
 
 
-def fn2stc(s, sep="."):
+def fn2dtc(s, sep="."):
   """
-  Splits full name into source, type and code.
+  Splits full name into dev, type and code.
   'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
-  r = fn2sn(s, sep)
-  return SourceTypeCode(source=r.source, type=name2type(r.name), code=name2code(r.name))
+  r = fn2dn(s, sep)
+  return DevTypeCode(dev=r.dev, type=name2type(r.name), code=name2code(r.name))
 
 
 def fn2htc(s, sep="."):
   """
-  Splits full name into source hash, type and code.
-  'mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X)
+  Splits full name into dev hash, type and code.
+  'mouse.REL_X' -> (get_dev_hash('mouse'), codes.EV_REL, codes.REL_X)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X)
   """
-  r = fn2stc(s, sep)
-  h = get_source_hash(r.source)
-  return SourceTypeCode(source=h, type=r.type, code=r.code)
+  r = fn2dtc(s, sep)
+  h = get_dev_hash(r.dev)
+  return DevTypeCode(dev=h, type=r.type, code=r.code)
 
 
-def stc2fn(source, type, code, sep=".", nameSep="/"):
+def dtc2fn(devName, type, code, sep=".", nameSep="/"):
   """
-  Joins source, type and code into full name.
+  Joins dev name, type and code into full name.
   'mouse', codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
   tcn = tc2ns(type, code)
-  if source is not None:
-    tcn = (sep.join((source, t)) for t in tcn)
+  if devName is not None:
+    tcn = (sep.join((devName, t)) for t in tcn)
     tcn = nameSep.join(tcn)
   return tcn
 
 
-def htc2fn(sourceHash, type, code, sep=".", nameSep="/"):
+def htc2fn(devHash, type, code, sep=".", nameSep="/"):
   """
-  Joins source hash, type and code into full name.
-  get_source_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
+  Joins dev hash, type and code into full name.
+  get_dev_hash('mouse'), codes.EV_REL, codes.REL_X -> 'mouse.REL_X'
   None, codes.EV_REL, codes.REL_X -> 'REL_X'
   """
-  s = None if sourceHash is None else str(get_source_name(sourceHash))
-  return stc2fn(s, type, code, sep, nameSep)
+  s = None if devHash is None else str(get_dev_name(devHash))
+  return dtc2fn(s, type, code, sep, nameSep)
 
 
-def fn2sne(s, sep="."):
+def fn2dne(s, sep="."):
   """
-  Splits full name into source, name and state.
+  Splits full name into dev, name and state.
   'mouse.REL_X' -> ('mouse', 'REL_X', True)
   'REL_X' -> (None, 'REL_X', True)
   '+mouse.REL_X' -> ('mouse', 'REL_X', True)
@@ -716,12 +716,12 @@ def fn2sne(s, sep="."):
     state = False
     s = s[1:]
   i = s.find(sep)
-  return SourceNameState(source=None, name=s, state=state) if i == -1 else SourceNameState(source=s[:i], name=s[i+1:], state=state)
+  return DevNameState(dev=None, name=s, state=state) if i == -1 else DevNameState(dev=s[:i], name=s[i+1:], state=state)
 
 
-def fn2sce(s, sep="."):
+def fn2dce(s, sep="."):
   """
-  Splits full name into source, code and state.
+  Splits full name into dev, code and state.
   'mouse.REL_X' -> ('mouse', codes.REL_X, True)
   'REL_X' -> (None, codes.REL_X, True)
   '+mouse.REL_X' -> ('mouse', codes.REL_X, True)
@@ -729,13 +729,13 @@ def fn2sce(s, sep="."):
   '-mouse.REL_X' -> ('mouse', codes.REL_X, False)
   '-REL_X' -> (None, codes.REL_X, False)
   """
-  r = fn2sne(s, sep)
-  return SourceCodeState(source=r.source, code=name2code(r.name), state=r.state)
+  r = fn2dne(s, sep)
+  return DevCodeState(dev=r.dev, code=name2code(r.name), state=r.state)
 
 
 def fn2hce(s, sep="."):
   """
-  Splits full name into source hash, code and state.
+  Splits full name into dev hash, code and state.
   'mouse.REL_X' -> ('mouse', codes.REL_X, True)
   'REL_X' -> (None, codes.REL_X, True)
   '+mouse.REL_X' -> ('mouse', codes.REL_X, True)
@@ -743,14 +743,14 @@ def fn2hce(s, sep="."):
   '-mouse.REL_X' -> ('mouse', codes.REL_X, False)
   '-REL_X' -> (None, codes.REL_X, False)
   """
-  r = fn2sce(s, sep)
-  h = get_source_hash(r.source)
-  return SourceCodeState(source=h, code=r.code, state=r.state)
+  r = fn2dce(s, sep)
+  h = get_dev_hash(r.dev)
+  return DevCodeState(dev=h, code=r.code, state=r.state)
 
 
-def fn2stce(s, sep="."):
+def fn2dtce(s, sep="."):
   """
-  Splits full name into source, type, code and state.
+  Splits full name into dev, type, code and state.
   'mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
   '+mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, True)
@@ -758,27 +758,27 @@ def fn2stce(s, sep="."):
   '-mouse.REL_X' -> ('mouse', codes.EV_REL, codes.REL_X, False)
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
-  r = fn2sne(s, sep)
-  return SourceTypeCodeState(source=r.source, type=name2type(r.name), code=name2code(r.name), state=r.state)
+  r = fn2dne(s, sep)
+  return DevTypeCodeState(dev=r.dev, type=name2type(r.name), code=name2code(r.name), state=r.state)
 
 
 def fn2htce(s, sep="."):
   """
-  Splits full name into source hash, type, code and state.
-  'mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  Splits full name into dev hash, type, code and state.
+  'mouse.REL_X' -> (get_dev_hash('mouse'), codes.EV_REL, codes.REL_X, True)
   'REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
-  '+mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, True)
+  '+mouse.REL_X' -> (get_dev_hash('mouse'), codes.EV_REL, codes.REL_X, True)
   '+REL_X' -> (None, codes.EV_REL, codes.REL_X, True)
-  '-mouse.REL_X' -> (get_source_hash('mouse'), codes.EV_REL, codes.REL_X, False)
+  '-mouse.REL_X' -> (get_dev_hash('mouse'), codes.EV_REL, codes.REL_X, False)
   '-REL_X' -> (None, codes.EV_REL, codes.REL_X, False)
   """
-  r = fn2stce(s, sep)
-  return SourceTypeCodeState(source=get_source_hash(r.source), type=r.type, code=r.code, state=r.state)
+  r = fn2dtce(s, sep)
+  return DevTypeCodeState(dev=get_dev_hash(r.dev), type=r.type, code=r.code, state=r.state)
 
 
 def parse_modifier_desc(s, state, sep="."):
   t = split_full_name2(s, state, sep)
-  return SourceCodeState(source=t.shash, code=t.code, state=t.state)
+  return DevCodeState(dev=t.shash, code=t.code, state=t.state)
 
 
 class ReloadException:
@@ -935,7 +935,7 @@ class CompositeJoystick:
 class Event(object):
   def __str__(self):
     fmt = "type: {} ({}), code: {} (0x{:X}, {}), value: {}, timestamp: {}"
-    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, stc2fn(None, self.type, self.code), str2(self.value), self.timestamp)
+    return fmt.format(self.type, "/".join(type2names(self.type)), self.code, self.code, dtc2fn(None, self.type, self.code), str2(self.value), self.timestamp)
 
   __slots__ = ("type", "code", "value", "timestamp", )
   def __init__(self, type, code, value, timestamp=None):
@@ -947,23 +947,23 @@ class Event(object):
 class InputEvent(Event):
   def __str__(self):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
-    fmt = ", source: {} ({}), modifiers: {}"
+    fmt = ", idev: {} ({}), modifiers: {}"
     modifiers = [((s, m), htc2fn(s, codes.EV_KEY, m)) for s,m in self.modifiers]
-    return Event.__str__(self) + fmt.format(self.source, get_source_name(self.source), modifiers)
+    return Event.__str__(self) + fmt.format(self.idev, get_dev_name(self.idev), modifiers)
     #these do not work in FreePie
-    #return super(InputEvent, self).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
-    #return super(InputEvent, Event).__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
-    #return super().__str__() + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
-    #return Event.__str__(self) + ", source: {}, modifiers: {}".format(self.source, self.modifiers)
-    #return "source: {}, modifiers: {}".format(self.source, self.modifiers)
+    #return super(InputEvent, self).__str__() + ", idev: {}, modifiers: {}".format(self.idev, self.modifiers)
+    #return super(InputEvent, Event).__str__() + ", idev: {}, modifiers: {}".format(self.idev, self.modifiers)
+    #return super().__str__() + ", idev: {}, modifiers: {}".format(self.idev, self.modifiers)
+    #return Event.__str__(self) + ", idev: {}, modifiers: {}".format(self.idev, self.modifiers)
+    #return "idev: {}, modifiers: {}".format(self.idev, self.modifiers)
 
-  __slots__ = ("source", "modifiers",)
-  def __init__(self, t, code, value, timestamp, source, modifiers=None):
+  __slots__ = ("idev", "modifiers",)
+  def __init__(self, t, code, value, timestamp, idev, modifiers=None):
     #Had to reference members of parent class directly, because FreePie does not handle super() well
     #This does not work in FreePie
     #super().__init__(t, code, value, timestamp)
     self.type, self.code, self.value, self.timestamp = t, code, value, timestamp
-    self.source = source
+    self.idev = idev
     self.modifiers = [] if modifiers is None else modifiers
 
 
@@ -972,14 +972,14 @@ class ClickEvent(InputEvent):
     return InputEvent.__str__(self) + ", num_clicks: {}".format(self.num_clicks)
 
   __slots__ = ("num_clicks",)
-  def __init__(self, t=None, code=None, timestamp=None, source=None, modifiers=None, num_clicks=0):
-    InputEvent.__init__(self, t, code, 3, timestamp, source, modifiers)
+  def __init__(self, t=None, code=None, timestamp=None, idev=None, modifiers=None, num_clicks=0):
+    InputEvent.__init__(self, t, code, 3, timestamp, idev, modifiers)
     self.num_clicks = num_clicks
 
   @classmethod
   def from_event(cls, event, numClicks):
     ce = ClickEvent()
-    ce.type, ce.code, ce.value, ce.timestamp, ce.source, ce.modifiers = event.type, event.code, 3, event.timestamp, event.source, event.modifiers
+    ce.type, ce.code, ce.value, ce.timestamp, ce.idev, ce.modifiers = event.type, event.code, 3, event.timestamp, event.idev, event.modifiers
     ce.num_clicks = numClicks
     return ce
 
@@ -999,7 +999,7 @@ class EventCompressorDevice:
           del self.events_[k]
         break
       elif event.type == codes.EV_REL:
-        k = (event.source, event.code, None if event.modifiers is None else tuple(m for m in event.modifiers))
+        k = (event.idev, event.code, None if event.modifiers is None else tuple(m for m in event.modifiers))
         e = self.events_.get(k)
         if e is None:
           self.events_[k] = event
@@ -1045,7 +1045,9 @@ class EventSource:
       for n,d in self.devices_.items():
         d.swallow(s)
     else:
-      self.devices_.get(name).swallow(s)
+      dev = self.devices_.get(name)
+      if dev is not None:
+        dev.swallow(s)
 
   def __init__(self, devices, ep=None):
     self.devices_, self.ep_ = devices, ep
@@ -1240,7 +1242,7 @@ def MoveAxisByEvent(axis):
 def SetButtonState(output, button, state):
   def op(event):
     output.set_button_state(button, state)
-    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, stc2fn(None, codes.EV_KEY, button), button, state))
+    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, dtc2fn(None, codes.EV_KEY, button), button, state))
     return True
   return op
 
@@ -1296,14 +1298,14 @@ class ClickEP:
 
 
 class HoldEvent(InputEvent):
-  def __init__(self, k, value, timestamp, source, modifiers, heldTime):
-    InputEvent.__init__(self, codes.EV_KEY, k, value, timestamp, source, modifiers)
+  def __init__(self, k, value, timestamp, idev, modifiers, heldTime):
+    InputEvent.__init__(self, codes.EV_KEY, k, value, timestamp, idev, modifiers)
     self.heldTime = heldTime
 
 
 class HoldEP:
   """Generates key hold input events."""
-  KeyDesc = collections.namedtuple("KeyDesc", "source code modifiers")
+  KeyDesc = collections.namedtuple("KeyDesc", "idev code modifiers")
   HT = collections.namedtuple("HT", "keyDesc period value num")
 
   def __call__(self, event):
@@ -1314,14 +1316,14 @@ class HoldEP:
         for i in range(len(self.keyData_)):
           kd = self.keyData_[i]
           #ignore modifiers to correctly process key release if the key is modifier itself
-          keyDesc = HoldEP.KeyDesc(event.source, event.code, None)
+          keyDesc = HoldEP.KeyDesc(event.idev, event.code, None)
           if self.match_(kd.keyDesc, keyDesc):
             self.keyData_[i] = None
         self.cleanup_()
       elif event.value == 1:
         class KD:
           pass
-        keyDesc = HoldEP.KeyDesc(event.source, event.code, tuple(m for m in event.modifiers))
+        keyDesc = HoldEP.KeyDesc(event.idev, event.code, tuple(m for m in event.modifiers))
         found = False
         for kd in self.keyData_:
           if kd.keyDesc == keyDesc:
@@ -1345,7 +1347,7 @@ class HoldEP:
           ht = kd.ht
           keyDesc = kd.keyDesc
           modifiers = None if keyDesc.modifiers is None else list(keyDesc.modifiers)
-          event = HoldEvent(keyDesc.code, ht.value, timestamp, keyDesc.source, modifiers, heldTime)
+          event = HoldEvent(keyDesc.code, ht.value, timestamp, keyDesc.idev, modifiers, heldTime)
           #logger.debug("{}: {}".format(self, event))
           self.next_(event)
         if kd.num > 0:
@@ -1354,9 +1356,9 @@ class HoldEP:
             self.keyData_[i] = None
     self.cleanup_()
 
-  def add(self, source, code, modifiers, period, value, num):
+  def add(self, idev, code, modifiers, period, value, num):
     modifiers = tuple(m for m in modifiers) if modifiers is not None else None
-    keyDesc = HoldEP.KeyDesc(source, code, modifiers)
+    keyDesc = HoldEP.KeyDesc(idev, code, modifiers)
     ht = HoldEP.HT(keyDesc, period, value, num)
     self.holdTimes_.append(ht)
 
@@ -1376,7 +1378,7 @@ class HoldEP:
     pass
 
   def match_(self, keyDesc, ht):
-    return (ht.source is None or (ht.source == keyDesc.source)) and (ht.code is None or (ht.code == keyDesc.code)) and (ht.modifiers is None or (ht.modifiers == keyDesc.modifiers))
+    return (ht.idev is None or (ht.idev == keyDesc.idev)) and (ht.code is None or (ht.code == keyDesc.code)) and (ht.modifiers is None or (ht.modifiers == keyDesc.modifiers))
 
   def cleanup_(self):
     while True:
@@ -1386,13 +1388,13 @@ class HoldEP:
         break
 
 
-Modifier = collections.namedtuple("Modifier", "source code")
+Modifier = collections.namedtuple("Modifier", "idev code")
 
 def cmp_modifiers(eventModifier, referenceModifier):
   r = False
   if eventModifier.code == referenceModifier.code:
-    if referenceModifier.source is not None:
-      r = eventModifier.source == referenceModifier.source
+    if referenceModifier.idev is not None:
+      r = eventModifier.idev == referenceModifier.idev
     else:
       r = True
   return r
@@ -1407,7 +1409,7 @@ class ModifierEP:
       self.clear()
     elif event.type == codes.EV_KEY:
       if self.addedModifiers_ is not None:
-        em = Modifier(source=event.source, code=event.code)
+        em = Modifier(idev=event.idev, code=event.code)
         #logger.debug("{}.__call__(): got: {}".format(self, eventModifier))
         for am in self.addedModifiers_:
           #logger.debug("{}.__call__(): checking against: {}".format(self, referenceModifier))
@@ -1458,14 +1460,14 @@ class ModifierEP:
     self.currentModifiers_ = []
 
   def __init__(self, next = None, modifierDescs = None, saveModifiers = True, mode = 0):
-    #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, stc2fn(None, codes.EV_KEY, m)) for s,m in modifiers]))
+    #logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, dtc2fn(None, codes.EV_KEY, m)) for s,m in modifiers]))
     self.currentModifiers_, self.next_, self.addedModifiers_, self.removedModifiers_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
     if modifierDescs is not None:
       for md in modifierDescs:
         if md.state == True:
-          self.addedModifiers_.append(Modifier(md.source, md.code))
+          self.addedModifiers_.append(Modifier(md.dev, md.code))
         elif md.state == False:
-          self.removedModifiers_.append(Modifier(md.source, md.code))
+          self.removedModifiers_.append(Modifier(md.dev, md.code))
 
 
 #TODO Unused. Remove?
@@ -1522,7 +1524,7 @@ class ScaleEP2:
   def set_name(self, name):
     self.name_ = name
 
-  def __init__(self, sens, keyOp = lambda event : (SourceTypeCode(source=event.source, type=event.type, code=event.code), SourceTypeCode(source=None, type=event.type, code=event.code)), name = None):
+  def __init__(self, sens, keyOp = lambda event : (DevTypeCode(event.idev, event.type, event.code), DevTypeCode(None, event.type, event.code)), name = None):
     self.next_, self.sens_, self.keyOp_, self.name_ = None, sens, keyOp, name
 
 
@@ -1567,7 +1569,7 @@ class SensSetEP:
     self.currentSet_ = self.sensSets_[idx]
     self.print_set_()
 
-  def __init__(self, sensSets, keyOp = lambda event : (SourceTypeCode(event.source, event.type, event.code), SourceTypeCode(None, event.type, event.code)), initial=0, makeName=lambda k : stc2fn(*k)):
+  def __init__(self, sensSets, keyOp = lambda event : (DevTypeCode(event.idev, event.type, event.code), DevTypeCode(None, event.type, event.code)), initial=0, makeName=lambda k : dtc2fn(*k)):
     self.next_, self.sensSets_, self.keyOp_, self.makeName_ = None, sensSets, keyOp, makeName
     self.currentSet_ = None if sensSets is None or len(sensSets) == 0 else sensSets[initial]
 
@@ -1584,16 +1586,16 @@ class SensSetEP:
 class MappingEP:
   """Maps events."""
   def __call__(self, event):
-    frm = SourceTypeCode(event.source, event.type, event.code)
+    frm = DevTypeCode(event.idev, event.type, event.code)
     to = self.mapping_.get(frm, None)
     if to is not None:
-      event.source, event.type, event.code = to.source, to.type, to.code
+      event.idev, event.type, event.code = to.idev, to.type, to.code
     try:
       if self.next_ is not None:
         return self.next_(event)
     finally:
       if to is not None:
-        event.source, event.type, event.code = frm.source, frm.type, frm.code
+        event.idev, event.type, event.code = frm.idev, frm.type, frm.code
 
   def set_next(self, next):
     self.next_ = next
@@ -1630,14 +1632,14 @@ class CalibratingEP:
     self.sens_ = {}
     logger.info("Calibration reset")
 
-  def __init__(self, makeName=lambda k : stc2fn(*k)):
+  def __init__(self, makeName=lambda k : dtc2fn(*k)):
     self.next_, self.sens_, self.mode_ = None, {}, 0
     self.makeName_ = makeName
 
   def process_event_(self, event):
     if self.next_ is not None:
       if event.type in (codes.EV_REL, codes.EV_ABS):
-        sens = self.sens_.get((event.type, event.source, event.code), 1.0)
+        sens = self.sens_.get((event.type, event.idev, event.code), 1.0)
         event.value *= sens
       return self.next_(event)
     else:
@@ -1645,7 +1647,7 @@ class CalibratingEP:
 
   def gather_data_(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
-      k = (event.source, event.type, event.code)
+      k = (event.idev, event.type, event.code)
       d = self.sens_.get(k, None)
       if d is None:
         class Data:
@@ -1672,7 +1674,7 @@ class CalibratingEP:
       if delta == 0.0: delta = 2.0
       s = 2.0 / delta
       self.sens_[k] = s
-      #logger.debug("{}: min:{}, max:{}, delta:{}".format(stc2fn(k[1], k[0], k[2]), d.min, d.max, delta))
+      #logger.debug("{}: min:{}, max:{}, delta:{}".format(dtc2fn(k[1], k[0], k[2]), d.min, d.max, delta))
       logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
@@ -1861,7 +1863,7 @@ class CmpPropTest(PropTest):
 def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
   """
   Returns False if some event modifiers were unmatched, else True.
-  KEY_ANY matches all keys (from given source if source is specified),
+  KEY_ANY matches all keys (from given idev if idev is specified),
   so it should be specified last in modifier descs.
   """
   r = False
@@ -1877,9 +1879,9 @@ def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
       #if eventModifiers is None and attrModifierDescs requires a modifier to be missing
       if eventModifiers is not None:
         for em in eventModifiers:
-          sourceFound = am.source is None or am.source == em.source
+          idevFound = am.idev is None or am.idev == em.idev
           codeFound = am.code == codes.KEY_ANY or am.code == em.code
-          found = sourceFound and codeFound
+          found = idevFound and codeFound
           if found:
             break
       if am.state == False:
@@ -2029,9 +2031,9 @@ class FilterEP:
    self.op_, self.next_ = op, next
 
 
-class SourceFilterOp:
+class IDevFilterOp:
   def __call__(self, event):
-    return not (not self.state_ and getattr(event, "source", None) in self.sources_)
+    return not (not self.state_ and getattr(event, "idev", None) in self.idevs_)
 
   def set_state(self, state):
    self.state_ = state
@@ -2039,8 +2041,8 @@ class SourceFilterOp:
   def get_state(self):
    return self.state_
 
-  def __init__(self, sources, state=True):
-    self.sources_, self.state_ = [get_source_hash(s) for s in sources], state
+  def __init__(self, idevs, state=True):
+    self.idevs_, self.state_ = [get_dev_hash(s) for s in idevs], state
 
 
 class ModeInitEvent(Event):
@@ -2305,7 +2307,7 @@ class ModeEPModeManager:
 class MultiCurveEP:
   def __call__(self, event):
     if event.type in (codes.EV_REL,):
-      k = (event.source, event.code)
+      k = (event.idev, event.code)
       self.events_.setdefault(k, [])
       #Have to store selected properties of event but not reference to event itself,
       #because event properties might be modified before update() is called
@@ -4236,7 +4238,7 @@ class MetricsJoystick:
         continue
       error = abs(d[0] - d[1])
       d[2] = 0.5*error + 0.5*d[2]
-      print("{}: {: .3f} {: .3f}".format(stc2fn(None, tcAxis.type, tcAxis.code), error, d[2]))
+      print("{}: {: .3f} {: .3f}".format(dtc2fn(None, tcAxis.type, tcAxis.code), error, d[2]))
 
   def reset(self):
     for a in self.data_:
@@ -4696,7 +4698,7 @@ class Info:
           if s in ("+", "-"):
             vp = vp[1:]
             sm = 1.0 if s == "+" else -1.0
-          outputName, tAxis, cAxis = fn2stc(vp)
+          outputName, tAxis, cAxis = fn2dtc(vp)
           tcAxis = TypeCode(tAxis, cAxis)
           if self.get_output_ is None:
             raise RuntimeError("Outputs locator is not set")
@@ -4866,9 +4868,9 @@ class Info:
       Info.EntriesArea.__init__(self, **kwargs)
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
       self.get_output_ = kwargs["getOutput"]
-      source = kwargs.get("source", None)
-      if source is not None:
-        self.add_buttons_from(source, **kwargs)
+      idev = kwargs.get("idev", None)
+      if idev is not None:
+        self.add_buttons_from(idev, **kwargs)
   class AxisValue:
     def grid(self, **kwargs):
       self.frame_.grid(**kwargs)
@@ -4905,9 +4907,9 @@ class Info:
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
       self.get_output_ = kwargs["getOutput"]
-      source = kwargs.get("source", None)
-      if source is not None:
-        self.add_axes_from(source, **kwargs)
+      idev = kwargs.get("idev", None)
+      if idev is not None:
+        self.add_axes_from(idev, **kwargs)
   class ValueArea:
     def update(self):
       v = self.var_.get()
@@ -5072,7 +5074,7 @@ def init_main_ep(state):
     bottomEP.set_next(mappingEP)
     bottomEP = mappingEP
   defaultModifierDescs = [
-    SourceCodeState(None, m, True) for m in
+    DevCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = state.resolve_d(config, "modifiers", None)
@@ -5084,12 +5086,12 @@ def init_main_ep(state):
   holdEP = clickEP.set_next(HoldEP())
   for hd in holdDataCfg:
     keyFullName = state.resolve_d(hd, "key", None)
-    keySource, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
+    keyIDev, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
     modifiers = state.resolve_d(hd, "modifiers", None)
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
     num = state.resolve_d(hd, "num", -1)
-    holdEP.add(keySource, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
+    holdEP.add(keyIDev, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
   main.get("updated").append(lambda tick,ts : holdEP.update(tick, ts))
 
   sensSetsCfg = state.resolve_d(config, "sens", None)
@@ -5109,8 +5111,8 @@ def init_main_ep(state):
   released = state.resolve_d(config, "released", [])
   for i in range(len(released)):
     released[i] = state.deref(released[i])
-  sourceFilterOp = SourceFilterOp(released)
-  filterEP = stateEP.set_next(FilterEP(sourceFilterOp))
+  idevFilterOp = IDevFilterOp(released)
+  filterEP = stateEP.set_next(FilterEP(idevFilterOp))
   namesOfReleasedStr = ", ".join(released)
 
   def print_ungrabbed(event):
@@ -5142,7 +5144,7 @@ def init_main_ep(state):
   actionParser.add("exit", parseExit)
 
   def parseEnable(cfg, state):
-    callbacks = (SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
+    callbacks = (SetState(idevFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
     def op(event):
       if stateEP.get_state() and not enabled[0]:
         for cb in callbacks:
@@ -5152,7 +5154,7 @@ def init_main_ep(state):
   actionParser.add("enable", parseEnable)
 
   def parseDisable(cfg, state):
-    callbacks2 = (SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
+    callbacks2 = (SetState(idevFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
     def op(event):
       if stateEP.get_state() and enabled[0]:
         for cb in callbacks2:
@@ -6160,7 +6162,7 @@ def make_parser():
       def op(e):
         scaleEP.set_sens(htc, value)
         name = scaleEP.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleEP.get_sens(htc)))
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.idev, htc.type, htc.code), scaleEP.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
@@ -6177,7 +6179,7 @@ def make_parser():
         sens += delta
         scaleEP.set_sens(htc, sens)
         name = scaleEP.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleEP.get_sens(htc)))
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.idev, htc.type, htc.code), scaleEP.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
@@ -6267,7 +6269,7 @@ def make_parser():
 
   def parseSetKeyState_(cfg, state, s):
     fnKey = state.resolve(cfg, "key")
-    nOutput, cKey = fn2sc(fnKey)
+    nOutput, cKey = fn2dc(fnKey)
     output = state.get("main").get("outputs").get(nOutput)
     if output is None:
       raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
@@ -6288,7 +6290,7 @@ def make_parser():
 
   def parseClick(cfg, state):
     fnKey = state.resolve(cfg, "key")
-    nOutput, cKey = fn2sc(fnKey)
+    nOutput, cKey = fn2dc(fnKey)
     output = state.get("main").get("outputs").get(nOutput)
     if output is None:
       raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
@@ -6679,10 +6681,10 @@ def make_parser():
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    sourceHash, eventType, key = fn2htc(state.resolve(cfg, "key"))
+    idevHash, eventType, key = fn2htc(state.resolve(cfg, "key"))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(key)), ("value", EqPropTest(value))]
-    if sourceHash is not None:
-      r.append(("source", EqPropTest(sourceHash)))
+    if idevHash is not None:
+      r.append(("idev", EqPropTest(idevHash)))
     return r
 
   @make_et
@@ -6734,10 +6736,10 @@ def make_parser():
 
   @make_et
   def parseMove(cfg, state):
-    sourceHash, eventType, axis = fn2htc(state.resolve(cfg, "axis"))
+    idevHash, eventType, axis = fn2htc(state.resolve(cfg, "axis"))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(axis))]
-    if sourceHash is not None:
-      r.append(("source", EqPropTest(sourceHash)))
+    if idevHash is not None:
+      r.append(("idev", EqPropTest(idevHash)))
     value = get_nested_d(cfg, "value")
     if value is not None:
       gt = lambda eventValue, attrValue : cmp(eventValue, attrValue) > 0
@@ -6810,7 +6812,7 @@ def make_parser():
       else:
         return eq(ev, pv)
     for p in  (
-      ("source", get_source_hash, eq),
+      ("idev", get_dev_hash, eq),
       ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x, eq),
       ("value", lambda x : x, eq_dict)
     ):
@@ -7051,12 +7053,12 @@ def make_parser():
     outputs = state.get("main").get("outputs")
     j = MappingJoystick()
     for fromAxis,to in state.resolve_d(cfg, "axisMapping", {}).items():
-      toJoystick, toAxis = fn2sc(state.resolve(to, "to"))
+      toJoystick, toAxis = fn2dc(state.resolve(to, "to"))
       toJoystick = get_or_make_output(toJoystick, state)
       factor = state.resolve_d(to, "factor", 1.0)
       j.add_axis(fn2tc(fromAxis), toJoystick, toAxis, factor)
     for fromButton,to in state.resolve_d(cfg, "buttonMapping", {}).items():
-      toJoystick, toButton = fn2sc(state.resolve(to, "to"))
+      toJoystick, toButton = fn2dc(state.resolve(to, "to"))
       toJoystick = get_or_make_output(toJoystick, state)
       negate = state.resolve_d(to, "negate", False)
       j.add_button(name2code(fromButton), toJoystick, toButton, negate)
@@ -7353,8 +7355,8 @@ class Main:
           logger.error("Cannot create pose '{}' ({})".format(poseName, e))
 
   def init_source(self, state):
-    source = self.get("parser")("source", self.get("config"), state)
-    self.set("source", source)
+    idev = self.get("parser")("source", self.get("config"), state)
+    self.set("source", idev)
 
   def init_main_ep(self, state):
     ep = init_main_ep(state)
@@ -7493,7 +7495,7 @@ class Main:
 
   def get_axis_by_full_name(self, fnAxis):
     allAxes = self.get("axes")
-    outputName, tAxis, cAxis = fn2stc(fnAxis)
+    outputName, tAxis, cAxis = fn2dtc(fnAxis)
     tcAxis = TypeCode(tAxis, cAxis)
     outputAxes = allAxes.setdefault(outputName, {})
     axis = None

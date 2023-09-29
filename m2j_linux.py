@@ -266,8 +266,8 @@ class EvdevJoystick:
       self.dirty_ = False
 
 
-def translate_evdev_event(evdevEvent, source):
-  return None if evdevEvent is None else InputEvent(ecode2code(evdevEvent.type), ecode2code(evdevEvent.code), evdevEvent.value, evdevEvent.timestamp(), source)
+def translate_evdev_event(evdevEvent, idev):
+  return None if evdevEvent is None else InputEvent(ecode2code(evdevEvent.type), ecode2code(evdevEvent.code), evdevEvent.value, evdevEvent.timestamp(), idev)
 
 
 class EvdevDevice:
@@ -278,19 +278,19 @@ class EvdevDevice:
       evdevEvent = self.dev_.read_one()
       while (evdevEvent is not None) and (evdevEvent.type in (0, 4)):
         evdevEvent = self.dev_.read_one()
-      event = translate_evdev_event(evdevEvent, self.sourceHash_)
+      event = translate_evdev_event(evdevEvent, self.idevHash_)
       if event is None:
         if self.numEvents_ != 0:
-          #logger.debug("{}: {} got {} events".format(self, self.sourceName_, self.numEvents_))
+          #logger.debug("{}: {} got {} events".format(self, self.idevName_, self.numEvents_))
           self.numEvents_ = 0
       else:
-        #logger.debug("{}: {} read event: {}".format(self, self.sourceName_, event))
+        #logger.debug("{}: {} read event: {}".format(self, self.idevName_, event))
         self.numEvents_ += 1
       return event
     except IOError as e:
       self.numEvents_ = 0
       self.dev_ = None
-      logger.error("{}: device is not ready: {}".format(self.sourceName_, e))
+      logger.error("{}: device is not ready: {}".format(self.idevName_, e))
 
   def swallow(self, s):
     self.state_ = s
@@ -305,9 +305,9 @@ class EvdevDevice:
       #IOError is expected
       pass
 
-  def __init__(self, dev, source, recreateOp=lambda : None):
-    self.dev_, self.sourceName_, self.recreateOp_ = dev, source, recreateOp
-    self.sourceHash_ = register_source(source)
+  def __init__(self, dev, idev, recreateOp=lambda : None):
+    self.dev_, self.idevName_, self.recreateOp_ = dev, idev, recreateOp
+    self.idevHash_ = register_dev(idev)
     self.numEvents_ = 0
     self.state_ = False
 
@@ -317,7 +317,7 @@ class EvdevDevice:
     dev = self.recreateOp_()
     if dev is not None:
       self.dev_ = dev
-      logger.info("{}: device is ready".format(self.sourceName_))
+      logger.info("{}: device is ready".format(self.idevName_))
       self.swallow(self.state_)
       return True
     else:
@@ -362,9 +362,9 @@ class NativeEvdevDeviceFactory:
   identifierRe_ = re.compile("([^:]*):(.*)")
 
 
-def init_sources(sourcesCfg, makeDevice=lambda native,source,recreateOp : EvdevDevice(native, source, recreateOp), deviceUpdatePeriod=2):
+def init_idevs(idevsCfg, makeDevice=lambda native,idev,recreateOp : EvdevDevice(native, idev, recreateOp), deviceUpdatePeriod=2):
   """
-  Initializes source devices.
+  Initializes idev devices.
   Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
   """
   nativeDevFactory = NativeEvdevDeviceFactory()
@@ -384,14 +384,14 @@ def init_sources(sourcesCfg, makeDevice=lambda native,source,recreateOp : EvdevD
       return nativeDevFactory.make_device(identifier, update=True)
     return op
   r = {}
-  for source,identifier in sourcesCfg.items():
+  for idev,identifier in idevsCfg.items():
     nativeDevice = nativeDevFactory.make_device(identifier)
     recreateOp=make_recreate_op(identifier=identifier, deviceUpdatePeriod=deviceUpdatePeriod)
-    r[source] = makeDevice(nativeDevice, source, recreateOp=recreateOp)
+    r[idev] = makeDevice(nativeDevice, idev, recreateOp=recreateOp)
     if nativeDevice:
-      logger.info("Found device {} ({})".format(source, identifier))
+      logger.info("Found device {} ({})".format(idev, identifier))
     else:
-      logger.warning("Device {} ({}) not found".format(source, identifier))
+      logger.warning("Device {} ({}) not found".format(idev, identifier))
   return r
 
 
@@ -437,17 +437,17 @@ def parseEvdevEventSource(cfg, state):
   config = state.get("main").get("config")
   compressEvents = config.get("compressSourceEvents", False)
   deviceUpdatePeriod = config.get("missingSourceUpdatePeriod", 2)
-  def make_device(native, source, recreateOp):
-    dev = EvdevDevice(native, source, recreateOp)
+  def make_device(native, idev, recreateOp):
+    dev = EvdevDevice(native, idev, recreateOp)
     if compressEvents:
       dev = EventCompressorDevice(dev)
     return dev
-  sources = init_sources(config.get("sources", {}), make_device, deviceUpdatePeriod)
-  return EventSource(sources, None)
+  idevs = init_idevs(config.get("idevs", {}), make_device, deviceUpdatePeriod)
+  return EventSource(idevs, None)
 
 
 def print_devices(fname, **kwargs):
-  """Prints source devices info."""
+  """Prints idev devices info."""
   r = []
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:

@@ -1330,19 +1330,19 @@ class RawInputEventSource:
           raw = cast(buf, POINTER(RAWINPUT)).contents
           hd = raw.header.hDevice
           if hd in self.devs_:
-            sourceHash = self.devs_[hd].hash
+            idevHash = self.devs_[hd].hash
             events = None
             if raw.header.dwType == RIM_TYPEMOUSE:
               #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
               #logger.debug("{}: Got mouse event".format(self))
-              events = self.make_mouse_event_(raw, sourceHash)
+              events = self.make_mouse_event_(raw, idevHash)
             elif raw.header.dwType == RIM_TYPEKEYBOARD:
               #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
               #logger.debug("{}: Got keyboard event".format(self))
-              events = self.make_kbd_event_(raw, sourceHash)
+              events = self.make_kbd_event_(raw, idevHash)
             elif raw.header.dwType == RIM_TYPEHID:
               #logger.debug("{}: Got HID event".format(self))
-              events = self.make_hid_event_(raw, sourceHash)
+              events = self.make_hid_event_(raw, idevHash)
             if events is not None:
               for e in events:
                 #logger.debug("{}: sending event: {}".format(self, e))
@@ -1350,7 +1350,7 @@ class RawInputEventSource:
       else:
         windll.user32.DispatchMessageA(byref(msg))
 
-  def track_device(self, name, source):
+  def track_device(self, name, idev):
     devices = self.get_devices()
     for d in devices:
       if d.name == name:
@@ -1368,13 +1368,13 @@ class RawInputEventSource:
         class DevInfo:
           pass
         di = DevInfo()
-        di.source, di.hash = source, register_source(source)
+        di.idev, di.hash = idev, register_dev(idev)
         if d.usage == HID_USAGE_GENERIC_JOYSTICK:
           self.init_hid_(d.handle, di)
         self.devs_[d.handle] = di
-        logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, source, d.usagePage, d.usage))
+        logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, idev, d.usagePage, d.usage))
         return
-    raise RuntimeError("Device {} ({}) not found".format(name, source))
+    raise RuntimeError("Device {} ({}) not found".format(name, idev))
 
   def swallow(self, name, s):
     pass
@@ -1436,23 +1436,23 @@ class RawInputEventSource:
       windll.user32.PostQuitMessage(0)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
 
-  def make_mouse_event_(self, raw, source):
+  def make_mouse_event_(self, raw, idev):
     ts, events = time.time(), []
     mouse = raw.mouse
     usButtonFlags = mouse._u1._s2.usButtonFlags
     if mouse.usFlags & MOUSE_MOVE_RELATIVE == MOUSE_MOVE_RELATIVE:
       if mouse.lLastX != 0:
-        events.append(InputEvent(codes.EV_REL, codes.REL_X, mouse.lLastX, ts, source))
+        events.append(InputEvent(codes.EV_REL, codes.REL_X, mouse.lLastX, ts, idev))
       if mouse.lLastY != 0:
-        events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, source))
+        events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, idev))
     elif mouse.usFlags & MOUSE_MOVE_ABSOLUTE == MOUSE_MOVE_ABSOLUTE:
-      events.append(InputEvent(codes.EV_ABS, codes.ABS_X, mouse.lLastX, ts, source))
-      events.append(InputEvent(codes.EV_ABS, codes.ABS_Y, mouse.lLastY, ts, source))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_X, mouse.lLastX, ts, idev))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_Y, mouse.lLastY, ts, idev))
     if usButtonFlags & RI_MOUSE_WHEEL:
       #usButtonData is actually a signed value, and ctypes support only pointer casts,
       #so converting it this way
       delta = cast(pointer(USHORT(mouse._u1._s2.usButtonData)), POINTER(SHORT)).contents.value
-      events.append(InputEvent(codes.EV_REL, codes.REL_WHEEL, delta, ts, source))
+      events.append(InputEvent(codes.EV_REL, codes.REL_WHEEL, delta, ts, idev))
     codeMapping = (
       (RI_MOUSE_LEFT_BUTTON_DOWN, codes.BTN_LEFT, 1),
       (RI_MOUSE_LEFT_BUTTON_UP, codes.BTN_LEFT, 0),
@@ -1468,20 +1468,20 @@ class RawInputEventSource:
     )
     for cm in codeMapping:
       if usButtonFlags & cm[0]:
-        events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, source))
+        events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, idev))
     return events
 
-  def make_kbd_event_(self, raw, source):
+  def make_kbd_event_(self, raw, idev):
     #skipping invalid event
     if raw.keyboard.VKey == 0xFF:
       return ()
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
     #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
-    r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, source)
+    r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, idev)
     return (r,)
 
-  def make_hid_event_(self, raw, source):
+  def make_hid_event_(self, raw, idev):
     def au2c(usage):
       """Maps axis usage to code."""
       mapping = {
@@ -1547,7 +1547,7 @@ class RawInputEventSource:
           et, buttonValues[i] = 0, 0
         if et is not None:
           buttonCode = bu2c(idx2bu(i))
-          events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, source))
+          events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, idev))
     #axes
     valueCaps = deviceInfo.valueCaps
     for i in range(len(valueCaps)):
@@ -1572,7 +1572,7 @@ class RawInputEventSource:
         if eventType is not None:
           #Assuming that axis codes for absolute and relative axes match
           axisCode = au2c(usage)
-          events.append(InputEvent(eventType, axisCode, value.value, ts, source))
+          events.append(InputEvent(eventType, axisCode, value.value, ts, idev))
     return events
 
 
@@ -1631,7 +1631,7 @@ def parseRawInputEventSource(cfg, state):
   main = state.get("main")
   config = main.get("config")
   source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
-  for s,n in config["sources"].items():
+  for s,n in config["idevs"].items():
     try:
       source.track_device(n, s)
     except RuntimeError as e:
