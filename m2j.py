@@ -6629,11 +6629,19 @@ def make_parser():
   actionParser.add("setValueItem", parseSetValueItem)
 
   def parseSetValue(cfg, state):
+    def copy(v):
+      tv = type(v)
+      if tv in (list,):
+        return v[:]
+      elif tv in (dict, collections.OrderedDict):
+        return {k:copy(vv) for k,vv in v.items()}
+      else:
+        return v
     value = state.resolve(cfg, "name")
     v = state.resolve(cfg, "value")
     values = get_component("values", cfg, state)
     def callback(e):
-      values.set_value(value, v)
+      values.set_value(value, copy(v))
       return True
     return callback
   actionParser.add("setValue", parseSetValue)
