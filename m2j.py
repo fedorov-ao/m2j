@@ -5006,7 +5006,49 @@ def init_info(**kwargs):
   return info
 
 
-def init_main_sink(state, make_next):
+class NextSink:
+  def __call__(self, event):
+    return self.next_(event) if self.next_ is not None else False
+
+  def set_next(self, nxt):
+    self.next_ = nxt
+
+  def __init__(self, nxt=None):
+    self.next_ = nxt
+
+
+class MainSink:
+  def __call__(self, event):
+    return self.top_(event) if self.top_ is not None else False
+
+  def set_top(self, top):
+    self.top_ = top
+
+  def set_bottom(self, bottom):
+    self.bottom_ = bottom
+
+  def set_next(self, nxt):
+    if self.bottom_ is not None:
+      self.bottom_.set_next(nxt)
+
+  def set_state(self, state):
+    self.state_ = state
+    for stateful in self.stateful_:
+      stateful.set_state(state)
+
+  def get_state(self):
+    return self.state_
+
+  def add_stateful(self, stateful):
+    self.stateful_.append(stateful)
+
+  def __init__(self, top=None, bottom=None, stateful=None, state=False):
+    self.top_, self.bottom_ = top, bottom
+    self.stateful_ = [st for st in stateful] if stateful is not None else []
+    self.state_ = state
+
+
+def init_main_sink(state):
   #logger.debug("init_main_sink()")
   main = state.get("main")
   config = main.get("config")
@@ -5014,6 +5056,8 @@ def init_main_sink(state, make_next):
   headSink = HeadSink()
   state.push("sinks", headSink)
   topSink = bottomSink = headSink
+  mainSink = MainSink()
+  mainSink.set_top(topSink)
   mappingSink = state.get("parser").get("sc").get("mapping")(config, state)
   if mappingSink is not None:
     bottomSink.set_next(mappingSink)
@@ -5050,22 +5094,8 @@ def init_main_sink(state, make_next):
       sens[fn2htc(state.deref(s[0]))] = state.deref(s[1])
   scaleSink = holdSink.set_next(ScaleSink2(sens))
 
-  class Toggler:
-    def make_toggle(self):
-      def op(event):
-        self.sink_.set_state(not self.sink_.get_state())
-        self.s_ = not self.s_
-      return op
-    def make_set_state(self, state):
-      def op(event):
-        if self.s_:
-          self.sink_.set_state(state)
-      return op
-    def __init__(self, sink):
-      self.sink_, self.s_ = sink, False
-
   stateSink = StateSink()
-  toggler = Toggler(stateSink)
+  mainSink.add_stateful(stateSink)
 
   released = state.resolve_d(config, "released", [])
   for i in range(len(released)):
@@ -5085,12 +5115,13 @@ def init_main_sink(state, make_next):
   actionParser = main.get("parser").get("action")
 
   def parseToggle(cfg, state):
-    return toggler.make_toggle()
+    def op(event):
+      mainSink.set_state(not mainSink.get_state())
+    return op
   actionParser.add("toggle", parseToggle)
 
   def parseReload(cfg, state):
     def op(e):
-      main.set("state", stateSink.get_state())
       raise ReloadException()
     return op
   actionParser.add("reload", parseReload)
@@ -5175,14 +5206,17 @@ def init_main_sink(state, make_next):
     for tcAxis, axis in oAxes.items():
       axis.remove_all_listeners()
 
-  grabSink.add(None, make_next(state), 1)
-  if main.get("reloading") == False:
-    main.set("state", state.resolve_d(config, "initialState", False))
-  stateSink.set_state(main.get("state"))
-  toggler.s_ = stateSink.get_state()
+  nextSink = NextSink()
+  grabSink.add(None, nextSink, 1)
+
+  mainSink.set_bottom(nextSink)
+
+  initialState = state.resolve_d(config, "initialState", False)
+  mainSink.set_state(initialState)
+
   logger.info("Initialization successfull")
 
-  return topSink
+  return mainSink
 
 
 class ConfigReadError(RuntimeError):
@@ -7302,10 +7336,17 @@ class Main:
           logger.error("Cannot create pose '{}' ({})".format(poseName, e))
 
   def init_source(self, state):
-    #TODO Use dedicated config section for source?
-    self.set("source", self.get("parser")("source", self.get("config"), state))
-    sink = init_main_sink(state, init_preset_config)
+    source = self.get("parser")("source", self.get("config"), state)
+    self.set("source", source)
+
+  def init_main_sink(self, state):
+    sink = init_main_sink(state)
+    self.set("mainSink", sink)
     self.get("source").set_sink(sink)
+
+  def init_worker_sink(self, state):
+    sink = init_preset_config(state)
+    self.get("mainSink").set_next(sink)
 
   def init_loop(self, state):
     refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0)
@@ -7330,7 +7371,7 @@ class Main:
       state = ParserState(self)
       self.init_vars(state)
       self.init_poses(state)
-      self.init_source(state)
+      self.init_worker_sink(state)
       self.init_loop(state)
       self.set("reloading", False)
     except Exception as e:
@@ -7389,6 +7430,8 @@ class Main:
     state = ParserState(self)
     self.init_log(state)
     self.init_outputs(state)
+    self.init_source(state)
+    self.init_main_sink(state)
     self.init_sounds(state)
 
   def run(self):
@@ -7468,6 +7511,7 @@ class Main:
     self.props_ = {}
     self.props_["reloading"] = False
     self.props_["source"] = None
+    self.props_["mainSink"] = None
     self.props_["config"] = None
     self.props_["parser"] = parser
     self.props_["updated"] = []
@@ -7475,7 +7519,6 @@ class Main:
     self.props_["axesToNames"] = {}
     self.props_["outputs"] = {}
     self.props_["sounds"] = {}
-    self.props_["state"] = False
     self.props_["numTraceLines"] = 0
     self.props_["soundPlayer"] = SoundPlayer()
     self.props_["varManager"] = VarManager()
