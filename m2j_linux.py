@@ -489,7 +489,7 @@ if __name__ == "__main__":
   try:
     main = Main(print_devices=print_devices)
     parser = main.get("parser")
-    parser.get("output").add("evdev", parseEvdevJoystickOutput)
+    parser.get("odev").add("evdev", parseEvdevJoystickOutput)
     parser.add("source", parseEvdevEventSource)
     exit(main.run())
   except Exception as e:

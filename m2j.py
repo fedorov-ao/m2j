@@ -295,7 +295,7 @@ class ParserState:
         if n is not None:
           o = parser(n, v, self)
         else:
-          for n in ("literal", "func", "curve", "action", "et", "output", "var"):
+          for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
             if n in v:
               o = parser(n, v, self)
               #break is needed to avoid executing the "else" block
@@ -1239,10 +1239,10 @@ def MoveAxisByEvent(axis):
   return op
 
 
-def SetButtonState(output, button, state):
+def SetButtonState(odev, button, state):
   def op(event):
-    output.set_button_state(button, state)
-    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(output, dtc2fn(None, codes.EV_KEY, button), button, state))
+    odev.set_button_state(button, state)
+    #logger.debug("Setting {} key {} (0x{:X}) to {}".format(odev, dtc2fn(None, codes.EV_KEY, button), button, state))
     return True
   return op
 
@@ -4698,18 +4698,18 @@ class Info:
           if s in ("+", "-"):
             vp = vp[1:]
             sm = 1.0 if s == "+" else -1.0
-          outputName, tAxis, cAxis = fn2dtc(vp)
+          odevName, tAxis, cAxis = fn2dtc(vp)
           tcAxis = TypeCode(tAxis, cAxis)
-          if self.get_output_ is None:
-            raise RuntimeError("Outputs locator is not set")
-          output = self.get_output_(outputName)
-          if output is None:
-            raise RuntimeError("Cannot get output '{}'".format(outputName))
+          if self.get_odev_ is None:
+            raise RuntimeError("ODev locator is not set")
+          odev = self.get_odev_(odevName)
+          if odev is None:
+            raise RuntimeError("Cannot get odev '{}'".format(odevName))
           if scale is None:
-            limits = output.get_limits(tcAxis)
+            limits = odev.get_limits(tcAxis)
             scale = 0.0 if limits[0] == limits[1] else 2.0 / abs(limits[1] - limits[0])
           scale *= sm
-          return lambda : scale*output.get_axis_value(tcAxis)
+          return lambda : scale*odev.get_axis_value(tcAxis)
         elif type(vp) in (int, float):
           return lambda : vp
         else:
@@ -4753,7 +4753,7 @@ class Info:
       canvas.pack()
       canvas.pack_configure(expand=True, fill=fill)
       self.markers_ = []
-      self.get_output_ = kwargs.get("getOutput", None)
+      self.get_odev_ = kwargs.get("getODev", None)
     def create_shapes_(self, shapeType, **kwargs):
       size = kwargs.get("size", (11, 11))
       color = kwargs.get("color", "white")
@@ -4854,20 +4854,20 @@ class Info:
         return self.output_.get_button_state(self.buttonID_)
       def __init__(self, output, buttonID):
         self.output_, self.buttonID_ = output, buttonID
-    def add_buttons_from(self, output, **kwargs):
-      output = self.get_output_(output) if type(output) in (str, unicode) else output
-      if output is None:
+    def add_buttons_from(self, odev, **kwargs):
+      odev = self.get_odev_(odev) if type(odev) in (str, unicode) else odev
+      if odev is None:
         return
-      buttonIDs = output.get_supported_buttons()
+      buttonIDs = odev.get_supported_buttons()
       for buttonID in buttonIDs:
         name = str(buttonID - codes.BTN_0)
-        getButtonState = self.GetButtonState(output, buttonID)
+        getButtonState = self.GetButtonState(odev, buttonID)
         button = Info.Button(master=self.frame_, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
-      self.get_output_ = kwargs["getOutput"]
+      self.get_odev_ = kwargs["getODev"]
       idev = kwargs.get("idev", None)
       if idev is not None:
         self.add_buttons_from(idev, **kwargs)
@@ -4893,20 +4893,20 @@ class Info:
       def __init__(self, output, tcAxis):
         self.output_, self.tcAxis_ = output, tcAxis
     def add_axes_from(self, output, **kwargs):
-      output = self.get_output_(output) if type(output) in (str, unicode) else output
-      if output is None:
+      odev = self.get_odev_(output) if type(output) in (str, unicode) else output
+      if odev is None:
         return
-      tcAxiss = output.get_supported_axes()
+      tcAxiss = odev.get_supported_axes()
       tcAxiss.sort(key=lambda tc : tc.code)
       for tcAxis in tcAxiss:
         namesList=tc2ns(*tcAxis)
         name=namesList[0][4:]
-        getAxisValue = self.GetAxisValue(output, tcAxis)
+        getAxisValue = self.GetAxisValue(odev, tcAxis)
         axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
       Info.EntriesArea.__init__(self, **kwargs)
-      self.get_output_ = kwargs["getOutput"]
+      self.get_odev_ = kwargs["getODev"]
       idev = kwargs.get("idev", None)
       if idev is not None:
         self.add_axes_from(idev, **kwargs)
@@ -4929,7 +4929,7 @@ class Info:
       self.update()
 
   def add_area(self, **kwargs):
-    kwargs["getOutput"] = self.get_output_
+    kwargs["getODev"] = self.get_odev_
     area = None
     r, c = kwargs["r"], kwargs["c"]
     t = kwargs["type"]
@@ -4964,7 +4964,7 @@ class Info:
       self.w_.update()
   def __init__(self, **kwargs):
     self.state_, self.areas_ = False, []
-    self.get_output_ = kwargs.get("getOutput")
+    self.get_odev_ = kwargs.get("getODev")
     self.w_ = tk.Tk()
     self.w_.title(kwargs.get("title", ""))
     self.w_.propagate(True)
@@ -4985,17 +4985,17 @@ def init_info(**kwargs):
       for markerCfg in state.resolve_d(areaCfg, "markers", ()):
         try:
           area.add_marker(**markerCfg)
-        except Exception as e:
+        except RuntimeError as e:
           logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
   state = kwargs["state"]
   main = kwargs.get("main")
-  outputs = main.get("outputs")
-  getOutput = lambda name : outputs.get(name, None)
+  odevs = main.get("odevs")
+  getODev = lambda name : odevs.get(name, None)
 
   infoCfg = kwargs["cfg"]
   f = state.resolve_d(infoCfg, "format", 1)
   title = state.resolve_d(infoCfg, "title", "")
-  info = Info(title=title, getOutput=getOutput)
+  info = Info(title=title, getODev=getODev)
   areas = state.resolve_d(infoCfg, "areas", ())
   if f == 1:
     for areaCfg in areas:
@@ -6270,10 +6270,10 @@ def make_parser():
   def parseSetKeyState_(cfg, state, s):
     fnKey = state.resolve(cfg, "key")
     nOutput, cKey = fn2dc(fnKey)
-    output = state.get("main").get("outputs").get(nOutput)
-    if output is None:
-      raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
-    return SetButtonState(output, cKey, s)
+    odev = state.get("main").get("odevs").get(nOutput)
+    if odev is None:
+      raise RuntimeError("Cannot find key '{}' because odev '{}' is missing".format(fnKey, nOutput))
+    return SetButtonState(odev, cKey, s)
 
   def parseSetKeyState(cfg, state):
     s = int(state.resolve(cfg, "state"))
@@ -6290,10 +6290,10 @@ def make_parser():
 
   def parseClick(cfg, state):
     fnKey = state.resolve(cfg, "key")
-    nOutput, cKey = fn2dc(fnKey)
-    output = state.get("main").get("outputs").get(nOutput)
-    if output is None:
-      raise RuntimeError("Cannot find key '{}' because output '{}' is missing".format(fnKey, nOutput))
+    nODev, cKey = fn2dc(fnKey)
+    odev = state.get("main").get("odevs").get(nODev)
+    if odev is None:
+      raise RuntimeError("Cannot find key '{}' because odev '{}' is missing".format(fnKey, nODev))
     numClicks = int(state.resolve_d(cfg, "numClicks", 1))
     delay = float(state.resolve_d(cfg, "delay", 0.0))
     class Clicker:
@@ -6305,7 +6305,7 @@ def make_parser():
         else:
           self.timestamp_ = event.timestamp
           self.s_, self.i_ = 1, self.numClicks_
-          self.output_.set_button_state(self.key_, self.s_)
+          self.odev_.set_button_state(self.key_, self.s_)
         return True
       def on_update(self, tick, ts):
         if self.i_ == 0:
@@ -6317,11 +6317,11 @@ def make_parser():
             self.i_ -= 1
           else:
             self.s_ = 1
-          self.output_.set_button_state(self.key_, self.s_)
-      def __init__(self, output, key, numClicks, delay):
-        self.output_, self.key_, self.numClicks_, self.delay_ = output, key, numClicks, delay
+          self.odev_.set_button_state(self.key_, self.s_)
+      def __init__(self, odev, key, numClicks, delay):
+        self.odev_, self.key_, self.numClicks_, self.delay_ = odev, key, numClicks, delay
         self.timestamp_, self.i_ = None, 0
-    clicker = Clicker(output, cKey, numClicks, delay)
+    clicker = Clicker(odev, cKey, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
     state.get("main").get("updated").append(updateOp)
@@ -6907,7 +6907,7 @@ def make_parser():
         else:
           return 0
       r = 0
-      do = b.get("output", b.get("do", None))
+      do = b.get("odev", b.get("do", None))
       if type(do) is list:
         for d in do:
           r = max(r, checkDo(d))
@@ -6925,36 +6925,36 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
-  def outputParserKeyOp(cfg, state):
-    key = get_nested_d(cfg, "output", None)
+  def odevParserKeyOp(cfg, state):
+    key = get_nested_d(cfg, "odev", None)
     if key is None:
       key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting either \"output\" or \"type\" keys in {}".format(str2(cfg)))
+      raise RuntimeError("Was expecting either \"odev\" or \"type\" keys in {}".format(str2(cfg)))
     return key
-  outputParser = make_double_deref_parser(keyOp=outputParserKeyOp)
-  mainParser.add("output", outputParser)
+  odevParser = make_double_deref_parser(keyOp=odevParserKeyOp)
+  mainParser.add("odev", odevParser)
 
-  def get_or_make_output(name, state):
+  def get_or_make_odev(name, state):
     main = state.get("main")
-    outputs = main.get("outputs")
+    odevs = main.get("odevs")
     config = main.get("config")
-    j = outputs.get(name, None)
-    #TODO Redundant, because all outputs should be already created by init_outputs()?
+    j = odevs.get(name, None)
+    #TODO Redundant, because all outputs should be already created by init_odevs()?
     if j is None:
-      outputsCfg = state.resolve_d(config, "outputs", None)
-      if outputsCfg is None:
-        raise RuntimeError("Cannot find 'outputs' section in configs")
-      outputCfg = state.resolve_d(outputsCfg, name, None)
-      if outputCfg is None:
-        raise RuntimeError("Cannot find section for output '{}' in configs".format(name))
-      j = state.get("parser")("output", outputCfg, state)
-      outputs[name] = j
-    assert name in main.get("outputs")
+      odevs = state.resolve_d(config, "odevs", None)
+      if odevs is None:
+        raise RuntimeError("Cannot find 'odevs' section in configs")
+      odevCfg = state.resolve_d(odevCfg, name, None)
+      if odevCfg is None:
+        raise RuntimeError("Cannot find section for odev '{}' in configs".format(name))
+      j = state.get("parser")("odev", odevCfg, state)
+      odevs[name] = j
+    assert name in main.get("odevs")
     return j
 
   @make_reporting_joystick
-  def parseNullJoystickOutput(cfg, state):
+  def parseNullJoystickODev(cfg, state):
     values = get_nested_d(cfg, "values")
     if values is not None:
       values = {fn2tc(n) : v for n,v in values.items()}
@@ -6963,24 +6963,24 @@ def make_parser():
       limits = {fn2tc(n) : v for n,v in limits.items()}
     j = NullJoystick(values=values, limits=limits)
     return j
-  outputParser.add("null", parseNullJoystickOutput)
+  odevParser.add("null", parseNullJoystickODev)
 
-  def parseExternalOutput(cfg, state):
+  def parseExternalODev(cfg, state):
     name = state.resolve(cfg, "name")
-    return get_or_make_output(name, state)
-  outputParser.add("external", parseExternalOutput)
+    return get_or_make_odev(name, state)
+  odevParser.add("external", parseExternalODev)
 
   @make_reporting_joystick
-  def parseRateLimitOutput(cfg, state):
+  def parseRateLimitODev(cfg, state):
     rates = {fn2tc(nAxis):value for nAxis,value in state.resolve(cfg, "rates").items()}
-    next = state.get("parser")("output", state.resolve(cfg, "next"), state)
+    next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick))
     return j
-  outputParser.add("rateLimit", parseRateLimitOutput)
+  odevParser.add("rateLimit", parseRateLimitODev)
 
   @make_reporting_joystick
-  def parseRateSettingOutput(cfg, state):
+  def parseRateSettingODev(cfg, state):
     class TimeRateOp:
       def calc(self, value, timestamp):
         if value != self.value_ or self.timestamp_ is None:
@@ -7005,7 +7005,7 @@ def make_parser():
       def init(self, rate):
         self.rate_ = rate
     limits = {fn2tc(nAxis):value for nAxis,value in state.resolve(cfg, "limits").items()}
-    next = state.get("parser")("output", state.resolve(cfg, "next"), state)
+    next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
     rateOps = {}
     ratesCfg = state.resolve(cfg, "rates")
     for nAxis,rateOrCfg in ratesCfg.items():
@@ -7029,51 +7029,50 @@ def make_parser():
     j = RateSettingJoystick(next, rateOps, limits)
     state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
     return j
-  outputParser.add("rateSet", parseRateSettingOutput)
+  odevParser.add("rateSet", parseRateSettingODev)
 
   @make_reporting_joystick
-  def parseRelativeOutput(cfg, state):
-    next = state.get("parser")("output", state.resolve(cfg, "next"), state)
+  def parseRelativeODev(cfg, state):
+    next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
     j = RelativeHeadMovementJoystick(next=next, r=state.resolve_d(cfg, "clampRadius", float("inf")), stick=state.resolve_d(cfg, "stick", True))
     return j
-  outputParser.add("relative", parseRelativeOutput)
+  odevParser.add("relative", parseRelativeODev)
 
   @make_reporting_joystick
-  def parseCompositeOutput(cfg, state):
-    parser = state.get("parser").get("output")
+  def parseCompositeODev(cfg, state):
+    parser = state.get("parser").get("odev")
     children = parse_list(state.resolve(cfg, "children"), state, parser)
     checkChild = state.resolve(cfg, "checkChild")
     union = state.resolve(cfg, "union")
     j = CompositeJoystick(children=children, checkChild=checkChild, union=union)
     return j
-  outputParser.add("composite", parseCompositeOutput)
+  odevParser.add("composite", parseCompositeODev)
 
   @make_reporting_joystick
-  def parseMappingOutput(cfg, state):
-    outputs = state.get("main").get("outputs")
+  def parseMappingODev(cfg, state):
     j = MappingJoystick()
     for fromAxis,to in state.resolve_d(cfg, "axisMapping", {}).items():
       toJoystick, toAxis = fn2dc(state.resolve(to, "to"))
-      toJoystick = get_or_make_output(toJoystick, state)
+      toJoystick = get_or_make_odev(toJoystick, state)
       factor = state.resolve_d(to, "factor", 1.0)
       j.add_axis(fn2tc(fromAxis), toJoystick, toAxis, factor)
     for fromButton,to in state.resolve_d(cfg, "buttonMapping", {}).items():
       toJoystick, toButton = fn2dc(state.resolve(to, "to"))
-      toJoystick = get_or_make_output(toJoystick, state)
+      toJoystick = get_or_make_odev(toJoystick, state)
       negate = state.resolve_d(to, "negate", False)
       j.add_button(name2code(fromButton), toJoystick, toButton, negate)
     return j
-  outputParser.add("mapping", parseMappingOutput)
+  odevParser.add("mapping", parseMappingODev)
 
   @make_reporting_joystick
-  def parseOpentrackOutput(cfg, state):
+  def parseOpentrackODev(cfg, state):
     j = Opentrack(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")))
     state.get("main").get("updated").append(lambda tick,ts : j.send())
     return j
-  outputParser.add("opentrack", parseOpentrackOutput)
+  odevParser.add("opentrack", parseOpentrackODev)
 
   @make_reporting_joystick
-  def parseUdpJoystickOutput(cfg, state):
+  def parseUdpJoystickODev(cfg, state):
     packetMakers = {
       "il2" : make_il2_packet,
       "il2_6dof" : make_il2_6dof_packet,
@@ -7084,7 +7083,7 @@ def make_parser():
       j.set_limits(fn2tc(nAxis), l)
     state.get("main").get("updated").append(lambda tick,ts : j.send())
     return j
-  outputParser.add("udpJoystick", parseUdpJoystickOutput)
+  odevParser.add("udpJoystick", parseUdpJoystickODev)
 
   def parsePose(cfg, state):
     main = state.get("main")
@@ -7304,17 +7303,17 @@ class Main:
     logger.info("Configs loaded successfully")
     self.set("numTraceLines", config.get("numTraceLines", 0))
 
-  def init_outputs(self, state):
+  def init_odevs(self, state):
     nameParser = lambda key,state : key
     parser = self.get("parser")
-    outputParser = parser.get("output")
+    odevParser = parser.get("odev")
     def exception_handler(key, value, e):
       logger.error("Cannot create output '{}' ({})".format(key, e))
       return True
     orderOp = lambda i : state.resolve_d(i[1], "seq", 100000)
-    cfg = state.resolve(self.get("config"), "outputs")
+    cfg = state.resolve(self.get("config"), "odevs")
     state = ParserState(self)
-    parse_dict_live_ordered(self.get("outputs"), cfg, state=state, kp=nameParser, vp=outputParser, op=orderOp, update=False, exceptionHandler=exception_handler)
+    parse_dict_live_ordered(self.get("odevs"), cfg, state=state, kp=nameParser, vp=odevParser, op=orderOp, update=False, exceptionHandler=exception_handler)
 
   def init_sounds(self, state):
     soundsCfg = state.resolve_d(self.get("config"), "sounds", {})
@@ -7448,7 +7447,7 @@ class Main:
     self.init_config2()
     state = ParserState(self)
     self.init_log(state)
-    self.init_outputs(state)
+    self.init_odevs(state)
     self.init_source(state)
     self.init_main_ep(state)
     self.init_sounds(state)
@@ -7495,29 +7494,29 @@ class Main:
 
   def get_axis_by_full_name(self, fnAxis):
     allAxes = self.get("axes")
-    outputName, tAxis, cAxis = fn2dtc(fnAxis)
+    odevName, tAxis, cAxis = fn2dtc(fnAxis)
     tcAxis = TypeCode(tAxis, cAxis)
-    outputAxes = allAxes.setdefault(outputName, {})
+    odevAxes = allAxes.setdefault(odevName, {})
     axis = None
-    if tcAxis not in outputAxes:
+    if tcAxis not in odevAxes:
       #raise RuntimeError("Axis was not initialized for '{}'".format(fnAxis))
-      outputs = self.get("outputs")
-      o = outputs.get(outputName)
-      if o is None:
-        raise RuntimeError("Cannot find axis '{}' because output '{}' is missing".format(fnAxis, outputName))
-      if tcAxis not in o.get_supported_axes():
-        raise RuntimeError("Axis '{}' is not supported by '{}'".format(tc2ns(*tcAxis)[0], outputName))
+      odevs = self.get("odevs")
+      odev = odevs.get(odevName)
+      if odev is None:
+        raise RuntimeError("Cannot find axis '{}' because odev '{}' is missing".format(fnAxis, odevName))
+      if tcAxis not in odev.get_supported_axes():
+        raise RuntimeError("Axis '{}' is not supported by '{}'".format(tc2ns(*tcAxis)[0], odevName))
       axis = None
       if tAxis == codes.EV_KEY:
         cButton = cAxis
-        axis = ReportingAxis(JoystickButtonAxis(o, cButton))
+        axis = ReportingAxis(JoystickButtonAxis(odev, cButton))
       else:
-        isReportingJoystick = type(o) is ReportingJoystick
-        axis = o.make_axis(tcAxis) if isReportingJoystick else ReportingAxis(JoystickAxis(o, tcAxis))
-      outputAxes[tcAxis] = axis
+        isReportingJoystick = type(odev) is ReportingJoystick
+        axis = odev.make_axis(tcAxis) if isReportingJoystick else ReportingAxis(JoystickAxis(odev, tcAxis))
+      odevAxes[tcAxis] = axis
       self.get("axesToNames")[axis] = fnAxis
     else:
-      axis = outputAxes[tcAxis]
+      axis = odevAxes[tcAxis]
     return axis
 
   def get_full_name_by_axis(self, axis):
@@ -7536,7 +7535,7 @@ class Main:
     self.props_["updated"] = []
     self.props_["axes"] = {}
     self.props_["axesToNames"] = {}
-    self.props_["outputs"] = {}
+    self.props_["odevs"] = {}
     self.props_["sounds"] = {}
     self.props_["numTraceLines"] = 0
     self.props_["soundPlayer"] = SoundPlayer()

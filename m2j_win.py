@@ -1663,10 +1663,10 @@ if __name__ == "__main__":
   try:
     main = Main(print_devices=print_devices)
     parser = main.get("parser")
-    outputParser = parser.get("output")
-    outputParser.add("ppjoy", parsePPJoystickOutput)
-    outputParser.add("vjoy", parseVJoystickOutput)
-    outputParser.add("di_keyboard", parseDirectInputKeyboardOutput)
+    odevParser = parser.get("odev")
+    odevParser.add("ppjoy", parsePPJoystickOutput)
+    odevParser.add("vjoy", parseVJoystickOutput)
+    odevParser.add("di_keyboard", parseDirectInputKeyboardOutput)
     parser.add("source", parseRawInputEventSource)
     exit(main.run())
   except Exception as e:
