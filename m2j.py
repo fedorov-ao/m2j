@@ -262,11 +262,11 @@ class ParserState:
     objectName = name.split(nameSep)
     objects, i = None, 0
     while True:
-      sink = self.at("sinks", i)
-      if sink is None:
+      ep = self.at("eps", i)
+      if ep is None:
         break
-      assert isinstance(sink, HeadSink)
-      objects = sink.get("objects", None)
+      assert isinstance(ep, HeadEP)
+      objects = ep.get("objects", None)
       if objects is not None:
         obj = objects.get(objectName[0])
         if obj is not None:
@@ -288,7 +288,7 @@ class ParserState:
       try:
         o = None
         #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
-        #Sink components ("sc" parser) should not be created as individual objects, because they depend on each other.
+        #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
         if type(v) not in (dict, collections.OrderedDict):
           raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
         n = v.get("class", None)
@@ -301,7 +301,7 @@ class ParserState:
               #break is needed to avoid executing the "else" block
               break
           else:
-            o = parser("sink", v, self)
+            o = parser("ep", v, self)
         if o is None:
           raise RuntimeError()
         cb(k, o)
@@ -1032,13 +1032,13 @@ class EventSource:
         logger.error(e)
         continue
     events.sort(key = lambda e : e.timestamp)
-    if self.sink_ is not None:
+    if self.ep_ is not None:
       for event in events:
         #logger.debug("{}: Sending event: {}".format(self, event))
-        self.sink_(event)
+        self.ep_(event)
 
-  def set_sink(self, sink):
-    self.sink_ = sink
+  def set_ep(self, ep):
+    self.ep_ = ep
 
   def swallow(self, name, s):
     if name is None:
@@ -1047,8 +1047,8 @@ class EventSource:
     else:
       self.devices_.get(name).swallow(s)
 
-  def __init__(self, devices, sink=None):
-    self.devices_, self.sink_ = devices, sink
+  def __init__(self, devices, ep=None):
+    self.devices_, self.ep_ = devices, ep
     #logger.debug("{} created".format(self))
 
   def __del__(self):
@@ -1245,7 +1245,9 @@ def SetButtonState(output, button, state):
   return op
 
 
-class ClickSink:
+#Event processors (EPs for short)
+class ClickEP:
+  """Generates key click input events."""
   def __call__(self, event):
     numClicks = 0
     if event.type == codes.EV_KEY:
@@ -1299,7 +1301,8 @@ class HoldEvent(InputEvent):
     self.heldTime = heldTime
 
 
-class HoldSink:
+class HoldEP:
+  """Generates key hold input events."""
   KeyDesc = collections.namedtuple("KeyDesc", "source code modifiers")
   HT = collections.namedtuple("HT", "keyDesc period value num")
 
@@ -1311,14 +1314,14 @@ class HoldSink:
         for i in range(len(self.keyData_)):
           kd = self.keyData_[i]
           #ignore modifiers to correctly process key release if the key is modifier itself
-          keyDesc = HoldSink.KeyDesc(event.source, event.code, None)
+          keyDesc = HoldEP.KeyDesc(event.source, event.code, None)
           if self.match_(kd.keyDesc, keyDesc):
             self.keyData_[i] = None
         self.cleanup_()
       elif event.value == 1:
         class KD:
           pass
-        keyDesc = HoldSink.KeyDesc(event.source, event.code, tuple(m for m in event.modifiers))
+        keyDesc = HoldEP.KeyDesc(event.source, event.code, tuple(m for m in event.modifiers))
         found = False
         for kd in self.keyData_:
           if kd.keyDesc == keyDesc:
@@ -1353,8 +1356,8 @@ class HoldSink:
 
   def add(self, source, code, modifiers, period, value, num):
     modifiers = tuple(m for m in modifiers) if modifiers is not None else None
-    keyDesc = HoldSink.KeyDesc(source, code, modifiers)
-    ht = HoldSink.HT(keyDesc, period, value, num)
+    keyDesc = HoldEP.KeyDesc(source, code, modifiers)
+    ht = HoldEP.HT(keyDesc, period, value, num)
     self.holdTimes_.append(ht)
 
   def set_next(self, next):
@@ -1394,7 +1397,8 @@ def cmp_modifiers(eventModifier, referenceModifier):
       r = True
   return r
 
-class ModifierSink:
+class ModifierEP:
+  """Adds modifier keys to input events."""
   APPEND = 0
   OVERWRITE = 1
 
@@ -1464,7 +1468,9 @@ class ModifierSink:
           self.removedModifiers_.append(Modifier(md.source, md.code))
 
 
-class ScaleSink:
+#TODO Unused. Remove?
+class ScaleEP:
+  """Scales value of relative axis input event."""
   def __call__(self, event):
     if event.type == codes.EV_REL:
       event.value *= 1.0 if self.sens_ is None else self.sens_.get(event.code, 1.0)
@@ -1478,9 +1484,8 @@ class ScaleSink:
     self.next_, self.sens_ = None, sens
 
 
-class ScaleSink2:
-  gSens_ = {}
-
+class ScaleEP2:
+  """Scales value of relative and absolute axis input events."""
   def __call__(self, event):
     oldValue = None
     try:
@@ -1521,7 +1526,8 @@ class ScaleSink2:
     self.next_, self.sens_, self.keyOp_, self.name_ = None, sens, keyOp, name
 
 
-class SensSetSink:
+#TODO Unused. Remove?
+class SensSetEP:
   def __call__(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
       if self.currentSet_ is not None:
@@ -1575,7 +1581,8 @@ class SensSetSink:
     logger.info("Setting sensitivity set: {}".format(s))
 
 
-class MappingSink:
+class MappingEP:
+  """Maps events."""
   def __call__(self, event):
     frm = SourceTypeCode(event.source, event.type, event.code)
     to = self.mapping_.get(frm, None)
@@ -1597,7 +1604,8 @@ class MappingSink:
     self.mapping_ = mapping
 
 
-class CalibratingSink:
+#TODO Unused. Remove?
+class CalibratingEP:
   def __call__(self, event):
     if self.mode_ == 0:
       return self.process_event_(event)
@@ -1668,6 +1676,7 @@ class CalibratingSink:
       logger.info("Sensitivity for {} is now {:+.5f}".format(self.makeName_(k), s))
 
 
+#Event tests
 class AttrsEventTest:
   __slots__ = ("attrs_", "cmp_",)
   def __call__(self, event):
@@ -1700,7 +1709,7 @@ class PropTestsEventTest:
     self.pd_ = pd
 
 
-class BindSink:
+class BindEP:
   class ChildInfo:
     __slots__ = ("child", "name",)
     def __init__(self, child, name=None):
@@ -1763,7 +1772,7 @@ class BindSink:
     del self.children_[:]
 
   def get(self, name):
-    """Returns binding proxy that returns ed op on .get("on") and output action or sink on .get("do").
+    """Returns binding proxy that returns ed op on .get("on") and output action or ep on .get("do").
        Since ed can be chared among several outputs, changing given ed will affect other bindings!
     """
     class BindingProxy:
@@ -1958,7 +1967,7 @@ class ET:
     return PropTestsEventTest(r)
 
 
-class StateSink:
+class StateEP:
  def __call__(self, event):
    #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if (self.state_ == True) and (self.next_ is not None):
@@ -1985,22 +1994,22 @@ class StateSink:
    self.state_ = False
 
 
-def SetState(stateSink, state):
+def SetState(stateEP, state):
   def op(event):
-    stateSink.set_state(state)
+    stateEP.set_state(state)
     return True
   return op
 
 
-def ToggleState(stateSink):
+def ToggleState(stateEP):
   def op(event):
-    stateSink.set_state(not stateSink.get_state())
-    #logger.debug("{} state is {}".format(stateSink, stateSink.get_state()))
+    stateEP.set_state(not stateEP.get_state())
+    #logger.debug("{} state is {}".format(stateEP, stateEP.get_state()))
     return True
   return op
 
 
-class FilterSink:
+class FilterEP:
   def __call__(self, event):
    #logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
    if self.next_ is not None and self.op_(event) == True:
@@ -2045,7 +2054,7 @@ class ModeInitEvent(Event):
     self.other = other
 
 
-class ModeSink:
+class ModeEP:
   def __call__(self, event):
     #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
     #  logger.debug("{}: Recieved init event: {}".format(self, event.value))
@@ -2110,20 +2119,20 @@ class CycleMode:
       i += 1
     if i != self.i:
       self.i = i
-      self.modeSink.set_mode(self.modes[self.i])
+      self.modeEP.set_mode(self.modes[self.i])
     return True
 
-  def __init__(self, modeSink, modes, loop=True):
-    self.i, self.modeSink, self.modes, self.loop = 0, modeSink, modes, loop
+  def __init__(self, modeEP, modes, loop=True):
+    self.i, self.modeEP, self.modes, self.loop = 0, modeEP, modes, loop
 
 
 class SetMode:
   def __call__(self, event):
-    self.modeSink.set_mode(self.mode)
+    self.modeEP.set_mode(self.mode)
     return True
 
-  def __init__(self, modeSink, mode):
-    self.modeSink, self.mode = modeSink, mode
+  def __init__(self, modeEP, mode):
+    self.modeEP, self.mode = modeEP, mode
 
 class MSMMSavePolicy:
    NOOP = 0
@@ -2142,24 +2151,24 @@ def nameToMSMMSavePolicy(name):
   return d[name]
 
 
-class ModeSinkModeManager:
+class ModeEPModeManager:
   def save(self):
-    self.mode_.append(self.sink_.get_mode())
+    self.mode_.append(self.ep_.get_mode())
 
   def restore(self, report=True):
     if len(self.mode_):
-      self.sink_.set_mode(self.mode_.pop(), report)
+      self.ep_.set_mode(self.mode_.pop(), report)
 
   def add(self, mode, current, report=True):
-    if current is None or self.sink_.get_mode() in current:
+    if current is None or self.ep_.get_mode() in current:
       self.mode_.append(mode)
-      self.sink_.set_mode(mode, report)
+      self.ep_.set_mode(mode, report)
       return True
     else:
       return False
 
   def remove(self, mode, current, report=True):
-    if current is None or self.sink_.get_mode() in current:
+    if current is None or self.ep_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == mode:
           self.mode_.pop(i)
@@ -2170,7 +2179,7 @@ class ModeSinkModeManager:
       return False
 
   def swap(self, f, t, current, report=True):
-    if current is None or self.sink_.get_mode() in current:
+    if current is None or self.ep_.get_mode() in current:
       for i in range(len(self.mode_)-1, -1, -1):
         if self.mode_[i] == f:
           self.mode_[i] = t
@@ -2181,7 +2190,7 @@ class ModeSinkModeManager:
       return False
 
   def cycle_swap(self, modes, current, report=True):
-    if current is None or self.sink_.get_mode() in current:
+    if current is None or self.ep_.get_mode() in current:
       lm = len(modes)
       for i in range(len(self.mode_)-1, -1, -1):
         for j in range(0, lm):
@@ -2197,16 +2206,16 @@ class ModeSinkModeManager:
     return True
 
   def set(self, mode, save, current, report=True):
-    if current is None or self.sink_.get_mode() in current:
+    if current is None or self.ep_.get_mode() in current:
       self.save_(save)
-      self.sink_.set_mode(mode, report)
+      self.ep_.set_mode(mode, report)
       return True
     else:
       return False
 
   def cycle(self, modes, step, loop, save, report=True):
     self.save_(save)
-    m = self.sink_.get_mode()
+    m = self.ep_.get_mode()
     assert(len(modes))
     if m in modes:
       lm = len(modes)
@@ -2219,11 +2228,11 @@ class ModeSinkModeManager:
       m = modes[i]
     else:
       m = modes[0]
-    self.sink_.set_mode(m, report)
+    self.ep_.set_mode(m, report)
     return True
 
-  def __init__(self, sink):
-    self.sink_, self.mode_ = sink, []
+  def __init__(self, ep):
+    self.ep_, self.mode_ = ep, []
 
   def make_save(self):
     def op(event):
@@ -2283,8 +2292,8 @@ class ModeSinkModeManager:
   def set_top_mode_(self, report):
     if len(self.mode_):
       m = self.mode_[-1]
-      if m != self.sink_.get_mode():
-        self.sink_.set_mode(m, report)
+      if m != self.ep_.get_mode():
+        self.ep_.set_mode(m, report)
 
   def make_current_(self, current):
     if current is not None and type(current) not in (tuple, list):
@@ -2293,7 +2302,7 @@ class ModeSinkModeManager:
       return current
 
 
-class MultiCurveSink:
+class MultiCurveEP:
   def __call__(self, event):
     if event.type in (codes.EV_REL,):
       k = (event.source, event.code)
@@ -2381,7 +2390,7 @@ class ValueEvent(Event):
     self.name = name
 
 
-class ValuesSink:
+class ValuesEP:
   def __call__(self, event):
     if self.next_ is not None:
       return self.next_(event)
@@ -3624,16 +3633,16 @@ class DemaFilter:
     self.v_, self.t_, self.needInit_ = 0.0, 0.0,  True
 
 
-class ToggleSink:
+class ToggleEP:
   def __call__(self, event):
-    self.sink_.set_state(not self.sink_.get_state())
+    self.ep_.set_state(not self.ep_.get_state())
     return True
 
-  def __init__(self, sink):
-    self.sink_ = sink
+  def __init__(self, ep):
+    self.ep_ = ep
 
 
-class DeviceGrabberSink:
+class DeviceGrabberEP:
   def __call__(self, event):
     if self.state_:
       self.device_.swallow(False)
@@ -4183,17 +4192,17 @@ class RateSettingJoystick:
 class NotifyingJoystick(NodeJoystick):
   def move_axis(self, tcAxis, value, relative):
     r = super(NotifyingJoystick, self).move_axis(tcAxis, value, relative)
-    if not relative and self.sink_() is not None:
-      self.sink_()(Event(tcAxis.type, tcAxis.code, value, time.time()))
+    if not relative and self.ep_() is not None:
+      self.ep_()(Event(tcAxis.type, tcAxis.code, value, time.time()))
     return r
 
-  def set_sink(self, sink):
-    self.sink_ = weakref.ref(sink)
-    return sink
+  def set_ep(self, ep):
+    self.ep_ = weakref.ref(ep)
+    return ep
 
-  def __init__(self, sink=None, next=None):
+  def __init__(self, ep=None, next=None):
     super(NotifyingJoystick, self).__init__(next)
-    if sink is not None: self.sink_ = weakref.ref(sink)
+    if ep is not None: self.ep_ = weakref.ref(ep)
 
 
 class MetricsJoystick:
@@ -4461,7 +4470,7 @@ class RelativeHeadMovementJoystick:
       if self.stick_ and point != clamped:
         return 0.0 if relative else value
 
-      #Clamp to limits of next sink and move, both in global cs
+      #Clamp to limits of next ep and move, both in global cs
       for ia in range(len(self.tcPosAxes_)):
         tca = self.tcPosAxes_[ia]
         limits = self.next_.get_limits(tca)
@@ -4496,7 +4505,7 @@ class RelativeHeadMovementJoystick:
 
 
   def get_limits(self, tcAxis):
-    """Returns relative, local limits for position axes, calls next sink for other."""
+    """Returns relative, local limits for position axes, calls next ep for other."""
     self.update_limits_()
     if self.next_ is None:
       return (0.0, 0.0)
@@ -5006,7 +5015,7 @@ def init_info(**kwargs):
   return info
 
 
-class NextSink:
+class NextEP:
   def __call__(self, event):
     return self.next_(event) if self.next_ is not None else False
 
@@ -5017,7 +5026,7 @@ class NextSink:
     self.next_ = nxt
 
 
-class MainSink:
+class MainEP:
   def __call__(self, event):
     return self.top_(event) if self.top_ is not None else False
 
@@ -5048,31 +5057,31 @@ class MainSink:
     self.state_ = state
 
 
-def init_main_sink(state):
-  #logger.debug("init_main_sink()")
+def init_main_ep(state):
+  #logger.debug("init_main_ep()")
   main = state.get("main")
   config = main.get("config")
 
-  headSink = HeadSink()
-  state.push("sinks", headSink)
-  topSink = bottomSink = headSink
-  mainSink = MainSink()
-  mainSink.set_top(topSink)
-  mappingSink = state.get("parser").get("sc").get("mapping")(config, state)
-  if mappingSink is not None:
-    bottomSink.set_next(mappingSink)
-    bottomSink = mappingSink
+  headEP = HeadEP()
+  state.push("eps", headEP)
+  topEP = bottomEP = headEP
+  mainEP = MainEP()
+  mainEP.set_top(topEP)
+  mappingEP = state.get("parser").get("sc").get("mapping")(config, state)
+  if mappingEP is not None:
+    bottomEP.set_next(mappingEP)
+    bottomEP = mappingEP
   defaultModifierDescs = [
     SourceCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
   modifiers = state.resolve_d(config, "modifiers", None)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
-  modifierSink = ModifierSink(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierSink.OVERWRITE)
-  bottomSink.set_next(modifierSink)
-  clickSink = modifierSink.set_next(ClickSink(state.resolve_d(config, "clickTime", 0.5)))
+  modifierEP = ModifierEP(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierEP.OVERWRITE)
+  bottomEP.set_next(modifierEP)
+  clickEP = modifierEP.set_next(ClickEP(state.resolve_d(config, "clickTime", 0.5)))
   holdDataCfg = state.resolve_d(config, "holds", [])
-  holdSink = clickSink.set_next(HoldSink())
+  holdEP = clickEP.set_next(HoldEP())
   for hd in holdDataCfg:
     keyFullName = state.resolve_d(hd, "key", None)
     keySource, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
@@ -5080,8 +5089,8 @@ def init_main_sink(state):
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
     num = state.resolve_d(hd, "num", -1)
-    holdSink.add(keySource, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
-  main.get("updated").append(lambda tick,ts : holdSink.update(tick, ts))
+    holdEP.add(keySource, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
+  main.get("updated").append(lambda tick,ts : holdEP.update(tick, ts))
 
   sensSetsCfg = state.resolve_d(config, "sens", None)
   sens = {}
@@ -5092,16 +5101,16 @@ def init_main_sink(state):
     sens = state.resolve(sensSetsCfg, sensSet)
     for s in sens.items():
       sens[fn2htc(state.deref(s[0]))] = state.deref(s[1])
-  scaleSink = holdSink.set_next(ScaleSink2(sens))
+  scaleEP = holdEP.set_next(ScaleEP2(sens))
 
-  stateSink = StateSink()
-  mainSink.add_stateful(stateSink)
+  stateEP = StateEP()
+  mainEP.add_stateful(stateEP)
 
   released = state.resolve_d(config, "released", [])
   for i in range(len(released)):
     released[i] = state.deref(released[i])
   sourceFilterOp = SourceFilterOp(released)
-  filterSink = stateSink.set_next(FilterSink(sourceFilterOp))
+  filterEP = stateEP.set_next(FilterEP(sourceFilterOp))
   namesOfReleasedStr = ", ".join(released)
 
   def print_ungrabbed(event):
@@ -5116,7 +5125,7 @@ def init_main_sink(state):
 
   def parseToggle(cfg, state):
     def op(event):
-      mainSink.set_state(not mainSink.get_state())
+      mainEP.set_state(not mainEP.get_state())
     return op
   actionParser.add("toggle", parseToggle)
 
@@ -5135,7 +5144,7 @@ def init_main_sink(state):
   def parseEnable(cfg, state):
     callbacks = (SetState(sourceFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
     def op(event):
-      if stateSink.get_state() and not enabled[0]:
+      if stateEP.get_state() and not enabled[0]:
         for cb in callbacks:
           cb(event)
         enabled[0] = True
@@ -5145,7 +5154,7 @@ def init_main_sink(state):
   def parseDisable(cfg, state):
     callbacks2 = (SetState(sourceFilterOp, False), SwallowSource(main.get("source"), [(n,False) for n in released]),  print_ungrabbed,)
     def op(event):
-      if stateSink.get_state() and enabled[0]:
+      if stateEP.get_state() and enabled[0]:
         for cb in callbacks2:
           cb(event)
         enabled[0] = False
@@ -5182,9 +5191,9 @@ def init_main_sink(state):
     return op
   actionParser.add("toggleInfo", parseToggleInfo)
 
-  bindSink = main.get("parser").get("sc").get("binds")(config, state)
-  bindSink.add(None, stateSink, 1)
-  scaleSink.set_next(bindSink)
+  bindEP = main.get("parser").get("sc").get("binds")(config, state)
+  bindEP.add(None, stateEP, 1)
+  scaleEP.set_next(bindEP)
 
   grabbed = state.resolve_d(config, "grabbed", [])
   for i in range(len(grabbed)):
@@ -5196,9 +5205,9 @@ def init_main_sink(state):
   def print_disabled(event):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
-  grabSink = filterSink.set_next(BindSink())
-  grabSink.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
-  grabSink.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
+  grabEP = filterEP.set_next(BindEP())
+  grabEP.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
+  grabEP.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
 
   #axes are created on demand by get_axis_by_full_name
   #remove listeners from axes if reinitializing
@@ -5206,17 +5215,17 @@ def init_main_sink(state):
     for tcAxis, axis in oAxes.items():
       axis.remove_all_listeners()
 
-  nextSink = NextSink()
-  grabSink.add(None, nextSink, 1)
+  nextEP = NextEP()
+  grabEP.add(None, nextEP, 1)
 
-  mainSink.set_bottom(nextSink)
+  mainEP.set_bottom(nextEP)
 
   initialState = state.resolve_d(config, "initialState", False)
-  mainSink.set_state(initialState)
+  mainEP.set_state(initialState)
 
   logger.info("Initialization successfull")
 
-  return mainSink
+  return mainEP
 
 
 class ConfigReadError(RuntimeError):
@@ -5265,7 +5274,7 @@ def init_preset_config(state):
   else:
     try:
       parser = main.get("parser")
-      r = parser("sink", presetCfg, state)
+      r = parser("ep", presetCfg, state)
       return r
     except KeyError2 as e:
       logger.error("Error while initializing config preset '{}': cannot find key '{}' in {}".format(presetName, e.key, e.keys))
@@ -5422,11 +5431,11 @@ class DerefParser:
     self.p_ = parser
 
 
-class HeadSink:
+class HeadEP:
   def __call__(self, event):
     #Can be actually called during init when next_ is not set yet
     if self.next_ is None:
-      #logger.debug("{}: next sink is not set".format(self))
+      #logger.debug("{}: next ep is not set".format(self))
       return False
     else:
       return self.next_(event)
@@ -5868,28 +5877,28 @@ def make_parser():
         raise RuntimeError("No class {}".format(str2(name)))
       state.push_args(cfg)
       try:
-        return state.get("parser")("sink", externalCfg, state)
+        return state.get("parser")("ep", externalCfg, state)
       finally:
         state.pop_args()
     return parseExternalOp
 
-  def sinkParserKeyOp(cfg, state):
+  def epParserKeyOp(cfg, state):
     names = ("preset",)
     if type(cfg) in (dict, collections.OrderedDict):
       for name in names:
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           return name
-    return "sink"
+    return "ep"
 
-  sinkParser = make_outer_deref_parser(keyOp=sinkParserKeyOp)
-  mainParser.add("sink", sinkParser)
-  sinkParser.add("preset", parseExternal("preset", ("presets",)))
+  epParser = make_outer_deref_parser(keyOp=epParserKeyOp)
+  mainParser.add("ep", epParser)
+  epParser.add("preset", parseExternal("preset", ("presets",)))
 
   @parseBasesDecorator
-  def parseSink(cfg, state):
+  def parseEP(cfg, state):
     """
-    Constructs sink chain from components as specified in cfg.
-    At the top of this chain is a HeadSink that stores all initialized components.
+    Constructs ep chain from components as specified in cfg.
+    At the top of this chain is a HeadEP that stores all initialized components.
     Some of initialized components are then linked one after another.
     Each component is described by dedicated section in cfg. If a section is missing, components is not intialized.
     next and modes components are mutually exclusive.
@@ -5899,38 +5908,38 @@ def make_parser():
     parser = state.get("parser").get("sc")
     state.push_args(cfg)
     state.push("curves", {})
-    #Init headsink
-    parent = state.at("sinks", 0)
-    headSink = HeadSink(parent=parent)
-    state.push("sinks", headSink)
-    #Since python 2.7 does not support nonlocal variables, declaring 'sink' as list to allow parse_component() modify it
-    #logger.debug("parsing sink {}".format(cfg))
+    #Init head ep
+    parent = state.at("eps", 0)
+    headEP = HeadEP(parent=parent)
+    state.push("eps", headEP)
+    #Since python 2.7 does not support nonlocal variables, declaring 'ep' as list to allow parse_component() modify it
+    #logger.debug("parsing ep {}".format(cfg))
     def parse_component(name, set_component=None):
       #logger.debug("parsing component '{}'".format(name))
       if name in cfg:
         t = parser(name, cfg, state)
         if t is not None and set_component is not None:
-          set_component(headSink, name, t)
-    sink = [None]
+          set_component(headEP, name, t)
+    ep = [None]
     def link_component(name, op=None):
       #logger.debug("linking component '{}'".format(name))
-      t = headSink.get_component(name, None)
+      t = headEP.get_component(name, None)
       if t is not None:
         if op is not None:
-          op(sink[0], t)
-        sink[0] = t
-    def set_next(next, sink):
+          op(ep[0], t)
+        ep[0] = t
+    def set_next(next, ep):
       if next is not None:
-        sink.set_next(next)
-    def add_default_bind(next, sink):
+        ep.set_next(next)
+    def add_default_bind(next, ep):
       if next is not None:
-        #By default next sink is added to level 0 so it will be able to process events that were processed by other binds.
+        #By default next ep is added to level 0 so it will be able to process events that were processed by other binds.
         #This is useful in case like when a bind and a mode both need to process some axis event.
         defaultBindET = state.resolve_d(cfg, "defaultBind.on", None)
         if defaultBindET is not None:
           defaultBindET = state.get("parser")("et", defaultBindET, state)
         defaultBindLevel = state.resolve_d(cfg, "defaultBind.level", 0)
-        sink.add(defaultBindET, next, defaultBindLevel)
+        ep.add(defaultBindET, next, defaultBindLevel)
     try:
       #TODO Refactor
       if len(cfg) == 0:
@@ -5940,33 +5949,33 @@ def make_parser():
       #Parse components
       if "modes" in cfg and "next" in cfg:
         raise RuntimeError("'next' and 'modes' components are mutually exclusive")
-      def set_component(headSink, name, t):
-        headSink.set_component(name, t)
-      assert headSink is state.at("sinks", 0)
+      def set_component(headEP, name, t):
+        headEP.set_component(name, t)
+      assert headEP is state.at("eps", 0)
       parseOrder = (("objects", None), ("next", set_component), ("values", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component), ("mapping", set_component) )
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
       #Linking is performed in reverse order - from "tail" to "head", with linking "tail" to "head"
       linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("values", set_next), ("sens", set_next), ("modifiers", set_next), ("mapping", set_next))
-      assert headSink is state.at("sinks", 0)
+      assert headEP is state.at("eps", 0)
       for p in linkOrder:
         link_component(p[0], p[1])
       #Check result
-      if sink[0] is None:
-        #logger.debug("Could not make sink out of '{}'".format(cfg))
+      if ep[0] is None:
+        #logger.debug("Could not make ep out of '{}'".format(cfg))
         return None
       else:
-        headSink.set_next(sink[0])
-        return headSink
+        headEP.set_next(ep[0])
+        return headEP
     finally:
-      state.pop("sinks")
+      state.pop("eps")
       state.pop_args()
       state.pop("curves")
-  sinkParser.add("sink", parseSink)
+  epParser.add("ep", parseEP)
 
-  #Sink components
-  #Sink components cfgs are supposed to be specified in sink cfg, they cannot be referenced as args or objs, so using regular SelectParser.
+  #EP components
+  #EP components cfgs are supposed to be specified in ep cfg, they cannot be referenced as args or objs, so using regular SelectParser.
   scParser = SelectParser()
   mainParser.add("sc", scParser)
 
@@ -5976,8 +5985,8 @@ def make_parser():
       mapping = {}
       for frm,to in mappingCfg.items():
         mapping[fn2htc(frm)] = fn2htc(to)
-      mappingSink = MappingSink(mapping)
-      return mappingSink
+      mappingEP = MappingEP(mapping)
+      return mappingEP
     else:
       return None
   scParser.add("mapping", parseMapping)
@@ -5988,7 +5997,7 @@ def make_parser():
       #logger.debug("parseObjects(): parsing objects from '{}'".format(str2(objectsCfg)))
       try:
         objectsComponent = ObjectsComponent()
-        state.at("sinks", 0).set("objects", objectsComponent)
+        state.at("eps", 0).set("objects", objectsComponent)
         state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
         return objectsComponent
       except RuntimeError as e:
@@ -5999,27 +6008,27 @@ def make_parser():
 
   def parseModifiers(cfg, state):
     modifierDescs = [parse_modifier_desc(m, state) for m in state.resolve(cfg, "modifiers")]
-    modifierSink = ModifierSink(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierSink.APPEND)
-    return modifierSink
+    modifierEP = ModifierEP(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierEP.APPEND)
+    return modifierEP
   scParser.add("modifiers", parseModifiers)
 
   def parseSens(cfg, state):
     class Setter:
       def __call__(self, v):
-        self.scaleSink_.set_sens(self.key_, v)
-      def __init__(self, scaleSink, key):
-        self.scaleSink_, self.key_ = scaleSink, key
+        self.scaleEP_.set_sens(self.key_, v)
+      def __init__(self, scaleEP, key):
+        self.scaleEP_, self.key_ = scaleEP, key
     try:
       name = state.resolve_d(cfg, "name", None)
       sens = state.resolve(cfg, "sens")
-      scaleSink = ScaleSink2(sens={}, name=name)
+      scaleEP = ScaleEP2(sens={}, name=name)
       sens2 = {}
       for fnAxis,value in sens.items():
         key = fn2htc(fnAxis)
-        setter = Setter(scaleSink, key)
+        setter = Setter(scaleEP, key)
         value = state.deref(value, setter=setter)
-        scaleSink.set_sens(key, value)
-      return scaleSink
+        scaleEP.set_sens(key, value)
+      return scaleEP
     except RuntimeError as e:
       raise RuntimeError("'{}' ({})".format(e, str2(sens)))
   scParser.add("sens", parseSens)
@@ -6033,17 +6042,17 @@ def make_parser():
         self.msmm_, self.save_, self.current_, self.report_ = msmm, save, current, report
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
-    headSink = state.at("sinks", 0)
-    modeSink = ModeSink(name)
-    msmm = ModeSinkModeManager(modeSink)
-    headSink.set_component("msmm", msmm)
-    headSink.set_component("modes", modeSink)
+    headEP = state.at("eps", 0)
+    modeEP = ModeEP(name)
+    msmm = ModeEPModeManager(modeEP)
+    headEP.set_component("msmm", msmm)
+    headEP.set_component("modes", modeEP)
     try:
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
           #logger.debug("{}: parsing mode:".format(name, modeName))
-          child = state.get("parser")("sink", modeCfg, state)
-          modeSink.add(modeName, child)
+          child = state.get("parser")("ep", modeCfg, state)
+          modeEP.add(modeName, child)
         except Exception as e:
           if allowMissingModes:
             logger.warning("Error parsing mode '{}' in '{}' ({})".format(modeName, name, e))
@@ -6056,64 +6065,64 @@ def make_parser():
       modeSetter = ModeSetter(msmm, savePolicy, current, report)
       mode = state.resolve_d(cfg, "mode", None, setter=modeSetter)
       if mode is not None:
-        if not modeSink.set_mode(mode):
+        if not modeEP.set_mode(mode):
           logger.warning("Cannot set mode: {}".format(mode))
-      #Saving initial mode in msmm afer modeSink was initialized
+      #Saving initial mode in msmm afer modeEP was initialized
       msmm.save()
-      return modeSink
+      return modeEP
     except:
-      headSink.remove_component("msmm")
-      headSink.remove_component("modes")
+      headEP.remove_component("msmm")
+      headEP.remove_component("modes")
       raise
   scParser.add("modes", parseMode)
 
   def parseState(cfg, state):
-    sink = StateSink()
+    ep = StateEP()
     stateCfg = state.resolve(cfg, "state")
     if "next" in stateCfg:
-      next = state.get("parser")("sink", stateCfg["next"], state)
-      sink.set_next(next)
+      next = state.get("parser")("ep", stateCfg["next"], state)
+      ep.set_next(next)
     if "initialState" in stateCfg:
-      sink.set_state(stateCfg["initialState"])
-    return sink
+      ep.set_state(stateCfg["initialState"])
+    return ep
   scParser.add("state", parseState)
 
   def parseValues(cfg, state):
-    sink = ValuesSink()
+    ep = ValuesEP()
     cfg = state.resolve(cfg, "values")
     for name,value in cfg.items():
-      sink.set_value(name, value)
-    return sink
+      ep.set_value(name, value)
+    return ep
   scParser.add("values", parseValues)
 
   def parseNext(cfg, state):
     parser = state.get("parser")
-    r = parser("sink", state.resolve(cfg, "next"), state)
+    r = parser("ep", state.resolve(cfg, "next"), state)
     if r is None:
-      #logger.debug("Sink parser could not parse '{}', so trying action parser".format(cfg))
+      #logger.debug("EP parser could not parse '{}', so trying action parser".format(cfg))
       r = parser("action", state.resolve(cfg, "next"), state)
     return r
   scParser.add("next", parseNext)
 
   #Actions
-  def get_sink(cfg, state):
-    """Helper. Retrieves sink from sinks stack by depth or by object name.
-       depth: 0 - current component sink, 1 - its parent, etc
+  def get_ep(cfg, state):
+    """Helper. Retrieves ep from eps stack by depth or by object name.
+       depth: 0 - current component ep, 1 - its parent, etc
     """
-    sink = state.resolve_d(cfg, "sink", None)
-    if sink is None:
-      #logger.debug("Cannot get target sink by '{}'".format(sinkName))
-      sink = state.at("sinks", state.resolve_d(cfg, "depth", 0))
-    return sink
+    ep = state.resolve_d(cfg, "ep", None)
+    if ep is None:
+      #logger.debug("Cannot get target ep by '{}'".format(epName))
+      ep = state.at("eps", state.resolve_d(cfg, "depth", 0))
+    return ep
 
   def get_component(name, cfg, state):
     """Helper. Retrieves component by depth or by object name.
-       depth: 0 - current component sink, 1 - its parent, etc
+       depth: 0 - current component ep, 1 - its parent, etc
     """
-    sink = get_sink(cfg, state)
-    component = sink.get_component(name)
+    ep = get_ep(cfg, state)
+    component = ep.get_component(name)
     if component is None:
-      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, sink, sink.components_.keys()))
+      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, ep, ep.components_.keys()))
     return component
 
   def actionParserKeyOp(cfg, state):
@@ -6147,11 +6156,11 @@ def make_parser():
     try:
       htc = fn2htc(state.resolve(cfg, "axis"))
       value = state.resolve(cfg, "value")
-      scaleSink = get_component("sens", cfg, state)
+      scaleEP = get_component("sens", cfg, state)
       def op(e):
-        scaleSink.set_sens(htc, value)
-        name = scaleSink.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
+        scaleEP.set_sens(htc, value)
+        name = scaleEP.get_name()
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleEP.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
@@ -6162,13 +6171,13 @@ def make_parser():
     try:
       htc = fn2htc(state.resolve(cfg, "axis"))
       delta = state.resolve(cfg, "delta")
-      scaleSink = get_component("sens", cfg, state)
+      scaleEP = get_component("sens", cfg, state)
       def op(e):
-        sens = scaleSink.get_sens(htc)
+        sens = scaleEP.get_sens(htc)
         sens += delta
-        scaleSink.set_sens(htc, sens)
-        name = scaleSink.get_name()
-        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleSink.get_sens(htc)))
+        scaleEP.set_sens(htc, sens)
+        name = scaleEP.get_name()
+        logger.info("{}: {} sens is now {}".format(name, htc2fn(htc.source, htc.type, htc.code), scaleEP.get_sens(htc)))
       return op
     except Exception as e:
       logger.error(e)
@@ -6203,7 +6212,7 @@ def make_parser():
       op = MCSThresholdOp(thresholds = {fn2hc(state.deref(fnInputAxis)):state.deref(threshold) for fnInputAxis,threshold in state.resolve(cfg, "thresholds").items()})
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
-    mcs = MultiCurveSink(curves, op)
+    mcs = MultiCurveEP(curves, op)
     state.get("main").get("updated").append(lambda tick,ts : mcs.update(tick, ts))
     return mcs
   actionParser.add("moveOneOf", parseMoveOneOf)
@@ -6329,7 +6338,7 @@ def make_parser():
         else:
           curvesToReset += curves
     elif "objects" in cfg:
-      sink = state.at("sinks", 0)
+      ep = state.at("eps", 0)
       for objectName in state.resolve(cfg, "objects"):
         curve = state.get_obj(objectName)
         if curve is None:
@@ -6582,21 +6591,21 @@ def make_parser():
     etype = state.resolve_d(cfg, "etype", None)
     etype = codes.EV_CUSTOM if etype is None else name2code(etype)
     code, value = int(state.resolve_d(cfg, "code", 0)), get_nested_d(cfg, "value")
-    sink = get_sink(cfg, state)
-    if sink is None:
-      raise RuntimeError("Cannot find target sink")
+    ep = get_ep(cfg, state)
+    if ep is None:
+      raise RuntimeError("Cannot find target ep")
     def callback(e):
       event = Event(etype, code, value)
-      return sink(event)
+      return ep(event)
     return callback
   actionParser.add("emit", parseEmitCustomEvent)
 
   def parseForwardEvent(cfg, state):
-    sink = get_sink(cfg, state)
-    if sink is None:
-      raise RuntimeError("Cannot find target sink")
+    ep = get_ep(cfg, state)
+    if ep is None:
+      raise RuntimeError("Cannot find target ep")
     def callback(e):
-      return sink(e)
+      return ep(e)
     return callback
   actionParser.add("forward", parseForwardEvent)
 
@@ -6865,20 +6874,20 @@ def make_parser():
           r.append(t)
         return r
 
-      def parseActionOrSink(cfg, state):
+      def parseActionOrEP(cfg, state):
         mainParser = state.get("parser")
         try:
           return mainParser("action", cfg, state)
         except ParserNotFoundError:
-          #logger.debug("Action parser could not parse '{}', so trying sink parser".format(str2(cfg)))
-          return mainParser("sink", cfg, state)
+          #logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg)))
+          return mainParser("ep", cfg, state)
 
       mainParser = state.get("parser")
       ons = parseGroup("on", mainParser.get("et"), cfg, state)
       if len(ons) == 0:
         logger.warning("No 'on' instances were constructed ({})".format(str2(cfg, 100)))
 
-      dos = parseGroup("do", parseActionOrSink, cfg, state)
+      dos = parseGroup("do", parseActionOrEP, cfg, state)
       if len(dos) == 0:
         logger.warning("No 'do' instances were constructed ({})".format(str2(cfg, 100)))
 
@@ -6904,13 +6913,13 @@ def make_parser():
         r = checkDo(do)
       return r
     binds.sort(key=bindsKey)
-    bindingSink = BindSink()
+    bindingEP = BindEP()
     for bind in binds:
       level, name = state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None)
       for on,dos in parseOnsDos(bind, state):
         names = None if name is None else (name for i in range(len(dos)))
-        bindingSink.add_several(on, dos, level, names)
-    return bindingSink
+        bindingEP.add_several(on, dos, level, names)
+    return bindingEP
 
   scParser.add("binds", parseBinds)
 
@@ -7347,14 +7356,14 @@ class Main:
     source = self.get("parser")("source", self.get("config"), state)
     self.set("source", source)
 
-  def init_main_sink(self, state):
-    sink = init_main_sink(state)
-    self.set("mainSink", sink)
-    self.get("source").set_sink(sink)
+  def init_main_ep(self, state):
+    ep = init_main_ep(state)
+    self.set("mainEP", ep)
+    self.get("source").set_ep(ep)
 
-  def init_worker_sink(self, state):
-    sink = init_preset_config(state)
-    self.get("mainSink").set_next(sink)
+  def init_worker_ep(self, state):
+    ep = init_preset_config(state)
+    self.get("mainEP").set_next(ep)
 
   def init_loop(self, state):
     refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0)
@@ -7379,7 +7388,7 @@ class Main:
       state = ParserState(self)
       self.init_vars(state)
       self.init_poses(state)
-      self.init_worker_sink(state)
+      self.init_worker_ep(state)
       self.init_loop(state)
       self.set("reloading", False)
     except Exception as e:
@@ -7439,7 +7448,7 @@ class Main:
     self.init_log(state)
     self.init_outputs(state)
     self.init_source(state)
-    self.init_main_sink(state)
+    self.init_main_ep(state)
     self.init_sounds(state)
 
   def run(self):
@@ -7519,7 +7528,7 @@ class Main:
     self.props_ = {}
     self.props_["reloading"] = False
     self.props_["source"] = None
-    self.props_["mainSink"] = None
+    self.props_["mainEP"] = None
     self.props_["config"] = None
     self.props_["parser"] = parser
     self.props_["updated"] = []

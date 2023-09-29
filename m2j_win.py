@@ -1346,7 +1346,7 @@ class RawInputEventSource:
             if events is not None:
               for e in events:
                 #logger.debug("{}: sending event: {}".format(self, e))
-                self.sink_(e)
+                self.ep_(e)
       else:
         windll.user32.DispatchMessageA(byref(msg))
 
@@ -1379,8 +1379,8 @@ class RawInputEventSource:
   def swallow(self, name, s):
     pass
 
-  def set_sink(self, sink):
-    self.sink_ = sink
+  def set_ep(self, ep):
+    self.ep_ = ep
 
   def get_devices(self):
     uiNumDevices = c_uint(0)
