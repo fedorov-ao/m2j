@@ -1879,7 +1879,7 @@ def cmp_modifiers_with_descs(eventModifiers, attrModifierDescs):
       #if eventModifiers is None and attrModifierDescs requires a modifier to be missing
       if eventModifiers is not None:
         for em in eventModifiers:
-          idevFound = am.idev is None or am.idev == em.idev
+          idevFound = am.dev is None or am.dev == em.idev
           codeFound = am.code == codes.KEY_ANY or am.code == em.code
           found = idevFound and codeFound
           if found:
