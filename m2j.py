@@ -4633,6 +4633,7 @@ class RelativeHeadMovementJoystick:
     return gp
 
 
+#TODO Unused. Remove?
 class AxisAccumulator:
   def __call__(self, e):
     if self.state_ and e.type == codes.EV_REL:
@@ -4687,9 +4688,9 @@ class Info:
         dx, dy = sx - sc[0], sy - sc[1]
         x0, y0, x1, y1 = sx, sy, sc[2] + dx, sc[3] + dy
         canvas.coords(shape, x0, y0, x1, y1)
-    def __init__(self, area, vpx, vpy, shapes, size):
-      self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = area, vpx, vpy, shapes, size
-  class AxesArea:
+    def __init__(self, widget, vpx, vpy, shapes, size):
+      self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = widget, vpx, vpy, shapes, size
+  class AxesWidget:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
       def make_vp(vp, scale=None):
         if type(vp) in (str, unicode):
@@ -4786,7 +4787,7 @@ class Info:
           canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
-  class EntriesArea:
+  class EntriesWidget:
     def add(self, **kwargs):
       child = kwargs["child"]
       child.grid(in_=self.frame_, row=self.r_, column=self.c_, rowspan=1, columnspan=1)
@@ -4848,7 +4849,7 @@ class Info:
       self.style_ = kwargs["style"]
       self.state_ = None
       self.update()
-  class ButtonsArea(EntriesArea):
+  class ButtonsWidget(EntriesWidget):
     class GetButtonState:
       def __call__(self):
         return self.output_.get_button_state(self.buttonID_)
@@ -4865,7 +4866,7 @@ class Info:
         button = Info.Button(master=self.frame_, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
-      Info.EntriesArea.__init__(self, **kwargs)
+      Info.EntriesWidget.__init__(self, **kwargs)
       self.style_ = kwargs.get("style", {"released" : {"fg" : "black", "bg" : None}, "pressed" : {"fg" : "red", "bg" : None}})
       self.get_odev_ = kwargs["getODev"]
       idev = kwargs.get("idev", None)
@@ -4886,7 +4887,7 @@ class Info:
       self.valueLabel_.pack(side="right")
       self.getAxisValue_ = kwargs["getAxisValue"]
       self.update()
-  class AxesValuesArea(EntriesArea):
+  class AxesValuesWidget(EntriesWidget):
     class GetAxisValue:
       def __call__(self):
         return self.output_.get_axis_value(self.tcAxis_)
@@ -4905,12 +4906,12 @@ class Info:
         axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
     def __init__(self, **kwargs):
-      Info.EntriesArea.__init__(self, **kwargs)
+      Info.EntriesWidget.__init__(self, **kwargs)
       self.get_odev_ = kwargs["getODev"]
       idev = kwargs.get("idev", None)
       if idev is not None:
         self.add_axes_from(idev, **kwargs)
-  class ValueArea:
+  class ValueWidget:
     def update(self):
       v = self.var_.get()
       msg = "{}: ".format(self.name_)
@@ -4928,24 +4929,24 @@ class Info:
       self.fmt_ = kwargs["fmt"]
       self.update()
 
-  def add_area(self, **kwargs):
+  def add_widget(self, **kwargs):
     kwargs["getODev"] = self.get_odev_
-    area = None
+    widget = None
     r, c = kwargs["r"], kwargs["c"]
     t = kwargs["type"]
     if t == "axes":
       layout = kwargs["layout"]
-      area = self.AxesArea(window=self.w_, **kwargs)
+      widget = self.AxesWidget(window=self.w_, **kwargs)
     elif t == "buttons":
-      area = self.ButtonsArea(window=self.w_, **kwargs)
+      widget = self.ButtonsWidget(window=self.w_, **kwargs)
     elif t == "axesValues":
-      area = self.AxesValuesArea(window=self.w_, **kwargs)
+      widget = self.AxesValuesWidget(window=self.w_, **kwargs)
     elif t == "value":
-      area = self.ValueArea(master=self.w_, **kwargs)
+      widget = self.ValueWidget(master=self.w_, **kwargs)
     else:
-      logger.warning("Unknown area type: {}".format(t))
-    self.areas_.append(area)
-    return area
+      logger.warning("Unknown widget type: {}".format(t))
+    self.widgets_.append(widget)
+    return widget
   def set_state(self, s):
     if self.state_ == s:
       return
@@ -4959,11 +4960,11 @@ class Info:
     return self.state_
   def update(self):
     if self.state_:
-      for area in self.areas_:
-        area.update()
+      for widget in self.widgets_:
+        widget.update()
       self.w_.update()
   def __init__(self, **kwargs):
-    self.state_, self.areas_ = False, []
+    self.state_, self.widgets_ = False, []
     self.get_odev_ = kwargs.get("getODev")
     self.w_ = tk.Tk()
     self.w_.title(kwargs.get("title", ""))
@@ -4973,18 +4974,18 @@ class Info:
 
 
 def init_info(**kwargs):
-  def parse_area(areaCfg, info, state):
+  def parse_widget(widgetCfg, info, state):
     main = kwargs.get("main")
-    areaType = state.resolve(areaCfg, "type")
-    if areaType == "value":
-      valueName = state.resolve(areaCfg, "value")
+    widgetType = state.resolve(widgetCfg, "type")
+    if widgetType == "value":
+      valueName = state.resolve(widgetCfg, "value")
       var = main.get("valueManager").get_var(valueName)
-      areaCfg["var"] = var
-    area = info.add_area(**areaCfg)
-    if areaType == "axes":
-      for markerCfg in state.resolve_d(areaCfg, "markers", ()):
+      widgetCfg["var"] = var
+    widget = info.add_widget(**widgetCfg)
+    if widgetType == "axes":
+      for markerCfg in state.resolve_d(widgetCfg, "markers", ()):
         try:
-          area.add_marker(**markerCfg)
+          widget.add_marker(**markerCfg)
         except RuntimeError as e:
           logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
   state = kwargs["state"]
@@ -4996,16 +4997,16 @@ def init_info(**kwargs):
   f = state.resolve_d(infoCfg, "format", 1)
   title = state.resolve_d(infoCfg, "title", "")
   info = Info(title=title, getODev=getODev)
-  areas = state.resolve_d(infoCfg, "areas", ())
+  widgets = state.resolve_d(infoCfg, "widgets", ())
   if f == 1:
-    for areaCfg in areas:
-      parse_area(areaCfg, info, state)
+    for widgetCfg in widgets:
+      parse_widget(widgetCfg, info, state)
   elif f == 2:
     r, c = 0, 0
-    for row in areas:
+    for row in widgets:
       for col in row:
         col["r"], col["c"] = r, c
-        parse_area(col, info, state)
+        parse_widget(col, info, state)
         c += state.resolve_d(col, "cs", 1)
       c = 0
       r += 1
