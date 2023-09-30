@@ -7462,10 +7462,6 @@ class Main:
         except ReloadException:
           logger.info("Reloading")
           self.set("reloading", True)
-        finally:
-          source = self.get("source")
-          if source is not None:
-            source.swallow(None, False)
 
     except KeyboardInterrupt:
       logger.info("Exiting normally")
@@ -7480,6 +7476,9 @@ class Main:
       logger.error("Unexpected exception: {}".format(e))
       raise
     finally:
+      source = self.get("source")
+      if source is not None:
+        source.swallow(None, False)
       self.get("soundPlayer").quit()
 
 
