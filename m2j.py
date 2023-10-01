@@ -6613,7 +6613,7 @@ def make_parser():
   actionParser.add("forward", parseForwardEvent)
 
   def parseLog(cfg, state):
-    message, level = state.resolve(cfg, "message"), state.resolve(cfg, "level")
+    message, level = state.resolve(cfg, "message"), state.resolve_d(cfg, "level", "INFO")
     def callback(e):
       logger.log(name2loglevel(level), message)
       return True
