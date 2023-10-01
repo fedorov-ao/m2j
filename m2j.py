@@ -3262,7 +3262,7 @@ class FullDeltaRelChainCurve:
     self.inputValue_ = inputValue
     inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
     self.inputValue_ += inputDelta
-    outputValue = self.outputValueOp_.calc(inputValue)
+    outputValue = self.outputValueOp_.calc(self.inputValue_)
     outputDelta = outputValue - self.outputValue_
     self.outputValue_ = outputValue
     self.next_.move_by(outputDelta, timestamp)
