@@ -1100,11 +1100,16 @@ def Call(*ops):
 
 class MoveCurve:
   def __call__(self, event):
-    if self.curve_ is not None and event.type in (codes.EV_REL,):
-      self.curve_.move_by(event.value*self.factor_, event.timestamp)
-      return True
-    else:
-      return False
+    r = False
+    if self.curve_ is not None:
+      v = event.value*self.factor_
+      if event.type == codes.EV_REL:
+        self.curve_.move_by(v, event.timestamp)
+        r = True
+      elif event.type == codes.EV_ABS:
+        self.curve_.move(v, event.timestamp)
+        r = True
+    return r
 
   def set_factor(self, factor):
     self.factor_ = factor
@@ -3324,6 +3329,11 @@ class RelToAbsChainCurve:
     nextValue = self.next_.get_value()
     nextValue += x
     self.next_.move(nextValue, timestamp)
+    return self.next_.get_value()
+
+  def move(self, x, timestamp):
+    """x is absolute."""
+    self.next_.move(x, timestamp)
     return self.next_.get_value()
 
   def reset(self):
