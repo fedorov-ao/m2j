@@ -3246,36 +3246,38 @@ class DeltaRelChainCurve:
 class FullDeltaRelChainCurve:
   def move_by(self, x, timestamp):
     """x is relative."""
-    #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
-    #  if input value was adjusted, compute new stored output value
-    #adjust input delta (for sens etc.)
-    #add input delta to stored input value
-    #compute new output value
-    #compute new output delta by subtracting stored output value from new output value
-    #set store output value to new output value
-    #return output delta
-    assert(self.next_ is not None)
+    #update if needed
     self.update_()
+    #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
     inputValue = self.inputValueDDOp_.calc(self.inputValue_, x, timestamp)
+    #  if input value was adjusted, compute new stored output value
     if inputValue != self.inputValue_:
       self.outputValue_ = self.outputValueOp_.calc(inputValue)
-    self.inputValue_ = inputValue
+      self.inputValue_ = inputValue
+    #adjust input delta (for sens etc.)
     inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
+    #add input delta to stored input value
     self.inputValue_ += inputDelta
+    #compute new output value
     outputValue = self.outputValueOp_.calc(self.inputValue_)
+    #compute output delta and update output value
     outputDelta = outputValue - self.outputValue_
     self.outputValue_ = outputValue
-    self.next_.move_by(outputDelta, timestamp)
+    #call next
+    if self.next_ is not None:
+      self.next_.move_by(outputDelta, timestamp)
+    #return output delta
     return outputDelta
 
   def reset(self):
-    assert(self.next_ is not None)
-    self.next_.reset()
+    if self.next_ is not None:
+      self.next_.reset()
     self.reset_self_()
 
   def on_move_axis(self, axis, old, new):
     self.dirty_ = True
-    self.next_.on_move_axis(axis, old, new)
+    if self.next_ is not None:
+      self.next_.on_move_axis(axis, old, new)
 
   def get_value(self):
     self.update_()
