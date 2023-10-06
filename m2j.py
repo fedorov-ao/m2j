@@ -5082,7 +5082,9 @@ def init_main_ep(state):
   topEP = bottomEP = headEP
   mainEP = MainEP()
   mainEP.set_top(topEP)
-  mappingEP = state.get("parser").get("sc").get("mapping")(config, state)
+  scParser = state.get("parser").get("sc")
+  scParser.get("objects")(config, state)
+  mappingEP = scParser.get("mapping")(config, state)
   if mappingEP is not None:
     bottomEP.set_next(mappingEP)
     bottomEP = mappingEP
@@ -5206,7 +5208,7 @@ def init_main_ep(state):
     return op
   actionParser.add("toggleInfo", parseToggleInfo)
 
-  bindEP = main.get("parser").get("sc").get("binds")(config, state)
+  bindEP = scParser.get("binds")(config, state)
   bindEP.add(None, stateEP, 1)
   scaleEP.set_next(bindEP)
 
