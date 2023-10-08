@@ -3585,9 +3585,9 @@ class AxisLinker:
     return self.offset_
 
   def on_move_axis(self, axis, old, new):
-    if self.state_ == False:
+    if self.state_ == False or self.busy_ == True:
       return
-    if not self.busy_ and axis == self.controlledAxis_:
+    elif axis == self.controlledAxis_:
       #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
       if self.old_ is None:
         self.old_ = old
