@@ -7258,6 +7258,7 @@ class Main:
     print "args are:\n\
     -h | --help : this message\n\
     -d fileName | --devices=fileName : print input devices to file fileName (- for stdout)\n\
+    -e | --escape : escape special characters in input device names\n\
     -p presetName | --preset=presetName : use preset presetName\n\
     -c configFileName | --config=configFileName : use config file configFileName\n\
     -v logLevel | --logLevel=logLevel : set log level to logLevel\n"

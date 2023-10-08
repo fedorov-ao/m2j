@@ -1286,9 +1286,10 @@ class RawInputEventSource:
     #TODO Check for error
     self.hwnd = hwnd
 
-    self.devs_ = dict()
+    self.nativeDevices_ = None
+    self.trackedDevices_ = dict()
     self.upu_ = set()
-    logger.debug("{}: created".format(self))
+    #logger.debug("{}: created".format(self))
 
   def __del__(self):
     self.stop()
@@ -1329,8 +1330,8 @@ class RawInputEventSource:
         elif r > 0:
           raw = cast(buf, POINTER(RAWINPUT)).contents
           hd = raw.header.hDevice
-          if hd in self.devs_:
-            idevHash = self.devs_[hd].hash
+          if hd in self.trackedDevices_.keys():
+            idevHash = self.trackedDevices_[hd].hash
             events = None
             if raw.header.dwType == RIM_TYPEMOUSE:
               #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
@@ -1350,10 +1351,11 @@ class RawInputEventSource:
       else:
         windll.user32.DispatchMessageA(byref(msg))
 
-  def track_device(self, name, idev):
-    devices = self.get_devices()
-    for d in devices:
-      if d.name == name:
+  def track_device(self, name, idev, refreshDevices=False):
+    if self.nativeDevices_ is None or refreshDevices == True:
+      self.nativeDevices_ = self.get_devices()
+    for d in self.nativeDevices_:
+      if name in (d.name, d.hash):
         p = (d.usagePage, d.usage)
         if p not in self.upu_:
           numRid = 1
@@ -1365,13 +1367,13 @@ class RawInputEventSource:
           if not windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE)):
             raise WinError()
           self.upu_.add(p)
-        class DevInfo:
+        class TrackedDevInfo:
           pass
-        di = DevInfo()
-        di.idev, di.hash = idev, register_dev(idev)
+        tdi = TrackedDevInfo()
+        tdi.idev, tdi.hash = idev, register_dev(idev)
         if d.usage == HID_USAGE_GENERIC_JOYSTICK:
-          self.init_hid_(d.handle, di)
-        self.devs_[d.handle] = di
+          self.init_hid_(d.handle, tdi)
+        self.trackedDevices_[d.handle] = tdi
         logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, idev, d.usagePage, d.usage))
         return
     raise RuntimeError("Device {} ({}) not found".format(name, idev))
@@ -1398,8 +1400,9 @@ class RawInputEventSource:
         self.name = kwargs.get("name", "")
         self.usagePage = kwargs.get("usagePage", 0)
         self.usage = kwargs.get("usage", 0)
+        self.hash = kwargs.get("hash", None)
       def __str__(self):
-        return "{} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage)
+        return "{} {} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage, self.hash)
     devices = []
     for i in range(uiNumDevices.value):
       ridl = rawInputDeviceList[i]
@@ -1419,7 +1422,7 @@ class RawInputEventSource:
       if r == c_uint(-1):
         raise RuntimeError("Error getting device info")
       di = DeviceInfo()
-      di.handle, di.type, di.name = ridl.hDevice, ridl.dwType, pName.value
+      di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, pName.value, str(hash(pName.value))
       if ridl.dwType == RIM_TYPEMOUSE:
         di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE
       elif ridl.dwType == RIM_TYPEKEYBOARD:
@@ -1505,7 +1508,7 @@ class RawInputEventSource:
     ts, events = time.time(), []
     hid = raw.hid
     hDevice = raw.header.hDevice
-    deviceInfo = self.devs_[hDevice]
+    deviceInfo = self.trackedDevices_[hDevice]
     preparsedData = deviceInfo.preparsedData
     #buttons
     buttonCaps = deviceInfo.buttonCaps
@@ -1649,7 +1652,7 @@ def print_devices(fname, **kwargs):
   devices = RawInputEventSource().get_devices()
   for d in devices:
     name = d.name.replace("\\", "\\\\") if kwargs.get("escape", False) else d.name
-    r.append("name: {}\nhandle: {}\ntype: {} ({})\n".format(name, d.handle, rimtype2str(d.type), d.type))
+    r.append("name: {}\nhandle: {}\ntype: {} ({})\nhash: {}\n".format(name, d.handle, rimtype2str(d.type), d.type, d.hash))
   if fname == "-":
     for l in r:
       print l
