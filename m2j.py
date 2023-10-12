@@ -1195,13 +1195,28 @@ def ResetCurves(curves):
   return op
 
 
-class MoveAxis:
+class MoveAxisTo:
+  def __call__(self, event):
+    if self.axis_ is not None:
+      self.axis_.move(self.value_, False)
+    return True
+
+  def set_value(self, value):
+    self.value_ = value
+
+  def __init__(self, axis, value):
+    self.axis_, self.value_ = axis, value
+
+
+class MoveAxisBy:
   def __call__(self, event):
     if self.axis_ is not None:
       value = self.value_
+      if self.valueFunc_ is not None:
+        value = self.valueFunc_(value)
       if self.stopAt_ is not None:
         current = self.axis_.get()
-        proposed = current + value if self.relative_ == True else value
+        proposed = current + value
         selected = None
         for v in self.stopAt_:
           if v == current:
@@ -1211,15 +1226,25 @@ class MoveAxis:
               selected = v
               absSelectedDelta = abs(selected - current)
         if selected is not None:
-          value = selected - current if self.relative_ == True else selected
-      self.axis_.move(value, self.relative_)
+          value = selected - current
+      self.axis_.move(value, True)
     return True
 
   def set_value(self, value):
     self.value_ = value
 
-  def __init__(self, axis, value, relative=False, stopAt=None):
-    self.axis_, self.value_, self.relative_, self.stopAt_ = axis, value, relative, stopAt
+  def __init__(self, axis, value, stopAt=None, valueFunc=None):
+    self.axis_, self.value_, self.stopAt_, self.valueFunc_ = axis, value, stopAt, valueFunc
+
+
+class MoveAxisValueSetter:
+  def __call__(self, value):
+    if self.moveAxis_ is not None:
+      self.moveAxis_.set_value(value)
+  def set_move_axis(self, moveAxis):
+    self.moveAxis_ = moveAxis
+  def __init__(self, moveAxis=None):
+    self.moveAxis_ = moveAxis
 
 
 def MoveAxes(axesAndValues):
@@ -6236,22 +6261,33 @@ def make_parser():
 
   def parseSetAxis(cfg, state):
     axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
-    class ValueSetter:
-      def __call__(self, value):
-        if self.moveAxis_ is not None:
-          self.moveAxis_.set_value(value)
-      def set_move_axis(self, moveAxis):
-        self.moveAxis_ = moveAxis
-      def __init__(self, moveAxis=None):
-        self.moveAxis_ = moveAxis
-    valueSetter = ValueSetter()
+    valueSetter = MoveAxisValueSetter()
     value = float(state.resolve(cfg, "value", setter=valueSetter))
-    relative = state.resolve_d(cfg, "relative", False)
-    stopAt = state.resolve_d(cfg, "stopAt", None)
-    r = MoveAxis(axis, value, relative, stopAt)
+    r = MoveAxisTo(axis, value)
     valueSetter.set_move_axis(r)
     return r
   actionParser.add("setAxis", parseSetAxis)
+
+  def parseMoveAxisBy(cfg, state):
+    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
+    valueSetter = MoveAxisValueSetter()
+    value = float(state.resolve(cfg, "value", setter=valueSetter))
+    stopAt = state.resolve_d(cfg, "stopAt", None)
+    valueFunc = None
+    valueFuncCfg = state.resolve_d(cfg, "valueFunc", None)
+    if valueFuncCfg is not None:
+      class ValueFunc:
+        def __call__(self, value):
+          return value*self.func_(self.axis_.get())
+        def __init__(self, func, axis):
+          self.func_, self.axis_ = func, axis
+      valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
+      func = state.get("parser")("func", state.resolve(valueFuncCfg, "func"), state)
+      valueFunc = ValueFunc(func, valueFuncAxis)
+    r = MoveAxisBy(axis, value, stopAt, valueFunc)
+    valueSetter.set_move_axis(r)
+    return r
+  actionParser.add("moveAxisBy", parseMoveAxisBy)
 
   def parseMoveAxisByEvent(cfg, state):
     axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
