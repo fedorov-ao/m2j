@@ -1217,14 +1217,14 @@ class MoveAxisBy:
       if self.stopAt_ is not None:
         current = self.axis_.get()
         proposed = current + value
-        selected = None
+        selected, selectedDelta = None, float("inf")
         for v in self.stopAt_:
           if v == current:
             continue
           if clamp(v, current, proposed) == v:
-            if selected is None or (abs(v - current) < absSelectedDelta):
-              selected = v
-              absSelectedDelta = abs(selected - current)
+            vDelta = abs(v - current)
+            if vDelta < selectedDelta:
+              selected, selectedDelta = v, vDelta
         if selected is not None:
           value = selected - current
       self.axis_.move(value, True)
