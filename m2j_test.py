@@ -50,5 +50,45 @@ class DecIterativeInputOpTestCase(unittest.TestCase):
       self.assertAlmostEqual(self.inputOp.calc(y, self.inputLimits), x, delta=self.delta)
 
 
+class SelectNearestTestCase(unittest.TestCase):
+  def testEmptyValues(self):
+    self.assertIsNone(select_nearest(0.0, 1.0, None))
+    self.assertIsNone(select_nearest(0.0, 1.0, []))
+
+  def testSwappedLimits(self):
+    self.assertEqual(1.0, select_nearest(1.0, 0.0, [0.0, 1.0, 2.0]))
+
+  def testSingleValue(self):
+    self.assertIsNone(select_nearest(0.0, 0.5, [1.0]))
+    self.assertEqual(0.5, select_nearest(0.0, 1.0, [0.5]))
+    self.assertEqual(0.0, select_nearest(0.0, 1.0, [0.0]))
+    self.assertEqual(1.0, select_nearest(0.0, 1.0, [1.0]))
+    self.assertIsNone(select_nearest(1.5, 2.0, [1.0]))
+
+  def testMultipleOrderedValues(self):
+    values = [0.0, 1.0, 2.0]
+    self.assertIsNone(select_nearest(-1.5, -0.5, values))
+    self.assertEqual(0.0, select_nearest(-0.5, 0.5, values))
+    self.assertEqual(0.0, select_nearest(-0.5, 1.5, values))
+    self.assertEqual(1.0, select_nearest(0.5, 1.5, values))
+    self.assertEqual(1.0, select_nearest(0.5, 2.5, values))
+    self.assertEqual(2.0, select_nearest(1.5, 2.5, values))
+    self.assertIsNone(select_nearest(2.5, 3.0, values))
+
+  def testMultipleUnorderedValues(self):
+    values = [1.0, 0.0, 2.0]
+    self.assertIsNone(select_nearest(-1.5, -0.5, values))
+    self.assertEqual(0.0, select_nearest(-0.5, 0.5, values))
+    self.assertEqual(0.0, select_nearest(-0.5, 1.5, values))
+    self.assertEqual(1.0, select_nearest(0.5, 1.5, values))
+    self.assertEqual(1.0, select_nearest(0.5, 2.5, values))
+    self.assertEqual(2.0, select_nearest(1.5, 2.5, values))
+    self.assertIsNone(select_nearest(2.5, 3.0, values))
+
+  def testSkipExactMatch(self):
+    values = [0.0, 1.0, 2.0]
+    self.assertIsNone(select_nearest(0.0, 0.5, values, False))
+    self.assertEqual(1.0, select_nearest(0.0, 1.5, values, False))
+
 if __name__ == '__main__':
     unittest.main() 

@@ -58,6 +58,27 @@ def lerp(fv, fb, fe, tb, te):
   return a*fv + b
 
 
+def select_nearest(b, e, values, selectExactMatch=True):
+  """
+  Selects a value from values that is nearest to b and lies in [b; e].
+  If selectExactMatch == False, value that is equal to b is not matched.
+  """
+  if values is None or len(values) == 0:
+    return None
+  selected, selectedDelta = None, float("inf")
+  for v in values:
+    if v == b:
+      if selectExactMatch == True:
+        return v
+      else:
+        continue
+    if clamp(v, b, e) == v:
+      vDelta = abs(v - b)
+      if vDelta < selectedDelta:
+        selected, selectedDelta = v, vDelta
+  return selected
+
+
 def merge_dicts(destination, source):
   """https://stackoverflow.com/questions/20656135/python-deep-merge-dictionary-data"""
   for key, value in source.items():
@@ -1217,14 +1238,7 @@ class MoveAxisBy:
       if self.stopAt_ is not None:
         current = self.axis_.get()
         proposed = current + value
-        selected, selectedDelta = None, float("inf")
-        for v in self.stopAt_:
-          if v == current:
-            continue
-          if clamp(v, current, proposed) == v:
-            vDelta = abs(v - current)
-            if vDelta < selectedDelta:
-              selected, selectedDelta = v, vDelta
+        selected = select_nearest(current, proposed, self.stopAt_, False)
         if selected is not None:
           value = selected - current
       self.axis_.move(value, True)
