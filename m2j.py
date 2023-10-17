@@ -6881,11 +6881,11 @@ def make_parser():
       ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x, eq),
       ("value", lambda x : x, eq_dict)
     ):
-      propName, propOp = p[0], p[1]
+      propName, propOp, cmpOp = p
       propValue = state.resolve_d(cfg, propName, None)
       if propValue is not None:
         propValue = propOp(propValue)
-        r.append((propName, CmpPropTest(propValue, eq_dict)))
+        r.append((propName, CmpPropTest(propValue, cmpOp)))
     return r
   etParser.add("event", parseEvent)
 
