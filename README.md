@@ -21,8 +21,8 @@ Install playsound module
 Install evdev module  
 `$pip install evdev`
 
-Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from evdev dir to ~/.local/lib/python2.7/site-packages/evdev/ (~ is home dir).
-`$cp evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/`
+Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from `3rdparty/evdev` in repo dir to `evdev` installation dir.  
+`$cp /path/to/repo/3rdparty/evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/`
 
 Installing evdev-1.6.1 for python 2.7  
 `$pip install pathlib2`  
