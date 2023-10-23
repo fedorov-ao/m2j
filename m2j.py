@@ -6366,7 +6366,7 @@ def make_parser():
         if self.delay_ == 0.0:
           for i in range(self.numClicks_):
             for s in (1, 0):
-              self.output_.set_button_state(self.key_, s)
+              self.odev_.set_button_state(self.key_, s)
         else:
           self.timestamp_ = event.timestamp
           self.s_, self.i_ = 1, self.numClicks_
