@@ -1029,7 +1029,7 @@ class HIDP_VALUE_CAPS(Structure):
   _anonymous_ = ("_u1",)
 
 
-class DirectInputKeyboard:
+class Keyboard:
   MODE_VK = 0
   MODE_SCANCODE = 1
 
@@ -1062,15 +1062,15 @@ class DirectInputKeyboard:
     self.mode_ = mode
 
 
-def parseDirectInputKeyboardOutput(cfg, state):
+def parseKeyboardOutput(cfg, state):
   mode = state.resolve_d(cfg, "mode", "SCANCODE")
   if mode == "SCANCODE":
-    mode = DirectInputKeyboard.MODE_SCANCODE
+    mode = Keyboard.MODE_SCANCODE
   elif mode == "VK":
-    mode = DirectInputKeyboard.MODE_VK
+    mode = Keyboard.MODE_VK
   else:
     raise RuntimeError("Bad mode: '{}'".format(mode))
-  return DirectInputKeyboard(mode)
+  return Keyboard(mode)
 
 
 class WNDCLASS(Structure):
@@ -1669,7 +1669,7 @@ if __name__ == "__main__":
     odevParser = parser.get("odev")
     odevParser.add("ppjoy", parsePPJoystickOutput)
     odevParser.add("vjoy", parseVJoystickOutput)
-    odevParser.add("di_keyboard", parseDirectInputKeyboardOutput)
+    odevParser.add("keyboard", parseKeyboardOutput)
     parser.add("source", parseRawInputEventSource)
     exit(main.run())
   except Exception as e:
