@@ -1055,8 +1055,8 @@ class Keyboard:
     if windll.user32.SendInput(1, byref(inpt), sizeof(inpt)) != 1:
       raise WinError()
 
-  def set_button_state(self, key, state):
-    return self.set_key_state(key, state)
+  def set_button_state(self, button, state):
+    return self.set_key_state(button, state)
 
   def __init__(self, mode=1):
     self.mode_ = mode
@@ -1071,6 +1071,93 @@ def parseKeyboardOutput(cfg, state):
   else:
     raise RuntimeError("Bad mode: '{}'".format(mode))
   return Keyboard(mode)
+
+
+class Mouse:
+  def move_axis(self, tcAxis, value, relative):
+    inpt = self.make_input_()
+    mi = inpt.mi
+    mi.dwFlags = MOUSEEVENTF_MOVE
+    value = int(value)
+    if tcAxis.code in (codes.ABS_X, codes.REL_X):
+      mi.dx = value
+    elif tcAxis.code in (codes.ABS_Y, codes.REL_Y):
+      mi.dy = value
+    elif tcAxis.code in (codes.ABS_WHEEL, codes.REL_WHEEL):
+      #TODO Sign?
+      mi.mouseData = value
+      mi.dwFlags |= MOUSEEVENTF_WHEEL
+    elif tcAxis.code ==  codes.REL_HWHEEL:
+      #TODO Sign?
+      mi.mouseData = value
+      mi.dwFlags |= MOUSEEVENTF_HWHEEL
+    else:
+      raise RuntimeError("Bad axis")
+    if relative == False:
+      mi.dwFlags |= MOUSEEVENTF_ABSOLUTE
+    if windll.user32.SendInput(1, byref(inpt), sizeof(inpt)) != 1:
+      raise WinError()
+
+  def get_axis_value(self, tcAxis):
+    return 0.0
+
+  def get_limits(self, tcAxis):
+    return (-float("inf"), float("inf"))
+
+  def get_supported_axes(self):
+    return self.axes_
+
+  def set_button_state(self, button, state):
+    inpt = self.make_input_()
+    mi = inpt.mi
+    flags = {
+      codes.BTN_LEFT : (MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN),
+      codes.BTN_RIGHT : (MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_RIGHTDOWN),
+      codes.BTN_MIDDLE : (MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MIDDLEDOWN),
+      codes.BTN_EXTRA : (MOUSEEVENTF_XUP, MOUSEEVENTF_XDOWN),
+      codes.BTN_SIDE : (MOUSEEVENTF_XUP, MOUSEEVENTF_XDOWN)
+    }
+    if button not in flags:
+      raise RuntimeError("Bad button")
+    mi.dwFlags = mapping[button][bool(state)]
+    #TODO Check button mapping
+    XBUTTON1 = 0x0001
+    XBUTTON2 = 0x0002
+    if button == codes.BTN_EXTRA:
+      mi.mouseData = XBUTTON1
+    elif button == codes.BTN_SIDE:
+      mi.mouseData = XBUTTON2
+    if windll.user32.SendInput(1, byref(inpt), sizeof(inpt)) != 1:
+      raise WinError()
+
+  def get_supported_buttons(self):
+    return self.buttons_
+
+  def make_input_(self):
+    extra = ULONG(0)
+    inpt = INPUT()
+    inpt.type = INPUT_MOUSE
+    mi = inpt.mi
+    mi.dx, mi.dy = 0, 0
+    mi.mouseData, mi.dwFlags = 0, 0
+    mi.time = 0
+    mi.dwExtraInfo = pointer(extra)
+    return inpt
+
+  axes_ = (
+      TypeCode(codes.EV_ABS, codes.ABS_X),
+      TypeCode(codes.EV_ABS, codes.ABS_Y),
+      TypeCode(codes.EV_ABS, codes.ABS_WHEEL),
+      TypeCode(codes.EV_REL, codes.REL_X),
+      TypeCode(codes.EV_REL, codes.REL_Y),
+      TypeCode(codes.EV_REL, codes.REL_WHEEL)
+  )
+
+  buttons_ = (codes.BTN_LEFT, codes.BTN_RIGHT, codes.BTN_MIDDLE, codes.BTN_EXTRA, codes.BTN_SIDE)
+
+
+def parseMouseOutput(cfg, state):
+  return Mouse()
 
 
 class WNDCLASS(Structure):
@@ -1670,6 +1757,7 @@ if __name__ == "__main__":
     odevParser.add("ppjoy", parsePPJoystickOutput)
     odevParser.add("vjoy", parseVJoystickOutput)
     odevParser.add("keyboard", parseKeyboardOutput)
+    odevParser.add("mouse", parseMouseOutput)
     parser.add("source", parseRawInputEventSource)
     exit(main.run())
   except Exception as e:
