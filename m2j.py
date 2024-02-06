@@ -3631,6 +3631,7 @@ class AxisLinker:
       if self.old_ is None:
         self.old_ = old
     elif axis == self.controllingAxis_:
+      #logger.debug("{} : Controlling axis has moved to {}".format(self, new))
       if self.old_ is not None:
         self.offset_ += self.controlledAxis_.get() - self.old_
         self.old_ = None
@@ -4318,8 +4319,8 @@ class ReportingJoystickAxis:
     return self.joystick_.get_limits(self.tcAxis_)
 
   def add_listener(self, listener):
-    self.listeners_.append(weakref.ref(listener))
     #logger.debug("{}: Adding listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
+    self.listeners_.append(weakref.ref(listener))
 
   def remove_listener(self, listener):
     try:
@@ -4329,8 +4330,8 @@ class ReportingJoystickAxis:
       raise RuntimeError("Listener {} not registered".format(listener))
 
   def remove_all_listeners(self):
-    self.listeners_ = []
     #logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
+    self.listeners_ = []
 
   def on_move(self, old, new):
     dirty = False
@@ -5265,12 +5266,6 @@ def init_main_ep(state):
   grabEP.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
   grabEP.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
 
-  #axes are created on demand by get_axis_by_full_name
-  #remove listeners from axes if reinitializing
-  for oName, oAxes in main.get("axes").items():
-    for tcAxis, axis in oAxes.items():
-      axis.remove_all_listeners()
-
   nextEP = NextEP()
   grabEP.add(None, nextEP, 1)
 
@@ -5659,7 +5654,6 @@ def make_parser():
     funcSetter.axisLinker = linker
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
-    #FIXME Since there is no "axis" property in config node, it does not get added to state["curves"]
     state.add_curve(fnControlledAxis, linker)
     state.add_curve(fnControllingAxis, linker)
     return linker
@@ -7428,7 +7422,15 @@ class Main:
     self.set("mainEP", ep)
     self.get("source").set_ep(ep)
 
+  def remove_axes_listeners(self):
+    #axes are created on demand by get_axis_by_full_name
+    for oName, oAxes in self.get("axes").items():
+      for tcAxis, axis in oAxes.items():
+        axis.remove_all_listeners()
+
   def init_worker_ep(self, state):
+    #remove listeners from axes in case of reinitialization
+    self.remove_axes_listeners()
     ep = init_preset_config(state)
     self.get("mainEP").set_next(ep)
 
