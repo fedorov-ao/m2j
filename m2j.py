@@ -7490,15 +7490,13 @@ class Main:
 
     devicesFileName, escapeDeviceName = None, False
 
-    opts, args = getopt.getopt(sys.argv[1:], "hd:ep:v:c:", ["help", "devices=", "escape", "preset=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hd:ep:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         self.print_help()
         raise ExitException
       elif o in ("-d", "--devices"):
         devicesFileName = a
-      elif o in ("-e", "--escape"):
-        escapeDeviceName = True
       if o in ("-p", "--preset"):
         self.options_["preset"] = a
       elif o in ("-v", "--logLevel"):
@@ -7508,7 +7506,7 @@ class Main:
         cns.append(a)
 
     if devicesFileName is not None:
-        self.print_devices_(devicesFileName, escape=escapeDeviceName)
+        self.print_devices_(devicesFileName)
         raise ExitException
 
     self.set("reloading", False)

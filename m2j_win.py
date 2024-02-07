@@ -1509,7 +1509,8 @@ class RawInputEventSource:
       if r == c_uint(-1):
         raise RuntimeError("Error getting device info")
       di = DeviceInfo()
-      di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, pName.value, str(hash(pName.value))
+      name = pName.value.replace("\\", "/")
+      di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, name, str(hash(name))
       if ridl.dwType == RIM_TYPEMOUSE:
         di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE
       elif ridl.dwType == RIM_TYPEKEYBOARD:
@@ -1738,8 +1739,7 @@ def print_devices(fname, **kwargs):
   r = []
   devices = RawInputEventSource().get_devices()
   for d in devices:
-    name = d.name.replace("\\", "\\\\") if kwargs.get("escape", False) else d.name
-    r.append("name: {}\nhandle: {}\ntype: {} ({})\nhash: {}\n".format(name, d.handle, rimtype2str(d.type), d.type, d.hash))
+    r.append("name: {}\nhandle: {}\ntype: {} ({})\nhash: {}\n".format(d.name, d.handle, rimtype2str(d.type), d.type, d.hash))
   if fname == "-":
     for l in r:
       print l
