@@ -6371,7 +6371,7 @@ def make_parser():
         else:
           self.timestamp_ = event.timestamp
           self.s_, self.i_ = 1, self.numClicks_
-          self.odev_.set_button_state(self.key_, self.s_)
+          self.set_button_state_(self.key_, self.s_)
         return True
       def on_update(self, tick, ts):
         if self.i_ == 0:
@@ -6383,10 +6383,15 @@ def make_parser():
             self.i_ -= 1
           else:
             self.s_ = 1
-          self.odev_.set_button_state(self.key_, self.s_)
+          self.set_button_state_(self.key_, self.s_)
       def __init__(self, odev, key, numClicks, delay):
         self.odev_, self.key_, self.numClicks_, self.delay_ = odev, key, numClicks, delay
         self.timestamp_, self.i_ = None, 0
+      def set_button_state_(self, button, s):
+        try:
+          self.odev_.set_button_state(button, s)
+        except RuntimeError as e:
+          logger.error(str2(e))
     clicker = Clicker(odev, cKey, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
