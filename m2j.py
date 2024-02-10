@@ -174,11 +174,18 @@ class CfgStack:
 
 
 def set_nested(d, name, value, sep = "."):
+  def check_type(d, name):
+    td = type(d)
+    if td not in (dict, collections.OrderedDict):
+      raise ValueError("{} is not a dictionary, but a {}".format(name, td))
   tokens = name.split(sep)
-  dd = d
-  for t in tokens[:-1]:
-    dd = dd.setdefault(t, collections.OrderedDict())
-  dd[tokens[-1]] = value
+  currDict = d
+  for token in tokens[:-1]:
+    check_type(currDict, token)
+    currDict = currDict.setdefault(token, collections.OrderedDict())
+  token = tokens[-1]
+  check_type(currDict, token)
+  currDict[token] = value
   return value
 
 
@@ -7414,8 +7421,8 @@ class Main:
           logger.error("Cannot create pose '{}' ({})".format(poseName, e))
 
   def init_source(self, state):
-    idev = self.get("parser")("source", self.get("config"), state)
-    self.set("source", idev)
+    source = self.get("parser")("source", self.get("config"), state)
+    self.set("source", source)
 
   def init_main_ep(self, state):
     ep = init_main_ep(state)
