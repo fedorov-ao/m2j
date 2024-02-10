@@ -404,7 +404,7 @@ def parseEvdevJoystickOutput(cfg, state):
   else:
     buttonNames = cfg.get("buttons", None)
     if buttonNames is not None:
-      buttons = [code2ecode(name2code(buttonName)) for buttonName in buttonNames]
+      buttons = [name2code(buttonName) for buttonName in buttonNames]
     else:
       raise RuntimeError("Either 'buttons' or 'numButtons' must be specified")
   assert buttons is not None
