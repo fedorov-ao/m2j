@@ -7458,36 +7458,39 @@ class Main:
       del self.loop_
     self.loop_ = loop
 
-  def reinit_or_fallback(self):
-    try:
-      self.init_config2()
-      state = ParserState(self)
-      self.init_vars(state)
-      self.init_poses(state)
-      self.init_worker_ep(state)
-      self.init_loop(state)
-      self.set("reloading", False)
-    except Exception as e:
-      logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-      numTraceLines = self.props_["numTraceLines"]
-      if numTraceLines > 0:
-        logger.error("===Traceback begin===")
-        for l in traceback.format_exc().splitlines()[-numTraceLines:]:
-          logger.error(l)
-        logger.error("===Traceback end===")
-      if self.loop_ is not None:
-        logger.error("Falling back to previous state.")
-      else:
-        raise Exception("No valid state to fall back to.")
+  def print_trace(self):
+    numTraceLines = self.props_["numTraceLines"]
+    if numTraceLines > 0:
+      logger.error("===Traceback begin===")
+      for l in traceback.format_exc().splitlines()[-numTraceLines:]:
+        logger.error(l)
+      logger.error("===Traceback end===")
 
-  def reinit_and_run(self):
-    oldUpdated = [v for v in self.get("updated")]
+  def reinit_or_fallback(self, inupdated):
+    #if loop has been already created (so it is a reinitialization) - set "updated" property to a copy of initial updated list
+    if self.loop_ is not None:
+      self.set("updated", inupdated[:])
     try:
-      self.reinit_or_fallback()
-      assert(self.loop_ is not None)
-      self.loop_.run()
+      state = ParserState(self)
+      try:
+        self.init_config2()
+        self.init_vars(state)
+        self.init_poses(state)
+        self.init_worker_ep(state)
+      except Exception as e:
+        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
+        self.print_trace()
+        logger.error("Falling back to initial state.")
+        self.set("updated", inupdated[:])
+        self.get("mainEP").set_next(None)
+      self.init_loop(state)
     finally:
-      self.set("updated", oldUpdated)
+      self.set("reloading", False)
+
+  def reinit_and_run(self, inupdated):
+    self.reinit_or_fallback(inupdated)
+    assert(self.loop_ is not None)
+    self.loop_.run()
 
   def preinit(self):
     self.preinit_log()
@@ -7528,9 +7531,11 @@ class Main:
   def run(self):
     try:
       self.preinit()
+      inupdated = self.get("updated")[:]
+      #inupdated contains a copy of list of updated objects as it is after main ep was initialized - an intial updated list
       while (True):
         try:
-          r = self.reinit_and_run()
+          r = self.reinit_and_run(inupdated)
         except ReloadException:
           logger.info("Reloading")
           self.set("reloading", True)
