@@ -69,6 +69,8 @@ lmouse modes are _yaw_, _fwd_, _head_rotation_, _head_movement_, _aux1_, _aux2_.
 |left|yaw|press/release|rmouse.RMB|rmouse.SIDE|set view to/return view back|pose2 (?)||||
 |left|yaw|press/release|rmouse.RMB|rmouse.EXTRA|set view to/return view back|pose3 (?)||||
 |left|yaw|press/release|rmouse.MMB||press/release|head.0|look through sight|||
+|left|yaw|move|lmouse.X||move|joystick.Z|yaw|yaw||
+|left|yaw|move|lmouse.Y||move|joystick.RUDDER|brakes|||
 |left|yaw|move|lmouse.WHEEL||move|head.THROTTLE|zoom|zoom||
 |left|yaw|press|lmouse.LMB||switch to|head_rotation|||save prev view if 2mice2.prevPoseMode == on_release|
 |left|yaw|click and press|lmouse.LMB||switch to|head_rotation|||save prev view if 2mice2.prevPoseMode == on_hold|
