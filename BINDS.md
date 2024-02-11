@@ -101,9 +101,9 @@ lmouse modes are _yaw_, _fwd_, _head_rotation_, _head_movement_, _aux1_, _aux2_.
 |right|aux4|click|rmouse.MIDDLE||click|joystick3.14||||
 |right|aux3|hold/release|rmouse.MIDDLE||press/release|joystick3.15||||
 |left|yaw|press/release|lmouse.SIDE|rmouse.SIDE|switch to/from|aux1||||
-|left|aux1|move|lmouse.X||move|joystick3.X||||
-|left|aux1|move|lmouse.Y||move|joystick3.Y||||
-|left|aux1|move|lmouse.WHEEL||move|joystick3.Z||||
+|left|aux1|move|lmouse.X||move|joystick3.X|yaw trim|||
+|left|aux1|move|lmouse.Y||move|joystick3.Y|elevator trim|||
+|left|aux1|move|lmouse.WHEEL||move|joystick3.Z|roll trim|||
 |left|aux1|click|lmouse.MMB||center|joystick3.Z||||
 |left|aux1|hold|lmouse.MMB||center|joystick3.X, joystick3.Y, joystick3.Z||||
 |left|yaw|press/release|lmouse.SIDE|rmouse.EXTRA|switch to/from|aux2||||
