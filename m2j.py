@@ -5338,7 +5338,7 @@ def init_preset_config(state):
   presetName = state.resolve(config, "preset")
   logger.info("Using '{}' preset from config".format(presetName))
   presetsCfg = state.resolve_d(config, "presets", {})
-  presetCfg = state.resolve_d(presetsCfg, presetName, None)
+  presetCfg = get_nested_d(presetsCfg, presetName, None)
   if presetCfg is None:
     raise Exception("'{}' preset not found in config".format(presetName))
   else:
@@ -5711,7 +5711,7 @@ def make_parser():
   def parseInputBasedCurve2(cfg, state):
     fnAxis = state.resolve(cfg, "axis")
     axis = state.get_axis_by_full_name(fnAxis)
-    dynamicCfg = state.resolve(cfg, "dynamic")
+    dynamicCfg = get_nested(cfg, "dynamic")
     signDDOp = SignDistanceDeltaOp()
     timeDDOp = TimeDistanceDeltaOp(resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
@@ -5739,7 +5739,7 @@ def make_parser():
     axis.add_listener(curve)
     #accumulate
     #Order of ops should not matter
-    dynamicCfg = state.resolve(cfg, "dynamic")
+    dynamicCfg = get_nested(cfg, "dynamic")
     valueDDOp = SignDistanceDeltaOp()
     valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaDOp = ReturnDeltaOp()
@@ -5766,7 +5766,7 @@ def make_parser():
     offsetChainCurve = OffsetAbsChainCurve(next=None)
     dymamicChainCurve.set_next(offsetChainCurve)
     #transform offset
-    staticCfg = state.resolve(cfg, "static")
+    staticCfg = get_nested(cfg, "static")
     staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
     staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
     staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
@@ -5780,7 +5780,7 @@ def make_parser():
 
   def makeInputValueDDOp(cfg, state):
     inputValueDDOp = SignDistanceDeltaOp()
-    resetFuncCfg = state.resolve_d(cfg, "resetFunc", None)
+    resetFuncCfg = get_nested_d(cfg, "resetFunc", None)
     if resetFuncCfg is not None:
       resetFunc = state.get("parser")("func", resetFuncCfg, state)
       def resetOp2(distance, delta, timestamp, dt):
@@ -5807,7 +5807,7 @@ def make_parser():
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    dynamicCfg = state.resolve_d(cfg, "dynamic", None)
+    dynamicCfg = get_nested_d(cfg, "dynamic", None)
     if dynamicCfg is not None:
       valueDDOp = makeInputValueDDOp(dynamicCfg, state)
       deltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
@@ -5819,7 +5819,7 @@ def make_parser():
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #transform
-    staticCfg = state.resolve_d(cfg, "static", None)
+    staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
@@ -5844,7 +5844,10 @@ def make_parser():
     axis.add_listener(top)
     #accelerate
     #Order of ops should not matter
-    dynamicCfg = state.resolve_d(cfg, "dynamic", None)
+    #just getting config node or arg/obj reference here; resolving would be handled later by func parser
+    #as a rule, config nodes that are passed to parser (dictionary or arg/obj/var reference nodes) should be retrieved by get_nested[_d](),
+    #and other elements - by state.resolve[_d]()
+    dynamicCfg = get_nested_d(cfg, "dynamic", None)
     if dynamicCfg is not None:
       inputValueDDOp = makeInputValueDDOp(dynamicCfg, state)
       inputDeltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
@@ -5854,7 +5857,7 @@ def make_parser():
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate and transform
-    staticCfg = state.resolve_d(cfg, "static", None)
+    staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
       #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
