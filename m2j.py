@@ -5467,8 +5467,9 @@ class IntrusiveSelectParser:
 class DerefSelectParser:
   def __call__(self, key, cfg, state):
     #logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
-    r = state.deref(key)
-    return self.p_(key, cfg, state) if r == key else r
+    d = key if self.derefKey_ else cfg
+    r = state.deref(d)
+    return self.p_(key, cfg, state) if r == d else r
 
   def add(self, key, parser):
     self.p_.add(key, parser)
@@ -5479,8 +5480,9 @@ class DerefSelectParser:
   def has(self, key):
     return self.p_.has(key)
 
-  def __init__(self, parser=None):
+  def __init__(self, parser=None, derefKey=True):
     self.p_ = SelectParser() if parser is None else parser
+    self.derefKey_ = derefKey
 
 
 class DerefParser:
@@ -5554,14 +5556,17 @@ def make_parser():
   def make_outer_deref_parser(keyOp):
     return DerefParser(parser=IntrusiveSelectParser(keyOp=keyOp, parser=SelectParser()))
 
-  mainParser = SelectParser()
+  def make_inner_deref_parser(keyOp):
+    return IntrusiveSelectParser(keyOp=keyOp, parser=DerefSelectParser())
+
+  mainParser = DerefSelectParser(parser=SelectParser(), derefKey=False)
 
   def literalParser(cfg, state):
     return state.resolve(cfg, "literal")
   mainParser.add("literal", literalParser)
 
   funcParserKeyOp = lambda cfg,state : get_nested(cfg, "func")
-  funcParser = make_double_deref_parser(keyOp=funcParserKeyOp)
+  funcParser = IntrusiveSelectParser(keyOp=funcParserKeyOp, parser=SelectParser())
   mainParser.add("func", funcParser)
 
   def make_symm_wrapper(wrapped, symm):
@@ -5655,8 +5660,9 @@ def make_parser():
 
   #Curves
   curveParserKeyOp=lambda cfg,state : get_nested(cfg, "curve")
-  #needs to be double deref parser to process '"curve" : "obj:..."'
-  curveParser = make_double_deref_parser(keyOp=curveParserKeyOp)
+  #because curve cfg nodes are fuzed with action (i.e. move) cfg nodes,
+  #this needs to be inner deref parser to process '"curve" : "obj:..."'
+  curveParser = make_inner_deref_parser(keyOp=curveParserKeyOp)
   mainParser.add("curve", curveParser)
 
   def parseAxisLinker(cfg, state):
@@ -5683,7 +5689,7 @@ def make_parser():
       return sensOp
     else:
       axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
-      func = state.get("parser")("func", state.resolve(cfg, "sensMod.func"), state)
+      func = state.get("parser")("func", get_nested(cfg, "sensMod.func"), state)
       class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.func_(self.axis_.get()))
@@ -5712,7 +5718,7 @@ def make_parser():
       combine=lambda x,s : x*s,
       ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", dynamicCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = FuncOp(func=state.get("parser")("func", state.resolve(cfg, "static"), state))
+    outputOp = FuncOp(func=state.get("parser")("func", get_nested(cfg, "static"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state)
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
@@ -5959,7 +5965,7 @@ def make_parser():
           return name
     return "ep"
 
-  epParser = make_outer_deref_parser(keyOp=epParserKeyOp)
+  epParser = IntrusiveSelectParser(keyOp=epParserKeyOp, parser=SelectParser())
   mainParser.add("ep", epParser)
   epParser.add("preset", parseExternal("preset", ("presets",)))
 
@@ -6199,7 +6205,7 @@ def make_parser():
     if key is None:
       key = get_nested_d(cfg, "type", None)
     return key
-  actionParser = make_double_deref_parser(keyOp=actionParserKeyOp)
+  actionParser = IntrusiveSelectParser(keyOp=actionParserKeyOp, parser=SelectParser())
   mainParser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
@@ -6769,7 +6775,7 @@ def make_parser():
     if key is None:
       raise RuntimeError("Was expecting either \"et\" or \"type\" keys in {}".format(str2(cfg)))
     return key
-  etParser = make_double_deref_parser(keyOp=etParserKeyOp)
+  etParser = IntrusiveSelectParser(keyOp=etParserKeyOp, parser=SelectParser())
   mainParser.add("et", etParser)
 
   def make_et(f):
@@ -6987,7 +6993,7 @@ def make_parser():
           return mainParser("ep", cfg, state)
 
       mainParser = state.get("parser")
-      ons = parseGroup("on", mainParser.get("et"), cfg, state)
+      ons = parseGroup("on", lambda cfg,state: mainParser("et", cfg, state), cfg, state)
       if len(ons) == 0:
         logger.warning("No 'on' instances were constructed ({})".format(str2(cfg, 100)))
 
@@ -7034,7 +7040,7 @@ def make_parser():
     if key is None:
       raise RuntimeError("Was expecting either \"odev\" or \"type\" keys in {}".format(str2(cfg)))
     return key
-  odevParser = make_double_deref_parser(keyOp=odevParserKeyOp)
+  odevParser = IntrusiveSelectParser(keyOp=odevParserKeyOp, parser=SelectParser())
   mainParser.add("odev", odevParser)
 
   def get_or_make_odev(name, state):
@@ -7142,8 +7148,8 @@ def make_parser():
 
   @make_reporting_joystick
   def parseCompositeODev(cfg, state):
-    parser = state.get("parser").get("odev")
-    children = parse_list(state.resolve(cfg, "children"), state, parser)
+    parser = state.get("parser")
+    children = parse_list(state.resolve(cfg, "children"), state, lambda cfg,state : parser("odev", cfg, state))
     checkChild = state.resolve(cfg, "checkChild")
     union = state.resolve(cfg, "union")
     j = CompositeJoystick(children=children, checkChild=checkChild, union=union)
@@ -7205,7 +7211,7 @@ def make_parser():
   mainParser.add("nvar", parseNVar)
 
   trackerParserKeyOp=lambda cfg,state : get_nested(cfg, "tracker")
-  trackerParser = make_double_deref_parser(keyOp=trackerParserKeyOp)
+  trackerParser = IntrusiveSelectParser(keyOp=trackerParserKeyOp, parser=SelectParser())
   mainParser.add("tracker", trackerParser)
 
   def parseConsoleTracker(cfg, state):
@@ -7409,7 +7415,7 @@ class Main:
   def init_odevs(self, state):
     nameParser = lambda key,state : key
     parser = self.get("parser")
-    odevParser = parser.get("odev")
+    odevParser = lambda cfg,state : parser("odev", cfg, state)
     def exception_handler(key, value, e):
       logger.error("Cannot create output '{}' ({})".format(key, e))
       return True
@@ -7446,7 +7452,7 @@ class Main:
 
   def init_poses(self, state):
     poseManager = self.get("poseManager")
-    poseParser = self.get("parser").get("pose")
+    poseParser = lambda cfg,state: self.get("parser")("pose", cfg, state)
     posesCfg = self.get("config").get("poses")
     if posesCfg is not None:
       for poseName,poseCfg in posesCfg.items():
