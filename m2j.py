@@ -325,24 +325,25 @@ class ParserState:
     #logger.debug("Constructing objects from '{}'".format(str2(cfg)))
     for k,v in cfg.items():
       try:
-        o = None
+        o = self.deref(v)
         #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
         #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
-        if not is_dict_type(v):
-          raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
-        n = v.get("class", None)
-        if n is not None:
-          o = parser(n, v, self)
-        else:
-          for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
-            if n in v:
+        if o == v:
+          if is_dict_type(v):
+            o = None
+            n = v.get("class", None)
+            if n is not None:
               o = parser(n, v, self)
-              #break is needed to avoid executing the "else" block
-              break
-          else:
-            o = parser("ep", v, self)
-        if o is None:
-          raise RuntimeError()
+            else:
+              for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
+                if n in v:
+                  o = parser(n, v, self)
+                  #break is needed to avoid executing the "else" block
+                  break
+              else:
+                o = parser("ep", v, self)
+          if o is None:
+            raise RuntimeError("Cannot dereference or create object from: {}".format(str2(v)))
         cb(k, o)
       except RuntimeError as e:
         logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v), e))
