@@ -79,6 +79,18 @@ def select_nearest(b, e, values, selectExactMatch=True):
   return selected
 
 
+def is_dict_type(a):
+  return type(a) in (dict, collections.OrderedDict,)
+
+
+def is_str_type(a):
+  return type(a) in (str, unicode,)
+
+
+def is_list_type(a):
+  return type(a) in (tuple, list,)
+
+
 def merge_dicts(destination, source):
   """https://stackoverflow.com/questions/20656135/python-deep-merge-dictionary-data"""
   for key, value in source.items():
@@ -110,11 +122,11 @@ def str2(v, length=0):
       unicode : ( '"', '"' )
     }
     s = str()
-    if type(v) in (dict, collections.OrderedDict):
+    if is_dict_type(v):
       for a,b in v.items():
         s += str2(a) + " : " + str2(b) + ", "
       s = s[:-2]
-    elif type(v) in (tuple, list):
+    elif is_list_type(v):
       for a in v:
         s += str2(a) + ", "
       s = s[:-2]
@@ -175,9 +187,8 @@ class CfgStack:
 
 def set_nested(d, name, value, sep = "."):
   def check_type(d, name):
-    td = type(d)
-    if td not in (dict, collections.OrderedDict):
-      raise ValueError("{} is not a dictionary, but a {}".format(name, td))
+    if not is_dict_type(d):
+      raise ValueError("{} is not a dictionary, but a {}".format(name, type(d)))
   tokens = name.split(sep)
   currDict = d
   for token in tokens[:-1]:
@@ -317,7 +328,7 @@ class ParserState:
         o = None
         #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
         #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
-        if type(v) not in (dict, collections.OrderedDict):
+        if not is_dict_type(v):
           raise RuntimeError("Object specification must be a JSON object, got {}".format(str2(v)))
         n = v.get("class", None)
         if n is not None:
@@ -388,7 +399,7 @@ class ParserState:
         return None
     prefix, suffix, mapping = None, None, None
     r = refOrValue
-    if type(refOrValue) in (dict, collections.OrderedDict):
+    if is_dict_type(refOrValue):
       for p in ("obj", "arg", "var"):
         suffix = get_nested_d(refOrValue, p, None)
         if suffix is not None:
@@ -396,7 +407,7 @@ class ParserState:
           if prefix == "var":
             mapping = make_mapping(refOrValue)
           break
-    elif type(refOrValue) in (str, unicode):
+    elif is_str_type(refOrValue):
       refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +*/&|]*)(.*?)")
       refOrValueMatch = refOrValueRe.match(refOrValue)
       if refOrValueMatch is not None:
@@ -1653,7 +1664,7 @@ class MappingEP:
     return next
 
   def __init__(self, mapping):
-    assert type(mapping) in (dict, collections.OrderedDict)
+    assert is_dict_type(mapping)
     self.mapping_ = mapping
 
 
@@ -2349,7 +2360,7 @@ class ModeEPModeManager:
         self.ep_.set_mode(m, report)
 
   def make_current_(self, current):
-    if current is not None and type(current) not in (tuple, list):
+    if current is not None and not is_list_type(current):
       return [current]
     else:
       return current
@@ -4752,7 +4763,7 @@ class Info:
   class AxesWidget:
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
       def make_vp(vp, scale=None):
-        if type(vp) in (str, unicode):
+        if is_str_type(vp):
           s = vp[0]
           sm = 1.0
           if s in ("+", "-"):
@@ -4915,7 +4926,7 @@ class Info:
       def __init__(self, output, buttonID):
         self.output_, self.buttonID_ = output, buttonID
     def add_buttons_from(self, odev, **kwargs):
-      odev = self.get_odev_(odev) if type(odev) in (str, unicode) else odev
+      odev = self.get_odev_(odev) if is_str_type(odev) else odev
       if odev is None:
         return
       buttonIDs = odev.get_supported_buttons()
@@ -4953,7 +4964,7 @@ class Info:
       def __init__(self, output, tcAxis):
         self.output_, self.tcAxis_ = output, tcAxis
     def add_axes_from(self, output, **kwargs):
-      odev = self.get_odev_(output) if type(output) in (str, unicode) else output
+      odev = self.get_odev_(output) if is_str_type(output) else output
       if odev is None:
         return
       tcAxiss = odev.get_supported_axes()
@@ -5594,7 +5605,7 @@ def make_parser():
         self.func_ = func
     coeffsSetter = CoeffsSetter()
     coeffs = state.resolve(cfg, "coeffs", setter=coeffsSetter)
-    if type(coeffs) not in (dict, collections.OrderedDict):
+    if not is_dict_type(coeffs):
       raise RuntimeError("coeffs should be dict-like")
     coeffs = {int(p) : k for p,k in coeffs.items()}
     offset = state.resolve_d(cfg, "offset", 0.0)
@@ -5637,7 +5648,7 @@ def make_parser():
 
   def get_func(cfg, state, **kwargs):
     op = state.resolve(cfg, "func", **kwargs)
-    if type(op) in (str, unicode):
+    if is_str_type(op):
       op = state.get("parser")("func", cfg, state)
     return op
 
@@ -5941,7 +5952,7 @@ def make_parser():
 
   def epParserKeyOp(cfg, state):
     names = ("preset",)
-    if type(cfg) in (dict, collections.OrderedDict):
+    if is_dict_type(cfg):
       for name in names:
         if name in cfg or get_nested_d(cfg, "type", "") == name:
           return name
@@ -6314,13 +6325,13 @@ def make_parser():
     axesAndValues = state.resolve(cfg, "axesAndValues")
     allRelative = state.resolve_d(cfg, "relative", False)
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
-    assert(type(axesAndValues) in (dict, collections.OrderedDict))
+    assert is_dict_type(axesAndValues)
     axesAndValues = axesAndValues.items()
     #logger.debug("parseSetAxes(): {}".format(axesAndValues))
     av = []
     for axisData in axesAndValues:
       fnAxis, value, relative = axisData[0], axisData[1], allRelative
-      if type(value) in (tuple, list):
+      if is_list_type(value):
         assert(len(value) >= 2)
         value, relative = value[0], value[1]
       axis = state.get_axis_by_full_name(state.deref(fnAxis))
@@ -6553,7 +6564,7 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       value = var.get()
-      if key is not None and type(value) in (dict, collections.OrderedDict):
+      if key is not None and is_dict_type(value):
         value = value[key]
       logger.log(level, "{} is {}".format(varName, str2(value)))
       return True
@@ -6568,7 +6579,7 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       v = None
-      if key is not None and type(value) in (dict, collections.OrderedDict):
+      if key is not None and is_dict_type(value):
         v = var.get()
         v[key] = value
       else:
@@ -6587,7 +6598,7 @@ def make_parser():
     def op(e):
       value = var.get()
       v = None
-      if key is not None and type(value) in (dict, collections.OrderedDict):
+      if key is not None and is_dict_type(value):
         v = value[key]
         v += delta
         value[key] = v
@@ -6619,7 +6630,7 @@ def make_parser():
     def replace_var_with_value(cfg):
       r = collections.OrderedDict()
       for name,value in cfg.items():
-        if type(value) in (dict, collections.OrderedDict):
+        if is_dict_type(value):
           r[name] = replace_var_with_value(value)
         else:
           r[name] = value.get()
@@ -6715,7 +6726,7 @@ def make_parser():
       tv = type(v)
       if tv in (list,):
         return v[:]
-      elif tv in (dict, collections.OrderedDict):
+      elif is_dict_type(tv):
         return {k:copy(vv) for k,vv in v.items()}
       else:
         return v
@@ -6873,8 +6884,7 @@ def make_parser():
     def eq(ev, pv):
       return ev == pv
     def eq_dict(ev, pv):
-      dicts = (dict, collections.OrderedDict,)
-      if type(ev) in dicts and type(pv) in dicts:
+      if is_dict_type(ev) and is_dict_type(pv):
         for n,v in pv.items():
           vv = ev.get(n, None)
           if not eq_dict(vv, v):
@@ -6884,7 +6894,7 @@ def make_parser():
         return eq(ev, pv)
     for p in  (
       ("idev", get_dev_hash, eq),
-      ("code", lambda x : name2code(x) if type(x) in (str, unicode) else x, eq),
+      ("code", lambda x : name2code(x) if is_str_type(x) else x, eq),
       ("value", lambda x : x, eq_dict)
     ):
       propName, propOp, cmpOp = p
@@ -6924,13 +6934,12 @@ def make_parser():
     def parseOnsDos(cfg, state):
       def parseGroup(name, parser, cfg, state):
         cfgs = cfg.get(name, None)
-        tcfgs = type(cfgs)
-        if tcfgs in (list, tuple):
+        if is_list_type(cfgs):
           pass
-        elif tcfgs in (dict, collections.OrderedDict):
+        elif is_dict_type(cfgs):
           cfgs = (cfgs,)
         else:
-          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} ({})".format(name, tcfgs, str2(cfg, 100)))
+          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} ({})".format(name, type(cfgs), str2(cfg, 100)))
         r, t = [], None
         for c in cfgs:
           try:
@@ -6971,7 +6980,7 @@ def make_parser():
     #sorting binds so actions that reset curves are initialized after these curves were actually initialized
     def bindsKey(b):
       def checkDo(o):
-        if type(o) in (dict, collections.OrderedDict):
+        if is_dict_type(o):
           actionName = o.get("action", o.get("type", None))
           if actionName in ("resetCurve", "resetCurves"):
             return 10
@@ -7401,7 +7410,7 @@ class Main:
       sep = "."
       for name,cfg2 in cfg.items():
         tokens.append(name)
-        isDict = type(cfg2) in (dict, collections.OrderedDict)
+        isDict = is_dict_type(cfg2)
         isValueDict = True if isDict and cfg2.get("_value") else False
         if isValueDict:
           del cfg2["_value"]
