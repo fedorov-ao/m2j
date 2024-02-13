@@ -390,7 +390,7 @@ class ParserState:
             mapping = make_mapping(refOrValue)
           break
     elif is_str_type(refOrValue):
-      refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +*/&|]*)(.*?)")
+      refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
       refOrValueMatch = refOrValueRe.match(refOrValue)
       if refOrValueMatch is not None:
         prefix, suffix = refOrValueMatch.group(2), refOrValueMatch.group(3)
