@@ -472,7 +472,7 @@ class ParserState:
   def get_var_or_value_(self, varOrValue, **kwargs):
     r = varOrValue
     mapping = kwargs.get("mapping")
-    isBaseVar = isinstance(varOrValue, BaseVar)
+    isBaseVar = isinstance(r, BaseVar)
     if isBaseVar == True:
       setter, asValue = kwargs.get("setter"), kwargs.get("asValue", True)
       if mapping is not None:
@@ -6579,8 +6579,10 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       v = None
-      if key is not None and is_dict_type(value):
+      if key is not None:
         v = var.get()
+        if not is_dict_type(v):
+          logger.error("Var {} value is not a dictionary".format(varName))
         v[key] = value
       else:
         v = value
@@ -6598,10 +6600,13 @@ def make_parser():
     def op(e):
       value = var.get()
       v = None
-      if key is not None and is_dict_type(value):
-        v = value[key]
-        v += delta
-        value[key] = v
+      if key is not None:
+        if is_dict_type(value):
+          v = value[key]
+          v += delta
+          value[key] = v
+        else:
+          logger.error("Var {} value is not a dictionary".format(varName))
       else:
         value += delta
         v = value
@@ -6613,16 +6618,26 @@ def make_parser():
 
   def parseCycleVars(cfg, state):
     varName = state.resolve(cfg, "varName")
+    key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     values = [state.deref(value) for value in state.resolve(cfg, "values")]
     step = state.resolve(cfg, "step")
     def op(e):
       current = values.index(var.get())
       n = clamp(current + step, 0, len(values) - 1)
-      if n != current:
-        v = values[n]
-        var.set(v)
-        logger.info("Setting var {} to {}".format(varName, v))
+      if n == current:
+        return
+      v = values[n]
+      if key is not None:
+        value = var.get()
+        if is_dict_type(value):
+          value[key] = v
+        else:
+          logger.error("Var {} value is not a dictionary".format(varName))
+      else:
+        value = v
+      var.set(value)
+      logger.info("Setting var {} to {}".format(varName, v))
     return op
   actionParser.add("cycleVars", parseCycleVars)
 
@@ -7251,10 +7266,10 @@ class BaseVar:
 
 class MappingVar(BaseVar):
   def get(self):
-    return self.map_(self.var_.get())
+    return self.mapping_(self.var_.get())
 
   def __call__(self, v):
-    mv = self.map_(v)
+    mv = self.mapping_(v)
     for cb in self.callbacks_:
       cb(mv)
 
