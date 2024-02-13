@@ -6647,8 +6647,14 @@ def make_parser():
       for name,value in cfg.items():
         if is_dict_type(value):
           r[name] = replace_var_with_value(value)
+        elif isinstance(value, BaseVar):
+          v = value.get()
+          if is_dict_type(v):
+            v = { a:b for a,b in v.items() }
+            v["_value"] = True
+          r[name] = v
         else:
-          r[name] = value.get()
+          logger.error("Unexpected element {} of type {} in vars".format(name, type(value)))
       return r
     fileName = state.resolve(cfg, "file")
     groupName = state.resolve_d(cfg, "group", None)
