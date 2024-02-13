@@ -360,25 +360,23 @@ class ParserState:
     var = varManager.get_var(varName)
     return self.get_var_or_value_(var, **kwargs)
 
+  def make_mapping(self, mappingCfg):
+    if mappingCfg is None:
+      return None
+    mapping = {}
+    for k,v in mappingCfg.items():
+      k = self.resolve_def(k)
+      v = self.resolve_def(v)
+      mapping[k] = v
+    def op(v):
+      r = mapping.get(v)
+      if r is None:
+        raise RuntimeError("{} not found in mapping".format(v))
+      return r
+    #logger.debug("Created mapping {} from {}".format(op, str2(mappingCfg)))
+    return op
+
   def deref(self, refOrValue, dfault=None, **kwargs):
-    def make_mapping(cfg):
-      mapping = None
-      mappingCfg = self.resolve_d(refOrValue, "mapping", None)
-      if mappingCfg is not None:
-        mapping = {}
-        for k,v in mappingCfg.items():
-          k = self.deref(k)
-          v = self.deref(v)
-          mapping[k] = v
-        def op(v):
-          if v in mapping:
-            return mapping[v]
-          else:
-            raise RuntimeError("{} not found in mapping".format(v))
-          #logger.debug("Created mapping {} from {}".format(op, str2(mappingCfg)))
-        return op
-      else:
-        return None
     prefix, suffix, mapping = None, None, None
     r = refOrValue
     if is_dict_type(refOrValue):
@@ -387,7 +385,9 @@ class ParserState:
         if suffix is not None:
           prefix = p
           if prefix == "var":
-            mapping = make_mapping(refOrValue)
+            mappingCfg = self.resolve_d(refOrValue, "mapping", None)
+            if mappingCfg is not None:
+              mapping = make_mapping(mappingCfg)
           break
     elif is_str_type(refOrValue):
       refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
@@ -458,7 +458,7 @@ class ParserState:
   def resolve_def(self, cfg):
     r = self.deref(cfg, asValue=False)
     if is_dict_type(r) and not r.get("_value", False):
-      r = self.parse_def(self.remove_value_tag_(r))
+      r = self.parse_def(self.remove_value_tag(r))
     return r
 
   def get_axis_by_full_name(self, fnAxis):
@@ -470,6 +470,9 @@ class ParserState:
   def add_curve(self, fnAxis, curve):
     axisCurves = self.at("curves", 0).setdefault(fnAxis, [])
     axisCurves.append(curve)
+
+  def remove_value_tag(self, d):
+    return { k:v for k,v in d.items() if k != "_value" }
 
   def __init__(self, main):
     self.values_ = {}
@@ -483,7 +486,7 @@ class ParserState:
     isBaseVar = isinstance(r, BaseVar)
     asValue = kwargs.get("asValue", True)
     if is_dict_type(r) and asValue:
-      r = self.remove_value_tag_(r)
+      r = self.remove_value_tag(r)
     if isBaseVar == True:
       setter = kwargs.get("setter")
       if mapping is not None:
@@ -496,9 +499,6 @@ class ParserState:
       if mapping is not None:
         r = mapping(r)
     return r
-
-  def remove_value_tag_(self, d):
-    return { k:v for k,v in d.items() if k != "_value" }
 
 
 class DevRegister:
@@ -7327,15 +7327,19 @@ class Var(BaseVar):
     if self.validate_ is not None:
       self.validate_(value)
     self.value_ = value
+    if self.mapping_ is not None:
+      value = self.mapping_(value)
     for cb in self.callbacks_:
       cb(value)
 
   def add_callback(self, callback):
     self.callbacks_.append(callback)
 
-  def __init__(self, value, validate=None):
-    self.value_ = value
-    self.validate_ = validate
+  def set_mapping(self, mapping):
+    self.mapping_ = mapping
+
+  def __init__(self, value, validate=None, mapping=None):
+    self.value_, self.validate_, self.mapping_ = value, validate, mapping
     self.callbacks_ = []
 
 
@@ -7450,7 +7454,17 @@ class Main:
   def init_vars(self, state):
     parser = state.get("main").get("parser")
     varsCfg = self.get("config").get("vars", {})
+    varMappingsCfg = self.get("config").get("varMappings", {})
     varManager = self.get("varManager")
+    def get_mapping_cfg(tokens, varMappingsCfg):
+      if len(tokens) == 0:
+        return None
+      r = varMappingsCfg
+      for token in tokens:
+        r = r.get(token, None)
+        if r is None:
+          break
+      return r
     def add_nested_vars(cfg, tokens):
       sep = "."
       for name,cfg2 in cfg.items():
@@ -7458,9 +7472,14 @@ class Main:
         isDict = is_dict_type(cfg2)
         isValueDict = True if isDict and cfg2.get("_value", False) else False
         if isValueDict:
-          del cfg2["_value"]
+          cfg2 = state.remove_value_tag(cfg2)
         if not isDict or isValueDict:
-          varManager.add_var(sep.join(tokens), parser("nvar", cfg2, state))
+          var = parser("nvar", cfg2, state)
+          mappingCfg = get_mapping_cfg(tokens, varMappingsCfg)
+          if mappingCfg is not None:
+            mapping = state.make_mapping(mappingCfg)
+            var.set_mapping(mapping)
+          varManager.add_var(sep.join(tokens), var)
         else:
           add_nested_vars(cfg2, tokens)
         tokens.pop()
