@@ -321,29 +321,10 @@ class ParserState:
     return self.get_var_or_value_(obj, **kwargs)
 
   def make_objs(self, cfg, cb):
-    parser = self.get("parser")
     #logger.debug("Constructing objects from '{}'".format(str2(cfg)))
     for k,v in cfg.items():
       try:
-        o = self.deref(v)
-        #logger.debug("Constructing object '{}' from '{}'".format(k, str2(v)))
-        #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
-        if o == v:
-          if is_dict_type(v):
-            o = None
-            n = v.get("class", None)
-            if n is not None:
-              o = parser(n, v, self)
-            else:
-              for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
-                if n in v:
-                  o = parser(n, v, self)
-                  #break is needed to avoid executing the "else" block
-                  break
-              else:
-                o = parser("ep", v, self)
-          if o is None:
-            raise RuntimeError("Cannot dereference or create object from: {}".format(str2(v)))
+        o = self.resolve_def(v)
         cb(k, o)
       except RuntimeError as e:
         logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v), e))
@@ -363,7 +344,7 @@ class ParserState:
     #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.deref(a, asValue=False)
+      r[n] = self.resolve_def(a)
       #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
@@ -454,6 +435,32 @@ class ParserState:
       raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d, 100)))
     return r
 
+  def parse_def(self, cfg):
+    assert is_dict_type(cfg)
+    parser = self.get("parser")
+    obj = None
+    n = cfg.get("class", None)
+    if n is not None:
+      obj = parser(n, cfg, self)
+    else:
+      #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
+      for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
+        if n in cfg:
+          obj = parser(n, cfg, self)
+          #break is needed to avoid executing the "else" block
+          break
+      else:
+        obj = parser("ep", cfg, self)
+    if obj is None:
+      raise RuntimeError("Cannot dereference or create object from: {}".format(str2(cfg)))
+    return obj
+
+  def resolve_def(self, cfg):
+    r = self.deref(cfg, asValue=False)
+    if is_dict_type(r) and not r.get("_value", False):
+      r = self.parse_def(self.remove_value_tag_(r))
+    return r
+
   def get_axis_by_full_name(self, fnAxis):
     return self.get("main").get_axis_by_full_name(fnAxis)
 
@@ -474,8 +481,11 @@ class ParserState:
     r = varOrValue
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(r, BaseVar)
+    asValue = kwargs.get("asValue", True)
+    if is_dict_type(r) and asValue:
+      r = self.remove_value_tag_(r)
     if isBaseVar == True:
-      setter, asValue = kwargs.get("setter"), kwargs.get("asValue", True)
+      setter = kwargs.get("setter")
       if mapping is not None:
         r = MappingVar(r, mapping)
       if setter is not None:
@@ -486,6 +496,10 @@ class ParserState:
       if mapping is not None:
         r = mapping(r)
     return r
+
+  def remove_value_tag_(self, d):
+    return { k:v for k,v in d.items() if k != "_value" }
+
 
 class DevRegister:
   def register_dev(self, name):
@@ -7442,7 +7456,7 @@ class Main:
       for name,cfg2 in cfg.items():
         tokens.append(name)
         isDict = is_dict_type(cfg2)
-        isValueDict = True if isDict and cfg2.get("_value") else False
+        isValueDict = True if isDict and cfg2.get("_value", False) else False
         if isValueDict:
           del cfg2["_value"]
         if not isDict or isValueDict:
