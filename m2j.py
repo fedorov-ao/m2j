@@ -271,6 +271,20 @@ class ObjNotFoundError(RuntimeError):
     return "Object '{}' was not found".format(self.objName)
 
 
+def remove_value_tag(d):
+  return { k:v for k,v in d.items() if k != "_value" }
+
+
+def add_value_tag(d):
+  r = { k:v for k,v in d.items() }
+  r["_value"] = True
+  return r
+
+
+def has_value_tag(d):
+  return "_value" in d
+
+
 class ParserState:
   def push(self, n, v):
     self.stacks_.setdefault(n, [])
@@ -457,8 +471,8 @@ class ParserState:
 
   def resolve_def(self, cfg):
     r = self.deref(cfg, asValue=False)
-    if is_dict_type(r) and not r.get("_value", False):
-      r = self.parse_def(self.remove_value_tag(r))
+    if is_dict_type(r):
+      r = remove_value_tag(r) if has_value_tag(r) else self.parse_def(r)
     return r
 
   def get_axis_by_full_name(self, fnAxis):
@@ -470,9 +484,6 @@ class ParserState:
   def add_curve(self, fnAxis, curve):
     axisCurves = self.at("curves", 0).setdefault(fnAxis, [])
     axisCurves.append(curve)
-
-  def remove_value_tag(self, d):
-    return { k:v for k,v in d.items() if k != "_value" }
 
   def __init__(self, main):
     self.values_ = {}
@@ -486,7 +497,7 @@ class ParserState:
     isBaseVar = isinstance(r, BaseVar)
     asValue = kwargs.get("asValue", True)
     if is_dict_type(r) and asValue:
-      r = self.remove_value_tag(r)
+      r = remove_value_tag(r)
     if isBaseVar == True:
       setter = kwargs.get("setter")
       if mapping is not None:
@@ -6674,8 +6685,7 @@ def make_parser():
         elif isinstance(value, BaseVar):
           v = value.get()
           if is_dict_type(v):
-            v = { a:b for a,b in v.items() }
-            v["_value"] = True
+            v = add_value_tag(v)
           r[name] = v
         else:
           logger.error("Unexpected element {} of type {} in vars".format(name, type(value)))
@@ -7470,9 +7480,9 @@ class Main:
       for name,cfg2 in cfg.items():
         tokens.append(name)
         isDict = is_dict_type(cfg2)
-        isValueDict = True if isDict and cfg2.get("_value", False) else False
+        isValueDict = True if isDict and has_value_tag(cfg2) else False
         if isValueDict:
-          cfg2 = state.remove_value_tag(cfg2)
+          cfg2 = remove_value_tag(cfg2)
         if not isDict or isValueDict:
           var = parser("nvar", cfg2, state)
           mappingCfg = get_mapping_cfg(tokens, varMappingsCfg)
