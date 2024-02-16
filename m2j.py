@@ -493,6 +493,7 @@ class ParserState:
 
   def get_var_or_value_(self, varOrValue, **kwargs):
     r = varOrValue
+    varManager = self.get("main").get("varManager")
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(r, BaseVar)
     asValue = kwargs.get("asValue", True)
@@ -500,12 +501,19 @@ class ParserState:
       r = remove_value_tag(r)
     if isBaseVar == True:
       setter = kwargs.get("setter")
-      if mapping is not None:
-        r = MappingVar(r, mapping)
       if setter is not None:
-        r.add_callback(setter)
+        actualSetter = setter
+        if mapping is not None:
+          def mapping_setter(x):
+            mx = mapping(x)
+            setter(mx)
+          actualSetter = mapping_setter
+        r.add_callback(actualSetter)
+        varManager.add_var_callback(r, actualSetter)
       if asValue == True:
         r = r.get()
+        if mapping is not None:
+          r = mapping(r)
     else:
       if mapping is not None:
         r = mapping(r)
@@ -7233,9 +7241,10 @@ def make_parser():
     return state.deref(cfg, asValue=False)
   mainParser.add("var", parseVar)
 
-  def parseNVar(cfg, state):
-    return Var(cfg)
-  mainParser.add("nvar", parseNVar)
+  #placeholder for more sophisticated var value parsing
+  def parseVarValue(cfg, state):
+    return cfg
+  mainParser.add("varValue", parseVarValue)
 
   trackerParserKeyOp=lambda cfg,state : get_nested(cfg, "tracker")
   trackerParser = IntrusiveSelectParser(keyOp=trackerParserKeyOp, parser=SelectParser())
@@ -7303,30 +7312,8 @@ class BaseVar:
   def add_callback(self, callback):
     pass
 
-
-class MappingVar(BaseVar):
-  def get(self):
-    return self.mapping_(self.var_.get())
-
-  def __call__(self, v):
-    mv = self.mapping_(v)
-    for cb in self.callbacks_:
-      cb(mv)
-
-  def add_callback(self, callback):
-    self.callbacks_.append(callback)
-
-  def __init__(self, var, mapping):
-    self.callbacks_ = []
-    self.var_, self.mapping_ = var, mapping
-    self.var_.add_callback(self)
-    #logger.debug("{} created for var {} and mapping {}".format(self, var, mapping))
-
-  def map_(self, v):
-    if self.mapping_ is None:
-      return v
-    else:
-      return self.mapping_(v)
+  def remove_callback(self, callback):
+    pass
 
 
 class Var(BaseVar):
@@ -7344,6 +7331,12 @@ class Var(BaseVar):
 
   def add_callback(self, callback):
     self.callbacks_.append(callback)
+
+  def remove_callback(self, callback):
+    try:
+      self.callbacks_.remove(callback)
+    except ValueError:
+      logger.warning("Callback was not registered.")
 
   def set_mapping(self, mapping):
     self.mapping_ = mapping
@@ -7365,14 +7358,31 @@ class VarManager:
         raise RuntimeError("Var '{}' was not registered".format(varName))
     return var
 
+  def get_var_d(self, varName, dfault=None):
+    return get_nested_d(self.vars_, varName, dfault)
+
   def get_vars(self):
     return self.vars_
 
   def add_var(self, varName, var):
     set_nested(self.vars_, varName, var)
 
+  def add_var_callback(self, var, callback):
+    #logger.debug("Adding {} to {}".format(callback, var))
+    self.varCallbacks_[-1].append((var, callback))
+
+  def push_var_callbacks(self):
+    self.varCallbacks_.append([])
+
+  def pop_var_callbacks(self):
+    vcs = self.varCallbacks_.pop()
+    for var,callback in vcs:
+      #logger.debug("Removing {} from {}".format(callback, var))
+      var.remove_callback(callback)
+
   def __init__(self, make_var = None):
     self.vars_ = collections.OrderedDict()
+    self.varCallbacks_ = [[]]
     self.make_var_ = make_var
 
 
@@ -7461,7 +7471,7 @@ class Main:
     for soundName,soundFileName in soundsCfg.items():
       sounds[soundName] = state.deref(soundFileName)
 
-  def init_vars(self, state):
+  def init_vars(self, state, update=False):
     parser = state.get("main").get("parser")
     varsCfg = self.get("config").get("vars", {})
     varMappingsCfg = self.get("config").get("varMappings", {})
@@ -7484,12 +7494,20 @@ class Main:
         if isValueDict:
           cfg2 = remove_value_tag(cfg2)
         if not isDict or isValueDict:
-          var = parser("nvar", cfg2, state)
+          varValue = parser("varValue", cfg2, state)
+          path = sep.join(tokens)
+          if update == True:
+            var = varManager.get_var_d(path, None)
+            if var is None:
+              raise RuntimeError("Var {} not found".format(path))
+            var.set(varValue)
+          else:
+            var = Var(varValue)
+            varManager.add_var(path, var)
           mappingCfg = get_mapping_cfg(tokens, varMappingsCfg)
           if mappingCfg is not None:
             mapping = state.make_mapping(mappingCfg)
             var.set_mapping(mapping)
-          varManager.add_var(sep.join(tokens), var)
         else:
           add_nested_vars(cfg2, tokens)
         tokens.pop()
@@ -7562,7 +7580,7 @@ class Main:
       state = ParserState(self)
       try:
         self.init_config2()
-        self.init_vars(state)
+        self.init_vars(state, update=True)
         self.init_poses(state)
         self.init_worker_ep(state)
       except Exception as e:
@@ -7576,9 +7594,14 @@ class Main:
       self.set("reloading", False)
 
   def reinit_and_run(self, inupdated):
-    self.reinit_or_fallback(inupdated)
-    assert(self.loop_ is not None)
-    self.loop_.run()
+    varManager = self.get("varManager")
+    varManager.push_var_callbacks()
+    try:
+      self.reinit_or_fallback(inupdated)
+      assert(self.loop_ is not None)
+      self.loop_.run()
+    finally:
+      varManager.pop_var_callbacks()
 
   def preinit(self):
     self.preinit_log()
@@ -7613,10 +7636,13 @@ class Main:
     self.init_log(state)
     self.init_odevs(state)
     self.init_source(state)
+    self.init_vars(state)
     self.init_main_ep(state)
     self.init_sounds(state)
 
   def run(self):
+    varManager = self.get("varManager")
+    varManager.push_var_callbacks()
     try:
       self.preinit()
       inupdated = self.get("updated")[:]
@@ -7645,6 +7671,7 @@ class Main:
       if source is not None:
         source.swallow(None, False)
       self.get("soundPlayer").quit()
+      varManager.pop_var_callbacks()
 
 
   def get(self, propName):
