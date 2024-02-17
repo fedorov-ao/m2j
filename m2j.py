@@ -358,7 +358,9 @@ class ParserState:
     #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.resolve_def(a)
+      #FIXME Using self.parse_def() here allows constructing objects in 'args' section,
+      #but fails to process an args dict containing reserved keyword (curve, et), see parse_def()
+      r[n] = self.deref(a)
       #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
