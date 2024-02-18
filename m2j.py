@@ -272,17 +272,27 @@ class ObjNotFoundError(RuntimeError):
 
 
 def remove_value_tag(d):
-  return { k:v for k,v in d.items() if k != "_value" }
+  r = d.__class__()
+  for k,v in d.items():
+    if k != "_value":
+      r[k] = v
+  return r
 
 
 def add_value_tag(d):
-  r = { k:v for k,v in d.items() }
+  r = d.__class__()
+  for k,v in d.items():
+    r[k] = v
   r["_value"] = True
   return r
 
 
 def has_value_tag(d):
   return "_value" in d
+
+
+def clear_value_tag(d):
+  return remove_value_tag(d) if is_dict_type(d) and has_value_tag(d) else d
 
 
 class ParserState:
@@ -358,9 +368,7 @@ class ParserState:
     #logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      #FIXME Using self.parse_def() here allows constructing objects in 'args' section,
-      #but fails to process an args dict containing reserved keyword (curve, et), see parse_def()
-      r[n] = self.deref(a)
+      r[n] = self.resolve_def(a)
       #logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
     return r
 
@@ -381,8 +389,8 @@ class ParserState:
       return None
     mapping = {}
     for k,v in mappingCfg.items():
-      k = self.resolve_def(k)
-      v = self.resolve_def(v)
+      k = clear_value_tag(self.resolve_def(k))
+      v = clear_value_tag(self.resolve_def(v))
       mapping[k] = v
     def op(v):
       r = mapping.get(v)
@@ -455,26 +463,17 @@ class ParserState:
     assert is_dict_type(cfg)
     parser = self.get("parser")
     obj = None
-    n = cfg.get("class", None)
-    if n is not None:
-      obj = parser(n, cfg, self)
-    else:
-      #EP components ("sc" parser) should not be created as individual objects, because they depend on each other.
-      for n in ("literal", "func", "curve", "action", "et", "odev", "var"):
-        if n in cfg:
-          obj = parser(n, cfg, self)
-          #break is needed to avoid executing the "else" block
-          break
-      else:
-        obj = parser("ep", cfg, self)
+    className = cfg.get("class", None)
+    if className is not None:
+      obj = parser(className, cfg, self)
     if obj is None:
-      raise RuntimeError("Cannot dereference or create object from: {}".format(str2(cfg)))
+      raise RuntimeError("Cannot create object from: {}".format(str2(cfg)))
     return obj
 
   def resolve_def(self, cfg):
     r = self.deref(cfg, asValue=False)
-    if is_dict_type(r):
-      r = remove_value_tag(r) if has_value_tag(r) else self.parse_def(r)
+    if is_dict_type(r) and not has_value_tag(r):
+      r = self.parse_def(r)
     return r
 
   def get_axis_by_full_name(self, fnAxis):
@@ -499,8 +498,8 @@ class ParserState:
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(r, BaseVar)
     asValue = kwargs.get("asValue", True)
-    if is_dict_type(r) and asValue:
-      r = remove_value_tag(r)
+    if asValue:
+      r = clear_value_tag(r)
     if isBaseVar == True:
       setter = kwargs.get("setter")
       if setter is not None:
