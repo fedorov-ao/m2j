@@ -111,6 +111,56 @@ def merge_dicts(destination, source):
   return destination
 
 
+def filter_dict(d, keys, getter=lambda d,f : d.get(f)):
+  """
+  Filters dictionary, returning a new one of the same type.
+  Parameters:
+    d - dictionary to be mapped
+    keys - list of keys to include in returned dictionary
+    getter - retrieves elements by fromKey from d
+  keys that are not in d are skipped.
+  """
+  r = d.__class__()
+  for key in keys:
+    v = getter(d, key)
+    if v is not None:
+      r[key] = v
+  return r
+
+
+def map_dict(d, keys, getter=lambda d,f : d.get(f)):
+  """
+  Maps dictionary, returning a new one of the same type.
+  Parameters:
+    d - dictionary to be mapped
+    keys - dictionary of format {fromKey:toKey}
+    getter - retrieves elements by fromKey from d
+  keys that are not in d are skipped.
+  """
+  r = d.__class__()
+  for keyFrom,keyTo in keys.items():
+    v = getter(d, keyFrom)
+    if v is not None:
+      r[keyTo] = v
+  return r
+
+
+def map_dict_d(d, keysAndDefaults, getter=lambda d,f,dfault : d.get(f, dfault)):
+  """
+  Maps dictionary, returning a new one of the same type.
+  Supports default values.
+  Parameters:
+    d - dictionary to be mapped
+    keysAndDefaults - dictionary of format {fromKey:(toKey,dfaultIfNoToKey)}
+    getter - retrieves elements by fromKey from d, should return dfault if fromKey is not in d
+  """
+  r = d.__class__()
+  for keyFrom,pair in keysAndDefaults.items():
+    keyTo, dfault = pair[0], pair[1]
+    r[keyTo] = getter(d, keyFrom, dfault)
+  return r
+
+
 def str2(v, length=0):
   def str2_w(v):
     ps = {
@@ -4778,7 +4828,76 @@ class AxisAccumulator:
     self.state_ = state
 
 
+def make_tk_var(var, key=None):
+  value = var.get()
+  if key is not None:
+    value = value[key]
+  varType = type(value)
+  tkVarTypes = {
+    int : tk.IntVar,
+    float : tk.DoubleVar,
+    str : tk.StringVar,
+    unicode : tk.StringVar
+  }
+  tkVarType = tkVarTypes.get(varType)
+  if tkVarType is None:
+    raise RuntimeError("Unsupported var type: {}".format(varType))
+  return tkVarType(value=value)
+
+
 class Info:
+  @classmethod
+  def configure_widget(cls, widget, propNames, kwargs, func):
+    kwa = {}
+    for propName in propNames:
+      prop = kwargs.get(propName)
+      if prop is not None:
+        kwa[propName] = prop
+    if len(kwa) != 0:
+      func(widget, kwa)
+  class FrameWidget:
+    def grid(self, **kwargs):
+      self.frame_.grid(**self.map_in_(kwargs))
+    def grid_configure(self, **kwargs):
+      self.frame_.grid_configure(**self.map_in_(kwargs))
+    def pack(self, **kwargs):
+      self.frame_.pack(**self.map_in_(kwargs))
+    def pack_configure(self, **kwargs):
+      self.frame_.pack_configure(**self.map_in_(kwargs))
+    def get_frame(self):
+      return self.frame_
+    def __init__(self, **kwargs):
+      master = None
+      parent = kwargs.get("parent")
+      if parent is not None:
+        master = parent.get_frame()
+      self.frame_ = tk.Frame(master=master)
+    def map_in_(self, kwargs):
+      in_ = kwargs.get("in_")
+      if in_ is not None:
+        kwargs["in_"] = in_.get_frame()
+      return kwargs
+  class NamedWidget(FrameWidget):
+    def set(self, child):
+      self.child_ = child
+      child.pack(in_=self)
+    def update(self):
+      if self.child_ is not None:
+        self.child_.update()
+    def __init__(self, **kwargs):
+      Info.FrameWidget.__init__(self, **kwargs)
+      frame = self.frame_
+      frame.pack_propagate(True)
+      relief = kwargs.get("relief")
+      if relief is not None:
+        frame["relief"] = relief
+      frame["borderwidth"] = kwargs.get("borderwidth", 0)
+      name = kwargs.get("name", None)
+      if name is not None:
+        nameLabel = tk.Label(frame, text=name)
+        nameSide = kwargs.get("nameSide", "top")
+        nameLabel.pack(expand=False, side=nameSide)
+      self.child_ = None
   class Marker:
     def update(self):
       canvas = self.a_.canvas_
@@ -4795,7 +4914,7 @@ class Info:
         canvas.coords(shape, x0, y0, x1, y1)
     def __init__(self, widget, vpx, vpy, shapes, size):
       self.a_, self.vpx_, self.vpy_, self.shapes_, self.size_ = widget, vpx, vpy, shapes, size
-  class AxesWidget:
+  class AxesWidget(FrameWidget):
     def add_marker(self, vpx, vpy, shapeType, **kwargs):
       def make_vp(vp, scale=None):
         if is_str_type(vp):
@@ -4831,21 +4950,12 @@ class Info:
     def update(self):
       for marker in self.markers_:
         marker.update()
-    def __init__(self, window, layout, r, c, **kwargs):
-      frame = tk.Frame(window)
-      frame.pack_propagate(True)
-      frame.grid(row=r, column=c, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
-      frame.grid_configure(sticky=kwargs.get("sticky", "nsew"))
-      window.grid_rowconfigure(r, weight=kwargs.get("rw", 1))
-      window.grid_columnconfigure(c, weight=kwargs.get("cw", 1))
-      name = kwargs.get("name", None)
-      if name is not None:
-        nameLabel = tk.Label(frame, text=name)
-        nameLabel.pack()
-      canvas = tk.Canvas(frame, bg=kwargs.get("canvasBg", "black"))
-      self.canvas_ = canvas
+    def __init__(self, **kwargs):
+      Info.FrameWidget.__init__(self, **kwargs)
+      canvas = tk.Canvas(master=self.frame_, bg=kwargs.get("canvasBg", "black"))
       canvasSize = kwargs.get("canvasSize", (200, 20))
       fill = "both"
+      layout = kwargs["layout"]
       if layout == "box":
         canvas["width"], canvas["height"] = canvasSize[0], canvasSize[0]
         fill = "both"
@@ -4855,9 +4965,9 @@ class Info:
       elif layout == "v":
         canvas["width"], canvas["height"] = canvasSize[1], canvasSize[0]
         fill = "y"
+      canvas.pack(expand=True, fill=fill)
+      self.canvas_ = canvas
       self.add_grid_(layout, color=kwargs.get("gridColor", "white"), width=kwargs.get("gridWidth", 1))
-      canvas.pack()
-      canvas.pack_configure(expand=True, fill=fill)
       self.markers_ = []
       self.get_odev_ = kwargs.get("getODev", None)
     def create_shapes_(self, shapeType, **kwargs):
@@ -4892,10 +5002,41 @@ class Info:
           canvas.coords(vline, 0.5*event.width, 0.0, 0.5*event.width, event.height)
           canvas.coords(hline, 0.0, 0.5*event.height, event.width, 0.5*event.height)
         canvas.bind("<Configure>", resize_lines)
-  class EntriesWidget:
+  class GridWidget(FrameWidget):
+    def grid_rowconfigure(self, row, **kwargs):
+      self.frame_.grid_rowconfigure(row, **kwargs)
+    def grid_columnconfigure(self, column, **kwargs):
+      self.frame_.grid_columnconfigure(column, **kwargs)
     def add(self, **kwargs):
       child = kwargs["child"]
-      child.grid(in_=self.frame_, row=self.r_, column=self.c_, rowspan=1, columnspan=1)
+      child.grid(in_=self)
+      Info.configure_widget(
+        child,
+        ("sticky", "row", "column", "rowspan", "columnspan", "padx", "pady", "ipadx", "ipady"),
+        kwargs,
+        lambda widget,kwa : widget.grid_configure(**kwa)
+      )
+      self.children_.append(child)
+      self.update()
+    def update(self):
+      for child in self.children_:
+        child.update()
+    def __init__(self, **kwargs):
+      Info.FrameWidget.__init__(self, **kwargs)
+      frame = self.get_frame()
+      frame.pack_propagate(True)
+      frame.grid_propagate(True)
+      self.children_ = []
+  class EntriesWidget(FrameWidget):
+    def add(self, **kwargs):
+      child = kwargs["child"]
+      child.grid(in_=self, row=self.r_, column=self.c_, rowspan=1, columnspan=1)
+      Info.configure_widget(child, ("sticky", "padx", "pady", "ipadx", "ipady"), kwargs, lambda widget,kwa : widget.grid_configure(**kwa))
+      #setting weights to avoid clipping
+      rowWeight = 1 if self.grow_ in ("y", "both") else 0
+      columnWeight = 1 if self.grow_ in ("x", "both") else 0
+      self.frame_.grid_rowconfigure(self.r_, weight=rowWeight)
+      self.frame_.grid_columnconfigure(self.c_, weight=columnWeight)
       if self.layout_ == "v":
         self.r_ += 1
         if self.r_ == self.dim_:
@@ -4914,31 +5055,22 @@ class Info:
       for child in self.children_:
         child.update()
     def __init__(self, **kwargs):
-      window = kwargs["window"]
-      frame = tk.Frame(window)
+      Info.FrameWidget.__init__(self, **kwargs)
+      frame = self.get_frame()
       frame.pack_propagate(True)
-      row=kwargs["r"]
-      column=kwargs["c"]
-      frame.grid(row=row, column=column, rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1))
-      frame.grid_configure(sticky=kwargs.get("sticky", "nsew"))
-      window.grid_rowconfigure(row, weight=kwargs.get("rw", 1))
-      window.grid_columnconfigure(column, weight=kwargs.get("cw", 1))
-      name = kwargs.get("name", None)
-      if name is not None:
-        nameLabel = tk.Label(frame, text=name)
-        nameLabel.pack()
-      contentsFrame = tk.Frame(frame)
-      contentsFrame.pack()
-      contentsFrame.pack_configure(expand=True, fill="both")
-      self.frame_ = contentsFrame
+      frame.grid_propagate(True)
       self.children_ = []
       self.dim_ = kwargs.get("dim", 8)
       self.layout_ = kwargs.get("layout", "v")
       if self.layout_ not in ("h", "v"):
         raise RuntimeError("Bad layout: '{}'".format(self.layout_))
+      self.grow_ = kwargs.get("grow", "").lower()
       self.r_, self.c_ = 0, 0
-  class Button:
+  class ButtonStateWidget:
     def grid(self, **kwargs):
+      in_ = kwargs.get("in_")
+      if in_ is not None:
+        kwargs["in_"] = in_.get_frame()
       self.label_.grid(**kwargs)
     def update(self):
       state = self.getButtonState_()
@@ -4949,12 +5081,12 @@ class Info:
         for p in (("foreground", "fg"), ("background", "bg")):
           self.label_[p[0]] = style[p[1]]
     def __init__(self, **kwargs):
-      self.label_ = tk.Label(master=kwargs.get("master", None), text=kwargs["name"])
+      self.label_ = tk.Label(master=kwargs["parent"].get_frame(), text=kwargs["name"])
       self.getButtonState_ = kwargs["getButtonState"]
       self.style_ = kwargs["style"]
       self.state_ = None
       self.update()
-  class ButtonsWidget(EntriesWidget):
+  class ButtonsStatesWidget(EntriesWidget):
     class GetButtonState:
       def __call__(self):
         return self.output_.get_button_state(self.buttonID_)
@@ -4968,7 +5100,7 @@ class Info:
       for buttonID in buttonIDs:
         name = str(buttonID - codes.BTN_0)
         getButtonState = self.GetButtonState(odev, buttonID)
-        button = Info.Button(master=self.frame_, name=name, getButtonState=getButtonState, style=self.style_)
+        button = Info.ButtonStateWidget(parent=self, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
       Info.EntriesWidget.__init__(self, **kwargs)
@@ -4977,15 +5109,12 @@ class Info:
       idev = kwargs.get("idev", None)
       if idev is not None:
         self.add_buttons_from(idev, **kwargs)
-  class AxisValue:
-    def grid(self, **kwargs):
-      self.frame_.grid(**kwargs)
+  class AxisValueWidget(FrameWidget):
     def update(self):
       value = self.getAxisValue_()
       self.valueLabel_["text"] = "{:+.3f}".format(value)
     def __init__(self, **kwargs):
-      self.frame_ = tk.Frame(master=kwargs.get("master", None))
-      self.frame_.grid(sticky="nsew")
+      Info.FrameWidget.__init__(self, **kwargs)
       self.nameLabel_ = tk.Label(master=self.frame_, text=kwargs["name"])
       self.nameLabel_.pack(side="left")
       self.valueLabel_ = tk.Label(master=self.frame_)
@@ -5008,50 +5137,129 @@ class Info:
         namesList=tc2ns(*tcAxis)
         name=namesList[0][4:]
         getAxisValue = self.GetAxisValue(odev, tcAxis)
-        axisValue = Info.AxisValue(master=self.frame_, name=name, getAxisValue=getAxisValue)
+        axisValue = Info.AxisValueWidget(parent=self, name=name, getAxisValue=getAxisValue)
         self.add(child=axisValue)
+        axisValue.grid(sticky="nsew")
     def __init__(self, **kwargs):
       Info.EntriesWidget.__init__(self, **kwargs)
       self.get_odev_ = kwargs["getODev"]
       idev = kwargs.get("idev", None)
       if idev is not None:
         self.add_axes_from(idev, **kwargs)
-  class ValueWidget:
+  class ValueWidget(FrameWidget):
     def update(self):
       v = self.var_.get()
-      msg = "{}: ".format(self.name_)
+      msg = None
       if v is not None:
         try:
-          msg += self.fmt_.format(**v)
+          msg = self.fmt_.format(**v)
         except Exception as e:
           msg = "Cannot format ({})".format(e)
       self.valueLabel_["text"] = msg
     def __init__(self, **kwargs):
-      self.valueLabel_ = tk.Label(master=kwargs.get("master", None))
-      self.valueLabel_.grid(row=kwargs["r"], column=kwargs["c"], rowspan=kwargs.get("rs", 1), columnspan=kwargs.get("cs", 1), sticky=kwargs.get("sticky", "nsew"))
-      self.name_ = kwargs["name"]
+      Info.FrameWidget.__init__(self, **kwargs)
+      self.valueLabel_ = tk.Label(master=self.frame_)
+      self.valueLabel_.pack(expand=True, fill="x")
       self.var_ = kwargs["var"]
       self.fmt_ = kwargs["fmt"]
       self.update()
+  class SpinboxWidget(FrameWidget):
+    def update(self):
+      return
+    def __init__(self, **kwargs):
+      Info.FrameWidget.__init__(self, **kwargs)
+      box = tk.Spinbox(self.frame_)
+      box.pack(expand=False, fill="x")
+      var = kwargs.get("var")
+      if var is not None:
+        key = kwargs.get("key")
+        boxvar = make_tk_var(var, key)
+        box["textvariable"] = boxvar
+        command = None
+        key = kwargs.get("key")
+        if key is not None:
+          def cmd():
+            boxValue = boxvar.get()
+            varValue = var.get()
+            varValue[key] = boxValue
+            var.set(varValue)
+          command = cmd
+        else:
+          def cmd():
+            value = boxvar.get()
+            var.set(value)
+          command = cmd
+        box["command"] = command
+      Info.configure_widget(
+        box,
+        ("values", "to", "from_", "increment", "wrap", "state", "width", "justify", "format"),
+        kwargs,
+        lambda widget,kwa : widget.configure(**kwa)
+      )
+  class ComboboxWidget(FrameWidget):
+    def update(self):
+      return
+    def __init__(self, **kwargs):
+      Info.FrameWidget.__init__(self, **kwargs)
+      import ttk
+      box = ttk.Combobox(self.frame_)
+      box.pack(expand=False, fill="x")
+      var = kwargs.get("var")
+      if var is not None:
+        key = kwargs.get("key")
+        boxvar = make_tk_var(var, key)
+        box["textvariable"] = boxvar
+        command = None
+        if key is not None:
+          def cmd(event):
+            boxValue = boxvar.get()
+            varValue = var.get()
+            varValue[key] = boxValue
+            var.set(varValue)
+          command = cmd
+        else:
+          def cmd(event):
+            value = boxvar.get()
+            var.set(value)
+          command = cmd
+        box.bind("<<ComboboxSelected>>", command)
+      Info.configure_widget(
+        box,
+        ("values", "state", "width", "height", "justify"),
+        kwargs,
+        lambda widget,kwa : widget.configure(**kwa)
+      )
+  class ButtonWidget:
+    def grid(self, **kwargs):
+      self.button_.grid(**self.map_in_(kwargs))
+    def grid_configure(self, **kwargs):
+      self.button_.grid_configure(**self.map_in_(kwargs))
+    def pack(self, **kwargs):
+      self.button_.pack(**self.map_in_(kwargs))
+    def pack_configure(self, **kwargs):
+      self.button_.pack_configure(**self.map_in_(kwargs))
+    def update(self):
+      return
+    def __init__(self, **kwargs):
+      self.button_ = tk.Button(master=kwargs["parent"].get_frame(), text=kwargs["text"])
+      command = kwargs.get("command")
+      if command is not None:
+        self.button_["command"] = command
+      Info.configure_widget(
+        self.button_,
+        ("state", "width"),
+        kwargs,
+        lambda widget,kwa : widget.configure(**kwa)
+      )
+    def map_in_(self, kwargs):
+      in_ = kwargs.get("in_")
+      if in_ is not None:
+        kwargs["in_"] = in_.get_frame()
+      return kwargs
 
-  def add_widget(self, **kwargs):
-    kwargs["getODev"] = self.get_odev_
-    widget = None
-    r, c = kwargs["r"], kwargs["c"]
-    t = kwargs["type"]
-    if t == "axes":
-      layout = kwargs["layout"]
-      widget = self.AxesWidget(window=self.w_, **kwargs)
-    elif t == "buttons":
-      widget = self.ButtonsWidget(window=self.w_, **kwargs)
-    elif t == "axesValues":
-      widget = self.AxesValuesWidget(window=self.w_, **kwargs)
-    elif t == "value":
-      widget = self.ValueWidget(master=self.w_, **kwargs)
-    else:
-      logger.warning("Unknown widget type: {}".format(t))
-    self.widgets_.append(widget)
-    return widget
+  def add(self, child):
+    self.widgets_.append(child)
+
   def set_state(self, s):
     if self.state_ == s:
       return
@@ -5061,66 +5269,26 @@ class Info:
       self.w_.deiconify()
     elif s == False:
       self.w_.withdraw()
+
   def get_state(self):
     return self.state_
+
   def update(self):
     if self.state_:
       for widget in self.widgets_:
         widget.update()
       self.w_.update()
+
+  def get_frame(self):
+    return self.w_
+
   def __init__(self, **kwargs):
     self.state_, self.widgets_ = False, []
-    self.get_odev_ = kwargs.get("getODev")
     self.w_ = tk.Tk()
     self.w_.title(kwargs.get("title", ""))
     self.w_.propagate(True)
     self.w_.grid_propagate(True)
     self.w_.withdraw()
-
-
-def init_info(**kwargs):
-  def parse_widget(widgetCfg, info, state):
-    main = kwargs.get("main")
-    widgetType = state.resolve(widgetCfg, "type")
-    if widgetType == "value":
-      valueName = state.resolve(widgetCfg, "value")
-      var = main.get("valueManager").get_var(valueName)
-      widgetCfg["var"] = var
-    widget = info.add_widget(**widgetCfg)
-    if widgetType == "axes":
-      for markerCfg in state.resolve_d(widgetCfg, "markers", ()):
-        try:
-          widget.add_marker(**markerCfg)
-        except RuntimeError as e:
-          logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
-  state = kwargs["state"]
-  main = kwargs.get("main")
-  odevs = main.get("odevs")
-  getODev = lambda name : odevs.get(name, None)
-
-  infoCfg = kwargs["cfg"]
-  f = state.resolve_d(infoCfg, "format", 1)
-  title = state.resolve_d(infoCfg, "title", "")
-  info = Info(title=title, getODev=getODev)
-  widgets = state.resolve_d(infoCfg, "widgets", ())
-  if f == 1:
-    for widgetCfg in widgets:
-      parse_widget(widgetCfg, info, state)
-  elif f == 2:
-    r, c = 0, 0
-    for row in widgets:
-      for col in row:
-        col["r"], col["c"] = r, c
-        parse_widget(col, info, state)
-        c += state.resolve_d(col, "cs", 1)
-      c = 0
-      r += 1
-  else:
-    raise RuntimeError("Unknown format: {}".format(f))
-
-  main.get("updated").append(lambda tick,ts : info.update())
-
-  return info
 
 
 class NextEP:
@@ -5228,8 +5396,6 @@ def init_main_ep(state):
   def print_grabbed(event):
     logger.info("{} grabbed".format(namesOfReleasedStr))
 
-  info = init_info(cfg=state.resolve_d(config, "info", {}), main=main, state=state)
-
   enabled = [True]
   actionParser = main.get("parser").get("action")
 
@@ -5282,24 +5448,6 @@ def init_main_ep(state):
     inputs = released if inputs is None else [state.deref(i) for i in inputs]
     return SwallowSource(main.get("source"), [(n,False) for n in inputs])
   actionParser.add("ungrab", parseUngrab)
-
-  def parseShowInfo(cfg, state):
-    def op(e):
-      info.set_state(True)
-    return op
-  actionParser.add("showInfo", parseShowInfo)
-
-  def parseHideInfo(cfg, state):
-    def op(e):
-      info.set_state(False)
-    return op
-  actionParser.add("hideInfo", parseHideInfo)
-
-  def parseToggleInfo(cfg, state):
-    def op(e):
-      info.set_state(not info.get_state())
-    return op
-  actionParser.add("toggleInfo", parseToggleInfo)
 
   bindEP = scParser.get("binds")(config, state)
   bindEP.add(None, stateEP, 1)
@@ -5916,10 +6064,10 @@ def make_parser():
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
       raise RuntimeError("Preset name was not specified")
-    presetCfg = get_nested_from_sections_d(config, ("presets",), presetName, None)
+    presets = config.get("presets", {})
+    presetCfg = get_nested_d(presets, presetName, None)
     if presetCfg is None:
-      presets = config.get("presets", collections.OrderedDict())
-      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [k.encode("utf-8") for k in presets.keys()]))
+      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [str2(k) for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
       #logger.debug("parsePresetCurve(): args: '{}'".format(str2(argsCfg)))
@@ -6803,6 +6951,30 @@ def make_parser():
     return callback
   actionParser.add("setValue", parseSetValue)
 
+  def parseShowInfo(cfg, state):
+    main = state.get("main")
+    def op(e):
+      info = main.get("info")
+      info.set_state(True)
+    return op
+  actionParser.add("showInfo", parseShowInfo)
+
+  def parseHideInfo(cfg, state):
+    main = state.get("main")
+    def op(e):
+      info = main.get("info")
+      info.set_state(False)
+    return op
+  actionParser.add("hideInfo", parseHideInfo)
+
+  def parseToggleInfo(cfg, state):
+    main = state.get("main")
+    def op(e):
+      info = main.get("info")
+      info.set_state(not info.get_state())
+    return op
+  actionParser.add("toggleInfo", parseToggleInfo)
+
   #Event types
   def etParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "et", None)
@@ -7270,6 +7442,249 @@ def make_parser():
     return GainTracker(op)
   trackerParser.add("value", parseValueTracker)
 
+  #Widgets
+  def widgetParserKeyOp(cfg,state):
+    tpe = get_nested_d(cfg, "type", None)
+    if tpe is None:
+      raise RuntimeError("Key '{}' was not found in '{}'".format("type", str2(cfg)))
+    return tpe
+  widgetParser = IntrusiveSelectParser(keyOp=widgetParserKeyOp, parser=SelectParser())
+  mainParser.add("widget", widgetParser)
+
+  def mapProps(cfg, props, state):
+    return filter_dict(cfg, props, lambda d,f : state.resolve_d(d, f, None))
+
+  def mapWidgetProps(cfg, state):
+    return mapProps(cfg, ("parent"), state)
+
+  def mapNamedWidgetProps(cfg, state):
+    return mapProps(cfg, ("parent", "relief", "borderwidth", "name", "nameSide"), state)
+
+  def mapEntriesWidgetProps(cfg, state):
+    return mapProps(cfg, ("parent", "dim", "layout", "grow"), state)
+
+  def namedWidgetDecorator(func):
+    def parse(cfg, state):
+      name, namedWidget = state.resolve_d(cfg, "name", None), None
+      if name is not None:
+        kwargs = mapNamedWidgetProps(cfg, state)
+        namedWidget = Info.NamedWidget(**kwargs)
+        cfg["parent"] = namedWidget
+        widget = func(cfg, state)
+        namedWidget.set(widget)
+        return namedWidget
+      else:
+        return func(cfg, state)
+    return parse
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseAxesWidget(cfg, state):
+    kwargs = mapProps(cfg, ("parent", "canvasBg", "canvasSize", "layout", "gridColor", "gridWidth"), state)
+    odevs = state.get("main").get("odevs")
+    kwargs["getODev"] = lambda name : odevs.get(name, None)
+    widget = Info.AxesWidget(**kwargs)
+    markersCfg = state.resolve_d(cfg, "markers", ())
+    for markerCfg in markersCfg:
+      try:
+        kwargs = filter_dict(
+          markerCfg,
+          ("vpx", "vpy", "shapeType", "sx", "sy", "size", "color", "width"),
+          lambda d,f : state.resolve_d(d, f, None)
+        )
+        widget.add_marker(**kwargs)
+      except RuntimeError as e:
+        logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
+    return widget
+  widgetParser.add("axes", parseAxesWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseButtonsWidget(cfg, state):
+    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev", "style"), state))
+    odevs = state.get("main").get("odevs")
+    kwargs["getODev"] = lambda name : odevs.get(name, None)
+    widget = Info.ButtonsStatesWidget(**kwargs)
+    return widget
+  widgetParser.add("buttons", parseButtonsWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseAxesValuesWidget(cfg, state):
+    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev",), state))
+    odevs = state.get("main").get("odevs")
+    kwargs["getODev"] = lambda name : odevs.get(name, None)
+    widget = Info.AxesValuesWidget(**kwargs)
+    return widget
+  widgetParser.add("axesValues", parseAxesValuesWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseValueWidget(cfg, state):
+    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("fmt",), state))
+    valueName = state.resolve(cfg, "value")
+    valueManager = state.get("main").get("valueManager")
+    var = valueManager.get_var(valueName)
+    kwargs["var"] = var
+    widget = Info.ValueWidget(**kwargs)
+    return widget
+  widgetParser.add("value", parseValueWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseSpinboxWidget(cfg, state):
+    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("values", "key", "from", "to", "increment", "wrap", "state", "width", "format"), state))
+    varName = state.resolve_d(cfg, "varName", None)
+    if varName is not None:
+      varManager = state.get("main").get("varManager")
+      var = varManager.get_var(varName)
+      kwargs["var"] = var
+    widget = Info.SpinboxWidget(**kwargs)
+    return widget
+  widgetParser.add("spinbox", parseSpinboxWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseComboboxWidget(cfg, state):
+    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("values", "key", "state", "width", "height", "justify"), state))
+    varName = state.resolve_d(cfg, "varName", None)
+    if varName is not None:
+      varManager = state.get("main").get("varManager")
+      var = varManager.get_var(varName)
+      kwargs["var"] = var
+    widget = Info.ComboboxWidget(**kwargs)
+    return widget
+  widgetParser.add("combobox", parseComboboxWidget)
+
+  @parseBasesDecorator
+  def parseButtonWidget(cfg, state):
+    kwargs = mapProps(cfg, ("parent", "text", "state", "width"), state)
+    actionCfg = get_nested_d(cfg, "command", None)
+    if actionCfg is not None:
+      action = state.get("parser")("action", actionCfg, state)
+      def command():
+        event = Event(0, 0, 0)
+        action(event)
+      kwargs["command"] = command
+    widget = Info.ButtonWidget(**kwargs)
+    return widget
+  widgetParser.add("button", parseButtonWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseGridWidget(cfg, state):
+    parser = state.get("parser")
+    kwargs = mapWidgetProps(cfg, state)
+    widget = Info.GridWidget(**kwargs)
+    for childCfg in state.resolve_d(cfg, "children", {}):
+      childCfg["parent"] = widget
+      try:
+        child = parser("widget", childCfg, state)
+      finally:
+        del childCfg["parent"]
+      addKwargs = mapProps(childCfg, ("sticky", "row", "column", "rowspan", "columnspan", "padx", "pady", "ipadx", "ipady"), state)
+      addKwargs["child"] = child
+      widget.add(**addKwargs)
+    weightsCfg = state.resolve_d(cfg, "weights", {})
+    for row,weight in state.resolve_d(weightsCfg, "rows", {}).items():
+      widget.grid_rowconfigure(row, weight)
+    for column,weight in state.resolve_d(weightsCfg, "columns", {}).items():
+      widget.grid_columnconfigure(column, weight)
+    return widget
+  widgetParser.add("grid", parseGridWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseEntriesWidget(cfg, state):
+    parser = state.get("parser")
+    kwargs = mapEntriesWidgetProps(cfg, state)
+    widget = Info.EntriesWidget(**kwargs)
+    for childCfg in state.resolve_d(cfg, "children", {}):
+      childCfg["parent"] = widget
+      try:
+        child = parser("widget", childCfg, state)
+      finally:
+        del childCfg["parent"]
+      addKwargs = mapProps(childCfg, ("sticky", "padx", "pady", "ipadx", "ipady"), state)
+      addKwargs["child"] = child
+      widget.add(**addKwargs)
+    return widget
+  widgetParser.add("entries", parseEntriesWidget)
+
+  @parseBasesDecorator
+  def parseInfoWidget(cfg, state):
+    parser = state.get("parser")
+    f = state.resolve_d(cfg, "format", 1)
+    title = state.resolve_d(cfg, "title", "")
+    info = Info(title=title)
+    widgetsCfg = state.resolve_d(cfg, "widgets", ())
+    if f == 1:
+      for widgetCfg in widgetsCfg:
+        widgetCfg["parent"] = info
+        try:
+          widget = parser("widget", widgetCfg, state)
+        finally:
+          del widgetCfg["parent"]
+        info.add(child=widget)
+        #Layout parameters are taken from immediate widget cfg (and not from i.e. preset cfg)
+        gridKwargs = map_dict_d(
+          widgetCfg,
+          {"r":("row",0), "c":("column",0), "rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
+          lambda d,f,dfault : state.resolve_d(d, f, dfault)
+        )
+        gridKwargs["row"], gridKwargs["column"] = r, c
+        widget.grid(**gridKwargs)
+    elif f == 2:
+      contentsFrame = info.get_frame()
+      r, c = 0, 0
+      for row in widgetsCfg:
+        for widgetCfg in row:
+          widgetCfg["parent"] = info
+          try:
+            widget = parser("widget", widgetCfg, state)
+          finally:
+            del widgetCfg["parent"]
+          info.add(child=widget)
+          #Layout parameters are taken from immediate widget cfg (and not from i.e. preset cfg)
+          gridKwargs = map_dict_d(
+            widgetCfg,
+            {"rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
+            lambda d,f,dfault : state.resolve_d(d, f, dfault)
+          )
+          gridKwargs["row"], gridKwargs["column"] = r, c
+          widget.grid(**gridKwargs)
+          contentsFrame.grid_rowconfigure(r, weight=state.resolve_d(widgetCfg, "rw", 1))
+          contentsFrame.grid_columnconfigure(c, weight=state.resolve_d(widgetCfg, "cw", 1))
+          c += gridKwargs.get("columnspan", 1)
+        c = 0
+        r += 1
+    else:
+      raise RuntimeError("Unknown format: {}".format(f))
+    return info
+  widgetParser.add("info", parseInfoWidget)
+
+  @parseBasesDecorator
+  def parsePresetWidget(cfg, state):
+    config = state.get("main").get("config")
+    presetName = state.resolve_d(cfg, "name", None)
+    if presetName is None:
+      raise RuntimeError("Preset name was not specified")
+    presets = config.get("presets", {})
+    presetCfg = get_nested_d(presets, presetName, None)
+    if presetCfg is None:
+      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, presets.keys()))
+    state.push_args(cfg)
+    parent = cfg.get("parent", None)
+    if parent is not None:
+      presetCfg["parent"] = parent
+    try:
+      return state.get("parser")("widget", presetCfg, state)
+    finally:
+      state.pop_args()
+      if parent is not None:
+        del presetCfg["parent"]
+  widgetParser.add("preset", parsePresetWidget)
+
   return mainParser
 
 
@@ -7548,6 +7963,12 @@ class Main:
     ep = init_preset_config(state)
     self.get("mainEP").set_next(ep)
 
+  def init_info(self, state):
+    cfg=state.resolve_d(self.get("config"), "info", {})
+    info = state.get("parser")("widget", cfg, state)
+    self.get("updated").append(lambda tick,ts : info.update())
+    self.set("info", info)
+
   def init_loop(self, state):
     refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0)
     step = 1.0 / refreshRate
@@ -7638,6 +8059,7 @@ class Main:
     self.init_odevs(state)
     self.init_source(state)
     self.init_vars(state)
+    self.init_info(state)
     self.init_main_ep(state)
     self.init_sounds(state)
 
@@ -7725,6 +8147,7 @@ class Main:
     self.props_["mainEP"] = None
     self.props_["config"] = None
     self.props_["parser"] = parser
+    self.props_["info"] = None
     self.props_["updated"] = []
     self.props_["axes"] = {}
     self.props_["axesToNames"] = {}
