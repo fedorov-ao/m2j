@@ -1,17 +1,45 @@
 # m2j
 
-Cross-platform mouse-to-joystick emulator written in python (2.7). Consists of platform-independent code (`m2j.py`), platform-dependent code (`m2j_linux.py` for Linux and `m2j_win.py` for Windows) and config files.
+## What is it?
 
-## Linux
+Cross-platform mouse-to-joystick emulator written in Python (2.7).
 
-### Installing
+## Features
 
-#### Dependencies 
+ * Cross-platform: designed to be run under Linux and Windows (currently only 32-bit environments were tested).
+ * Can map input from multiple input devices to multiple output devices (virtual joysticks). The configuration that uses 2 mice is quite convenient.  
+ * Is extensively configurable: the actual mapping is specified not in the code, but in JSON configuration files.  
 
-`playsound` module - for playing sounds  
-`evdev` module - for reading and emulating input  
+## Why Python 2?
 
-#### Installation procedure
+Because of dependencies (namely, `pywin32`). The project aims to support as low as 32-bit Windows XP. The last version of Python 3 that supports Windows XP is 3.4.4, but `pywin32` requires at least Python 3.5. `evdev` used under Linux requires at least Python 3.5, but can be backported to Python 2.7.  
+
+## What's inside
+
+ * `m2j.py` - platform-independent library code
+ * `m2j_linux.py` - run this under Linux
+ * `m2j_win.py` - run this under Windows
+ * `m2j_1mouse.cfg` - config file for configuration using 1 mouse
+ * `m2j_2mice2.cfg` - config file for configuration using 2 mice (the mostly useful one, see `BINDS.md` for binds)
+ * `m2j_3mice.cfg` - config file for configuration using 3 mice (experimental!)
+
+Also, be sure to check companion utilities that can be used alongside with `m2j`:
+
+ * `joy2tir` ([Github](https://github.com/fedorov-ao/joy2tir)) - maps input from joysticks to (unencrypted) TrackIR
+ * `dinput8blocker` ([Github](https://github.com/fedorov-ao/dinput8blocker)) - used to block and unblock input from DirectInput8 devices (i.e. mouse)
+
+## How to install and run
+
+### Linux
+
+#### Installing
+
+##### Dependencies 
+
+ * `playsound` module - for playing sounds ([Github](https://pypi.org/project/playsound))  
+ * `evdev` module - for reading and emulating input ([Github](https://github.com/gvalkov/python-evdev))  
+
+##### Installation procedure
 
 (# means running command in shell as root, $ - as regular user)
 
@@ -19,17 +47,14 @@ Install playsound module
 `$pip install playsound`
 
 Install evdev module  
-`$pip install evdev`
+At the time of writing (19.02.2024) the last version of evdev is 1.7.0. It is supposed to be run under Python >= 3.5 and needs to be backported to Python 2.7.  
+The patch is in `3rdparty/evdev/evdev-1.7.0-py27.patch`, updated files are in `3rdparty/evdev/evdev-1.7.0-py27`. 
 
-Note: evdev-1.6.0 for python 2.7 is bugged and will not run. Copy device.py and uinput.py files from `3rdparty/evdev` in repo dir to `evdev` installation dir.  
-`$cp /path/to/repo/3rdparty/evdev/{device,uinput}.py ~/.local/lib/python2.7/site-packages/evdev/`
-
-Installing evdev-1.6.1 for python 2.7  
-`$pip install pathlib2`  
-`$pip download evdev`  
-`$tar -xf evdev-1.6.1.tar.gz`  
-`$cd evdev-1.6.1`  
-`$patch -p1 < path/to/evdev-1.6.1-py27.patch`  
+Installing evdev-1.7.0 for Python 2.7  
+`$wget https://github.com/gvalkov/python-evdev/archive/refs/tags/v1.7.0.tar.gz`  
+`$tar -xf evdev-1.7.0.tar.gz`  
+`$cd evdev-1.7.0`  
+`$patch -p1 < path/to/evdev-1.7.0-py27.patch` (or `$cp -r /path/to/3rdparty/evdev/evdev-1.7.0-py27/* evdev-1.7.0`)  
 `$./setup.py build`  
 `$./setup.py install --prefix ~/.local/`  
 
@@ -58,23 +83,24 @@ check
 `$groups`  
 `user ... input`  
 
-### Running
+#### Running
 
-`$./m2j_linux.py -h` for help  
-`$./m2j_linux.py -c configname.cfg`
+`$./m2j_linux.py -h` - for help on command-line switches  
+`$./m2j_linux.py -c configname.cfg` - to use configuration specified in `configname.cfg`  
 
-## Windows 
+### Windows 
 
-### Installing
+#### Installing
 
-#### Dependencies
+##### Dependencies
 
-`playsound` module - for playing sounds  
-`pywin32` module - for reading and emulating input ([Github repo](https://github.com/mhammond/pywin32); last build supporting python 2.7 is [228](https://github.com/mhammond/pywin32/releases/tag/b228))  
-virtual joystick driver - for creating virtual joysticks that will be controlled by the emulator  
-`ppjoy` (up to win xp; [Github repo](https://github.com/elitak/PPJoy/releases)) or `vJoy` ([Github repo](https://sourceforge.net/projects/vjoystick/); forks: [\[1\]](https://github.com/shauleiz/vJoy), [\[2\]](https://github.com/jshafer817/vJoy), [\[3\]](https://github.com/njz3/vJoy/) (which seems to be the most recent, [last build](https://github.com/njz3/vJoy/releases/tag/v2.2.1.1) (min win7 32bit)))  
+ * `playsound` module - for playing sounds  
+ * `pywin32` module - for reading and emulating input ([Github](https://github.com/mhammond/pywin32); last build supporting Python 2.7 is [228](https://github.com/mhammond/pywin32/releases/tag/b228))  
+ * virtual joystick driver - for creating virtual joysticks that will be controlled by the emulator:  
+    * `ppjoy` (supports up to 32-bit (?) Windows XP; [Github](https://github.com/elitak/PPJoy/releases)) or
+    * `vJoy` ([Github](https://sourceforge.net/projects/vjoystick/); forks: [\[1\]](https://github.com/shauleiz/vJoy), [\[2\]](https://github.com/jshafer817/vJoy), [\[3\]](https://github.com/njz3/vJoy/). It seems that fork 3 is the most recent, [last build](https://github.com/njz3/vJoy/releases/tag/v2.2.1.1) requires at least 32-bit Windows 7.)  
 
-#### Installation procedure
+##### Installation procedure
 
 In command line: `pip install pywin32 playsound`
 
@@ -84,7 +110,7 @@ Create 5 joysticks (8 axes and 16 buttons each)
 
 Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL to enable and disable mouse input for the game using DirectInput API.
 
-### Running
+#### Running
 
-`$./m2j_win.py -h` for help  
-`$./m2j_win.py -c configname.cfg` 
+`m2j_win.py -h` - for help on command-line switches  
+`m2j_win.py -c configname.cfg` - to use configuration specified in `configname.cfg`  
