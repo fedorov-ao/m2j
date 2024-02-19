@@ -293,6 +293,7 @@ class EvdevDevice:
       logger.error("{}: device is not ready: {}".format(self.idevName_, e))
 
   def swallow(self, s):
+    import exceptions
     self.state_ = s
     if not self.is_ready_():
       return
@@ -301,8 +302,8 @@ class EvdevDevice:
         self.dev_.grab()
       else:
         self.dev_.ungrab()
-    except IOError as e:
-      #IOError is expected
+    #IOError and OSError are expected
+    except (IOError, exceptions.OSError):
       pass
 
   def __init__(self, dev, idev, recreateOp=lambda : None):
