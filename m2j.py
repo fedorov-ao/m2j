@@ -451,7 +451,7 @@ class ParserState:
     return op
 
   def deref(self, refOrValue, dfault=None, **kwargs):
-    prefix, suffix, mapping = None, None, None
+    prefix, suffix, mapping, cfgDfault = None, None, None, None
     r = refOrValue
     if is_dict_type(refOrValue):
       for p in ("obj", "arg", "var"):
@@ -462,6 +462,7 @@ class ParserState:
             mappingCfg = self.resolve_d(refOrValue, "mapping", None)
             if mappingCfg is not None:
               mapping = make_mapping(mappingCfg)
+          cfgDfault = self.resolve_d(refOrValue, "default", None)
           break
     elif is_str_type(refOrValue):
       refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
@@ -488,8 +489,7 @@ class ParserState:
         try:
           r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
         except ArgNotFoundError as e:
-          #logger.debug("{}".format(e))
-          r = dfault
+          r = cfgDfault if cfgDfault is not None else dfault
       elif prefix == "var":
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
