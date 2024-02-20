@@ -1340,7 +1340,7 @@ def ErrorIfZero(handle):
 
 
 class RawInputEventSource:
-  def __init__(self, useMessageWindow=True):
+  def __init__(self, useMessageWindow=True, swallower=None):
     CreateWindowEx = windll.user32.CreateWindowExA
     CreateWindowEx.argtypes = [c_int, c_char_p, c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
     CreateWindowEx.restype = ErrorIfZero
@@ -1373,6 +1373,7 @@ class RawInputEventSource:
     #TODO Check for error
     self.hwnd = hwnd
 
+    self.swallower_ = swallower
     self.nativeDevices_ = None
     self.trackedDevices_ = dict()
     self.upu_ = set()
@@ -1466,7 +1467,8 @@ class RawInputEventSource:
     raise RuntimeError("Device {} ({}) not found".format(name, idev))
 
   def swallow(self, name, s):
-    pass
+    if self.swallower_ is not None:
+      self.swallower_.swallow(name, s)
 
   def set_ep(self, ep):
     self.ep_ = ep
@@ -1721,7 +1723,35 @@ class RawInputEventSource:
 def parseRawInputEventSource(cfg, state):
   main = state.get("main")
   config = main.get("config")
-  source = RawInputEventSource(useMessageWindow=config.get("useMessageWindow", True))
+  useMessageWindow=config.get("useMessageWindow", True)
+  swallower = None
+  class ActionSwallower:
+    def swallow(self, n, s):
+      action = self.actions_.get((n, s))
+      if action is not None:
+        event = Event(0, 0, 0, None)
+        action(event)
+      else:
+        logger.warning("No action for {} {}".format(n, s))
+    def add(self, n, s, action):
+      self.actions_[(n, s)] = action
+    def __init__(self):
+      self.actions_ = {}
+  swallowerCfg = state.resolve_d(cfg, "swallower", None)
+  if swallowerCfg is not None:
+    swallower = ActionSwallower()
+    for n, idevCfg in swallowerCfg.items():
+      for s, actionCfg in idevCfg.items():
+        try:
+          sl = s.lower()
+          sl = True if sl == "swallow" else False if sl == "unswallow" else None
+          if sl is None:
+            raise RuntimeError("Bad state: {}".format(s))
+          action = state.get("parser")("action", actionCfg, state)
+          swallower.add(n, sl, action)
+        except RuntimeError as e:
+          logger.error("Cannot build swallow action for idev {} and state {}: {}".format(n, s, str2(e)))
+  source = RawInputEventSource(useMessageWindow=useMessageWindow, swallower=swallower)
   for s,n in config["idevs"].items():
     try:
       source.track_device(n, s)
