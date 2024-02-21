@@ -4829,10 +4829,7 @@ class AxisAccumulator:
     self.state_ = state
 
 
-def make_tk_var(var, key=None):
-  value = var.get()
-  if key is not None:
-    value = value[key]
+def make_tk_var(value):
   varType = type(value)
   tkVarTypes = {
     int : tk.IntVar,
@@ -5171,26 +5168,14 @@ class Info:
       Info.FrameWidget.__init__(self, **kwargs)
       box = tk.Spinbox(self.frame_)
       box.pack(expand=False, fill="x")
-      var = kwargs.get("var")
-      if var is not None:
-        key = kwargs.get("key")
-        boxvar = make_tk_var(var, key)
-        box["textvariable"] = boxvar
-        command = None
-        key = kwargs.get("key")
-        if key is not None:
-          def cmd():
-            boxValue = boxvar.get()
-            varValue = var.get()
-            varValue[key] = boxValue
-            var.set(varValue)
-          command = cmd
-        else:
-          def cmd():
-            value = boxvar.get()
-            var.set(value)
-          command = cmd
-        box["command"] = command
+      value = kwargs["value"]
+      boxvar = make_tk_var(value)
+      command = kwargs["command"]
+      def cmd():
+        value = boxvar.get()
+        command(value)
+      box["textvariable"] = boxvar
+      box["command"] = cmd
       Info.configure_widget(
         box,
         ("values", "to", "from_", "increment", "wrap", "state", "width", "justify", "format"),
@@ -5205,25 +5190,14 @@ class Info:
       import ttk
       box = ttk.Combobox(self.frame_)
       box.pack(expand=False, fill="x")
-      var = kwargs.get("var")
-      if var is not None:
-        key = kwargs.get("key")
-        boxvar = make_tk_var(var, key)
-        box["textvariable"] = boxvar
-        command = None
-        if key is not None:
-          def cmd(event):
-            boxValue = boxvar.get()
-            varValue = var.get()
-            varValue[key] = boxValue
-            var.set(varValue)
-          command = cmd
-        else:
-          def cmd(event):
-            value = boxvar.get()
-            var.set(value)
-          command = cmd
-        box.bind("<<ComboboxSelected>>", command)
+      value = kwargs["value"]
+      boxvar = make_tk_var(value)
+      command = kwargs["command"]
+      def cmd(event):
+        value = boxvar.get()
+        command(value)
+      box["textvariable"] = boxvar
+      box.bind("<<ComboboxSelected>>", cmd)
       Info.configure_widget(
         box,
         ("values", "state", "width", "height", "justify"),
@@ -6757,7 +6731,9 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       value = var.get()
-      if key is not None and is_dict_type(value):
+      if key is not None:
+        if not hasattr(value, "__getitem__"):
+          raise RuntimeError("Var '{}' has no subscript getter".format(varName))
         value = value[key]
       logger.log(level, "{} is {}".format(varName, str2(value)))
       return True
@@ -6774,8 +6750,8 @@ def make_parser():
       v = None
       if key is not None:
         v = var.get()
-        if not is_dict_type(v):
-          logger.error("Var {} value is not a dictionary".format(varName))
+        if not hasattr(v, "__setitem__"):
+          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
         v[key] = value
       else:
         v = value
@@ -6790,23 +6766,32 @@ def make_parser():
     delta = state.resolve(cfg, "delta")
     key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
-    def op(e):
+    r = None
+    if key is not None:
       value = var.get()
-      v = None
-      if key is not None:
-        if is_dict_type(value):
-          v = value[key]
-          v += delta
-          value[key] = v
-        else:
-          logger.error("Var {} value is not a dictionary".format(varName))
-      else:
+      if not hasattr(value, "__getitem__"):
+        raise RuntimeError("Var '{}' has no subscript getter".format(varName))
+      if not hasattr(value, "__setitem__"):
+        raise RuntimeError("Var '{}' has no subscript setter".format(varName))
+      if key not in value:
+        raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+      def op(e):
+        value = var.get()
+        v = value[key]
+        v += delta
+        value[key] = v
+        var.set(value)
+        logger.info("{} is now {}".format(varName, str2(value)))
+        return True
+      r = op
+    else:
+      def op(e):
+        value = var.get()
         value += delta
-        v = value
-      var.set(value)
-      logger.info("{} is now {}".format(varName, str2(v)))
-      return True
-    return op
+        var.set(value)
+        logger.info("{} is now {}".format(varName, str2(value)))
+      r = op
+    return r
   actionParser.add("changeVar", parseChangeVar)
 
   def parseCycleVars(cfg, state):
@@ -6815,23 +6800,37 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     values = [state.deref(value) for value in state.resolve(cfg, "values")]
     step = state.resolve(cfg, "step")
-    def op(e):
-      current = values.index(var.get())
-      n = clamp(current + step, 0, len(values) - 1)
-      if n == current:
-        return
-      v = values[n]
-      if key is not None:
+    r = None
+    if key is not None:
+      value = var.get()
+      if not hasattr(value, "__getitem__"):
+        raise RuntimeError("Var '{}' has no subscript getter".format(varName))
+      if not hasattr(value, "__setitem__"):
+        raise RuntimeError("Var '{}' has no subscript setter".format(varName))
+      if key not in value:
+        raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+      def op(e):
+        current = values.index(var.get()[key])
+        n = clamp(current + step, 0, len(values) - 1)
+        if n == current:
+          return
+        v = values[n]
         value = var.get()
-        if is_dict_type(value):
-          value[key] = v
-        else:
-          logger.error("Var {} value is not a dictionary".format(varName))
-      else:
-        value = v
-      var.set(value)
-      logger.info("Setting var {} to {}".format(varName, v))
-    return op
+        value[key] = v
+        var.set(value)
+        logger.info("Setting var {} to {}".format(varName, value))
+      r = op
+    else:
+      def op(e):
+        current = values.index(var.get())
+        n = clamp(current + step, 0, len(values) - 1)
+        if n == current:
+          return
+        v = values[n]
+        var.set(v)
+        logger.info("Setting var {} to {}".format(varName, v))
+      r = op
+    return r
   actionParser.add("cycleVars", parseCycleVars)
 
   def parseWriteVars(cfg, state):
@@ -7560,9 +7559,30 @@ def make_parser():
       del kwargs["from"]
     varName = state.resolve_d(cfg, "varName", None)
     if varName is not None:
+      command = None
       varManager = state.get("main").get("varManager")
       var = varManager.get_var(varName)
-      kwargs["var"] = var
+      assert var is not None
+      value = var.get()
+      key = kwargs.get("key")
+      if key is not None:
+        del kwargs["key"]
+        if not hasattr(value, "__setitem__"):
+          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
+        if key not in value:
+          raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+        def cmd(value):
+          varValue = var.get()
+          varValue[key] = value
+          var.set(varValue)
+        command = cmd
+        value = value[key]
+      else:
+        def cmd(value):
+          var.set(value)
+        command = cmd
+      kwargs["value"] = value
+      kwargs["command"] = command
     widget = Info.SpinboxWidget(**kwargs)
     return widget
   widgetParser.add("spinbox", parseSpinboxWidget)
@@ -7573,9 +7593,30 @@ def make_parser():
     kwargs = mapProps(cfg, ("parent", "values", "key", "state", "width", "height", "justify"), state)
     varName = state.resolve_d(cfg, "varName", None)
     if varName is not None:
+      command = None
       varManager = state.get("main").get("varManager")
       var = varManager.get_var(varName)
-      kwargs["var"] = var
+      assert var is not None
+      value = var.get()
+      key = kwargs.get("key")
+      if key is not None:
+        del kwargs["key"]
+        if not hasattr(value, "__setitem__"):
+          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
+        if key not in value:
+          raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+        def cmd(value):
+          varValue = var.get()
+          varValue[key] = value
+          var.set(varValue)
+        command = cmd
+        value = value[key]
+      else:
+        def cmd(value):
+          var.set(value)
+        command = cmd
+      kwargs["value"] = value
+      kwargs["command"] = command
     widget = Info.ComboboxWidget(**kwargs)
     return widget
   widgetParser.add("combobox", parseComboboxWidget)
