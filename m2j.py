@@ -7480,6 +7480,25 @@ def make_parser():
 
   @parseBasesDecorator
   @namedWidgetDecorator
+  def parseFrameWidget(cfg, state):
+    kwargs = mapProps(cfg, ("parent"), state)
+    widget = Info.FrameWidget(**kwargs)
+    return widget
+  widgetParser.add("frame", parseFrameWidget)
+
+  @parseBasesDecorator
+  def parseLabelWidget(cfg, state):
+    kwargs = map_dict(
+      cfg,
+      {"parent":"parent", "text":"name"},
+      lambda d,f : state.resolve(d, f)
+    )
+    widget = Info.NamedWidget(**kwargs)
+    return widget
+  widgetParser.add("label", parseLabelWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
   def parseAxesWidget(cfg, state):
     kwargs = mapProps(cfg, ("parent", "canvasBg", "canvasSize", "layout", "gridColor", "gridWidth"), state)
     odevs = state.get("main").get("odevs")
