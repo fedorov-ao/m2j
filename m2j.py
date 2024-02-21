@@ -3712,6 +3712,7 @@ class AxisLinker:
     desiredControlledValue = self.func_(controllingValue)
     self.offset_ = controlledValue - desiredControlledValue
     self.oldControlledValue_ = None
+    self.dirty_ = False
     #logger.debug("{} : after reset: controlling: {:+0.3f}; controlled: {:+0.3f}; desired controlled: {:+0.3f}; offset: {:+0.3f}".format(self, controllingValue, controlledValue, desiredControlledValue, self.offset_))
 
   def set_state(self, state):
@@ -3731,37 +3732,45 @@ class AxisLinker:
     return self.offset_
 
   def on_move_axis(self, axis, old, new):
-    if self.state_ == False or self.busy_ == True:
+    if self.busy_ == True:
       return
-    elif axis == self.controlledAxis_:
-      if self.oldControlledValue_ is None:
-        self.oldControlledValue_ = old
-      #logger.debug("{} : Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}".format(self, new, self.oldControlledValue_))
-    elif axis == self.controllingAxis_:
-      if self.oldControlledValue_ is not None:
-        self.offset_ += self.controlledAxis_.get() - self.oldControlledValue_
-        self.oldControlledValue_ = None
-      #logger.debug("{} : Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}".format(self, new, self.offset_))
-      cv = self.func_(new)
-      try:
-        self.busy_= True
-        desired = cv + self.offset_
-        actual = self.controlledAxis_.move(desired, relative=False)
-        #logger.debug("{} : Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}".format(self, self.controlledAxis_.get(), desired, actual))
-        if actual != desired:
-          self.offset_ -= (desired - actual)
-          #logger.debug("{} : offset after move {:+0.3f}".format(self, self.offset_))
-      finally:
-        self.busy_= False
+    if self.state_ == False:
+      self.dirty_ = True
+    else:
+      self.update_()
+      if axis == self.controlledAxis_:
+        if self.oldControlledValue_ is None:
+          self.oldControlledValue_ = old
+        #logger.debug("{} : Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}".format(self, new, self.oldControlledValue_))
+      elif axis == self.controllingAxis_:
+        if self.oldControlledValue_ is not None:
+          self.offset_ += self.controlledAxis_.get() - self.oldControlledValue_
+          self.oldControlledValue_ = None
+        #logger.debug("{} : Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}".format(self, new, self.offset_))
+        cv = self.func_(new)
+        try:
+          self.busy_= True
+          desired = cv + self.offset_
+          actual = self.controlledAxis_.move(desired, relative=False)
+          #logger.debug("{} : Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}".format(self, self.controlledAxis_.get(), desired, actual))
+          if actual != desired:
+            self.offset_ -= (desired - actual)
+            #logger.debug("{} : offset after move {:+0.3f}".format(self, self.offset_))
+        finally:
+          self.busy_= False
 
   def __init__(self, controllingAxis, controlledAxis, func):
     self.controllingAxis_, self.controlledAxis_, self.func_ = controllingAxis, controlledAxis, func
-    self.oldControlledValue_, self.offset_, self.busy_, self.state_  = None, 0.0, False, False
+    self.oldControlledValue_, self.offset_, self.busy_, self.dirty_, self.state_  = None, 0.0, False, False, False
     #logger.debug("{} created".format(self))
 
   def __del__(self):
     #logger.debug("{} destroyed".format(self))
     pass
+
+  def update_(self):
+    if self.dirty_ == True:
+      self.reset()
 
 
 class SetAxisLinkerState:
