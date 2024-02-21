@@ -7522,7 +7522,7 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseValueWidget(cfg, state):
-    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("fmt",), state))
+    kwargs = mapProps(cfg, ("parent", "fmt",), state)
     valueName = state.resolve(cfg, "value")
     valueManager = state.get("main").get("valueManager")
     var = valueManager.get_var(valueName)
@@ -7534,7 +7534,11 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseSpinboxWidget(cfg, state):
-    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("values", "key", "from", "to", "increment", "wrap", "state", "width", "format"), state))
+    kwargs = mapProps(cfg, ("parent", "values", "key", "from", "to", "increment", "wrap", "state", "width", "format"), state)
+    from_ = kwargs.get("from")
+    if from_ is not None:
+      kwargs["from_"] = from_
+      del kwargs["from"]
     varName = state.resolve_d(cfg, "varName", None)
     if varName is not None:
       varManager = state.get("main").get("varManager")
@@ -7547,7 +7551,7 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseComboboxWidget(cfg, state):
-    kwargs = merge_dicts(mapNamedWidgetProps(cfg, state), mapProps(cfg, ("values", "key", "state", "width", "height", "justify"), state))
+    kwargs = mapProps(cfg, ("parent", "values", "key", "state", "width", "height", "justify"), state)
     varName = state.resolve_d(cfg, "varName", None)
     if varName is not None:
       varManager = state.get("main").get("varManager")
