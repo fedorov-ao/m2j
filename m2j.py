@@ -401,7 +401,7 @@ class ParserState:
         o = self.resolve_def(v)
         cb(k, o)
       except RuntimeError as e:
-        logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v), e))
+        logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v, 100), e))
 
   def get_arg(self, name, **kwargs):
     r = None
@@ -517,7 +517,7 @@ class ParserState:
     if className is not None:
       obj = parser(className, cfg, self)
     if obj is None:
-      raise RuntimeError("Cannot create object from: {}".format(str2(cfg)))
+      raise RuntimeError("Cannot create object from: {}".format(str2(cfg, 100)))
     return obj
 
   def resolve_def(self, cfg):
@@ -5562,7 +5562,7 @@ class ParserError(RuntimeError):
   def __init__(self, cfg):
     self.cfg = cfg
   def __str__(self):
-    return "Could not parse {}".format(str2(self.cfg))
+    return "Could not parse {}".format(str2(self.cfg, 100))
 
 
 class ParserNotFoundError(KeyError2):
@@ -5570,7 +5570,7 @@ class ParserNotFoundError(KeyError2):
     KeyError2.__init__(self, requestetParser, availableParsers)
     self.cfg = cfg
   def __str__(self):
-    return "Parser {} not found, available parsers are: {} (encountered when parsing: {})".format(self.key, self.keys, str2(self.cfg))
+    return "Parser {} not found, available parsers are: {} (encountered when parsing: {})".format(self.key, self.keys, str2(self.cfg, 100))
 
 
 class SelectParser:
@@ -6087,7 +6087,7 @@ def make_parser():
           #logger.debug("Parsing base : {}".format(baseName))
           base = get_nested_from_sections_d(config, sectNames, baseName, None)
           if base is None:
-            raise RuntimeError("No preset: {}".format(str2(base)))
+            raise RuntimeError("No preset: {}".format(str2(baseName)))
           merge_dicts(full, worker(base, state))
         merge_dicts(full, cfg)
         del full["bases"]
@@ -6585,7 +6585,7 @@ def make_parser():
       for fnAxis in state.resolve(cfg, "axes"):
         curves = allCurves.get(state.deref(fnAxis), None)
         if curves is None:
-          logger.warning("No curves were initialized for '{}' axis ({})".format(fnAxis, str2(cfg)))
+          logger.warning("No curves were initialized for '{}' axis ({})".format(fnAxis, str2(cfg, 100)))
         else:
           curvesToReset += curves
     elif "objects" in cfg:
@@ -6596,7 +6596,7 @@ def make_parser():
           raise RuntimeError("Curve {} not found".format(str2(objectName)))
         curvesToReset.append(curve)
     else:
-      raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg)))
+      raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg, 100)))
     return ResetCurves(curvesToReset)
   actionParser.add("resetCurves", parseResetCurves)
 
@@ -6981,7 +6981,7 @@ def make_parser():
     if key is None:
       key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting either \"et\" or \"type\" keys in {}".format(str2(cfg)))
+      raise RuntimeError("Was expecting either \"et\" or \"type\" keys in {}".format(str2(cfg, 100)))
     return key
   etParser = IntrusiveSelectParser(keyOp=etParserKeyOp, parser=SelectParser())
   mainParser.add("et", etParser)
@@ -7197,7 +7197,7 @@ def make_parser():
         try:
           return mainParser("action", cfg, state)
         except ParserNotFoundError:
-          #logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg)))
+          #logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg, 100)))
           return mainParser("ep", cfg, state)
 
       mainParser = state.get("parser")
@@ -7246,7 +7246,7 @@ def make_parser():
     if key is None:
       key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting either \"odev\" or \"type\" keys in {}".format(str2(cfg)))
+      raise RuntimeError("Was expecting either \"odev\" or \"type\" keys in {}".format(str2(cfg, 100)))
     return key
   odevParser = IntrusiveSelectParser(keyOp=odevParserKeyOp, parser=SelectParser())
   mainParser.add("odev", odevParser)
@@ -7446,7 +7446,7 @@ def make_parser():
   def widgetParserKeyOp(cfg,state):
     tpe = get_nested_d(cfg, "type", None)
     if tpe is None:
-      raise RuntimeError("Key '{}' was not found in '{}'".format("type", str2(cfg)))
+      raise RuntimeError("Key '{}' was not found in '{}'".format("type", str2(cfg, 100)))
     return tpe
   widgetParser = IntrusiveSelectParser(keyOp=widgetParserKeyOp, parser=SelectParser())
   mainParser.add("widget", widgetParser)
@@ -7513,7 +7513,7 @@ def make_parser():
         )
         widget.add_marker(**kwargs)
       except RuntimeError as e:
-        logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg), e))
+        logger.warning("Cannot create marker for '{}' ({})".format(str2(markerCfg, 100), e))
     return widget
   widgetParser.add("axes", parseAxesWidget)
 
