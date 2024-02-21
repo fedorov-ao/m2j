@@ -3854,10 +3854,10 @@ class SwallowSource:
   def __call__(self, event):
     for name,mode in self.deviceNamesAndModes_:
       try:
-        #logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
+        #logger.debug("{}: setting swallow state {} to {}".format(self, mode, name))
         self.source_.swallow(name, mode)
-      except IOError as e:
-        #logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+      except (IOError, OSError) as e:
+        #logger.debug("{}: got exception ({}), but that was expected".format(self, e))
         continue
     return True
 
