@@ -297,6 +297,7 @@ class EvdevDevice:
     self.state_ = s
     if not self.is_ready_():
       return
+    time.sleep(self.swallowDelay_)
     try:
       if s:
         self.dev_.grab()
@@ -306,9 +307,10 @@ class EvdevDevice:
     except (IOError, exceptions.OSError):
       pass
 
-  def __init__(self, dev, idev, recreateOp=lambda : None):
+  def __init__(self, dev, idev, recreateOp=lambda : None, swallowDelay=0.0):
     self.dev_, self.idevName_, self.recreateOp_ = dev, idev, recreateOp
     self.idevHash_ = register_dev(idev)
+    self.swallowDelay_ = swallowDelay
     self.numEvents_ = 0
     self.state_ = False
 
@@ -363,7 +365,7 @@ class NativeEvdevDeviceFactory:
   identifierRe_ = re.compile("([^:]*):(.*)")
 
 
-def init_idevs(idevsCfg, makeDevice=lambda native,idev,recreateOp : EvdevDevice(native, idev, recreateOp), deviceUpdatePeriod=2):
+def init_idevs(idevsCfg, makeDevice=lambda native,idev,recreateOp : EvdevDevice(native, idev, recreateOp, 0.0), deviceUpdatePeriod=2):
   """
   Initializes idev devices.
   Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
@@ -438,8 +440,9 @@ def parseEvdevEventSource(cfg, state):
   config = state.get("main").get("config")
   compressEvents = config.get("compressSourceEvents", False)
   deviceUpdatePeriod = config.get("missingSourceUpdatePeriod", 2)
+  swallowDelay = config.get("swallowDelay", 0.0)
   def make_device(native, idev, recreateOp):
-    dev = EvdevDevice(native, idev, recreateOp)
+    dev = EvdevDevice(native, idev, recreateOp, swallowDelay=swallowDelay)
     if compressEvents:
       dev = EventCompressorDevice(dev)
     return dev
