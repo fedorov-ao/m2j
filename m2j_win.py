@@ -160,7 +160,7 @@ def parsePPJoystickOutput(cfg, state):
   if factors is not None:
     factors = {fn2tc(n) : v for n,v in factors.items()}
   j = PPJoystick(i=cfg["id"], numAxes=cfg.get("numAxes", 8), numButtons=cfg.get("numButtons", 16), limits=limits, factors=factors)
-  state.get("main").get("updated").append(lambda tick, ts : j.update())
+  state.get("main").add_to_updated(lambda tick, ts : j.update())
   return j
 
 
@@ -373,7 +373,7 @@ def parseVJoystickOutput(cfg, state):
   if factors is not None:
     factors = {fn2tc(n) : v for n,v in factors.items()}
   j = VJoystick(i=i, numAxes=numAxes, numButtons=numButtons, limits=limits, factors=factors)
-  state.get("main").get("updated").append(lambda tick,ts : j.update())
+  state.get("main").add_to_updated(lambda tick,ts : j.update())
   return j
 
 

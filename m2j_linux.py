@@ -430,7 +430,7 @@ def parseEvdevJoystickOutput(cfg, state):
       axesDatum[tcAxis] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
   j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
   if immediateSyn == False:
-    state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
+    state.get("main").add_to_updated(lambda tick,ts : j.update(tick, ts))
   return j
 
 

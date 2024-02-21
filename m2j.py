@@ -559,8 +559,9 @@ class ParserState:
             mx = mapping(x)
             setter(mx)
           actualSetter = mapping_setter
-        r.add_callback(actualSetter)
-        varManager.add_var_callback(r, actualSetter)
+        #r can be assigned to different value further down the execution path, so using varOrValue here
+        varOrValue.add_callback(actualSetter)
+        self.get("main").get("callbackManager").add_callback(lambda : varOrValue.remove_callback(actualSetter))
       if asValue == True:
         r = r.get()
         if mapping is not None:
@@ -5368,7 +5369,7 @@ def init_main_ep(state):
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
     num = state.resolve_d(hd, "num", -1)
     holdEP.add(keyIDev, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
-  main.get("updated").append(lambda tick,ts : holdEP.update(tick, ts))
+  main.add_to_updated(lambda tick,ts : holdEP.update(tick, ts))
 
   sensSetsCfg = state.resolve_d(config, "sens", None)
   sens = {}
@@ -6473,7 +6474,7 @@ def make_parser():
     else:
       raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
     mcs = MultiCurveEP(curves, op)
-    state.get("main").get("updated").append(lambda tick,ts : mcs.update(tick, ts))
+    state.get("main").add_to_updated(lambda tick,ts : mcs.update(tick, ts))
     return mcs
   actionParser.add("moveOneOf", parseMoveOneOf)
 
@@ -6598,7 +6599,7 @@ def make_parser():
     clicker = Clicker(odev, cKey, numClicks, delay)
     eventOp = lambda e : clicker.on_event(e)
     updateOp = lambda tick,ts : clicker.on_update(tick, ts)
-    state.get("main").get("updated").append(updateOp)
+    state.get("main").add_to_updated(updateOp)
     return eventOp
   actionParser.add("click", parseClick)
 
@@ -7291,7 +7292,7 @@ def make_parser():
     rates = {fn2tc(nAxis):value for nAxis,value in state.resolve(cfg, "rates").items()}
     next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
     j = RateLimititngJoystick(next, rates)
-    state.get("main").get("updated").append(lambda tick,ts : j.update(tick))
+    state.get("main").add_to_updated(lambda tick,ts : j.update(tick))
     return j
   odevParser.add("rateLimit", parseRateLimitODev)
 
@@ -7343,7 +7344,7 @@ def make_parser():
       tcAxis = fn2tc(nAxis)
       rateOps[tcAxis] = rateOp
     j = RateSettingJoystick(next, rateOps, limits)
-    state.get("main").get("updated").append(lambda tick,ts : j.update(tick, ts))
+    state.get("main").add_to_updated(lambda tick,ts : j.update(tick, ts))
     return j
   odevParser.add("rateSet", parseRateSettingODev)
 
@@ -7383,7 +7384,7 @@ def make_parser():
   @make_reporting_joystick
   def parseOpentrackODev(cfg, state):
     j = Opentrack(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")))
-    state.get("main").get("updated").append(lambda tick,ts : j.send())
+    state.get("main").add_to_updated(lambda tick,ts : j.send())
     return j
   odevParser.add("opentrack", parseOpentrackODev)
 
@@ -7397,7 +7398,7 @@ def make_parser():
     j = UdpJoystick(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")), packetMakers[state.resolve(cfg, "format")], int(state.resolve_d(cfg, "numPackets", 1)))
     for nAxis,l in state.resolve_d(cfg, "limits", {}).items():
       j.set_limits(fn2tc(nAxis), l)
-    state.get("main").get("updated").append(lambda tick,ts : j.send())
+    state.get("main").add_to_updated(lambda tick,ts : j.send())
     return j
   odevParser.add("udpJoystick", parseUdpJoystickODev)
 
@@ -7783,23 +7784,25 @@ class VarManager:
   def add_var(self, varName, var):
     set_nested(self.vars_, varName, var)
 
-  def add_var_callback(self, var, callback):
-    #logger.debug("Adding {} to {}".format(callback, var))
-    self.varCallbacks_[-1].append((var, callback))
-
-  def push_var_callbacks(self):
-    self.varCallbacks_.append([])
-
-  def pop_var_callbacks(self):
-    vcs = self.varCallbacks_.pop()
-    for var,callback in vcs:
-      #logger.debug("Removing {} from {}".format(callback, var))
-      var.remove_callback(callback)
-
   def __init__(self, make_var = None):
     self.vars_ = collections.OrderedDict()
-    self.varCallbacks_ = [[]]
     self.make_var_ = make_var
+
+
+class CallbackManager:
+  def add_callback(self, callback):
+    self.callbacks_[-1].append(callback)
+
+  def push_callbacks(self):
+    self.callbacks_.append([])
+
+  def pop_callbacks(self):
+    cs = self.callbacks_.pop()
+    for callback in cs:
+      callback()
+
+  def __init__(self):
+    self.callbacks_ = [[]]
 
 
 class Main:
@@ -7966,7 +7969,7 @@ class Main:
   def init_info(self, state):
     cfg=state.resolve_d(self.get("config"), "info", {})
     info = state.get("parser")("widget", cfg, state)
-    self.get("updated").append(lambda tick,ts : info.update())
+    self.add_to_updated(lambda tick,ts : info.update())
     self.set("info", info)
 
   def init_loop(self, state):
@@ -7994,10 +7997,7 @@ class Main:
         logger.error(l)
       logger.error("===Traceback end===")
 
-  def reinit_or_fallback(self, inupdated):
-    #if loop has been already created (so it is a reinitialization) - set "updated" property to a copy of initial updated list
-    if self.loop_ is not None:
-      self.set("updated", inupdated[:])
+  def reinit_or_fallback(self):
     try:
       state = ParserState(self)
       try:
@@ -8009,21 +8009,22 @@ class Main:
         logger.error("Could not create or recreate loop; reason: '{}'".format(e))
         self.print_trace()
         logger.error("Falling back to initial state.")
-        self.set("updated", inupdated[:])
         self.get("mainEP").set_next(None)
       self.init_loop(state)
     finally:
       self.set("reloading", False)
 
-  def reinit_and_run(self, inupdated):
-    varManager = self.get("varManager")
-    varManager.push_var_callbacks()
+  def reinit_and_run(self):
+    callbackManager = self.get("callbackManager")
+    callbackManager.push_callbacks()
     try:
-      self.reinit_or_fallback(inupdated)
+      #logger.debug("len(updated) before reinit_or_fallback: {}".format(len(self.get("updated"))))
+      self.reinit_or_fallback()
+      #logger.debug("len(updated) after reinit_or_fallback: {}".format(len(self.get("updated"))))
       assert(self.loop_ is not None)
       self.loop_.run()
     finally:
-      varManager.pop_var_callbacks()
+      callbackManager.pop_callbacks()
 
   def preinit(self):
     self.preinit_log()
@@ -8064,16 +8065,18 @@ class Main:
     self.init_sounds(state)
 
   def run(self):
-    varManager = self.get("varManager")
-    varManager.push_var_callbacks()
+    callbackManager = self.get("callbackManager")
+    callbackManager.push_callbacks()
     try:
+      #logger.debug("len(updated) before preinit: {}".format(len(self.get("updated"))))
       self.preinit()
-      inupdated = self.get("updated")[:]
-      #inupdated contains a copy of list of updated objects as it is after main ep was initialized - an intial updated list
+      #logger.debug("len(updated) after preinit: {}".format(len(self.get("updated"))))
       while (True):
         try:
-          r = self.reinit_and_run(inupdated)
+          #logger.debug("len(updated) before reinit_and_run: {}".format(len(self.get("updated"))))
+          r = self.reinit_and_run()
         except ReloadException:
+          #logger.debug("len(updated) after reinit_and_run: {}".format(len(self.get("updated"))))
           logger.info("Reloading")
           self.set("reloading", True)
 
@@ -8094,7 +8097,7 @@ class Main:
       if source is not None:
         source.swallow(None, False)
       self.get("soundPlayer").quit()
-      varManager.pop_var_callbacks()
+      callbackManager.pop_callbacks()
 
 
   def get(self, propName):
@@ -8137,6 +8140,20 @@ class Main:
   def get_full_name_by_axis(self, axis):
     return self.get("axesToNames").get(axis, None)
 
+  def add_to_updated(self, callback):
+    #logger.debug("Adding to updated: {}".format(callback))
+    updated = self.get("updated")
+    updated.append(callback)
+    self.get("callbackManager").add_callback(lambda : self.remove_from_updated(callback))
+
+  def remove_from_updated(self, callback):
+    #logger.debug("Removing from updated: {}".format(callback))
+    updated = self.get("updated")
+    try:
+      updated.remove(callback)
+    except ValueError:
+      pass
+
   def __init__(self, parser=make_parser(), print_devices=lambda a:None):
     self.loop_ = None
     self.print_devices_ = print_devices
@@ -8156,6 +8173,7 @@ class Main:
     self.props_["numTraceLines"] = 0
     self.props_["soundPlayer"] = SoundPlayer()
     self.props_["varManager"] = VarManager()
+    self.props_["callbackManager"] = CallbackManager()
     self.props_["valueManager"] = VarManager(make_var = lambda : Var(None))
     poseManager = AxisPoseManager()
     self.props_["poseManager"] = poseManager
