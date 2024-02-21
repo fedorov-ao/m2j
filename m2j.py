@@ -3707,11 +3707,14 @@ class AxisLinker:
      When resetting axes, reset controlling axis first, then controlled.
   """
   def reset(self):
-    self.offset_ = self.controlledAxis_.get() - self.func_(self.controllingAxis_.get())
+    controlledValue = self.controlledAxis_.get()
+    controllingValue = self.controllingAxis_.get()
+    desiredControlledValue = self.func_(controllingValue)
+    self.offset_ = controlledValue - desiredControlledValue
+    self.oldControlledValue_ = None
+    #logger.debug("{} : after reset: controlling: {:+0.3f}; controlled: {:+0.3f}; desired controlled: {:+0.3f}; offset: {:+0.3f}".format(self, controllingValue, controlledValue, desiredControlledValue, self.offset_))
 
   def set_state(self, state):
-    if state == True:
-      self.reset()
     self.state_ = state
 
   def set_func(self, func):
@@ -3731,28 +3734,29 @@ class AxisLinker:
     if self.state_ == False or self.busy_ == True:
       return
     elif axis == self.controlledAxis_:
-      #logger.debug("{} : Controlled axis has moved to {}".format(self, new))
-      if self.old_ is None:
-        self.old_ = old
+      if self.oldControlledValue_ is None:
+        self.oldControlledValue_ = old
+      #logger.debug("{} : Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}".format(self, new, self.oldControlledValue_))
     elif axis == self.controllingAxis_:
-      #logger.debug("{} : Controlling axis has moved to {}".format(self, new))
-      if self.old_ is not None:
-        self.offset_ += self.controlledAxis_.get() - self.old_
-        self.old_ = None
+      if self.oldControlledValue_ is not None:
+        self.offset_ += self.controlledAxis_.get() - self.oldControlledValue_
+        self.oldControlledValue_ = None
+      #logger.debug("{} : Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}".format(self, new, self.offset_))
       cv = self.func_(new)
       try:
         self.busy_= True
-        #logger.debug("{} : Moving controlled axis to {}".format(self, cv+self.offset_))
         desired = cv + self.offset_
         actual = self.controlledAxis_.move(desired, relative=False)
+        #logger.debug("{} : Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}".format(self, self.controlledAxis_.get(), desired, actual))
         if actual != desired:
           self.offset_ -= (desired - actual)
+          #logger.debug("{} : offset after move {:+0.3f}".format(self, self.offset_))
       finally:
         self.busy_= False
 
   def __init__(self, controllingAxis, controlledAxis, func):
     self.controllingAxis_, self.controlledAxis_, self.func_ = controllingAxis, controlledAxis, func
-    self.old_, self.offset_, self.busy_, self.state_  = None, 0.0, False, False
+    self.oldControlledValue_, self.offset_, self.busy_, self.state_  = None, 0.0, False, False
     #logger.debug("{} created".format(self))
 
   def __del__(self):
