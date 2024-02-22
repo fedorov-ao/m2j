@@ -288,7 +288,7 @@ class EvdevDevice:
         #logger.debug("{}: {} read event: {}".format(self, self.idevName_, event))
         self.numEvents_ += 1
       return event
-    except (IOError, exceptions. OSError) as e:
+    except (IOError, exceptions.OSError) as e:
       self.numEvents_ = 0
       self.dev_ = None
       logger.error("{}: device is not ready: {}".format(self.idevName_, e))
