@@ -5467,9 +5467,16 @@ def init_main_ep(state):
   def print_disabled(event):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
+  stateValueName = state.resolve_d(config, "stateValueName", None)
+  stateValue = state.get("main").get("valueManager").get_var(stateValueName)
+  def make_set_state_val(s):
+    def op(event):
+      if stateValue is not None: stateValue.set(s)
+    return op
+
   grabEP = filterEP.set_next(BindEP())
-  grabEP.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled), 0)
-  grabEP.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled), 0)
+  grabEP.add(ET.init(1), Call(SwallowSource(main.get("source"), [(n,True) for n in grabbed]), print_enabled, make_set_state_val("enabled")), 0)
+  grabEP.add(ET.init(0), Call(SwallowSource(main.get("source"), [(n,False) for n in grabbed]), print_disabled, make_set_state_val("disabled")), 0)
 
   nextEP = NextEP()
   grabEP.add(None, nextEP, 1)
@@ -6310,6 +6317,13 @@ def make_parser():
     def mode_callback(modeEP, old, new):
       logger.info("{}: Setting mode: {}".format(modeEP.get_name(), str2(new)))
     modeEP = ModeEP(name)
+    modeEP.add_mode_callback(mode_callback)
+    modeValueName = state.resolve_d(cfg, "modeValueName", None)
+    if modeValueName is not None:
+      modeValue = state.get("main").get("valueManager").get_var(modeValueName)
+      def cb(modeEP, old, new):
+        modeValue.set(new)
+      modeEP.add_mode_callback(cb)
     msmm = ModeEPModeManager(modeEP)
     headEP.set_component("msmm", msmm)
     headEP.set_component("modes", modeEP)
