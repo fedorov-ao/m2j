@@ -2218,7 +2218,8 @@ class ModeEP:
     if mode == self.mode_:
       return True
     if report:
-      self.reportModeSwitchCb_(self.name_, self.mode_, mode)
+      for cb in self.modeCallbacks_:
+        cb(self, self.mode_, mode)
     #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
       logger.warning("{}: No such mode: {}".format(self.name_, mode))
@@ -2232,6 +2233,9 @@ class ModeEP:
   def get_mode(self):
     return self.mode_
 
+  def get_name(self):
+    return self.name_
+
   def add(self, mode, child):
     #logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
     if child is None:
@@ -2242,6 +2246,12 @@ class ModeEP:
   def get(self, modeName):
     return self.children_.get(modeName, None)
 
+  def add_mode_callback(self, cb):
+    self.modeCallbacks_.append(cb)
+
+  def remove_mode_callback(self, cb):
+    self.modeCallbacks_.remove(cb)
+
   def set_active_child_state_(self, state, other):
     if self.mode_ in self.children_:
       child = self.children_.get(self.mode_, None)
@@ -2251,12 +2261,7 @@ class ModeEP:
 
   def __init__(self, name="", reportModeSwitchCb=None):
     self.children_, self.mode_, self.name_ = {}, None, name
-    if reportModeSwitchCb is None:
-      def smc(name, old, new):
-        logger.info("{}: Setting mode: {}".format(name, str2(new)))
-      reportModeSwitchCb = smc
-    self.reportModeSwitchCb_ = reportModeSwitchCb
-
+    self.modeCallbacks_ = []
 
 class CycleMode:
   def __call__(self, event):
@@ -6291,6 +6296,8 @@ def make_parser():
     name = state.resolve_d(cfg, "name", "")
     allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
     headEP = state.at("eps", 0)
+    def mode_callback(modeEP, old, new):
+      logger.info("{}: Setting mode: {}".format(modeEP.get_name(), str2(new)))
     modeEP = ModeEP(name)
     msmm = ModeEPModeManager(modeEP)
     headEP.set_component("msmm", msmm)
