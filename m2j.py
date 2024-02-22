@@ -7919,8 +7919,8 @@ class Main:
     print "Usage: " + sys.argv[0] + " args"
     print "args are:\n\
     -h | --help : this message\n\
-    -d fileName | --devices=fileName : print input devices to file fileName (- for stdout)\n\
-    -e | --escape : escape special characters in input device names\n\
+    -d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)\n\
+    -j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)\n\
     -p presetName | --preset=presetName : use preset presetName\n\
     -c configFileName | --config=configFileName : use config file configFileName\n\
     -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
@@ -8141,15 +8141,17 @@ class Main:
       self.print_help()
       raise ExitException
 
-    devicesFileName, escapeDeviceName = None, False
-
-    opts, args = getopt.getopt(sys.argv[1:], "hd:ep:v:c:", ["help", "devices=", "preset=", "logLevel=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hd:j:p:v:c:", ["help", "devices=", "devices_json=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         self.print_help()
         raise ExitException
       elif o in ("-d", "--devices"):
-        devicesFileName = a
+        self.output_devices_("text", a)
+        raise ExitException
+      elif o in ("-j", "--devices_json"):
+        self.output_devices_("json", a)
+        raise ExitException
       if o in ("-p", "--preset"):
         self.options_["preset"] = a
       elif o in ("-v", "--logLevel"):
@@ -8158,9 +8160,6 @@ class Main:
         cns = self.options_.setdefault("configNames", [])
         cns.append(a)
 
-    if devicesFileName is not None:
-        self.print_devices_(devicesFileName)
-        raise ExitException
 
     self.set("reloading", False)
     self.init_config2()
@@ -8263,9 +8262,9 @@ class Main:
     except ValueError:
       pass
 
-  def __init__(self, parser=make_parser(), print_devices=lambda a:None):
+  def __init__(self, parser=make_parser(), get_idevs_info=lambda a:None):
     self.loop_ = None
-    self.print_devices_ = print_devices
+    self.get_idevs_info_ = get_idevs_info
     self.options_ = {}
     self.props_ = {}
     self.props_["reloading"] = False
@@ -8287,3 +8286,38 @@ class Main:
     poseManager = AxisPoseManager()
     self.props_["poseManager"] = poseManager
     self.props_["poseTracker"] = PoseTracker(poseManager)
+
+  def output_devices_(self, mode, fname):
+    r = self.get_idevs_info_()
+    if mode == "text":
+      if fname == "-":
+        for l in r:
+          for k,v in l.items():
+            print "{} : {};".format(k, v),
+          print "\n"
+      else:
+        with open(fname, "w") as f:
+          for l in r:
+            for k,v in l.items():
+              f.write("{} : {};".format(k, v))
+            f.write("\n")
+    elif mode == "json":
+      d, i = collections.OrderedDict(), 0
+      for l in r:
+        s = "idev{}".format(i)
+        d["_{}_info".format(s)] = str(l)
+        d[s] = "hash:{}".format(l["hash"])
+        i += 1
+      d = { "idevs" : d }
+      if fname == "-":
+        json.dump(d, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+      else:
+        with open(fname, "w") as f:
+          json.dump(d, f, indent=2)
+    else:
+      raise RuntimeError("Bad mode: {}".format(mode))
+
+
+
+

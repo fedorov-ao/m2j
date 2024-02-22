@@ -450,8 +450,7 @@ def parseEvdevEventSource(cfg, state):
   return EventSource(idevs, None)
 
 
-def print_devices(fname, **kwargs):
-  """Prints idev devices info."""
+def get_idevs_info(**kwargs):
   r = []
   devices = [evdev.InputDevice(fn) for fn in evdev.list_devices()]
   for d in devices:
@@ -460,15 +459,14 @@ def print_devices(fname, **kwargs):
     for k,v in caps.items():
       keyName = k[0]
       codeNames = ", ".join((str(i[0]) for i in v))
-      capsInfo += " {}: {}\n".format(keyName, codeNames)
-    r.append("name: {}\npath: {}\ncaps:\n{}fn: {}\ninfo: {}\nphys: {}\nuniq: {}\nhash: {:X}\n".format(d.name, d.path, capsInfo, d.fn, d.info, d.phys, d.uniq, calc_device_hash(d)))
-  if fname == "-":
-    for l in r:
-      print l
-  else:
-    with open(fname, "w") as f:
-      for l in r:
-        f.write(l+"\n")
+      capsInfo += " {}: {};".format(keyName, codeNames)
+    r.append(
+      {
+        "name" : d.name, "path" : d.path, "caps" : capsInfo, "fn" : d.fn, "info" : d.info,
+        "phys" : d.phys, "uniq" : d.uniq, "hash" : "{:X}".format(calc_device_hash(d))
+      }
+    )
+  return r
 
 
 def print_tech_data():
@@ -491,7 +489,7 @@ def print_tech_data():
 
 if __name__ == "__main__":
   try:
-    main = Main(print_devices=print_devices)
+    main = Main(get_idevs_info=get_idevs_info)
     parser = main.get("parser")
     parser.get("odev").add("evdev", parseEvdevJoystickOutput)
     parser.add("source", parseEvdevEventSource)

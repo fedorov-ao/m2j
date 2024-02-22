@@ -1765,23 +1765,17 @@ def parseRawInputEventSource(cfg, state):
   return source
 
 
-def print_devices(fname, **kwargs):
+def get_idevs_info(**kwargs):
   r = []
   devices = RawInputEventSource().get_devices()
   for d in devices:
-    r.append("name: {}\nhandle: {}\ntype: {} ({})\nhash: {}\n".format(d.name, d.handle, rimtype2str(d.type), d.type, d.hash))
-  if fname == "-":
-    for l in r:
-      print l
-  else:
-    with open(fname, "w") as f:
-      for l in r:
-        f.write(l+"\n")
+    r.append({ "name" : d.name, "handle" : d.handle, "type" : "{} ({})".format(rimtype2str(d.type), d.type), "hash" : d.hash })
+  return r
 
 
 if __name__ == "__main__":
   try:
-    main = Main(print_devices=print_devices)
+    main = Main(get_idevs_info=get_idevs_info)
     parser = main.get("parser")
     odevParser = parser.get("odev")
     odevParser.add("ppjoy", parsePPJoystickOutput)
