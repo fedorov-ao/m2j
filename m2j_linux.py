@@ -12,6 +12,7 @@
 
 import sys
 sys.path.append(".")
+import exceptions
 import gc
 import traceback
 import m2j
@@ -287,13 +288,12 @@ class EvdevDevice:
         #logger.debug("{}: {} read event: {}".format(self, self.idevName_, event))
         self.numEvents_ += 1
       return event
-    except IOError as e:
+    except (IOError, exceptions. OSError) as e:
       self.numEvents_ = 0
       self.dev_ = None
       logger.error("{}: device is not ready: {}".format(self.idevName_, e))
 
   def swallow(self, s):
-    import exceptions
     self.state_ = s
     if not self.is_ready_():
       return
