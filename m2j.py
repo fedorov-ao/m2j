@@ -5168,7 +5168,12 @@ class Info:
       msg = None
       if v is not None:
         try:
-          msg = self.fmt_.format(**v)
+          if is_dict_type(v):
+            msg = self.fmt_.format(**v)
+          elif is_list_type(v):
+            msg = self.fmt_.format(*v)
+          else:
+            msg = self.fmt_.format(v)
         except Exception as e:
           msg = "Cannot format ({})".format(e)
       self.valueLabel_["text"] = msg
@@ -5176,6 +5181,12 @@ class Info:
       Info.FrameWidget.__init__(self, **kwargs)
       self.valueLabel_ = tk.Label(master=self.frame_)
       self.valueLabel_.pack(expand=True, fill="x")
+      Info.configure_widget(
+        self.valueLabel_,
+        ("state", "height", "width"),
+        kwargs,
+        lambda widget,kwa : widget.configure(**kwa)
+      )
       self.var_ = kwargs["var"]
       self.fmt_ = kwargs["fmt"]
       self.update()
@@ -7560,7 +7571,7 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseValueWidget(cfg, state):
-    kwargs = mapProps(cfg, ("parent", "fmt",), state)
+    kwargs = mapProps(cfg, ("parent", "fmt", "state", "height", "width"), state)
     valueName = state.resolve(cfg, "value")
     valueManager = state.get("main").get("valueManager")
     var = valueManager.get_var(valueName)
