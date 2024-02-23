@@ -7000,7 +7000,7 @@ def make_parser():
     main = state.get("main")
     def op(e):
       info = main.get("info")
-      info.set_state(True)
+      if info is not None: info.set_state(True)
     return op
   actionParser.add("showInfo", parseShowInfo)
 
@@ -7008,7 +7008,7 @@ def make_parser():
     main = state.get("main")
     def op(e):
       info = main.get("info")
-      info.set_state(False)
+      if info is not None: info.set_state(False)
     return op
   actionParser.add("hideInfo", parseHideInfo)
 
@@ -7016,7 +7016,7 @@ def make_parser():
     main = state.get("main")
     def op(e):
       info = main.get("info")
-      info.set_state(not info.get_state())
+      if info is not None: info.set_state(not info.get_state())
     return op
   actionParser.add("toggleInfo", parseToggleInfo)
 
@@ -7306,7 +7306,7 @@ def make_parser():
       odevs = state.resolve_d(config, "odevs", None)
       if odevs is None:
         raise RuntimeError("Cannot find 'odevs' section in configs")
-      odevCfg = state.resolve_d(odevCfg, name, None)
+      odevCfg = state.resolve_d(odevs, name, None)
       if odevCfg is None:
         raise RuntimeError("Cannot find section for odev '{}' in configs".format(name))
       j = state.get("parser")("odev", odevCfg, state)
@@ -8076,7 +8076,7 @@ class Main:
     self.get("mainEP").set_next(ep)
 
   def init_info(self, state):
-    cfg=state.resolve_d(self.get("config"), "info", {})
+    cfg = state.resolve_d(self.get("config"), "info", { "type" : "info" })
     info = state.get("parser")("widget", cfg, state)
     self.add_to_updated(lambda tick,ts : info.update())
     self.set("info", info)
