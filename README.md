@@ -16,12 +16,27 @@ Because of dependencies (namely, `pywin32`). The project aims to support as low 
 
 ## What's inside
 
+### Code
+
  * `m2j.py` - platform-independent library code
  * `m2j_linux.py` - run this under Linux
  * `m2j_win.py` - run this under Windows
- * `m2j_1mouse.cfg` - config file for configuration using 1 mouse
- * `m2j_2mice2.cfg` - config file for configuration using 2 mice (the mostly useful one, see `BINDS.md` for binds)
- * `m2j_3mice.cfg` - config file for configuration using 3 mice (experimental!)
+ 
+### Configuration files
+
+ * `curves.cfg` - main config file, contains config nodes that are used to initialize a configuration
+ * `m2j_cfg.cfg` - contains settings that are common for all configurations  
+ * `m2j_1mouse.cfg` - config file for 1-mouse configuration
+ * `m2j_2mice2.cfg` - config file for 2-mice configuration (the mostly useful one, see `BINDS.md` for binds)
+ * `m2j_3mice.cfg` - config file for 3-mice configuration (experimental!)
+ * `m2j_linux.cfg` - mix-in config file for running under Linux
+ * `m2j_1mouse_linux.cfg` - config file for running 1-mouse configuration under Linux
+ * `m2j_2mice2_linux.cfg` - config file for running 2-mice configuration under Linux
+ * `m2j_3mice_linux.cfg` - config file for running 3-mice configuration under Linux
+ * `m2j_win.cfg` - mix-in config file for running under Windows
+ * `m2j_1mouse_win.cfg` - config file for running 1-mouse configuration under Windows
+ * `m2j_2mice2_win.cfg` - config file for running 2-mice configuration under Windows
+ * `m2j_3mice_win.cfg` - config file for running 3-mice configuration under Windows
 
 Also, be sure to check companion utilities that can be used alongside with `m2j`:
 
@@ -85,8 +100,8 @@ check
 
 #### Running
 
-`$./m2j_linux.py -h` - for help on command-line switches  
-`$./m2j_linux.py -c configname.cfg` - to use configuration specified in `configname.cfg`  
+`$./m2j_linux.py` or `$./m2j_linux.py -h` - for get help about command-line switches  
+`$./m2j_linux.py -c configname.cfg` - to use configuration specified in `configname.cfg`. I.e. `$./m2j_linux.py -c m2j_1mouse_linux.cfg` runs 1-mouse configuration.  
 
 ### Windows 
 
@@ -112,5 +127,16 @@ Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL t
 
 #### Running
 
-`m2j_win.py -h` - for help on command-line switches  
-`m2j_win.py -c configname.cfg` - to use configuration specified in `configname.cfg`  
+`m2j_win.py` or `m2j_win.py -h` - for get help about command-line switches  
+`m2j_win.py -c configname.cfg` - to use configuration specified in `configname.cfg` I.e. `m2j_win.py -c m2j_1mouse_win.cfg` runs 1-mouse configuration.    
+
+### Command-line switches
+
+```
+-h | --help : help message
+-d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)
+-j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)
+-p presetName | --preset=presetName : use preset presetName
+-c configFileName | --config=configFileName : use config file configFileName
+-v logLevel | --logLevel=logLevel : set log level to logLevel
+```

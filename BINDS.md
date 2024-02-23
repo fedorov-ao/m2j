@@ -4,14 +4,34 @@
 
 Config file: `m2j_2mice2.cfg`, preset in `curves.cfg`: `2mice2`
 
-rmouse is right mouse, lmouse is left mouse.  
-Joystick axes are X,Y,Z,RX,RY,RZ,RUDDER,THROTTLE; buttons are designated by numbers 0-16.  
-Mouse axes are X,Y,WHEEL; buttons are LMB (left), RMB (right), MMB (middle), EXTRA, SIDE.  
-For example, `joystick1.X` is `X` axis of joystick `joystick1`.  
+Configuration that maps 2 mice (and keyboard) to 4 virtual joysticks.  
+Mice should have 6 buttons (clickable mouse wheel is counted as a button). Mouse axes are `X`, `Y`, `WHEEL`; buttons are `LMB` (left), `RMB` (right), `MMB` (middle, clickable wheel), `EXTRA` (side button closer to cord), `SIDE` (side button farther from cord).  
+Keyboard is a standard keyboard.  
+Virtual joysticks should have 8 axes and 16 buttons. Joystick axes are `X`, `Y`, `Z`, `RX`, `RY`, `RZ`, `RUDDER`, `THROTTLE`; buttons are designated by numbers from `0` to `15`.  
 
-rmouse and lmouse have independent modes.  
-rmouse modes are _pri_, _sec_, _ter_, _qua_, _hat_, _aux3_, _aux4_.  
-lmouse modes are _yaw_, _fwd_, _head_rotation_, _head_movement_, _aux1_, _aux2_.
+Mouse operated by right hand is referred here and in config as `rmouse`, by left hand - as `lmouse`. For example, `rmouse.X` is the X axis of rmouse.  
+`rmouse` and `lmouse` each operate primarilly in independent modes, though there are modes that use both mice.  
+`rmouse` modes are `pri`, `sec`, `ter`, `qua`, `hat`, `aux3`, `aux4`.  
+`lmouse` modes are `yaw`, `fwd`, `head_rotation`, `head_movement`, `aux1`, `aux2`.  
+See **Mode-specific bindings** section to find out which axes and buttons of which virtual joystick are controlled in a given mode.  
+
+Virtual joysticks are also referred by names. For example, `joystick1.X` is X axis of joystick `joystick1`.  
+`joystick1` - handles basic functions, `joystick2`, `joystick3` - auxillary funcions, `head` - head (POV) rotation and movement.  
+
+### Global bindigs
+
+ * press/release `keyboard.SCROLLOCK` - toggle emulation, grab/ungrab `rmouse` and `lmouse`  
+ * doubleclick `rmouse.SIDE`, then press `rmouse.EXTRA` - partially disable emulation: ungrab `lmouse` and don't process input from it  
+   * press `rmouse.EXTRA` in this partially disabled mode - enable emulation: grab `lmouse` back and resume processing input from it  
+ * doubleclick `rmouse.EXTRA`, then press `rmouse.SIDE` - partially disable emulation (version 2): ungrab `lmouse`, but still process its' wheel movement  
+   * press `rmouse.SIDE` in this partially disabled mode - enable emulation: grab `lmouse` back and resume processing input from it  
+ * tripleclick `keyboard.KEY_MENU` - open/close info window  
+ * press `keyboard.KEY_MENU` - enter console menu mode  
+   * click `keyboard.KEY_MENU` - leave console menu mode  
+
+### Mode-specific bindigs
+
+This section describes which axes/buttons of which virtual joystick are controlled in a given mode, along with some comments (like possible bindings for IL-2 1946 or LockOn).
 
 |side|mode|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:--:|:--:|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
