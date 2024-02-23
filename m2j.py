@@ -5937,7 +5937,7 @@ def make_parser():
     valueDDOp = TimeDistanceDeltaOp(next=valueDDOp, resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaDOp = ReturnDeltaOp()
     deltaDOp = DeadzoneDeltaOp(deltaDOp, dynamicCfg.get("deadzone", 0.0))
-    deltaDOp = makeSensModOp(dynamicCfg, state, deltaDOp)
+    deltaDOp = makeSensModOp(cfg, state, deltaDOp)
     combine = lambda a,b: a+b
     class ResetOp:
       def calc(self, value):
@@ -6003,7 +6003,8 @@ def make_parser():
     dynamicCfg = get_nested_d(cfg, "dynamic", None)
     if dynamicCfg is not None:
       valueDDOp = makeInputValueDDOp(dynamicCfg, state)
-      deltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
+      #settings are taken from cfg here
+      deltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
@@ -6043,7 +6044,8 @@ def make_parser():
     dynamicCfg = get_nested_d(cfg, "dynamic", None)
     if dynamicCfg is not None:
       inputValueDDOp = makeInputValueDDOp(dynamicCfg, state)
-      inputDeltaDDOp = makeInputDeltaDDOp(dynamicCfg, state)
+      #settings are taken from cfg here
+      inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
       accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=dynamicOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
