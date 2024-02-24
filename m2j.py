@@ -2609,6 +2609,7 @@ class PolynomialFunc:
 
 class SegmentFunc:
   def __call__(self, x):
+    self.update_points_()
     if len(self.x_) == 0 or len(self.y_) == 0:
       return 0.0
     i = bisect.bisect_left(self.x_, x)-1
@@ -2628,17 +2629,30 @@ class SegmentFunc:
       self.tracker_({ "caller" : self, "x" : x, "y" : y, "x0" : self.x_[i], "x1" : self.x_[j], "y0" : self.y_[i], "y1" : self.y_[j] })
     return y
 
-  def __init__(self, data, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
-    temp = [(float(d[0]), float(d[1])) for d in data if len(d) == 2]
+  def set_points(self, points):
+    self.points_ = points
+
+  def get_points(self):
+    self.update_points_()
+    return zip(self.x_, self.y_)
+
+  def __init__(self, points, factor=1.0, clampLeft=False, clampRight=False, tracker=None):
+    self.points_ = points
+    self.factor_ = factor
+    self.clampLeft_, self.clampRight_ = clampLeft, clampRight
+    self.tracker_ = tracker
+    self.x_, self.y_ = (), ()
+
+  def update_points_(self):
+    if self.points_ is None:
+      return
+    temp = [(float(d[0]), float(d[1])) for d in self.points_ if len(d) == 2]
     temp.sort(key = lambda d : d[0])
     if len(temp) == 0:
       self.x_, self.y_ = (), ()
     else:
       self.x_, self.y_ = zip(*temp)
-    self.factor_ = factor
-    self.clampLeft_, self.clampRight_ = clampLeft, clampRight
-    self.tracker_ = tracker
-
+    self.points_ = None
 
 class SigmoidFunc:
   """https://en.wikipedia.org/wiki/Logistic_function"""
@@ -5783,11 +5797,27 @@ def make_parser():
   funcParser.add("constant", constant)
 
   def segment(cfg, state):
-    points = state.resolve(cfg, "points")
     factor = state.resolve_d(cfg, "factor", 1.0)
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
-    func = SegmentFunc(points, factor, clampLeft, clampRight, make_tracker(cfg, state))
+    func = SegmentFunc(None, factor, clampLeft, clampRight, make_tracker(cfg, state))
+    points = state.resolve(cfg, "points")
+    setter = None
+    #If points are bound to Var, they have to be stored not in a list, but in a dict,
+    #because in this case list is not updated the way it should be
+    #when merging vars config into regular one
+    if is_dict_type(points):
+      setter = lambda pointsDict : func.set_points([[float(k),v] for k,v in points.items()])
+    elif is_list_type(points):
+      for p in points:
+        if len(p) != 2:
+          raise RuntimeError("Points should be a list of value pairs, got: {}".format(points))
+      setter = lambda points : func.set_points(points)
+    else:
+      raise RuntimeError("Bad points format: {}".format(points))
+    #Registering setter in case "points" is bound to Var
+    state.resolve(cfg, "points", setter=setter)
+    setter(points)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("segment", segment)
