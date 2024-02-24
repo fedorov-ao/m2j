@@ -1443,7 +1443,8 @@ class RawInputEventSource:
     if self.nativeDevices_ is None or refreshDevices == True:
       self.nativeDevices_ = self.get_devices()
     for d in self.nativeDevices_:
-      if name in (d.name, d.hash):
+      identifier = name[name.find(":")+1:]
+      if identifier in (d.name, d.hash):
         p = (d.usagePage, d.usage)
         if p not in self.upu_:
           numRid = 1
