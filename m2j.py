@@ -5206,7 +5206,13 @@ class Info:
       self.update()
   class SpinboxWidget(FrameWidget):
     def update(self):
-      return
+      if self.getter_ is not None:
+        v = self.getter_()
+        bv = self.boxvar_.get()
+        if v != bv:
+          self.boxvar_.set(v)
+          if self.format_ is not None:
+            self.box_["format"] = self.format_
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       box = tk.Spinbox(self.frame_)
@@ -5219,6 +5225,10 @@ class Info:
         command(value)
       box["textvariable"] = boxvar
       box["command"] = cmd
+      self.box_ = box
+      self.boxvar_ = boxvar
+      self.getter_ = kwargs.get("getter")
+      self.format_ = kwargs.get("format")
       Info.configure_widget(
         box,
         ("values", "to", "from_", "increment", "wrap", "state", "width", "justify", "format"),
@@ -5227,7 +5237,11 @@ class Info:
       )
   class ComboboxWidget(FrameWidget):
     def update(self):
-      return
+      if self.getter_ is not None:
+        v = self.getter_()
+        bv = self.boxvar_.get()
+        if v != bv:
+          self.boxvar_.set(v)
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       import ttk
@@ -5241,6 +5255,8 @@ class Info:
         command(value)
       box["textvariable"] = boxvar
       box.bind("<<ComboboxSelected>>", cmd)
+      self.boxvar_ = boxvar
+      self.getter_ = kwargs.get("getter")
       Info.configure_widget(
         box,
         ("values", "state", "width", "height", "justify"),
@@ -7630,7 +7646,7 @@ def make_parser():
     varName = state.resolve_d(cfg, "varName", None)
     if varName is None:
       return
-    command = None
+    command, getter = None, None
     varManager = state.get("main").get("varManager")
     var = varManager.get_var(varName)
     assert var is not None
@@ -7647,6 +7663,12 @@ def make_parser():
         v[keys[-1]] = value
         var.set(varValue)
       command = cmd
+      def gtr():
+        value = var.get()
+        for key in keys:
+          value = value[key]
+        return value
+      getter = gtr
       for key in keys:
         if not hasattr(value, "__setitem__"):
           raise RuntimeError("Var '{}': '{}' has no subscript setter".format(varName, str2(value)))
@@ -7661,8 +7683,12 @@ def make_parser():
       def cmd(value):
         var.set(value)
       command = cmd
+      def gtr():
+        return var.get()
+      getter = gtr
     kwargs["value"] = value
     kwargs["command"] = command
+    kwargs["getter"] = getter
 
   @parseBasesDecorator
   @namedWidgetDecorator
