@@ -7981,9 +7981,10 @@ class Main:
     -h | --help : this message\n\
     -d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)\n\
     -j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)\n\
+    -i | --log_input : log input from input devices to console (Ctrl-C to exit)\n\
     -p presetName | --preset=presetName : use preset presetName\n\
     -c configFileName | --config=configFileName : use config file configFileName\n\
-    -v logLevel | --logLevel=logLevel : set log level to logLevel\n"
+    -v logLevel | --log_level=logLevel : set log level to logLevel\n"
 
   def add_logging_handler(self, logger, handler, level=logging.NOTSET, fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
     if handler is None:
@@ -8211,7 +8212,10 @@ class Main:
       raise ExitException
 
     self.set("state", self.STATE_INITIALIZING)
-    opts, args = getopt.getopt(sys.argv[1:], "hd:j:p:v:c:", ["help", "devices=", "devices_json=", "preset=", "logLevel=", "config="])
+    MODE_NORMAL = 0
+    MODE_LOG_INPUT = 1
+    mode = MODE_NORMAL
+    opts, args = getopt.getopt(sys.argv[1:], "hd:j:ip:v:c:", ["help", "devices=", "devices_json=", "log_input", "preset=", "log_level=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         self.print_help()
@@ -8225,10 +8229,12 @@ class Main:
         self.output_devices_("json", a)
         self.set("state", self.STATE_EXITING)
         raise ExitException
+      elif o in ("-i", "--log_input"):
+        mode = MODE_LOG_INPUT
       if o in ("-p", "--preset"):
         self.options_["preset"] = a
-      elif o in ("-v", "--logLevel"):
-        self.options_["logLevel"] = a
+      elif o in ("-v", "--log_level"):
+        self.options_["log_level"] = a
       elif o in ("-c", "--config"):
         cns = self.options_.setdefault("configNames", [])
         cns.append(a)
@@ -8236,8 +8242,11 @@ class Main:
     self.init_config2()
     state = ParserState(self)
     self.init_log(state)
-    self.init_odevs(state)
     self.init_source(state)
+    if mode == MODE_LOG_INPUT:
+      #Should raise ExitException on completion
+      self.log_input_()
+    self.init_odevs(state)
     self.init_vars(state)
     self.init_info(state)
     self.init_main_ep(state)
@@ -8375,7 +8384,8 @@ class Main:
       d, i = collections.OrderedDict(), 0
       for l in r:
         s = "idev{}".format(i)
-        d["_{}_info".format(s)] = str(l)
+        #Adding comment containting device info
+        d["#{}".format(s)] = str(l)
         d[s] = "hash:{}".format(l["hash"])
         i += 1
       d = { "idevs" : d }
@@ -8387,3 +8397,19 @@ class Main:
           json.dump(d, f, indent=2)
     else:
       raise RuntimeError("Bad mode: {}".format(mode))
+
+  def log_input_(self):
+    source = self.get("source")
+    def ep(event):
+      if isinstance(event, InputEvent):
+        fmt = "{fn} {value}"
+        msg = fmt.format(fn=htc2fn(event.idev, event.type, event.code), value=event.value)
+        logger.info(msg)
+    source.set_ep(ep)
+    try:
+      logger.info("Printing input events, press Ctrl-C to exit")
+      while True:
+        source.run_once()
+        time.sleep(0.1)
+    except KeyboardInterrupt:
+      raise ExitException()

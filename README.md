@@ -136,7 +136,8 @@ Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL t
 -h | --help : help message
 -d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)
 -j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)
+-i | --log_input : log input from input devices to console (Ctrl-C to exit)
 -p presetName | --preset=presetName : use preset presetName
 -c configFileName | --config=configFileName : use config file configFileName
--v logLevel | --logLevel=logLevel : set log level to logLevel
+-v log_level | --log_level=logLevel : set log level to logLevel
 ```

@@ -388,6 +388,9 @@ def init_idevs(idevsCfg, makeDevice=lambda native,idev,recreateOp : EvdevDevice(
     return op
   r = {}
   for idev,identifier in idevsCfg.items():
+    #Skipping comments
+    if idev[0] == "#":
+      continue
     nativeDevice = nativeDevFactory.make_device(identifier)
     recreateOp=make_recreate_op(identifier=identifier, deviceUpdatePeriod=deviceUpdatePeriod)
     r[idev] = makeDevice(nativeDevice, idev, recreateOp=recreateOp)

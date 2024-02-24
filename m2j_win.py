@@ -1754,6 +1754,9 @@ def parseRawInputEventSource(cfg, state):
           logger.error("Cannot build swallow action for idev {} and state {}: {}".format(n, s, str2(e)))
   source = RawInputEventSource(useMessageWindow=useMessageWindow, swallower=swallower)
   for s,n in config["idevs"].items():
+    #Skipping comments
+    if s[0] == "#":
+      continue
     try:
       source.track_device(n, s)
     except RuntimeError as e:
