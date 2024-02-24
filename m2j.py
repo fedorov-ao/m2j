@@ -5642,7 +5642,7 @@ class ParserNotFoundError(KeyError2):
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
-      raise ParserNotFoundError(key, self.parsers_.keys())
+      raise ParserNotFoundError(key, self.parsers_.keys(), cfg)
     else:
       parser = self.parsers_[key]
       try:
