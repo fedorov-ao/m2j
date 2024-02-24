@@ -5439,18 +5439,6 @@ def init_main_ep(state):
     return op
   actionParser.add("toggle", parseToggle)
 
-  def parseReload(cfg, state):
-    def op(e):
-      raise ReloadException()
-    return op
-  actionParser.add("reload", parseReload)
-
-  def parseExit(cfg, state):
-    def op(e):
-      raise ExitException()
-    return op
-  actionParser.add("exit", parseExit)
-
   def parseEnable(cfg, state):
     callbacks = (SetState(idevFilterOp, True), SwallowSource(main.get("source"), [(n,True) for n in released]),  print_grabbed,)
     def op(event):
@@ -7068,6 +7056,22 @@ def make_parser():
     return op
   actionParser.add("toggleInfo", parseToggleInfo)
 
+  def parseReload(cfg, state):
+    main = state.get("main")
+    def op(e):
+      main.set("state", Main.STATE_NEED_TO_RELOAD)
+    return op
+  actionParser.add("reload", parseReload)
+
+  def parseExit(cfg, state):
+    main = state.get("main")
+    def op(e):
+      main.set("state", Main.STATE_NEED_TO_EXIT)
+    return op
+
+    return op
+  actionParser.add("exit", parseExit)
+
   #Event types
   def etParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "et", None)
@@ -7961,6 +7965,16 @@ class CallbackManager:
 
 
 class Main:
+  STATE_NOT_INITIALIZED = 0
+  STATE_INITIALIZING = 1
+  STATE_FALLBACK = 2
+  STATE_INITIALIZED = 3
+  STATE_RUNNING = 4
+  STATE_NEED_TO_RELOAD = 5
+  STATE_RELOADING = 6
+  STATE_NEED_TO_EXIT = 7
+  STATE_EXITING = 8
+
   def print_help(self):
     print "Usage: " + sys.argv[0] + " args"
     print "args are:\n\
@@ -8015,7 +8029,7 @@ class Main:
     parse_logger(root, state.resolve_d(config, "logs", {}), state)
 
   def init_config2(self):
-    if self.get("config") is not None and self.get("reloading") == False:
+    if self.get("config") is not None and self.get("state") != self.STATE_RELOADING:
       return
     config = self.options_
     configNames = self.options_.get("configNames", None)
@@ -8138,7 +8152,15 @@ class Main:
     def run_updated(tick, ts):
       for u in updated:
         u(tick, ts)
-    callbacks = [run_source, run_updated]
+    def check_state(tick, ts):
+      state = self.get("state")
+      if state == self.STATE_NEED_TO_RELOAD:
+        self.set("state", self.STATE_RELOADING)
+        raise ReloadException()
+      elif state == self.STATE_NEED_TO_EXIT:
+        self.set("state", self.STATE_EXITING)
+        raise ExitException()
+    callbacks = [run_source, run_updated, check_state]
     loop = Loop(callbacks, step)
     if self.loop_ is not None:
       del self.loop_
@@ -8153,21 +8175,20 @@ class Main:
       logger.error("===Traceback end===")
 
   def reinit_or_fallback(self):
+    state = ParserState(self)
     try:
-      state = ParserState(self)
-      try:
-        self.init_config2()
-        self.init_vars(state, update=True)
-        self.init_poses(state)
-        self.init_worker_ep(state)
-      except Exception as e:
-        logger.error("Could not create or recreate loop; reason: '{}'".format(e))
-        self.print_trace()
-        logger.error("Falling back to initial state.")
-        self.get("mainEP").set_next(None)
-      self.init_loop(state)
-    finally:
-      self.set("reloading", False)
+      self.init_config2()
+      self.init_vars(state, update=True)
+      self.init_poses(state)
+      self.init_worker_ep(state)
+      self.set("state", self.STATE_INITIALIZED)
+    except Exception as e:
+      logger.error("Could not create or recreate loop; reason: '{}'".format(e))
+      self.print_trace()
+      logger.error("Falling back to initial state.")
+      self.get("mainEP").set_next(None)
+      self.set("state", self.STATE_FALLBACK)
+    self.init_loop(state)
 
   def reinit_and_run(self):
     callbackManager = self.get("callbackManager")
@@ -8177,6 +8198,7 @@ class Main:
       self.reinit_or_fallback()
       #logger.debug("len(updated) after reinit_or_fallback: {}".format(len(self.get("updated"))))
       assert(self.loop_ is not None)
+      self.set("state", self.STATE_RUNNING)
       self.loop_.run()
     finally:
       callbackManager.pop_callbacks()
@@ -8185,18 +8207,23 @@ class Main:
     self.preinit_log()
     if (len(sys.argv)) == 1:
       self.print_help()
+      self.set("state", self.STATE_EXITING)
       raise ExitException
 
+    self.set("state", self.STATE_INITIALIZING)
     opts, args = getopt.getopt(sys.argv[1:], "hd:j:p:v:c:", ["help", "devices=", "devices_json=", "preset=", "logLevel=", "config="])
     for o, a in opts:
       if o in ("-h", "--help"):
         self.print_help()
+        self.set("state", self.STATE_EXITING)
         raise ExitException
       elif o in ("-d", "--devices"):
         self.output_devices_("text", a)
+        self.set("state", self.STATE_EXITING)
         raise ExitException
       elif o in ("-j", "--devices_json"):
         self.output_devices_("json", a)
+        self.set("state", self.STATE_EXITING)
         raise ExitException
       if o in ("-p", "--preset"):
         self.options_["preset"] = a
@@ -8206,8 +8233,6 @@ class Main:
         cns = self.options_.setdefault("configNames", [])
         cns.append(a)
 
-
-    self.set("reloading", False)
     self.init_config2()
     state = ParserState(self)
     self.init_log(state)
@@ -8232,7 +8257,6 @@ class Main:
         except ReloadException:
           #logger.debug("len(updated) after reinit_and_run: {}".format(len(self.get("updated"))))
           logger.info("Reloading")
-          self.set("reloading", True)
 
     except KeyboardInterrupt:
       logger.info("Exiting normally")
@@ -8313,7 +8337,7 @@ class Main:
     self.get_idevs_info_ = get_idevs_info
     self.options_ = {}
     self.props_ = {}
-    self.props_["reloading"] = False
+    self.props_["state"] = self.STATE_NOT_INITIALIZED
     self.props_["source"] = None
     self.props_["mainEP"] = None
     self.props_["config"] = None
@@ -8363,7 +8387,3 @@ class Main:
           json.dump(d, f, indent=2)
     else:
       raise RuntimeError("Bad mode: {}".format(mode))
-
-
-
-
