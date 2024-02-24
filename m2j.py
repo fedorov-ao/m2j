@@ -7626,6 +7626,44 @@ def make_parser():
     return widget
   widgetParser.add("value", parseValueWidget)
 
+  def bind_box_kwargs_to_var(kwargs, cfg, state):
+    varName = state.resolve_d(cfg, "varName", None)
+    if varName is None:
+      return
+    command = None
+    varManager = state.get("main").get("varManager")
+    var = varManager.get_var(varName)
+    assert var is not None
+    value = var.get()
+    key = kwargs.get("key")
+    if key is not None:
+      del kwargs["key"]
+      keys = key if is_list_type(key) else (key,)
+      def cmd(value):
+        varValue = var.get()
+        v = varValue
+        for k in keys[:-1]:
+          v = v[k]
+        v[keys[-1]] = value
+        var.set(varValue)
+      command = cmd
+      for key in keys:
+        if not hasattr(value, "__setitem__"):
+          raise RuntimeError("Var '{}': '{}' has no subscript setter".format(varName, str2(value)))
+        if not hasattr(value, "__getitem__"):
+          raise RuntimeError("Var '{}': '{}' has no subscript getter".format(varName, str2(value)))
+        if is_dict_type(value) and key not in value:
+          raise RuntimeError("Var '{}': '{}' has no key '{}'".format(varName, str2(value), key))
+        if is_list_type(value) and (key < 0 or key >= len(value)):
+          raise RuntimeError("Var '{}': for '{}' key '{}' is out of range".format(varName, str2(value), key))
+        value = value[key]
+    else:
+      def cmd(value):
+        var.set(value)
+      command = cmd
+    kwargs["value"] = value
+    kwargs["command"] = command
+
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseSpinboxWidget(cfg, state):
@@ -7634,32 +7672,7 @@ def make_parser():
     if from_ is not None:
       kwargs["from_"] = from_
       del kwargs["from"]
-    varName = state.resolve_d(cfg, "varName", None)
-    if varName is not None:
-      command = None
-      varManager = state.get("main").get("varManager")
-      var = varManager.get_var(varName)
-      assert var is not None
-      value = var.get()
-      key = kwargs.get("key")
-      if key is not None:
-        del kwargs["key"]
-        if not hasattr(value, "__setitem__"):
-          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
-        if key not in value:
-          raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
-        def cmd(value):
-          varValue = var.get()
-          varValue[key] = value
-          var.set(varValue)
-        command = cmd
-        value = value[key]
-      else:
-        def cmd(value):
-          var.set(value)
-        command = cmd
-      kwargs["value"] = value
-      kwargs["command"] = command
+    bind_box_kwargs_to_var(kwargs, cfg, state)
     widget = Info.SpinboxWidget(**kwargs)
     return widget
   widgetParser.add("spinbox", parseSpinboxWidget)
@@ -7668,32 +7681,7 @@ def make_parser():
   @namedWidgetDecorator
   def parseComboboxWidget(cfg, state):
     kwargs = mapProps(cfg, ("parent", "values", "key", "state", "width", "height", "justify"), state)
-    varName = state.resolve_d(cfg, "varName", None)
-    if varName is not None:
-      command = None
-      varManager = state.get("main").get("varManager")
-      var = varManager.get_var(varName)
-      assert var is not None
-      value = var.get()
-      key = kwargs.get("key")
-      if key is not None:
-        del kwargs["key"]
-        if not hasattr(value, "__setitem__"):
-          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
-        if key not in value:
-          raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
-        def cmd(value):
-          varValue = var.get()
-          varValue[key] = value
-          var.set(varValue)
-        command = cmd
-        value = value[key]
-      else:
-        def cmd(value):
-          var.set(value)
-        command = cmd
-      kwargs["value"] = value
-      kwargs["command"] = command
+    bind_box_kwargs_to_var(kwargs, cfg, state)
     widget = Info.ComboboxWidget(**kwargs)
     return widget
   widgetParser.add("combobox", parseComboboxWidget)
