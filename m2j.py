@@ -237,13 +237,19 @@ class CfgStack:
 
 def set_nested(d, name, value, sep = "."):
   def check_type(d, name):
-    if not is_dict_type(d):
-      raise ValueError("{} is not a dictionary, but a {}".format(name, type(d)))
-  tokens = name.split(sep)
+    if not is_dict_type(d) and not is_list_type(d):
+      raise ValueError("{} is not a dictionary or list, but a {}".format(name, type(d)))
+  tokens = None
+  if is_str_type(name):
+    tokens = name.split(sep)
+  elif is_list_type(name):
+    tokens = name
+  else:
+    raise ValueError("{} is not str or list".format(name))
   currDict = d
   for token in tokens[:-1]:
     check_type(currDict, token)
-    currDict = currDict.setdefault(token, collections.OrderedDict())
+    currDict = currDict.setdefault(token, currDict.__class__())
   token = tokens[-1]
   check_type(currDict, token)
   currDict[token] = value
@@ -252,36 +258,47 @@ def set_nested(d, name, value, sep = "."):
 
 def get_nested(d, name, sep = "."):
   try:
-    if len(name) != 0:
+    tokens = None
+    if is_str_type(name):
+      if len(name) == 0:
+        return None
       tokens = name.split(sep)
-      for t in tokens:
-        nd = d.get(t)
-        if nd is None:
-          path = str(sep.join(tokens[:tokens.index(t)]))
-          token = sep.join((path, str(t))) if len(path) != 0 else str(t)
-          keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
-          raise KeyError2(token, keys)
-        d = nd
-      if d is not None:
-        return d
-    #Fallback
-    return None
+    elif is_list_type(name):
+      tokens = name
+    else:
+      raise ValueError("{} is not str or list".format(name))
+    for t in tokens:
+      nd = d.get(t)
+      if nd is None:
+        path = str(sep.join(tokens[:tokens.index(t)]))
+        token = sep.join((path, str(t))) if len(path) != 0 else str(t)
+        keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
+        raise KeyError2(token, keys)
+      d = nd
+    return d
   except:
     logger.error("get_nested(): Error while getting '{}' from '{}'".format(name, str2(d, 100)))
     raise
 
 
 def get_nested_d(d, name, dfault = None, sep = "."):
-  r = dfault
-  if len(name) != 0:
+  tokens = None
+  if is_str_type(name):
+    if len(name) == 0:
+      return None
     tokens = name.split(sep)
-    for t in tokens:
-      if hasattr(d, "get") == False:
-        d = None
-        break
-      d = d.get(t)
-    if d is not None:
-      r = d
+  elif is_list_type(name):
+    tokens = name
+  else:
+    raise ValueError("{} is not str or list".format(name))
+  r = dfault
+  for t in tokens:
+    if hasattr(d, "get") == False:
+      d = None
+      break
+    d = d.get(t)
+  if d is not None:
+    r = d
   #Fallback
   return r
 
@@ -4885,7 +4902,12 @@ class Info:
         kwa[propName] = prop
     if len(kwa) != 0:
       func(widget, kwa)
-  class FrameWidget:
+  class Widget:
+    def update(self):
+      pass
+    def refresh(self):
+      pass
+  class FrameWidget(Widget):
     def grid(self, **kwargs):
       self.frame_.grid(**self.map_in_(kwargs))
     def grid_configure(self, **kwargs):
@@ -4914,6 +4936,9 @@ class Info:
     def update(self):
       if self.child_ is not None:
         self.child_.update()
+    def refresh(self):
+      if self.child_ is not None:
+        self.child_.refresh()
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       frame = self.frame_
@@ -5051,6 +5076,9 @@ class Info:
     def update(self):
       for child in self.children_:
         child.update()
+    def refresh(self):
+      for child in self.children_:
+        child.refresh()
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       frame = self.get_frame()
@@ -5084,6 +5112,9 @@ class Info:
     def update(self):
       for child in self.children_:
         child.update()
+    def refresh(self):
+      for child in self.children_:
+        child.refresh()
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       frame = self.get_frame()
@@ -5096,7 +5127,7 @@ class Info:
         raise RuntimeError("Bad layout: '{}'".format(self.layout_))
       self.grow_ = kwargs.get("grow", "").lower()
       self.r_, self.c_ = 0, 0
-  class ButtonStateWidget:
+  class ButtonStateWidget(Widget):
     def grid(self, **kwargs):
       in_ = kwargs.get("in_")
       if in_ is not None:
@@ -5205,30 +5236,54 @@ class Info:
       self.fmt_ = kwargs["fmt"]
       self.update()
   class SpinboxWidget(FrameWidget):
-    def update(self):
-      if self.getter_ is not None:
+    def refresh(self):
+      if self.getter_ is not None and self.boxvar_ is not None:
         v = self.getter_()
         bv = self.boxvar_.get()
         if v != bv:
           self.boxvar_.set(v)
+          #For some reason it's needed to set format to box after setting value
           if self.format_ is not None:
             self.box_["format"] = self.format_
+    def configure(self, name, value):
+      if name == "value":
+        if self.boxvar_ is None:
+          self.boxvar_ = make_tk_var(value)
+          self.box_["textvariable"] = self.boxvar_
+        else:
+          self.boxvar_.set(value)
+        #For some reason it's needed to set format to box after setting value
+        if self.format_ is not None:
+          self.box_["format"] = self.format_
+        if self.command_ is not None:
+          self.command_()
+      elif name == "command":
+        command = value
+        def cmd():
+          v = self.boxvar_.get()
+          command(v)
+        self.box_["command"] = cmd
+        self.command_ = cmd
+      elif name == "getter":
+        self.getter_ = value
+      elif name == "format":
+        self.format_ = value
+        self.box_["format"] = self.format_
+      else:
+        raise RuntimeError("Unsupported property: '{}'".format(name))
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       box = tk.Spinbox(self.frame_)
       box.pack(expand=False, fill="x")
-      value = kwargs["value"]
-      boxvar = make_tk_var(value)
-      command = kwargs["command"]
-      def cmd():
-        value = boxvar.get()
-        command(value)
-      box["textvariable"] = boxvar
-      box["command"] = cmd
       self.box_ = box
-      self.boxvar_ = boxvar
-      self.getter_ = kwargs.get("getter")
-      self.format_ = kwargs.get("format")
+      self.boxvar_ = None
+      self.getter_ = None
+      self.format_ = None
+      self.command_ = None
+      for name in ("value", "command", "getter", "format"):
+        value = kwargs.get(name)
+        if value is not None:
+          self.configure(name, value)
       Info.configure_widget(
         box,
         ("values", "to", "from_", "increment", "wrap", "state", "width", "justify", "format"),
@@ -5236,34 +5291,52 @@ class Info:
         lambda widget,kwa : widget.configure(**kwa)
       )
   class ComboboxWidget(FrameWidget):
-    def update(self):
-      if self.getter_ is not None:
+    def refresh(self):
+      if self.getter_ is not None and self.boxvar_ is not None:
         v = self.getter_()
         bv = self.boxvar_.get()
         if v != bv:
           self.boxvar_.set(v)
+    def configure(self, name, value):
+      if name == "value":
+        if self.boxvar_ is None:
+          self.boxvar_ = make_tk_var(value)
+          self.box_["textvariable"] = self.boxvar_
+        else:
+          self.boxvar_.set(value)
+        if self.command_ is not None:
+          self.command_(None)
+      elif name == "command":
+        command = value
+        def cmd(event):
+          v = self.boxvar_.get()
+          command(v)
+        self.box_.bind("<<ComboboxSelected>>", cmd)
+        self.command_ = cmd
+      elif name == "getter":
+        self.getter_ = value
+      else:
+        raise RuntimeError("Unsupported property: '{}'".format(name))
     def __init__(self, **kwargs):
       Info.FrameWidget.__init__(self, **kwargs)
       import ttk
       box = ttk.Combobox(self.frame_)
       box.pack(expand=False, fill="x")
-      value = kwargs["value"]
-      boxvar = make_tk_var(value)
-      command = kwargs["command"]
-      def cmd(event):
-        value = boxvar.get()
-        command(value)
-      box["textvariable"] = boxvar
-      box.bind("<<ComboboxSelected>>", cmd)
-      self.boxvar_ = boxvar
-      self.getter_ = kwargs.get("getter")
+      self.box_ = box
+      self.boxvar_ = None
+      self.getter_ = None
+      self.command_ = None
+      for name in ("value", "command", "getter"):
+        value = kwargs.get(name)
+        if value is not None:
+          self.configure(name, value)
       Info.configure_widget(
         box,
         ("values", "state", "width", "height", "justify"),
         kwargs,
         lambda widget,kwa : widget.configure(**kwa)
       )
-  class ButtonWidget:
+  class ButtonWidget(Widget):
     def grid(self, **kwargs):
       self.button_.grid(**self.map_in_(kwargs))
     def grid_configure(self, **kwargs):
@@ -5301,6 +5374,7 @@ class Info:
       self.state_ = s
     if s == True:
       self.w_.deiconify()
+      self.refresh()
     elif s == False:
       self.w_.withdraw()
 
@@ -5311,6 +5385,12 @@ class Info:
     if self.state_:
       for widget in self.widgets_:
         widget.update()
+      self.w_.update()
+
+  def refresh(self):
+    if self.state_:
+      for widget in self.widgets_:
+        widget.refresh()
       self.w_.update()
 
   def get_frame(self):
@@ -7048,6 +7128,14 @@ def make_parser():
     return op
   actionParser.add("hideInfo", parseHideInfo)
 
+  def parseRefreshInfo(cfg, state):
+    main = state.get("main")
+    def op(e):
+      info = main.get("info")
+      if info is not None: info.refresh()
+    return op
+  actionParser.add("refreshInfo", parseRefreshInfo)
+
   def parseToggleInfo(cfg, state):
     main = state.get("main")
     def op(e):
@@ -7646,64 +7734,71 @@ def make_parser():
     return widget
   widgetParser.add("value", parseValueWidget)
 
-  def bind_box_kwargs_to_var(kwargs, cfg, state):
+  def bind_box_to_var(box, cfg, state):
+    class BoxManager:
+      def set_var_value(self, value):
+        varValue = self.var_.get()
+        varValue = self.write_(varValue, value)
+        self.busy_ = True
+        try:
+          self.var_.set(varValue)
+        finally:
+          self.busy_ = False
+      def get_var_value(self):
+        varValue = self.var_.get()
+        r = self.read_(varValue)
+        return r
+      def set_box_value(self, value):
+        if self.busy_ == True:
+          return
+        self.box_.configure("value", self.get_var_value())
+      def __init__(self, box, var):
+        self.var_, self.box_ = var, box
+        self.busy_ = False
+      def write_(self, varValue, value):
+        return value
+      def read_(self, varValue):
+        return varValue
     varName = state.resolve_d(cfg, "varName", None)
     if varName is None:
       return
-    command, getter = None, None
+    boxManager = None
     varManager = state.get("main").get("varManager")
     var = varManager.get_var(varName)
     assert var is not None
     value = var.get()
-    key = kwargs.get("key")
+    key = state.resolve_d(cfg, "key", None)
     if key is not None:
-      del kwargs["key"]
       keys = key if is_list_type(key) else (key,)
-      def cmd(value):
-        varValue = var.get()
-        v = varValue
-        for k in keys[:-1]:
-          v = v[k]
-        v[keys[-1]] = value
-        var.set(varValue)
-      command = cmd
-      def gtr():
-        value = var.get()
-        for key in keys:
-          value = value[key]
-        return value
-      getter = gtr
-      for key in keys:
-        if not hasattr(value, "__setitem__"):
-          raise RuntimeError("Var '{}': '{}' has no subscript setter".format(varName, str2(value)))
-        if not hasattr(value, "__getitem__"):
-          raise RuntimeError("Var '{}': '{}' has no subscript getter".format(varName, str2(value)))
-        if is_dict_type(value) and key not in value:
-          raise RuntimeError("Var '{}': '{}' has no key '{}'".format(varName, str2(value), key))
-        if is_list_type(value) and (key < 0 or key >= len(value)):
-          raise RuntimeError("Var '{}': for '{}' key '{}' is out of range".format(varName, str2(value), key))
-        value = value[key]
+      class KeyBoxManager(BoxManager):
+        def __init__(self, box, var, keys):
+          BoxManager.__init__(self, box, var)
+          self.keys_ = keys
+        def write_(self, varValue, value):
+          set_nested(varValue, self.keys_, value)
+          return varValue
+        def read_(self, varValue):
+          return get_nested(varValue, self.keys_)
+      boxManager = KeyBoxManager(box, var, keys)
     else:
-      def cmd(value):
-        var.set(value)
-      command = cmd
-      def gtr():
-        return var.get()
-      getter = gtr
-    kwargs["value"] = value
-    kwargs["command"] = command
-    kwargs["getter"] = getter
+      boxManager = BoxManager(box, var)
+    box.configure("value", boxManager.get_var_value())
+    box.configure("command", lambda value : boxManager.set_var_value(value))
+    box.configure("getter", lambda : boxManager.get_var_value())
+    boxValueSetter = lambda value : boxManager.set_box_value(value)
+    var.add_callback(boxValueSetter)
+    state.get("main").get("callbackManager").add_callback(lambda : var.remove_callback(boxValueSetter))
 
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseSpinboxWidget(cfg, state):
-    kwargs = mapProps(cfg, ("parent", "values", "key", "from", "to", "increment", "wrap", "state", "width", "format"), state)
+    kwargs = mapProps(cfg, ("parent", "values", "from", "to", "increment", "wrap", "state", "width", "format"), state)
     from_ = kwargs.get("from")
     if from_ is not None:
       kwargs["from_"] = from_
       del kwargs["from"]
-    bind_box_kwargs_to_var(kwargs, cfg, state)
     widget = Info.SpinboxWidget(**kwargs)
+    bind_box_to_var(widget, cfg, state)
     return widget
   widgetParser.add("spinbox", parseSpinboxWidget)
 
@@ -7711,8 +7806,8 @@ def make_parser():
   @namedWidgetDecorator
   def parseComboboxWidget(cfg, state):
     kwargs = mapProps(cfg, ("parent", "values", "key", "state", "width", "height", "justify"), state)
-    bind_box_kwargs_to_var(kwargs, cfg, state)
     widget = Info.ComboboxWidget(**kwargs)
+    bind_box_to_var(widget, cfg, state)
     return widget
   widgetParser.add("combobox", parseComboboxWidget)
 
