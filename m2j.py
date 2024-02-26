@@ -6880,8 +6880,9 @@ def make_parser():
     soundFileName = state.get("main").get("sounds").get(soundName, None)
     if soundFileName is None:
       raise RuntimeError("Sound '{}' is not registered".format(soundName))
+    immediate = state.resolve_d(cfg, "immediate", False)
     def op(e):
-      soundPlayer.queue(soundFileName)
+      soundPlayer.queue(soundFileName, immediate)
     return op
   actionParser.add("playSound", parsePlaySound)
 
@@ -7944,10 +7945,14 @@ def make_parser():
 
 
 class SoundPlayer:
-  def queue(self, soundFileName):
-    with self.cv_:
-      self.q_.append(soundFileName)
-      self.cv_.notify_all()
+  def queue(self, soundFileName, immediate=False):
+    if immediate == True:
+      playsound.playsound(soundFileName, False)
+      return
+    else:
+      with self.cv_:
+        self.q_.append(soundFileName)
+        self.cv_.notify_all()
 
   def __call__(self):
     while True:
@@ -8344,8 +8349,8 @@ class Main:
     self.init_odevs(state)
     self.init_vars(state)
     self.init_info(state)
-    self.init_main_ep(state)
     self.init_sounds(state)
+    self.init_main_ep(state)
 
   def run(self):
     callbackManager = self.get("callbackManager")
