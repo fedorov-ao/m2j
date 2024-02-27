@@ -7222,9 +7222,26 @@ def make_parser():
 
   @make_et
   def parseMultiClick(cfg, state):
+    '''
+    numClicks can be either a single number to match it,
+      a list of numbers to match one of them,
+      or a -1 to match any number of clicks
+    '''
     r = parseKey_(cfg, state, 3)
-    num = int(state.resolve(cfg, "numClicks"))
-    r.append(("num_clicks", EqPropTest(num)))
+    num = state.resolve(cfg, "numClicks")
+    numClicksPropTest = None
+    if is_list_type(num):
+      num = [int(n) for n in num]
+      numClicksPropTest = lambda v : v in num
+    else:
+      if is_str_type(num):
+        num = int(num)
+      elif isinstance(num, int):
+        pass
+      else:
+        raise RuntimeError("Bad numClicks: {}".format(num))
+      numClicksPropTest = lambda v : True if num == -1 else v == num
+    r.append(("num_clicks", numClicksPropTest))
     return r
   etParser.add("multiclick", parseMultiClick)
 
