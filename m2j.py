@@ -7793,15 +7793,18 @@ def make_parser():
     if key is not None:
       keys = key if is_list_type(key) else (key,)
       class KeyBoxManager(BoxManager):
-        def __init__(self, box, var, keys):
+        def __init__(self, box, var, keys, varName=None):
           BoxManager.__init__(self, box, var)
-          self.keys_ = keys
+          self.keys_, self.varName_ = keys, varName
         def write_(self, varValue, value):
           set_nested(varValue, self.keys_, value)
           return varValue
         def read_(self, varValue):
-          return get_nested(varValue, self.keys_)
-      boxManager = KeyBoxManager(box, var, keys)
+          try:
+            return get_nested(varValue, self.keys_)
+          except KeyError2 as e:
+            raise RuntimeError("Cannot get value from var '{}' by keys {}, available keys are {}".format(self.varName_, str2(list(self.keys_)), str2(e.keys)))
+      boxManager = KeyBoxManager(box, var, keys, varName)
     else:
       boxManager = BoxManager(box, var)
     box.configure("value", boxManager.get_var_value())
