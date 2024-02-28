@@ -257,28 +257,24 @@ def set_nested(d, name, value, sep = "."):
 
 
 def get_nested(d, name, sep = "."):
-  try:
-    tokens = None
-    if is_str_type(name):
-      if len(name) == 0:
-        return None
-      tokens = name.split(sep)
-    elif is_list_type(name):
-      tokens = name
-    else:
-      raise ValueError("{} is not str or list".format(name))
-    for t in tokens:
-      nd = d.get(t)
-      if nd is None:
-        path = str(sep.join(tokens[:tokens.index(t)]))
-        token = sep.join((path, str(t))) if len(path) != 0 else str(t)
-        keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
-        raise KeyError2(token, keys)
-      d = nd
-    return d
-  except:
-    logger.error("get_nested(): Error while getting '{}' from '{}'".format(name, str2(d, 100)))
-    raise
+  tokens = None
+  if is_str_type(name):
+    if len(name) == 0:
+      return None
+    tokens = name.split(sep)
+  elif is_list_type(name):
+    tokens = name
+  else:
+    raise ValueError("{} is not str or list".format(name))
+  for t in tokens:
+    nd = d.get(t)
+    if nd is None:
+      path = str(sep.join(tokens[:tokens.index(t)]))
+      token = sep.join((path, str(t))) if len(path) != 0 else str(t)
+      keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
+      raise KeyError2(token, keys)
+    d = nd
+  return d
 
 
 def get_nested_d(d, name, dfault = None, sep = "."):
