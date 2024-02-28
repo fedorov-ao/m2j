@@ -3613,6 +3613,8 @@ class AxisTrackerChainCurve:
     v = None
     try:
       v = self.next_.move_by(x, timestamp)
+    except RuntimeError as e:
+      logger.error("Can't move axis: {}".format(e))
     finally:
       self.busy_ = False
     return v
@@ -3623,6 +3625,8 @@ class AxisTrackerChainCurve:
     v = None
     try:
       v = self.next_.move(x, timestamp)
+    except RuntimeError as e:
+      logger.error("Can't move axis: {}".format(e))
     finally:
       self.busy_ = False
     return v
