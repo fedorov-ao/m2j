@@ -1127,7 +1127,8 @@ class ClickEvent(InputEvent):
 
 
 class EventCompressorDevice:
-  """Compresses movement events along each relative axis into one event per such axis.
+  """Compresses movement events for each relative axis.
+     Movement events along a given axis are compressed as long as direciton of movement is not changed.
      Other events are unchanged and passed to the caller immediately.
      Sends compressed events after underlying device is exhausted (returns None from read_one())
      in an unspecified order.
@@ -1146,8 +1147,11 @@ class EventCompressorDevice:
         if e is None:
           self.events_[k] = event
         else:
-          e.value += event.value
-          e.timestamp = event.timestamp
+          if sign(e.value) == sign(event.value):
+            e.value += event.value
+            e.timestamp = event.timestamp
+          else:
+            self.events_[k], event = event, e
       else:
         break
     return event
