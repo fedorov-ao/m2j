@@ -20,7 +20,7 @@ Virtual joysticks are also referred by names. For example, `joystick1.X` is X ax
 
 ### Global bindigs
 
- * press/release `keyboard.SCROLLOCK` - toggle emulation, grab/ungrab `rmouse` and `lmouse`  
+ * press `keyboard.SCROLLOCK` - toggle emulation, grab/ungrab `rmouse` and `lmouse`  
  * doubleclick `rmouse.SIDE`, then press `rmouse.EXTRA` - partially disable emulation: ungrab `lmouse` and don't process input from it  
    * press `rmouse.EXTRA` in this partially disabled mode - enable emulation: grab `lmouse` back and resume processing input from it  
  * doubleclick `rmouse.EXTRA`, then press `rmouse.SIDE` - partially disable emulation (version 2): ungrab `lmouse`, but still process its' wheel movement  
@@ -47,7 +47,7 @@ This section describes which axes/buttons of which virtual joystick are controll
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |press/release|rmouse.LMB||press/release|joystick.0|weapon 1 (mguns)|fire||
-|press/release|rmouse.RMB||press/release|joystick.1|weapon 2 (guns)|||
+|press/release|rmouse.RMB||press/release|joystick.1|weapon 2 (guns)|lock target||
 |click|rmouse.MMB||center|joystick.Z||||
 |hold|rmouse.MMB||center|joystick.X, joystick.Y, joystick.Z||||
 |move|rmouse.WHEEL||move|joystick.THROTTLE|throttle|thrust||
@@ -68,7 +68,7 @@ This section describes which axes/buttons of which virtual joystick are controll
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |press/release|rmouse.LMB||press/release|joystick.2|weapon 3 (rockets)|release weapon||
-|press/release|rmouse.RMB||press/release|joystick.3|weapon 4 (bombs)|lock target||
+|press/release|rmouse.RMB||press/release|joystick.3|weapon 4 (bombs)|change weapon||
 |press/release|rmouse.MMB||press/release|joystick.4||toggle cannon||
 |move|rmouse.WHEEL||move|joystick.RX|propeller pitch|||
 |move|rmouse.WHEEL|keyboard.RSHIFT|move|joystick2.X|right engines throttle|||
