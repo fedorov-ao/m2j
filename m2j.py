@@ -1182,6 +1182,11 @@ class EventSource:
   def set_ep(self, ep):
     self.ep_ = ep
 
+  def add_device(self, name, device):
+    if name in self.devices_:
+      raise RuntimeError("{} is already registered".format(name))
+    self.devices_[name] = device
+
   def swallow(self, name, s):
     if name is None:
       for n,d in self.devices_.items():
@@ -2163,8 +2168,11 @@ class StateEP:
 
 def SetState(stateEP, state):
   def op(event):
-    stateEP.set_state(state)
-    return True
+    if stateEP.get_state() == state:
+      return False
+    else:
+      stateEP.set_state(state)
+      return True
   return op
 
 
@@ -2225,6 +2233,8 @@ class ModeEP:
   def __call__(self, event):
     #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
     #  logger.debug("{}: Recieved init event: {}".format(self, event.value))
+    if self.mode_ is None:
+      raise RuntimeError("{}: Initital mode was not set".format(self.name_))
     child = self.children_.get(self.mode_, None)
     if child is not None:
       return child(event)
@@ -3538,6 +3548,8 @@ class TransformAbsChainCurve:
     newOutputValue = self.next_.move(outputValue, timestamp)
     #logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, x, outputValue, newOutputValue))
     if newOutputValue != outputValue:
+      #TODO If outputOp_.calc() changes state of outputOp_, and this state corellates with outputValue,
+      #TODO but curve is set to newOutputValue, then outputOp_ is out of sync.
       #logger.debug("{}: nov != ov".format(self))
       self.value_ = self.inputOp_.calc(newOutputValue)
     else:
@@ -3757,6 +3769,9 @@ class AxisLinker:
 
   def set_state(self, state):
     self.state_ = state
+
+  def get_state(self):
+    return self.state_
 
   def set_func(self, func):
     self.func_ = func
@@ -6463,7 +6478,7 @@ def make_parser():
       current = state.resolve_d(cfg, "setter.current", None)
       report = state.resolve_d(cfg, "setter.report", True)
       modeSetter = ModeSetter(msmm, savePolicy, current, report)
-      mode = state.resolve_d(cfg, "mode", None, setter=modeSetter)
+      mode = state.resolve(cfg, "mode", setter=modeSetter)
       if mode is not None:
         if not modeEP.set_mode(mode):
           logger.warning("Cannot set mode: {}".format(mode))
@@ -8530,10 +8545,17 @@ class Main:
         msg = fmt.format(fn=htc2fn(event.idev, event.type, event.code), value=event.value)
         logger.info(msg)
     source.set_ep(ep)
+    updated = self.get("updated")
+    ts = time.time()
     try:
       logger.info("Printing input events, press Ctrl-C to exit")
       while True:
         source.run_once()
+        nts = time.time()
+        tick = nts - ts
+        for u in updated:
+          u(tick, nts)
+        ts = nts
         time.sleep(0.1)
     except KeyboardInterrupt:
       raise ExitException()
