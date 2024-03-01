@@ -3224,11 +3224,14 @@ class DeadzoneDeltaOp:
     s = sign(x)
     if self.s_ != s:
       self.s_, self.sd_ = s, 0.0
-    self.sd_ += abs(x)
-    if self.sd_ > self.deadzone_:
-      return self.next_.calc(x, timestamp)
-    else:
-      return 0.0
+    if self.sd_ is not None:
+      self.sd_ += abs(x)
+      if self.sd_ > self.deadzone_:
+        x = s*(self.sd_ - self.deadzone_)
+        self.sd_ = None
+      else:
+        return 0.0
+    return self.next_.calc(x, timestamp)
   def reset(self):
     #logger.debug("{}: resetting".format(self))
     self.s_, self.sd_ = 0, 0.0
