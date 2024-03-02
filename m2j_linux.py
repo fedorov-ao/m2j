@@ -271,7 +271,7 @@ def translate_evdev_event(evdevEvent, idev):
   return None if evdevEvent is None else InputEvent(ecode2code(evdevEvent.type), ecode2code(evdevEvent.code), evdevEvent.value, evdevEvent.timestamp(), idev)
 
 
-class EvdevDevice:
+class EvdevIDev:
   def read_one(self):
     if not self.is_ready_():
       return None
@@ -279,19 +279,19 @@ class EvdevDevice:
       evdevEvent = self.dev_.read_one()
       while (evdevEvent is not None) and (evdevEvent.type in (0, 4)):
         evdevEvent = self.dev_.read_one()
-      event = translate_evdev_event(evdevEvent, self.idevHash_)
+      event = translate_evdev_event(evdevEvent, self.idev_)
       if event is None:
         if self.numEvents_ != 0:
-          #logger.debug("{}: {} got {} events".format(self, self.idevName_, self.numEvents_))
+          #logger.debug("{}: got {} events".format(self, self.numEvents_))
           self.numEvents_ = 0
       else:
-        #logger.debug("{}: {} read event: {}".format(self, self.idevName_, event))
+        #logger.debug("{}: read event: {}".format(self, event))
         self.numEvents_ += 1
       return event
     except (IOError, exceptions.OSError) as e:
       self.numEvents_ = 0
       self.dev_ = None
-      logger.error("{}: device is not ready: {}".format(self.idevName_, e))
+      self.report_(logging.ERROR, "device is not ready: {}".format(e))
 
   def swallow(self, s):
     self.state_ = s
@@ -307,10 +307,18 @@ class EvdevDevice:
     except (IOError, exceptions.OSError):
       pass
 
-  def __init__(self, dev, idev, recreateOp=lambda : None, swallowDelay=0.0):
-    self.dev_, self.idevName_, self.recreateOp_ = dev, idev, recreateOp
-    self.idevHash_ = register_dev(idev)
-    self.swallowDelay_ = swallowDelay
+  def __init__(self, idev, recreateOp=lambda : None, swallowDelay=0.0, report=lambda level,msg : None):
+    """
+    Arguments:
+      idev - name or hash
+      recreateOp - callback to (re)create native evdev device
+      swallowDelay - delay is seconds before executing swallow command
+      report - reporting callback
+    """
+    self.idev_, self.recreateOp_, self.report_, self.swallowDelay_ = idev, recreateOp, report, swallowDelay
+    self.dev_ = self.recreateOp_()
+    if self.dev_ is None:
+      self.report_(logging.ERROR, "device is not ready".format(self.idev_))
     self.numEvents_ = 0
     self.state_ = False
 
@@ -320,7 +328,7 @@ class EvdevDevice:
     dev = self.recreateOp_()
     if dev is not None:
       self.dev_ = dev
-      logger.info("{}: device is ready".format(self.idevName_))
+      self.report_(logging.INFO, "device is ready")
       self.swallow(self.state_)
       return True
     else:
@@ -334,7 +342,7 @@ def calc_device_hash(device):
     return hash(info)
 
 
-class NativeEvdevDeviceFactory:
+class NativeEvdevIDevFactory:
   def make_device(self, identifier, update=False):
     if update:
       self.update()
@@ -363,42 +371,6 @@ class NativeEvdevDeviceFactory:
   Info_ = collections.namedtuple("Info", "path name phys hash")
   DeviceInfo_ = collections.namedtuple("DeviceInfo", "device info")
   identifierRe_ = re.compile("([^:]*):(.*)")
-
-
-def init_idevs(idevsCfg, makeDevice=lambda native,idev,recreateOp : EvdevDevice(native, idev, recreateOp, 0.0), deviceUpdatePeriod=2):
-  """
-  Initializes idev devices.
-  Input device can be designated by path, name, phys or hash which are printed by print_devices(). 
-  """
-  nativeDevFactory = NativeEvdevDeviceFactory()
-  def make_recreate_op(identifier, **kwargs):
-    deviceUpdatePeriod = kwargs.get("deviceUpdatePeriod", 0)
-    ts = [None]
-    def op():
-      t = time.time()
-      if ts[0] is None:
-        ts[0] = t
-      else:
-        dt = t - ts[0]
-        if dt < deviceUpdatePeriod:
-          return None
-        else:
-          ts[0] = t
-      return nativeDevFactory.make_device(identifier, update=True)
-    return op
-  r = {}
-  for idev,identifier in idevsCfg.items():
-    #Skipping comments
-    if idev[0] == "#":
-      continue
-    nativeDevice = nativeDevFactory.make_device(identifier)
-    recreateOp=make_recreate_op(identifier=identifier, deviceUpdatePeriod=deviceUpdatePeriod)
-    r[idev] = makeDevice(nativeDevice, idev, recreateOp=recreateOp)
-    if nativeDevice:
-      logger.info("Found device {} ({})".format(idev, identifier))
-    else:
-      logger.warning("Device {} ({}) not found".format(idev, identifier))
-  return r
 
 
 @make_reporting_joystick
@@ -439,18 +411,48 @@ def parseEvdevJoystickOutput(cfg, state):
   return j
 
 
-def parseEvdevEventSource(cfg, state):
-  config = state.get("main").get("config")
-  compressEvents = config.get("compressSourceEvents", False)
-  deviceUpdatePeriod = config.get("missingSourceUpdatePeriod", 2)
-  swallowDelay = config.get("swallowDelay", 0.0)
-  def make_device(native, idev, recreateOp):
-    dev = EvdevDevice(native, idev, recreateOp, swallowDelay=swallowDelay)
+class EvdevIDevParser:
+  def __call__(self, cfg, state):
+    config = state.get("main").get("config")
+    assert is_dict_type(cfg)
+    def get_prop(name, dfault):
+      return state.resolve_d(cfg, name, config.get(name, dfault))
+    compressEvents = get_prop("compressSourceEvents", False)
+    deviceUpdatePeriod = get_prop("missingSourceUpdatePeriod", 2)
+    swallowDelay = get_prop("swallowDelay", 0.0)
+
+    idev = state.resolve(cfg, "idev") #name
+    identifier = state.resolve(cfg, "identifier") #hash of device props, path, etc
+
+    idevName = idev
+    idevHash = register_dev(idev)
+    class RecreateOp:
+      def __call__(self):
+        timestamp = time.time()
+        if self.timestamp_ is None:
+          self.timestamp_ = timestamp
+        else:
+          dt = timestamp - self.timestamp_
+          if dt < self.deviceUpdatePeriod_:
+            return None
+          else:
+            self.timestamp_ = timestamp
+        nativeDevice = self.nativeDevFactory_.make_device(self.identifier_, update=True)
+        if nativeDevice is not None:
+          self.timestamp_ = None
+        return nativeDevice
+      def __init__(self, identifier, deviceUpdatePeriod, nativeDevFactory):
+        self.identifier_, self.deviceUpdatePeriod_, self.nativeDevFactory_ = identifier, deviceUpdatePeriod, nativeDevFactory
+        self.timestamp_ = None
+    recreateOp = RecreateOp(identifier, deviceUpdatePeriod, self.nativeDevFactory_)
+    report = lambda level,msg : logger.log(level, "{}: {}".format(idevName, msg))
+    dev = EvdevIDev(idevHash, recreateOp, swallowDelay, report)
     if compressEvents:
       dev = EventCompressorDevice(dev)
     return dev
-  idevs = init_idevs(config.get("idevs", {}), make_device, deviceUpdatePeriod)
-  return EventSource(idevs, None)
+
+  def __init__(self):
+    self.nativeDevFactory_ = NativeEvdevIDevFactory()
 
 
 def get_idevs_info(**kwargs):
@@ -495,7 +497,9 @@ if __name__ == "__main__":
     main = Main(get_idevs_info=get_idevs_info)
     parser = main.get("parser")
     parser.get("odev").add("evdev", parseEvdevJoystickOutput)
-    parser.add("source", parseEvdevEventSource)
+    evdevIDevParser = EvdevIDevParser()
+    parser.get("idev").add("evdev", evdevIDevParser)
+    parser.get("idev").add("default", evdevIDevParser)
     exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)

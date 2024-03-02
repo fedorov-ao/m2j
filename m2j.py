@@ -7468,6 +7468,14 @@ def make_parser():
 
   scParser.add("binds", parseBinds)
 
+  def idevParserKeyOp(cfg, state):
+    key = get_nested_d(cfg, "type", None)
+    if key is None:
+      raise RuntimeError("Was expecting \"type\" keys in {}".format(str2(cfg, 100)))
+    return key
+  idevParser = IntrusiveSelectParser(keyOp=idevParserKeyOp, parser=SelectParser())
+  mainParser.add("idev", idevParser)
+
   def odevParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "odev", None)
     if key is None:
@@ -8260,7 +8268,22 @@ class Main:
           logger.error("Cannot create pose '{}' ({})".format(poseName, e))
 
   def init_source(self, state):
-    source = self.get("parser")("source", self.get("config"), state)
+    parser = self.get("parser")
+    idevsCfg = self.get("config").get("idevs", {})
+    idevs = {}
+    for idevName,idevCfg in idevsCfg.items():
+      try:
+        #Skipping comments
+        if idevName[0] == "#":
+          continue
+        if is_str_type(idevCfg):
+          #Implementation-dependend runner must register 'default' parser in 'idevs' parser
+          idevCfg = { "type" : "default", "identifier" : idevCfg }
+        idevCfg["idev"] = idevName
+        idevs[idevName] = parser("idev", idevCfg, state)
+      except RuntimeError as e:
+        logger.error(e)
+    source = EventSource(idevs, None)
     self.set("source", source)
 
   def init_main_ep(self, state):

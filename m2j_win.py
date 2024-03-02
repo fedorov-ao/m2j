@@ -1339,8 +1339,30 @@ def ErrorIfZero(handle):
         return handle
 
 
-class RawInputEventSource:
-  def __init__(self, useMessageWindow=True, swallower=None):
+class RawInputIDev:
+  def read_one(self):
+    def pop_front(l):
+      if len(l) == 0:
+        raise IndexError("pop_front from empty list")
+      r = l[0]
+      del l[0]
+      return r
+    return pop_front(self.events_) if len(self.events_) != 0 else None
+
+  def swallow(self, s):
+    if self.swallower_ is not None:
+      self.swallower_.swallow(s)
+
+  def add_events(self, events):
+    self.events_.extend(events)
+
+  def __init__(self, swallower=None):
+    self.swallower_ = swallower
+    self.events_ = []
+
+
+class RawInputIDevManager:
+  def __init__(self, useMessageWindow=True):
     CreateWindowEx = windll.user32.CreateWindowExA
     CreateWindowEx.argtypes = [c_int, c_char_p, c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
     CreateWindowEx.restype = ErrorIfZero
@@ -1348,7 +1370,7 @@ class RawInputEventSource:
     # Define Window Class
     wndclass = WNDCLASS()
     wndclass.style = win32con.CS_HREDRAW | win32con.CS_VREDRAW
-    wndclass.lpfnWndProc = WNDPROC(lambda h, m, w, l: self.wnd_proc(h, m, w, l))
+    wndclass.lpfnWndProc = WNDPROC(lambda h, m, w, l: self.wnd_proc_(h, m, w, l))
     wndclass.cbClsExtra = wndclass.cbWndExtra = 0
     wndclass.hInstance = windll.kernel32.GetModuleHandleA(c_int(win32con.NULL))
     wndclass.hIcon = windll.user32.LoadIconA(c_int(win32con.NULL), c_int(win32con.IDI_APPLICATION))
@@ -1371,12 +1393,13 @@ class RawInputEventSource:
       windll.user32.ShowWindow(c_int(hwnd), c_int(win32con.SW_SHOWNORMAL))
       windll.user32.UpdateWindow(c_int(hwnd))
     #TODO Check for error
-    self.hwnd = hwnd
+    self.hwnd_ = hwnd
 
-    self.swallower_ = swallower
-    self.nativeDevices_ = None
-    self.trackedDevices_ = dict()
-    self.upu_ = set()
+    self.nativeDeviceInfos_ = None
+    #maps native handles to instances of TrackedDeviceInfo
+    self.trackedDeviceInfos_ = dict()
+    #set of (usage page, usage)
+    self.usagePageUsage_ = set()
     #logger.debug("{}: created".format(self))
 
   def __del__(self):
@@ -1385,12 +1408,12 @@ class RawInputEventSource:
 
   def stop(self):
     if hasattr(self, "hwnd"):
-      r = windll.user32.DestroyWindow(self.hwnd)
+      r = windll.user32.DestroyWindow(self.hwnd_)
       if r == 0:
         e = windll.kernel32.GetLastError()
-        raise RuntimeError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd, e))
+        raise RuntimeError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd_, e))
       else:
-        del self.hwnd
+        del self.hwnd_
     if hasattr(self, "wndclass"):
       r = windll.user32.UnregisterClassA(self.wndclass.lpszClassName, 0)
       if r == 0:
@@ -1399,90 +1422,104 @@ class RawInputEventSource:
       else:
         del self.wndclass
 
-  def run_once(self):
-    #logger.debug("{}.run_once()".format(self))
+  def update(self):
+    """
+    Gets native events from queue, makes InputEvents, distributes the latter among instances of RawInputIDev.
+    Needs to be run at least once per global loop iteration.
+    """
+    #logger.debug("{}.update()".format(self))
     msg = MSG()
     PM_REMOVE = 1
-    while windll.user32.PeekMessageA(byref(msg), self.hwnd, 0, 0, PM_REMOVE) != 0:
-      if msg.message == WM_INPUT:
-        #logger.debug("{}.run_once(): got WM_INPUT".format(self))
-        dwSize = c_uint(0)
-        r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
-        if r < 0:
-          raise RuntimeError("Failed to get buffer size")
-        #TODO Use create_string_buffer()
-        buf = create_string_buffer(dwSize.value)
-        r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
-        if r < 0:
-          raise RuntimeError("Failed to fill buffer")
-        elif r > 0:
-          raw = cast(buf, POINTER(RAWINPUT)).contents
-          hd = raw.header.hDevice
-          if hd in self.trackedDevices_.keys():
-            idevHash = self.trackedDevices_[hd].hash
-            events = None
-            if raw.header.dwType == RIM_TYPEMOUSE:
-              #self.raw_mouse_events.append((raw.header.hDevice, raw.mouse.usFlags, raw.mouse.ulButtons, raw.mouse._u1._s2.usButtonFlags, raw.mouse._u1._s2.usButtonData, raw.mouse.ulRawButtons, raw.mouse.lLastX, raw.mouse.lLastY, raw.mouse.ulExtraInformation))
-              #logger.debug("{}: Got mouse event".format(self))
-              events = self.make_mouse_event_(raw, idevHash)
-            elif raw.header.dwType == RIM_TYPEKEYBOARD:
-              #self.raw_keyboard_events.append((raw.header.hDevice, raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.VKey, raw.keyboard.Message, raw.keyboard.ExtraInformation))
-              #logger.debug("{}: Got keyboard event".format(self))
-              events = self.make_kbd_event_(raw, idevHash)
-            elif raw.header.dwType == RIM_TYPEHID:
-              #logger.debug("{}: Got HID event".format(self))
-              events = self.make_hid_event_(raw, idevHash)
-            if events is not None:
-              for e in events:
-                #logger.debug("{}: sending event: {}".format(self, e))
-                self.ep_(e)
-      else:
+    while windll.user32.PeekMessageA(byref(msg), self.hwnd_, 0, 0, PM_REMOVE) != 0:
+      if msg.message != WM_INPUT:
         windll.user32.DispatchMessageA(byref(msg))
+        continue
+      #logger.debug("{}.update(): got WM_INPUT".format(self))
+      dwSize = c_uint(0)
+      r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
+      if r < 0:
+        raise RuntimeError("Failed to get buffer size")
+      buf = create_string_buffer(dwSize.value)
+      r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
+      #TODO What if r == 0?
+      if r < 0:
+        raise RuntimeError("Failed to fill buffer")
+      elif r > 0:
+        raw = cast(buf, POINTER(RAWINPUT)).contents
+        tdi = self.trackedDeviceInfos_.get(raw.header.hDevice)
+        if tdi is None:
+          continue
+        idevID = tdi.idevID
+        events = None
+        if raw.header.dwType == RIM_TYPEMOUSE:
+          #logger.debug("{}.update(): Got mouse event".format(self))
+          events = self.process_mouse_event_(raw, idevID)
+        elif raw.header.dwType == RIM_TYPEKEYBOARD:
+          #logger.debug("{}.update(): Got keyboard event".format(self))
+          events = self.process_kbd_event_(raw, idevID)
+        elif raw.header.dwType == RIM_TYPEHID:
+          #logger.debug("{}.update(): Got HID event".format(self))
+          events = self.process_hid_event_(raw, idevID)
+        if events is not None:
+          tdi.idev.add_events(events)
 
-  def track_device(self, name, idev, refreshDevices=False):
-    if self.nativeDevices_ is None or refreshDevices == True:
-      self.nativeDevices_ = self.get_devices()
-    for d in self.nativeDevices_:
-      identifier = name[name.find(":")+1:]
-      if identifier in (d.name, d.hash):
-        p = (d.usagePage, d.usage)
-        if p not in self.upu_:
+  def make_device(self, idevID, idevIDNative, **kwargs):
+    """
+    Makes wrapper device.
+    Arguments:
+      idevID - idev alias ("mouse", "keyboard", etc) or its hash
+      idevIDNative - native device identifier (name, path, etc)
+      idevName (keyword, optional) - initial, printable idev alias
+      swallower (keyword, optional) - swallower instance for returned device
+    Returns:
+      instance of RawInputIDev
+    """
+    if self.nativeDeviceInfos_ is None or kwargs.get("refreshDevices", False) == True:
+      self.nativeDeviceInfos_ = self.get_native_infos()
+    idevName = kwargs.get("idevName", "")
+    for ni in self.nativeDeviceInfos_:
+      idevIDNative = idevIDNative[idevIDNative.find(":")+1:]
+      if idevIDNative in (ni.name, ni.hash):
+        upu = (ni.usagePage, ni.usage)
+        #upu = "usage page, usage"
+        if upu not in self.usagePageUsage_:
           numRid = 1
           Rid = (numRid * RAWINPUTDEVICE)()
-          Rid[0].usUsagePage = d.usagePage
-          Rid[0].usUsage = d.usage
+          Rid[0].usUsagePage = ni.usagePage
+          Rid[0].usUsage = ni.usage
           Rid[0].dwFlags = RIDEV_INPUTSINK
-          Rid[0].hwndTarget = self.hwnd
+          Rid[0].hwndTarget = self.hwnd_
           if not windll.user32.RegisterRawInputDevices(Rid, numRid, sizeof(RAWINPUTDEVICE)):
             raise WinError()
-          self.upu_.add(p)
+          self.usagePageUsage_.add(upu)
         class TrackedDevInfo:
           pass
         tdi = TrackedDevInfo()
-        tdi.idev, tdi.hash = idev, register_dev(idev)
-        if d.usage == HID_USAGE_GENERIC_JOYSTICK:
-          self.init_hid_(d.handle, tdi)
-        self.trackedDevices_[d.handle] = tdi
-        logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(name, idev, d.usagePage, d.usage))
-        return
-    raise RuntimeError("Device {} ({}) not found".format(name, idev))
+        tdi.idevID = idevID
+        if ni.usage == HID_USAGE_GENERIC_JOYSTICK:
+          self.init_hid_(ni.handle, tdi)
+        idev = RawInputIDev(swallower=kwargs.get("swallower"))
+        tdi.idev = idev
+        self.trackedDeviceInfos_[ni.handle] = tdi
+        logger.info("Found device {} ({}) (usage page: 0x{:x}, usage: 0x{:x})".format(idevName, idevID, ni.usagePage, ni.usage))
+        return idev
+    else:
+      #Executed if failed to create idev in the for loop
+      raise RuntimeError("Device {} ({}) not found".format(idevName, idevID))
 
-  def swallow(self, name, s):
-    if self.swallower_ is not None:
-      self.swallower_.swallow(name, s)
-
-  def set_ep(self, ep):
-    self.ep_ = ep
-
-  def get_devices(self):
+  def get_native_infos(self):
+    """
+    Returns:
+      a list of native (raw input) devices' infos
+    """
     uiNumDevices = c_uint(0)
     r = windll.user32.GetRawInputDeviceList(0, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
     if r == c_uint(-1):
-      raise RuntimeError("Error getting device number")
+      raise RuntimeError("Error getting number of native devices")
     rawInputDeviceList = (uiNumDevices.value * RAWINPUTDEVICELIST)()
     r = windll.user32.GetRawInputDeviceList(rawInputDeviceList, byref(uiNumDevices), sizeof(RAWINPUTDEVICELIST))
     if r == c_uint(-1):
-      raise RuntimeError("Error listing devices")
+      raise RuntimeError("Error listing native devices")
     class DeviceInfo:
       def __init__(self, **kwargs):
         self.handle = kwargs.get("handle", None)
@@ -1493,7 +1530,7 @@ class RawInputEventSource:
         self.hash = kwargs.get("hash", None)
       def __str__(self):
         return "{} {} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage, self.hash)
-    devices = []
+    infos = []
     for i in range(uiNumDevices.value):
       ridl = rawInputDeviceList[i]
       #Get required device name string length
@@ -1501,17 +1538,20 @@ class RawInputEventSource:
       szName = c_uint(0)
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
       if r == c_uint(-1):
-        raise RuntimeError("Error getting device name string length")
+        raise RuntimeError("Error getting the length of native device name")
       pName = create_string_buffer(szName.value)
+      #Get the name itself
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICENAME, pName, byref(szName))
       if r == c_uint(-1):
-        raise RuntimeError("Error getting device name")
+        raise RuntimeError("Error getting native device name")
       ridi = RID_DEVICE_INFO()
       szRidi = c_uint(sizeof(RID_DEVICE_INFO))
       r = windll.user32.GetRawInputDeviceInfoA(ridl.hDevice, RIDI_DEVICEINFO, byref(ridi), byref(szRidi))
       if r == c_uint(-1):
-        raise RuntimeError("Error getting device info")
+        raise RuntimeError("Error getting native device info")
       di = DeviceInfo()
+      #Native device name contains backslashes that would have to be escaped (by doubling them) in the JSON config.
+      #So backslashes are replaced with forward slashes to avoid that.
       name = pName.value.replace("\\", "/")
       di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, name, str(hash(name))
       if ridl.dwType == RIM_TYPEMOUSE:
@@ -1521,32 +1561,32 @@ class RawInputEventSource:
       elif ridl.dwType == RIM_TYPEHID:
         di.usagePage, di.usage = ridi.hid.usUsagePage, ridi.hid.usUsage
       else:
-        raise RuntimeError("Unexpected device type: 0x{:x}".format(ridi.dwType))
-      devices.append(di)
-    return devices
+        raise RuntimeError("Unexpected native device type: 0x{:x}".format(ridi.dwType))
+      infos.append(di)
+    return infos
 
-  def wnd_proc(self, hwnd, message, wParam, lParam):
+  def wnd_proc_(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
       windll.user32.PostQuitMessage(0)
     return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
 
-  def make_mouse_event_(self, raw, idev):
+  def process_mouse_event_(self, raw, idevID):
     ts, events = time.time(), []
     mouse = raw.mouse
     usButtonFlags = mouse._u1._s2.usButtonFlags
     if mouse.usFlags & MOUSE_MOVE_RELATIVE == MOUSE_MOVE_RELATIVE:
       if mouse.lLastX != 0:
-        events.append(InputEvent(codes.EV_REL, codes.REL_X, mouse.lLastX, ts, idev))
+        events.append(InputEvent(codes.EV_REL, codes.REL_X, mouse.lLastX, ts, idevID))
       if mouse.lLastY != 0:
-        events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, idev))
+        events.append(InputEvent(codes.EV_REL, codes.REL_Y, mouse.lLastY, ts, idevID))
     elif mouse.usFlags & MOUSE_MOVE_ABSOLUTE == MOUSE_MOVE_ABSOLUTE:
-      events.append(InputEvent(codes.EV_ABS, codes.ABS_X, mouse.lLastX, ts, idev))
-      events.append(InputEvent(codes.EV_ABS, codes.ABS_Y, mouse.lLastY, ts, idev))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_X, mouse.lLastX, ts, idevID))
+      events.append(InputEvent(codes.EV_ABS, codes.ABS_Y, mouse.lLastY, ts, idevID))
     if usButtonFlags & RI_MOUSE_WHEEL:
       #usButtonData is actually a signed value, and ctypes support only pointer casts,
       #so converting it this way
       delta = cast(pointer(USHORT(mouse._u1._s2.usButtonData)), POINTER(SHORT)).contents.value
-      events.append(InputEvent(codes.EV_REL, codes.REL_WHEEL, delta, ts, idev))
+      events.append(InputEvent(codes.EV_REL, codes.REL_WHEEL, delta, ts, idevID))
     codeMapping = (
       (RI_MOUSE_LEFT_BUTTON_DOWN, codes.BTN_LEFT, 1),
       (RI_MOUSE_LEFT_BUTTON_UP, codes.BTN_LEFT, 0),
@@ -1562,20 +1602,20 @@ class RawInputEventSource:
     )
     for cm in codeMapping:
       if usButtonFlags & cm[0]:
-        events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, idev))
+        events.append(InputEvent(codes.EV_KEY, cm[1], cm[2], ts, idevID))
     return events
 
-  def make_kbd_event_(self, raw, idev):
+  def process_kbd_event_(self, raw, idevID):
     #skipping invalid event
     if raw.keyboard.VKey == 0xFF:
       return ()
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
     #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
-    r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, idev)
+    r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, idevID)
     return (r,)
 
-  def make_hid_event_(self, raw, idev):
+  def process_hid_event_(self, raw, idevID):
     def au2c(usage):
       """Maps axis usage to code."""
       mapping = {
@@ -1599,7 +1639,7 @@ class RawInputEventSource:
     ts, events = time.time(), []
     hid = raw.hid
     hDevice = raw.header.hDevice
-    deviceInfo = self.trackedDevices_[hDevice]
+    deviceInfo = self.trackedDeviceInfos_[hDevice]
     preparsedData = deviceInfo.preparsedData
     #buttons
     buttonCaps = deviceInfo.buttonCaps
@@ -1641,7 +1681,7 @@ class RawInputEventSource:
           et, buttonValues[i] = 0, 0
         if et is not None:
           buttonCode = bu2c(idx2bu(i))
-          events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, idev))
+          events.append(InputEvent(codes.EV_KEY, buttonCode, et, ts, idevID))
     #axes
     valueCaps = deviceInfo.valueCaps
     for i in range(len(valueCaps)):
@@ -1666,10 +1706,10 @@ class RawInputEventSource:
         if eventType is not None:
           #Assuming that axis codes for absolute and relative axes match
           axisCode = au2c(usage)
-          events.append(InputEvent(eventType, axisCode, value.value, ts, idev))
+          events.append(InputEvent(eventType, axisCode, value.value, ts, idevID))
     return events
 
-
+  #TODO Check
   def init_hid_(self, hDevice, deviceInfo):
     def get_usage_range(caps):
       if caps.IsRange:
@@ -1721,57 +1761,59 @@ class RawInputEventSource:
       deviceInfo.valueData.append(vd)
 
 
-def parseRawInputEventSource(cfg, state):
-  main = state.get("main")
-  config = main.get("config")
-  useMessageWindow=config.get("useMessageWindow", True)
-  swallower = None
+rawInputIDevManager = None
+def parseRawInputIDev(cfg, state):
+  #init RawInputIDevManager global instance if needed
+  global rawInputIDevManager
+  if rawInputIDevManager is None:
+    main = state.get("main")
+    config = main.get("config")
+    useMessageWindow = config.get("useMessageWindow", True)
+    rawInputIDevManager = RawInputIDevManager(useMessageWindow)
+    main.add_to_updated(lambda tick,ts : rawInputIDevManager.update())
   class ActionSwallower:
-    def swallow(self, n, s):
-      action = self.actions_.get((n, s))
+    def swallow(self, s):
+      action = self.actions_.get(s)
       if action is not None:
+        #Bogus event, not supposed to be used by action
         event = Event(0, 0, 0, None)
         action(event)
       else:
-        logger.warning("No action for {} {}".format(n, s))
-    def add(self, n, s, action):
-      self.actions_[(n, s)] = action
+        logger.warning("No action for {}".format(s))
+    def add(self, s, action):
+      self.actions_[s] = action
     def __init__(self):
       self.actions_ = {}
+  #init swallower if needed
+  swallower = None
   swallowerCfg = state.resolve_d(cfg, "swallower", None)
   if swallowerCfg is not None:
     swallower = ActionSwallower()
-    for n, idevCfg in swallowerCfg.items():
-      for s, actionCfg in idevCfg.items():
-        try:
-          sl = s.lower()
-          sl = True if sl == "swallow" else False if sl == "unswallow" else None
-          if sl is None:
-            raise RuntimeError("Bad state: {}".format(s))
-          action = state.get("parser")("action", actionCfg, state)
-          swallower.add(n, sl, action)
-        except RuntimeError as e:
-          logger.error("Cannot build swallow action for idev {} and state {}: {}".format(n, s, str2(e)))
-  source = RawInputEventSource(useMessageWindow=useMessageWindow, swallower=swallower)
-  for s,n in config["idevs"].items():
-    #Skipping comments
-    if s[0] == "#":
-      continue
-    try:
-      source.track_device(n, s)
-    except RuntimeError as e:
-      logger.warning(e)
-  oldSource = main.get("source")
-  if oldSource:
-    if hasattr(oldSource, "stop"):
-      oldSource.stop()
-    del oldSource
-  return source
+    for command, actionCfg in swallowerCfg.items():
+      try:
+        commandl = command.lower()
+        commandl = True if commandl == "swallow" else False if commandl == "unswallow" else None
+        if commandl is None:
+          raise RuntimeError("Bad command: '{}'".format(command))
+        action = state.get("parser")("action", actionCfg, state)
+        swallower.add(commandl, action)
+      except RuntimeError as e:
+        logger.error("Cannot build action for command '{}': {}".format(command, str2(e)))
+  #make and return device
+  idev = None
+  try:
+    idevName = state.resolve(cfg, "idev")
+    idevHash = register_dev(idevName)
+    idevIDNative = state.resolve(cfg, "identifier")
+    idev = rawInputIDevManager.make_device(idevHash, idevIDNative, idevName=idevName, swallower=swallower)
+  except RuntimeError as e:
+    logger.warning(e)
+  return idev
 
 
 def get_idevs_info(**kwargs):
   r = []
-  devices = RawInputEventSource().get_devices()
+  devices = RawInputEventSource().get_native_infos()
   for d in devices:
     r.append({ "name" : d.name, "handle" : d.handle, "type" : "{} ({})".format(rimtype2str(d.type), d.type), "hash" : d.hash })
   return r
@@ -1781,12 +1823,14 @@ if __name__ == "__main__":
   try:
     main = Main(get_idevs_info=get_idevs_info)
     parser = main.get("parser")
+    idevParser = parser.get("idev")
+    idevParser.add("raw", parseRawInputIDev)
+    idevParser.add("default", parseRawInputIDev)
     odevParser = parser.get("odev")
     odevParser.add("ppjoy", parsePPJoystickOutput)
     odevParser.add("vjoy", parseVJoystickOutput)
     odevParser.add("keyboard", parseKeyboardOutput)
     odevParser.add("mouse", parseMouseOutput)
-    parser.add("source", parseRawInputEventSource)
     exit(main.run())
   except Exception as e:
     print "Uncaught exception: {} ({})".format(type(e), e)
