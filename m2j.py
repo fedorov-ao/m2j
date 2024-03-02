@@ -5587,8 +5587,10 @@ def init_main_ep(state):
   def print_disabled(event):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
+  stateValue = None
   stateValueName = state.resolve_d(config, "stateValueName", None)
-  stateValue = state.get("main").get("valueManager").get_var(stateValueName)
+  if stateValueName is not None:
+    stateValue = state.get("main").get("valueManager").get_var(stateValueName)
   def make_set_state_val(s):
     def op(event):
       if stateValue is not None: stateValue.set(s)
