@@ -2764,12 +2764,14 @@ class WeightedFunc:
       return self.weight_*x**self.degree_ + (1.0 - self.weight_)*x
     fDB = f(self.deadband_)
     y = (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > self.deadband_ else 0.0
+    y *= self.factor_
+    y += self.offset_
     if self.tracker_ is not None:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
-  def __init__(self, degree, weight, deadband, tracker):
-    self.degree_, self.weight_, self.deadband_, self.tracker_ = degree, weight, deadband, tracker
+  def __init__(self, degree, weight, deadband, factor, offset, tracker):
+    self.degree_, self.weight_, self.deadband_, self.offset_, self.factor_, self.tracker_ = degree, weight, deadband, offset, factor, tracker
 
 
 class GainTracker:
@@ -6072,7 +6074,9 @@ def make_parser():
     o = state.resolve(cfg, "degree")
     w = state.resolve(cfg, "weight")
     db = state.resolve_d(cfg, "deadband", 0.0)
-    func = WeightedFunc(o, w, db, make_tracker(cfg, state))
+    offset = state.resolve_d(cfg, "offset", 0.0)
+    factor = state.resolve_d(cfg, "factor", 1.0)
+    func = WeightedFunc(o, w, db, factor, offset, make_tracker(cfg, state))
     return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("weighted", weighted)
 
