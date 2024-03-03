@@ -2171,8 +2171,10 @@ class StateEP:
 def SetState(stateEP, state):
   def op(event):
     if stateEP.get_state() == state:
+      #logger.debug("SetState.op() not setting {} state".format(stateEP))
       return False
     else:
+      #logger.debug("SetState.op() setting {} state to {}".format(stateEP, state))
       stateEP.set_state(state)
       return True
   return op
@@ -3679,11 +3681,15 @@ class AxisChainCurve:
 
 
 class AxisTrackerChainCurve:
-  """Prevents endless recursion on moving axis.
-     Is meant to be at the top of chain.
-     Subscribe as axis listener."""
+  """
+  Prevents endless recursion on moving axis.
+  Is meant to be at the top of chain.
+  Subscribe as axis listener.
+  """
   def move_by(self, x, timestamp):
     """x is relative."""
+    if self.state_ == False:
+      return 0.0
     self.busy_ = True
     v = None
     try:
@@ -3696,6 +3702,8 @@ class AxisTrackerChainCurve:
 
   def move(self, x, timestamp):
     """x is absolute."""
+    if self.state_ == False:
+      return 0.0
     self.busy_ = True
     v = None
     try:
@@ -3711,6 +3719,9 @@ class AxisTrackerChainCurve:
     self.next_.reset()
 
   def on_move_axis(self, axis, old, new):
+    #self.next_.on_move_axis() is called event if self.state_ == False
+    #Since old and new are final axis position values, and if a curve in chain uses some intermediate value, 
+    #it should call its next_.on_move_axis() and then next_.get_value() to get the updated value
     if self.busy_ == True:
       return
     self.next_.on_move_axis(axis, old, new)
@@ -3721,9 +3732,25 @@ class AxisTrackerChainCurve:
   def set_next(self, next):
     self.next_ = next
 
+  def set_busy(self, busy):
+    self.busy_ = busy
+
+  def set_state(self, state):
+    self.state_ = state
+    for stateful in self.statefuls_:
+      stateful.set_state(state)
+
+  def get_state(self):
+    return self.state_
+
+  def add_stateful(self, stateful):
+    self.statefuls_.append(stateful)
+
   def __init__(self, next):
     self.next_ = next
     self.busy_ = False
+    self.state_ = True
+    self.statefuls_ = []
 
 
 class OffsetAbsChainCurve:
