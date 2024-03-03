@@ -3553,6 +3553,7 @@ class TransformAbsChainCurve:
     if newOutputValue != outputValue:
       #TODO If outputOp_.calc() changes state of outputOp_, and this state corellates with outputValue,
       #TODO but curve is set to newOutputValue, then outputOp_ is out of sync.
+      #TODO Mb replace outputOp_ and inputOp_ with funcs
       #logger.debug("{}: nov != ov".format(self))
       self.value_ = self.inputOp_.calc(newOutputValue)
     else:
@@ -7408,13 +7409,16 @@ def make_parser():
           try:
             t = parser(c, state)
           except RuntimeError as e:
-            logger.warning("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 100)))
+            logger.warning("{} (encountered when parsing '{}' '{}')".format(e, name, str2(c, 100)))
             continue
           except Exception as e:
-            logger.error("{} (encountered when parsing {} '{}')".format(e, name, str2(c, 200)))
+            logger.error("{} (encountered when parsing '{}' '{}')".format(e, name, str2(c, 200)))
             raise ParserError(c)
+          except:
+            logger.warning("Unknown exception while parsing '{}' '{}')".format(name, str2(c, 100)))
+            continue
           if t is None:
-            logger.warning("Could not parse {} '{}')".format(name, str2(c, 100)))
+            logger.warning("Could not parse '{}' '{}')".format(name, str2(c, 100)))
             continue
           r.append(t)
         return r
@@ -7423,9 +7427,12 @@ def make_parser():
         mainParser = state.get("parser")
         try:
           return mainParser("action", cfg, state)
-        except ParserNotFoundError:
+        except ParserNotFoundError as e:
           #logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg, 100)))
-          return mainParser("ep", cfg, state)
+          r = mainParser("ep", cfg, state)
+          if r is None:
+            raise e
+          return r
 
       mainParser = state.get("parser")
       ons = parseGroup("on", lambda cfg,state: mainParser("et", cfg, state), cfg, state)
