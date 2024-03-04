@@ -6783,7 +6783,9 @@ def make_parser():
       if is_list_type(value):
         assert(len(value) >= 2)
         value, relative = value[0], value[1]
-      axis = state.get_axis_by_full_name(state.deref(fnAxis))
+      axis = state.deref(fnAxis)
+      if is_str_type(fnAxis):
+        axis = state.get_axis_by_full_name(axis)
       value = float(state.deref(value))
       relative = state.deref(relative)
       av.append([axis, value, relative])
@@ -6873,6 +6875,7 @@ def make_parser():
     elif "objects" in cfg:
       ep = state.at("eps", 0)
       for objectName in state.resolve(cfg, "objects"):
+        #TODO Use state.deref() here and specify object name as "obj:..." for unification
         curve = state.get_obj(objectName)
         if curve is None:
           raise RuntimeError("Curve {} not found".format(str2(objectName)))
