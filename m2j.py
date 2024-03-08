@@ -6207,7 +6207,8 @@ def make_parser():
   curveParser.add("offset", parseOffsetCurve)
 
   def makeInputValueDDOp(cfg, state):
-    inputValueDDOp = SignDistanceDeltaOp()
+    signChangeDeadZone = state.resolve_d(cfg, "signChangeDeadZone", 0.0)
+    inputValueDDOp = SignDistanceDeltaOp(deadzone=signChangeDeadZone)
     resetFuncCfg = get_nested_d(cfg, "resetFunc", None)
     if resetFuncCfg is not None:
       resetFunc = state.get("parser")("func", resetFuncCfg, state)
