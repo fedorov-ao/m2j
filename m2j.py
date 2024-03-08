@@ -3162,7 +3162,7 @@ class LookupOp:
 
 
 class FuncOp:
-  def calc(self, value):
+  def calc(self, value, timestamp=None):
     return self.func_(value)
   def reset(self):
     pass
@@ -3584,7 +3584,7 @@ class TransformAbsChainCurve:
   def move(self, x, timestamp):
     """Moves current curve to x and next curve to transformed value."""
     self.update_()
-    outputValue = self.outputOp_.calc(x)
+    outputValue = self.outputOp_.calc(x, timestamp)
     newOutputValue = self.next_.move(outputValue, timestamp)
     #logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, x, outputValue, newOutputValue))
     if newOutputValue != outputValue:
@@ -3630,13 +3630,15 @@ class TransformAbsChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, inputOp, outputOp):
-    self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
+  def __init__(self, next, inputOp, outputOp, resetOnMoveAxis=False):
+    self.next_, self.inputOp_, self.outputOp_, self.resetOnMoveAxis_ = next, inputOp, outputOp, resetOnMoveAxis
     self.value_, self.dirty_ = 0.0, False
 
   def update_(self):
     if self.dirty_ == True:
       self.value_ = self.inputOp_.calc(self.next_.get_value())
+      if self.resetOnMoveAxis_ == True:
+        self.reset()
       #logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
       self.dirty_ = False
 
