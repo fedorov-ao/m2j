@@ -2792,7 +2792,14 @@ class GainTracker:
 
 
 #Axes
-class JoystickAxis:
+class ProbingAxisMixin:
+  def probe(self, v, relative):
+    if relative == True:
+      v += self.get()
+    return clamp(v, *self.limits())
+
+
+class JoystickAxis(ProbingAxisMixin):
   def move(self, v, relative):
     assert(self.j_)
     return self.j_.move_axis(self.tcAxis_, v, relative)
@@ -2812,7 +2819,7 @@ class JoystickAxis:
     self.j_, self.tcAxis_ = j, tcAxis
 
 
-class JoystickButtonAxis:
+class JoystickButtonAxis(ProbingAxisMixin):
   def move(self, v, relative):
     assert(self.j_)
     self.v_ = clamp(self.v_ + v if relative else v, *self.limits())
@@ -2832,7 +2839,7 @@ class JoystickButtonAxis:
     self.j_, self.b_, self.v_ = j, b, 0.0
 
 
-class ReportingAxis:
+class ReportingAxis(ProbingAxisMixin):
   def move(self, v, relative):
     old = self.next_.get()
     r = self.next_.move(v, relative)
@@ -2884,7 +2891,7 @@ class ReportingAxis:
         i += 1
 
 
-class RateSettingAxis:
+class RateSettingAxis(ProbingAxisMixin):
   def move(self, v, relative):
     #logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
     desired = self.v_+v if relative is True else v
@@ -3518,16 +3525,40 @@ class RelToAbsChainCurve:
   Is stateless.
   """
   def move_by(self, x, timestamp):
-    """x is relative."""
+    """
+    Moves this (and next) curve by x.
+    Returns:
+      The value this curve has moved to.
+    """
     nextValue = self.next_.get_value()
     nextValue += x
     self.next_.move(nextValue, timestamp)
     return self.next_.get_value()
 
   def move(self, x, timestamp):
-    """x is absolute."""
+    """
+    Moves this (and next) curve to x.
+    Returns:
+      The value this curve has moved to.
+    """
     self.next_.move(x, timestamp)
     return self.next_.get_value()
+
+  def probe_by(self, x):
+    """
+    Probes whether can move this curve by x without actually moving it.
+    Returns:
+      The value this curve can move to.
+    """
+    return self.probe(x+self.get_value())
+
+  def probe(self, x):
+    """
+    Probes whether can move this curve by x without actually moving it.
+    Returns:
+      The value this curve can move to.
+    """
+    return self.next_.probe(x)
 
   def reset(self):
     self.next_.reset()
@@ -3547,6 +3578,7 @@ class RelToAbsChainCurve:
 
 class TransformAbsChainCurve:
   def move(self, x, timestamp):
+    """Moves current curve to x and next curve to transformed value."""
     self.update_()
     outputValue = self.outputOp_.calc(x)
     newOutputValue = self.next_.move(outputValue, timestamp)
@@ -3561,6 +3593,20 @@ class TransformAbsChainCurve:
       self.value_ = x
     #logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
     return self.value_
+
+  def probe(self, x):
+    """
+    Probes whether can move this curve to x without actually moving it.
+    Returns:
+      The value this curve can move to.
+    """
+    #Assuming this call to calc() does not change outputOp_ state.
+    outputValue = self.outputOp_.calc(x)
+    newOutputValue = self.next_.probe(outputValue)
+    if newOutputValue != outputValue:
+      return self.inputOp_.calc(newOutputValue)
+    else:
+      return x
 
   def reset(self):
     self.inputOp_.reset()
@@ -3602,6 +3648,22 @@ class AxisChainCurve:
     self.axis_.move(x, relative=False)
     #logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
     return self.axis_.get()
+
+  def probe_by(self, x):
+    """
+    Probes whether can move axis by x without actually moving it.
+    Returns:
+      The value axis can move to.
+    """
+    return self.axis_.probe(x, relative=True)
+
+  def probe(self, x):
+    """
+    Probes whether can move axis to x without actually moving it.
+    Returns:
+      The value axis can move to.
+    """
+    return self.axis_.probe(x, relative=False)
 
   def reset(self):
     pass
@@ -4485,7 +4547,7 @@ class MetricsJoystick:
     self.data_ = dict()
 
 
-class ReportingJoystickAxis:
+class ReportingJoystickAxis(ProbingAxisMixin):
   def move(self, v, relative):
     return self.joystick_.move_axis(self.tcAxis_, v, relative)
 
