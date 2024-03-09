@@ -414,7 +414,7 @@ class ParserState:
         o = self.resolve_def(v)
         cb(k, o)
       except RuntimeError as e:
-        logger.warning("Could not create object '{}' from {} ({})".format(k, str2(v, 100), e))
+        logger.warning("Could not create object '{}' ({})".format(k, e))
 
   def get_arg(self, name, **kwargs):
     r = None
@@ -527,8 +527,9 @@ class ParserState:
     parser = self.get("parser")
     obj = None
     className = cfg.get("class", None)
-    if className is not None:
-      obj = parser(className, cfg, self)
+    if className is None:
+      raise RuntimeError("Cannot create object from: {} ('class' property is missing)".format(str2(cfg, 100)))
+    obj = parser(className, cfg, self)
     if obj is None:
       raise RuntimeError("Cannot create object from: {}".format(str2(cfg, 100)))
     return obj
@@ -1669,6 +1670,7 @@ class ScaleEP2:
             sens = self.sens_.get(keys[1], 1.0)
           oldValue = event.value
           event.value *= sens
+          #logger.debug("{}.(): keys:{}, old:{}, sens:{}, new:{}".format(self, keys, oldValue, sens, event.value))
       return self.next_(event) if self.next_ is not None else False
     finally:
       if oldValue is not None:
@@ -2249,8 +2251,7 @@ class ModeEP:
         cb(self, self.mode_, mode)
     #logger.debug("{}({}): Setting mode: {}".format(self.name_, self, mode))
     if mode not in self.children_:
-      logger.warning("{}: No such mode: {}".format(self.name_, mode))
-      return False
+      raise RuntimeError("{}: No such mode: {}".format(self.name_, mode))
     self.set_active_child_state_(0, mode)
     old = self.mode_
     self.mode_ = mode
@@ -4854,7 +4855,7 @@ class RelativeHeadMovementJoystick:
     gp = [0.0 for i in range(len(lp))]
     #TODO for ia in len(self.tcPosAxes_) ?
     for tca in self.tcPosAxes_:
-      ia = self.tcPosAxes_.index(a)
+      ia = self.tcPosAxes_.index(tca)
       for j in range(len(self.dirs_)):
         gp[ia] += lp[ia]*self.dirs_[j][ia]
     #logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
@@ -5508,15 +5509,17 @@ def init_main_ep(state):
   main.add_to_updated(lambda tick,ts : holdEP.update(tick, ts))
 
   sensSetsCfg = state.resolve_d(config, "sens", None)
-  sens = {}
+  scaleEP = None
   if sensSetsCfg is not None:
     sensSet = state.resolve_d(config, "sensSet", None)
     if sensSet not in sensSetsCfg:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
-    sens = state.resolve(sensSetsCfg, sensSet)
-    for s in sens.items():
-      sens[fn2htc(state.deref(s[0]))] = state.deref(s[1])
-  scaleEP = holdEP.set_next(ScaleEP2(sens))
+    sensCfg = { "sens" : sensSetsCfg[sensSet] }
+    scaleEP = main.get("parser").get("sc")("sens", sensCfg, state)
+  else:
+    scaleEP = ScaleEP2({})
+  assert scaleEP is not None
+  holdEP.set_next(scaleEP)
 
   stateEP = StateEP()
   mainEP.add_stateful(stateEP)
