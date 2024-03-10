@@ -8467,12 +8467,22 @@ class Main:
       self.set("state", self.STATE_FALLBACK)
     self.init_loop(state)
 
+  def restore_axes_values(self):
+    allAxes = self.get("axes")
+    for odevName,odevAxes in allAxes.items():
+      for tcAxis,axis in odevAxes.items():
+        #moving each axis to its value,
+        #to make listeners subscribed to an axis (i.e. curves)
+        #update their states according to axis value
+        axis.move(axis.get(), relative=False)
+
   def reinit_and_run(self):
     callbackManager = self.get("callbackManager")
     callbackManager.push_callbacks()
     try:
       #logger.debug("len(updated) before reinit_or_fallback: {}".format(len(self.get("updated"))))
       self.reinit_or_fallback()
+      self.restore_axes_values()
       #logger.debug("len(updated) after reinit_or_fallback: {}".format(len(self.get("updated"))))
       assert(self.loop_ is not None)
       self.set("state", self.STATE_RUNNING)
