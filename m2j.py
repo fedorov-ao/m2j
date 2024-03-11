@@ -6006,23 +6006,47 @@ def make_parser():
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
     clampRight = state.resolve_d(cfg, "clampRight", True)
     func = SegmentFunc(None, factor, clampLeft, clampRight, make_tracker(cfg, state))
-    points = state.resolve(cfg, "points")
-    setter = None
-    #If points are bound to Var, they have to be stored not in a list, but in a dict,
-    #because in this case list is not updated the way it should be
-    #when merging vars config into regular one
-    if is_dict_type(points):
-      setter = lambda pointsDict : func.set_points([[float(k),v] for k,v in points.items()])
-    elif is_list_type(points):
-      for p in points:
-        if len(p) != 2:
-          raise RuntimeError("Points should be a list of value pairs, got: {}".format(points))
-      setter = lambda points : func.set_points(points)
+    pointsCfg, setter = None, None
+    pointsCfg = state.resolve_d(cfg, "points")
+    if pointsCfg is not None:
+      #If points are bound to Var, they have to be stored not in a list, but in a dict,
+      #because in this case list is not updated the way it should be
+      #when merging vars config into regular one
+      if is_dict_type(pointsCfg):
+        setter = lambda pointsDict : func.set_points([[float(k),v] for k,v in pointsDict.items()])
+      elif is_list_type(pointsCfg):
+        for p in pointsCfg:
+          if len(p) != 2:
+            raise RuntimeError("Points should be a list of value pairs, got: {}".format(pointsCfg))
+        setter = lambda points : func.set_points(points)
+      else:
+        raise RuntimeError("Bad points format: {}".format(points))
+      #Registering setter in case "points" is bound to Var
+      state.resolve(cfg, "points", setter=setter)
     else:
-      raise RuntimeError("Bad points format: {}".format(points))
-    #Registering setter in case "points" is bound to Var
-    state.resolve(cfg, "points", setter=setter)
-    setter(points)
+      pointsCfg = state.resolve_d(cfg, "pointsEx")
+      if pointsCfg is not None:
+        def make_setter(func, get_items):
+          def setter(pointsCfg):
+            last, points = [0.0, 0.0], []
+            n = len(last)
+            for off,pts in get_items(pointsCfg):
+              assert len(off) == n
+              #off must be created anew to avoid unneeded value transfer to further calculations
+              off = [float(off[i]) + last[i] for i in range(n)]
+              for p in get_items(pts):
+                assert len(p) == n
+                #last must be created anew to avoid unneeded value transfer to further calculations
+                last = [off[i] + float(p[i]) for i in range(n)]
+                points.append(last)
+            func.set_points(points)
+          return setter
+        if is_list_type(pointsCfg):
+          setter = make_setter(func, lambda l : l)
+    if pointsCfg is None:
+      raise RuntimeError("Must specify either 'points' or 'pointsEx'")
+    assert setter is not None
+    setter(pointsCfg)
     symmetric = state.resolve_d(cfg, "symmetric", 0)
     return make_symm_wrapper(func, symmetric)
   funcParser.add("segment", segment)
