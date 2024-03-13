@@ -229,7 +229,7 @@ class EvdevJoystick:
     axisData.value = v
     nativeValue = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
     nativeValue = int(nativeValue)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(self, tc2ns(*tcAxis), v, nativeValue))
     self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nativeValue)
     if self.immediateSyn_ == True:
       self.js_.syn()

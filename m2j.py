@@ -1650,7 +1650,6 @@ class ModifierEP:
     self.currentModifiers_ = []
 
   def __init__(self, next = None, modifierDescs = None, saveModifiers = True, mode = 0):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.__init__(): tracked modifiers: {}".format(self, [(s, dtc2fn(None, codes.EV_KEY, m)) for s,m in modifiers]))
     self.currentModifiers_, self.next_, self.addedModifiers_, self.removedModifiers_, self.saveModifiers_, self.mode_ = [], next, [], [], saveModifiers, mode
     if modifierDescs is not None:
       for md in modifierDescs:
@@ -1947,7 +1946,7 @@ class BindEP:
 
   def add(self, op, child, level=0, name=None):
     """Adds one child for given op and level."""
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to {} for level {}".format(self, child, attrsOrOp, level))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to {} for level {}".format(self, child, op, level))
     assert(child is not None)
     for ci in self.children_:
       if op == ci.op and level == ci.level:
