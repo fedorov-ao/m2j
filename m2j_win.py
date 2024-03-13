@@ -45,13 +45,15 @@ def CTL_CODE(DeviceType,Function,Method,Access):
   return (((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))
 
 class PPJoystick:
+  logger = logger.getChild("PPJoystick")
+
   def move_axis(self, tcAxis, value, relative):
     if tcAxis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(tcAxis))
     desired = value if not relative else self.get_axis_value(tcAxis)+value
     actual = clamp(desired, *self.get_limits(tcAxis))
     self.a_[tcAxis] = actual
-    #logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting axis {} to {}".format(self, typecode2name(codes.EV_ABS, axis), v))
     self.dirty_ = True
     return value - (actual - desired) if relative else actual
 
@@ -166,6 +168,8 @@ def parsePPJoystickOutput(cfg, state):
 
 #vJoy
 class VJoystick:
+  logger = logger.getChild("VJoystick")
+
   dll_ = None
 
   @classmethod
@@ -664,7 +668,7 @@ g_vkey2codeDict = {
 def vkey2code(vkey):
   r = g_vkey2codeDict.get(vkey, None)
   #rStr = "0x{:x} ({})".format(r, typecode2name(codes.EV_KEY, r)) if r is not None else "None"
-  #logger.debug("vkey2code(): 0x{:x} -> {}".format(vkey, rStr))
+  if logger.isEnabledFor(logging.DEBUG): logger.debug("vkey2code(): 0x{:x} -> {}".format(vkey, rStr))
   return r
 
 
@@ -1030,11 +1034,13 @@ class HIDP_VALUE_CAPS(Structure):
 
 
 class Keyboard:
+  logger = logger.getChild("Keyboard")
+
   MODE_VK = 0
   MODE_SCANCODE = 1
 
   def set_key_state(self, key, state):
-    #logger.debug("{}: Setting key {} (0x{:X}) to {}".format(self, typecode2name(codes.EV_KEY, key), key, state))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Setting key {} (0x{:X}) to {}".format(self, typecode2name(codes.EV_KEY, key), key, state))
     extra = ULONG(0)
     inpt = INPUT()
     inpt.type = INPUT_KEYBOARD
@@ -1074,6 +1080,8 @@ def parseKeyboardOutput(cfg, state):
 
 
 class Mouse:
+  logger = logger.getChild("Mouse")
+
   def move_axis(self, tcAxis, value, relative):
     inpt = self.make_input_()
     mi = inpt.mi
@@ -1362,6 +1370,8 @@ class RawInputIDev:
 
 
 class RawInputIDevManager:
+  logger = logger.getChild("RawInputIDevManager")
+
   def __init__(self, useMessageWindow=True):
     CreateWindowEx = windll.user32.CreateWindowExA
     CreateWindowEx.argtypes = [c_int, c_char_p, c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -1400,11 +1410,11 @@ class RawInputIDevManager:
     self.trackedDeviceInfos_ = dict()
     #set of (usage page, usage)
     self.usagePageUsage_ = set()
-    #logger.debug("{}: created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: created".format(self))
 
   def __del__(self):
     self.stop()
-    logger.debug("{}: destroyed".format(self))
+    self.logger.debug("{}: destroyed".format(self))
 
   def stop(self):
     if hasattr(self, "hwnd"):
@@ -1427,14 +1437,14 @@ class RawInputIDevManager:
     Gets native events from queue, makes InputEvents, distributes the latter among instances of RawInputIDev.
     Needs to be run at least once per global loop iteration.
     """
-    #logger.debug("{}.update()".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update()".format(self))
     msg = MSG()
     PM_REMOVE = 1
     while windll.user32.PeekMessageA(byref(msg), self.hwnd_, 0, 0, PM_REMOVE) != 0:
       if msg.message != WM_INPUT:
         windll.user32.DispatchMessageA(byref(msg))
         continue
-      #logger.debug("{}.update(): got WM_INPUT".format(self))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): got WM_INPUT".format(self))
       dwSize = c_uint(0)
       r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
       if r < 0:
@@ -1452,13 +1462,13 @@ class RawInputIDevManager:
         idevID = tdi.idevID
         events = None
         if raw.header.dwType == RIM_TYPEMOUSE:
-          #logger.debug("{}.update(): Got mouse event".format(self))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got mouse event".format(self))
           events = self.process_mouse_event_(raw, idevID)
         elif raw.header.dwType == RIM_TYPEKEYBOARD:
-          #logger.debug("{}.update(): Got keyboard event".format(self))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got keyboard event".format(self))
           events = self.process_kbd_event_(raw, idevID)
         elif raw.header.dwType == RIM_TYPEHID:
-          #logger.debug("{}.update(): Got HID event".format(self))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got HID event".format(self))
           events = self.process_hid_event_(raw, idevID)
         if events is not None:
           tdi.idev.add_events(events)
@@ -1611,7 +1621,7 @@ class RawInputIDevManager:
       return ()
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
-    #logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
     r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, idevID)
     return (r,)
 
