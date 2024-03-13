@@ -6291,9 +6291,13 @@ def make_parser():
   curveParser.add("linker", parseAxisLinker)
 
   def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
-    if "sensMod" not in cfg:
-      return sensOp
+    #cfg is curve cfg
+    sensModCfg = get_nested_d(cfg, "sensMod", None)
+    if sensModCfg is not None:
+      logger.warning("'sensMod' in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
     else:
+      sensModCfg = get_nested_d(cfg, "dynamic.sensMod", sensModCfg)
+    if sensModCfg is not None:
       axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
       func = state.get("parser")("func", get_nested(cfg, "sensMod.func"), state)
       class SensModOp:
@@ -6303,7 +6307,8 @@ def make_parser():
           self.next_.reset()
         def __init__(self, combine, next, func, axis):
           self.next_, self.combine_, self.func_, self.axis_ = next, combine, func, axis
-      return SensModOp(combine, sensOp, func, axis)
+      sensOp = SensModOp(combine, sensOp, func, axis)
+    return sensOp
 
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=state.resolve_d(cfg, "eps", 0.001), numSteps=state.resolve_d(cfg, "numSteps", 100))
@@ -6399,8 +6404,14 @@ def make_parser():
     return inputValueDDOp
 
   def makeInputDeltaDDOp(cfg, state):
+    #cfg is curve cfg
     inputDeltaDOp = ReturnDeltaOp()
-    inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, cfg.get("deadzone", 0.0))
+    deadzone = state.resolve_d(cfg, "deadzone", None)
+    if deadzone is not None:
+      logger.warning("'deadzone' in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
+    else:
+      deadzone = state.resolve_d(cfg, "dynamic.deadzone", 0.0)
+    inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, deadzone)
     inputDeltaDOp = makeSensModOp(cfg, state, inputDeltaDOp)
     inputDeltaDDOp = DistanceDeltaFromDeltaOp(inputDeltaDOp)
     return inputDeltaDDOp
