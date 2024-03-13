@@ -5989,6 +5989,38 @@ def make_parser():
     else:
       return wrapped
 
+  def make_func_wrapper(func):
+    class Wrapper:
+      def __call__(self, x):
+        if self.symm_ is None:
+          return self.call_(x)
+        else:
+          return self.symm_(self.call_, x)
+      def __init__(self, f, xf, yf, xo, yo, symm):
+        self.f_ = f
+        self.xf_, self.yf_ = xf, yf
+        self.xo_, self.yo_ = xo, yo
+        self.symm_ = symm
+      def call_(self, x):
+        x = self.xo_ + self.xf_ * x
+        y = self.yo_ + self.yf_ * self.f_(x)
+        return y
+    def wrapper(cfg, state):
+      f = func(cfg, state)
+      xf = state.resolve_d(cfg, "xfactor", 1.0)
+      yf = state.resolve_d(cfg, "yfactor", 1.0)
+      xo = state.resolve_d(cfg, "xoffset", 0.0)
+      yo = state.resolve_d(cfg, "yoffset", 0.0)
+      symm = state.resolve_d(cfg, "symmetric", 0)
+      if symm in (1, "x"):
+        symm = lambda f,x : f(abs(x))
+      elif symm in (2, "xy"):
+        symm = lambda f,x : sign(x) * f(abs(x))
+      else:
+        symm = None
+      return Wrapper(f, xf, yf, xo, yo, symm)
+    return wrapper
+
   def make_tracker(cfg, state):
     tracker = None
     trackerCfg = state.resolve_d(cfg, "tracker", None)
@@ -6001,6 +6033,7 @@ def make_parser():
     return ConstantFunc(state.resolve(cfg, "value"), make_tracker(cfg, state))
   funcParser.add("constant", constant)
 
+  @make_func_wrapper
   def segment(cfg, state):
     factor = state.resolve_d(cfg, "factor", 1.0)
     clampLeft = state.resolve_d(cfg, "clampLeft", True)
@@ -6047,10 +6080,10 @@ def make_parser():
       raise RuntimeError("Must specify either 'points' or 'pointsEx'")
     assert setter is not None
     setter(pointsCfg)
-    symmetric = state.resolve_d(cfg, "symmetric", 0)
-    return make_symm_wrapper(func, symmetric)
+    return func
   funcParser.add("segment", segment)
 
+  @make_func_wrapper
   def poly(cfg, state):
     class CoeffsSetter:
       def __call__(self, coeffs):
@@ -6069,33 +6102,34 @@ def make_parser():
     offset = state.resolve_d(cfg, "offset", 0.0)
     func = PolynomialFunc(coeffs, offset, make_tracker(cfg, state))
     coeffsSetter.set_func(func)
-    symmetric = state.resolve_d(cfg, "symmetric", 0)
-    return make_symm_wrapper(func, symmetric)
+    return func
   funcParser.add("poly", poly)
 
+  @make_func_wrapper
   def sigmoid(cfg, state):
     k = state.resolve_d(cfg, "k", 1.0)
     p0 = state.resolve_d(cfg, "p0", 0.5)
     r = state.resolve_d(cfg, "r", 1.0)
     s = state.resolve_d(cfg, "s", 0.0)
     func = SigmoidFunc(k, p0, r, s, make_tracker(cfg, state))
-    symmetric = state.resolve_d(cfg, "symmetric", 0)
-    return make_symm_wrapper(func, symmetric)
+    return func
   funcParser.add("sigmoid", sigmoid)
 
+  @make_func_wrapper
   def bezier(cfg, state):
     points = state.resolve(cfg, "points")
     func = BezierFunc(points, make_tracker(cfg, state))
-    symmetric = state.resolve_d(cfg, "symmetric", 0)
-    return make_symm_wrapper(func, symmetric)
+    return func
   funcParser.add("bezier", bezier)
 
+  @make_func_wrapper
   def sbezier(cfg, state):
     points = state.resolve(cfg, "points")
     func = SegmentedBezierFunc(points, make_tracker(cfg, state))
-    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
+    return func
   funcParser.add("sbezier", sbezier)
 
+  @make_func_wrapper
   def weighted(cfg, state):
     o = state.resolve(cfg, "degree")
     w = state.resolve(cfg, "weight")
@@ -6103,9 +6137,10 @@ def make_parser():
     offset = state.resolve_d(cfg, "offset", 0.0)
     factor = state.resolve_d(cfg, "factor", 1.0)
     func = WeightedFunc(o, w, db, factor, offset, make_tracker(cfg, state))
-    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
+    return func
   funcParser.add("weighted", weighted)
 
+  @make_func_wrapper
   def hermite(cfg, state):
     import hermite
     points = state.resolve(cfg, "points")
@@ -6119,7 +6154,7 @@ def make_parser():
       c = float(c)
       ms = [hermite.m_c(k, xs, ps, c) for k in range(lxs)]
     func = hermite.Hermite(xs, ps, ms)
-    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
+    return func
   funcParser.add("hermite", hermite)
 
   def get_func(cfg, state, **kwargs):
