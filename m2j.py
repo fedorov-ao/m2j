@@ -6106,6 +6106,22 @@ def make_parser():
     return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
   funcParser.add("weighted", weighted)
 
+  def hermite(cfg, state):
+    import hermite
+    points = state.resolve(cfg, "points")
+    xs, ps = [p[0] for p in points], [p[1] for p in points]
+    lxs = len(xs)
+    ms = None
+    c = state.resolve_d(cfg, "c", None)
+    if c is None:
+      ms = [hermite.m_fd(k, xs, ps) for k in range(lxs)]
+    else:
+      c = float(c)
+      ms = [hermite.m_c(k, xs, ps, c) for k in range(lxs)]
+    func = hermite.Hermite(xs, ps, ms)
+    return make_symm_wrapper(func, state.resolve_d(cfg, "symmetric", 0))
+  funcParser.add("hermite", hermite)
+
   def get_func(cfg, state, **kwargs):
     op = state.resolve(cfg, "func", **kwargs)
     if is_str_type(op):
