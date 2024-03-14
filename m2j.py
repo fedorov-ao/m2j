@@ -358,6 +358,161 @@ def clear_value_tag(d):
   return remove_value_tag(d) if is_dict_type(d) and has_value_tag(d) else d
 
 
+import pymatrix27
+
+def fill_ols_matrix(matrix, samples, degree, scratch=None, get_sample=None):
+  '''
+  Fill lsq matrix.
+  Argumets:
+    matrix - output parameter. row-based matrix (m[i][j] is item in row i and column j)
+    samples - sequence of sample value pairs ((x, y))
+    degree - degree of polynomial
+    scratch - list used as scratch space. Can be None, if not len(samples) == len(scratch)
+  '''
+  if get_sample is None:
+    def gs(samples, i, k):
+      return samples[i][k]
+    get_sample = gs
+  #i is row, j is column
+  sentinel = degree + 1
+  n = len(samples)
+  if scratch is None:
+    scratch = [get_sample(samples, i, 0) for i in range(n)]
+  else:
+    ls = len(scratch)
+    if ls < n:
+      raise ValueError("scrath space and samples have unequal length({} and {})".format(ls, n))
+    for i in range(n):
+      scratch[i] = get_sample(samples, i, 0)
+  scratchPow = [1]
+  def scratchUp():
+    for i in range(n):
+      scratch[i] *= get_sample(samples, i, 0)
+    scratchPow[0] += 1
+  #fill zero row and last column
+  matrix[0][0] = n
+  matrix[0][sentinel] = sum( (get_sample(samples, i, 1) for i in range(n)) )
+  for j in range(1, sentinel):
+    matrix[0][j] = sum(scratch)
+    matrix[j][sentinel] = sum( (get_sample(samples, k, 1) * scratch[k] for k in range(n)) )
+    scratchUp()
+  assert scratchPow[0] == degree + 1, scratchPow[0]
+  #fill subsequent rows by shifting left and copying; then computing last sum
+  for i in range(1, sentinel):
+    for j in range(0, sentinel - 1):
+      matrix[i][j] = matrix[i - 1][j + 1]
+    matrix[i][sentinel - 1] = sum(scratch)
+    scratchUp()
+  assert scratchPow[0] == 2 * degree + 1, scratchPow[0]
+
+
+def make_ols_matrix(samples, degree, scratch=None, get_sample=None):
+  matrix = pymatrix27.Matrix(degree+1, degree+2)
+  fill_ols_matrix(matrix, samples, degree, scratch, get_sample)
+  return matrix
+
+
+def extract_poly_coeffs(coeffs, matrix, degree):
+  '''
+  Extract polynomial coefficients from solved lsq matrix.
+  Argumets:
+    coeffs - output parameter. [b0, b1, b2, ...], where number is power of argument (so b0 is free member)
+    matrix - solved lsq matrix, row-based (m[i][j] is item in row i and column j)
+    degree - degree of polynomial
+  '''
+  for k in range(len(coeffs)):
+    coeffs[k] = 0.0
+  sentinel = degree + 1
+  #i is row, j is column
+  for j in range(sentinel):
+    for i in range(sentinel):
+      if abs(matrix[i][j] - 1.0) < 1e-4:
+        coeffs[i] = matrix[i][sentinel]
+        break
+
+
+def calc_poly(x, coeffs, degree):
+  '''
+  Compute value of polynomial with _degree_ and _coeffs_ for _x_.
+  '''
+  if len(coeffs) < degree + 1:
+    raise ArgumentError
+  r, xx = coeffs[0], 1.0
+  for i in range(1, degree + 1):
+    xx *= x
+    r += coeffs[i] * xx
+  return r
+
+
+class PolynomialApproximator:
+  logger = logger.getChild("PolynomialApproximator")
+
+  def calc(self, x):
+    self.update_()
+    if self.currentDegree_ is None:
+      return None
+    else:
+      x = self.conv_x_(self.buffer_, x)
+      return calc_poly(x, self.coeffs_, self.currentDegree_)
+
+  def append(self, x, y):
+    self.buffer_.append((x,y))
+    self.dirty_ = True
+
+  def replace(self, x, y):
+    i = None
+    for j in range(len(self.buffer_)):
+      if self.buffer_[j] == x:
+        i = j
+        break
+    if i is None:
+      raise KeyError
+    self.buffer_[i] = (x,y)
+    self.dirty_ = True
+
+  def clear(self):
+    self.buffer_.clear()
+    assert(len(self.buffer_) == 0)
+    for i in range(len(self.coeffs_)):
+      self.coeffs_[i] = 0.0
+    for i in range(len(self.scratch_)):
+      self.scratch_[i] = 0.0
+    #have to clear the matrix, because rref() operates on the whole matrix
+    #even if it is partially filled when currentDegree_ < degree_
+    for i in range(self.degree_+1):
+      for j in range(self.degree_+2):
+        self.matrix_[i][j] = 0.0
+    self.currentDegree_ = None
+    self.dirty_ = False
+
+  def __init__(self, degree, numSamples, get_sample=None, conv_x=None):
+    import collections
+    self.degree_, self.currentDegree_ = degree, None
+    if conv_x is None:
+      def cx(samples, x):
+        return x
+      conv_x = cx
+    self.get_sample_, self.conv_x_ = get_sample, conv_x
+    self.matrix_ = pymatrix27.Matrix(degree+1, degree+2)
+    self.coeffs_ = [0.0 for i in range(degree+1)]
+    self.buffer_ = collections.deque(maxlen=numSamples)
+    self.scratch_ = [0.0 for i in range(numSamples+1)]
+    self.dirty_ = False
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: created".format(self))
+
+  def update_(self):
+    if self.dirty_ == False:
+      return
+    self.currentDegree_ = min(self.degree_, len(self.buffer_)-1)
+    fill_ols_matrix(self.matrix_, self.buffer_, self.currentDegree_, self.scratch_, self.get_sample_)
+    self.matrix_ = self.matrix_.rref()
+    extract_poly_coeffs(self.coeffs_, self.matrix_, self.currentDegree_)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: coeffs: {}".format(self, self.coeffs_[:self.currentDegree_]))
+    self.dirty_ == False
+
+
 class ParserState:
   logger = logger.getChild("ParserState")
 
@@ -2971,6 +3126,68 @@ class RateSettingAxis(ProbingAxisMixin):
     self.v_ = 0.0
 
 
+#Filters
+class ExpFilter:
+  def calc(self, y, x=None):
+    if self.y_ is None:
+      self.y_ = y
+    else:
+      self.y_ = self.weight_ * y + (1.0 - self.weight_) * self.y_
+    return self.y_
+
+  def reset(self):
+    self.y_ = None
+
+  def __init__(self, weight=1.0):
+    self.weight_, self.y_ = weight, None
+
+
+class PolyApproxFilter:
+  def calc(self, y, x):
+    self.approx_.append(x, y)
+    ddx = x - self.delay_
+    return self.approx_.calc(ddx)
+
+  def reset(self):
+    self.approx_.clear()
+
+  def __init__(self, degree, numSamples, delay=0.0):
+    #sample is [timestamp, axis_value]
+    #for numerical stability sample is converted in-place to [dt, axis_value]
+    #when computing polynomial coeffs in PolynomialApproximator
+    #dt is timestamp - oldest_timestamp_in_samples
+    def get_sample(samples, i, k):
+      r = samples[i][k]
+      if k == 0:
+        r -= samples[0][0]
+      return r
+    def conv_x(samples, x):
+      if len(samples) == 0:
+        raise IndexError("samples buffer is empty, so cannot adjust x")
+      return x - samples[0][0]
+    self.approx_ = PolynomialApproximator(degree, numSamples, get_sample, conv_x)
+    self.delay_ = delay
+
+
+class FilterOp:
+  def calc(self, value, timestamp):
+    if self.next_ is not None:
+      value = self.next_.calc(value, timestamp)
+    assert self.filter_ is not None
+    return self.filter_.calc(value, timestamp)
+
+  def reset(self):
+    if self.next_ is not None:
+      self.next_.reset()
+    assert self.filter_ is not None
+    self.filter_.reset()
+
+  def __init__(self, filter_, next_=None):
+    if filter_ is None:
+      raise ValueError("filter must not be None")
+    self.next_, self.filter_ = next_, filter_
+
+
 #Curves
 class NoopCurve:
   def move_by(self, x, timestamp):
@@ -3221,6 +3438,17 @@ class FuncOp:
     pass
   def __init__(self, func):
     self.func_ = func
+
+
+class ReturnValueInputOp:
+  def calc(self, value, timestamp=None):
+    return value
+
+  def reset(self):
+    pass
+
+  def __init__(self):
+    pass
 
 
 #delta ops
@@ -6263,6 +6491,23 @@ def make_parser():
       op = state.get("parser")("func", cfg, state)
     return op
 
+  #Filters
+  filterParserKeyOp = lambda cfg,state : get_nested(cfg, "type")
+  filterParser = IntrusiveSelectParser(keyOp=filterParserKeyOp, parser=SelectParser())
+  mainParser.add("filter", filterParser)
+
+  def parseExpFilter(cfg, state):
+    weight = state.resolve(cfg, "weight")
+    return ExpFilter(weight)
+  filterParser.add("exp", parseExpFilter)
+
+  def parsePolyFilter(cfg, state):
+    degree = state.resolve(cfg, "degree")
+    numSamples = state.resolve(cfg, "numSamples")
+    delay = state.resolve_d(cfg, "delay", 0.0)
+    return PolyApproxFilter(degree, numSamples, delay)
+  filterParser.add("poly", parsePolyFilter)
+
   #Curves
   curveParserKeyOp=lambda cfg,state : get_nested(cfg, "curve")
   #because curve cfg nodes are fuzed with action (i.e. move) cfg nodes,
@@ -6411,9 +6656,23 @@ def make_parser():
     else:
       deadzone = state.resolve_d(cfg, "dynamic.deadzone", 0.0)
     inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, deadzone)
+    filterCfg = state.resolve_d(cfg, "filter", None)
+    if filterCfg is not None:
+      filter_ = state.get("parser")("filter", filterCfg, state)
+      inputDeltaDOp = FilterOp(filter_, inputDeltaDOp)
     inputDeltaDOp = makeSensModOp(cfg, state, inputDeltaDOp)
     inputDeltaDDOp = DistanceDeltaFromDeltaOp(inputDeltaDOp)
     return inputDeltaDDOp
+
+  def makeStaticFilterCurve(bottom, staticCfg, state):
+    staticFilterCfg = get_nested_d(staticCfg, "filter", None)
+    if staticFilterCfg is not None:
+      filter_ = state.get("parser")("filter", staticFilterCfg, state)
+      filterOp = FilterOp(filter_, None)
+      filterCurve = TransformAbsChainCurve(next=None, inputOp=ReturnValueInputOp(), outputOp=filterOp, resetOnMoveAxis=True)
+      bottom.set_next(filterCurve)
+      bottom = filterCurve
+    return bottom
 
   def parseAccelCurve(cfg, state):
     #axis tracker
@@ -6436,15 +6695,20 @@ def make_parser():
       accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
-    #transform
+    #accumulate, filter, and transform
     staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
+      #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
+      bottom = relToAbsChainCurve
+      #filter
+      bottom = makeStaticFilterCurve(bottom, staticCfg, state)
+      #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
-      relToAbsChainCurve.set_next(staticChainCurve)
+      bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
@@ -6475,13 +6739,18 @@ def make_parser():
       accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=dynamicOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
-    #accumulate and transform
+    #accumulate, filter, and transform
     staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
       #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
       bottom.set_next(relToAbsChainCurve)
       bottom = relToAbsChainCurve
+      #filter
+      #cannot include filter op in staticOutputOp of the next curve,
+      #because staticInputOp calls staticOutputOp to recalculate input value,
+      #and this will throw off filter
+      bottom = makeStaticFilterCurve(bottom, staticCfg, state)
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
