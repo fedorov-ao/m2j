@@ -4595,6 +4595,139 @@ class SwallowSource:
     pass
 
 
+class FreePIEHeadTrackerIDEV:
+  """
+  Input device that recieves orientation data sent over network
+  from Android smartphone by FreePIE IMU app and translates them
+  to absolute or relative events.
+  FreePIE IMU is included into Opentrack distribution:
+  https://github.com/opentrack/opentrack/blob/master/contrib/freepie-udp/FreePIE_IMU_Android9.apk
+  Angles are measured in degrees, ABS/REL_RX is yaw, ABS/REL_RY is pitch, ABS/REL_RZ is roll.
+  """
+
+  MODE_ABS = 0
+  MODE_REL = 1
+
+  logger = logger.getChild("FreePIEHeadTrackerIDEV")
+
+  def read_one(self):
+    relAxesIds = (codes.REL_RX, codes.REL_RY, codes.REL_RZ)
+    absAxesIds = (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ)
+    assert self.lo_ == len(relAxesIds) and self.lo_ == len(absAxesIds)
+    for i in range(self.lo_):
+      new = self.orient_[i]
+      if new is None:
+        continue
+      type_, code, value = None, None, None
+      mode = self.mode_
+      if mode == self.MODE_ABS:
+        #send abs event
+        type_, code, value = codes.EV_ABS, absAxesIds[i], new
+      elif mode == self.MODE_REL:
+        #send rel event
+        old = self.oldOrient_[i]
+        self.oldOrient_[i] = new
+        #new == old covers case when both are None
+        if new == old:
+          continue
+        elif old is None:
+          continue
+        type_, code, value = codes.EV_REL, relAxesIds[i], new - old
+        if abs(value) >= 180.0:
+          value += -1.0 * sign(value) * 360.0
+      else:
+        assert False, mode
+      self.orient_[i] = None
+      event = InputEvent(type_, code, value, self.timestamp_, self.idev_, None)
+      return event
+    return None
+
+  def swallow(self, s):
+    pass
+
+  def update(self, tick, ts):
+    while True:
+      orient = self.get_orient_()
+      if orient is None:
+        return
+      lo = len(orient)
+      assert lo == self.lo_
+      for i in range(lo):
+        self.orient_[i] = orient[i]
+      self.timestamp_ = ts
+
+  def __init__(self, idev, address, from_=None, mode=1):
+    """
+    Arguments:
+      idev - idev name or hash
+      address - address to bind to: (ip, port)
+        ip is str, can be empty
+        port is int
+      from_ - process packets sent only from here: (ip, port) or None
+        ip is str
+        port is int, can be None
+      mode - MODE_ABS for absolute events, MODE_REL for relative
+    """
+    self.sock_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    self.sock_.bind(address)
+    self.sock_.setblocking(0)
+    self.from_ = from_
+    self.idev_ = idev
+    self.mode_ = mode
+    self.orient_ = [None, None, None]
+    self.oldOrient_ = [None, None, None]
+    self.timestamp_ = time.time()
+    self.lo_ = len(self.orient_)
+
+  def get_orient_(self):
+    def get_fmt_and_off(data):
+      FLAGS_RAW = 1 << 0
+      FLAGS_ORIENT = 1 << 1
+      fmtHeader = "<xB"
+      szHeader = struct.calcsize(fmtHeader)
+      assert szHeader == 2
+      fmtPayloadShort = "<3f"
+      fmtPayloadLong = "<12f"
+      flags = struct.unpack_from(fmtHeader, data)[0]
+      fmt, i = None, 0
+      if flags == FLAGS_RAW:
+        pass
+      elif flags == FLAGS_RAW | FLAGS_ORIENT:
+        fmt, i = fmtPayloadLong, 9
+      elif flags == FLAGS_ORIENT:
+        fmt, i = fmtPayloadShort, 0
+      else:
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("Unknown flags: {}".format(flags))
+      return (fmt, i, szHeader)
+
+    szData = 50
+    while True:
+      try:
+        data, addr = self.sock_.recvfrom(szData)
+      except socket.error:
+        return None
+      if data is None:
+        return None
+      if self.from_ is not None:
+        ipMatch = addr[0] == self.from_[0]
+        portMatch = addr[1] == self.from_[1] if self.from_[1] is not None else True
+        if not (ipMatch and portMatch):
+          if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("skipping packet from {}".format(addr))
+          continue
+      fmt, off, szHeader = get_fmt_and_off(data)
+      if fmt is None:
+        return None
+      unpacked = struct.unpack_from(fmt, data, szHeader)
+      if unpacked is None:
+        return None
+      import math
+      radToDeg = 180.0 / math.pi
+      orient = tuple(radToDeg * o for o in unpacked[off:])
+      return orient
+
+
 class Opentrack:
   """Opentrack head movement emulator. Don't forget to call send()!"""
 
@@ -8355,6 +8488,36 @@ def make_parser():
     return key
   idevParser = IntrusiveSelectParser(keyOp=idevParserKeyOp, parser=SelectParser())
   mainParser.add("idev", idevParser)
+
+  def parseFreePIEHeadTrackerIDEV(cfg, state):
+    idevName = state.resolve(cfg, "idev")
+    idevHash = register_dev(idevName)
+    address = state.resolve(cfg, "address")
+    i = address.find(":")
+    if i == -1:
+      #just port
+      address = ("", int(address))
+    else:
+      #ip and port
+      address = (address[:i], int(address[i + 1:]))
+    from_ = state.resolve_d(cfg, "from", None)
+    if from_ is not None:
+      i = from_.find(":")
+      if i == -1:
+        from_ = (from_, None)
+      else:
+        from_ = (from_[:i], int(from_[i + 1:]))
+    mode = state.resolve_d(cfg, "mode", "relative")
+    if mode == "relative":
+      mode = FreePIEHeadTrackerIDEV.MODE_REL
+    elif mode == "absolute":
+      mode = FreePIEHeadTrackerIDEV.MODE_ABS
+    else:
+      raise RuntimeError("invalid mode: {}".format(mode))
+    idev = FreePIEHeadTrackerIDEV(idevHash, address, from_, mode)
+    state.get("main").add_to_updated(lambda tick,ts : idev.update(tick, ts))
+    return idev
+  idevParser.add("freepie", parseFreePIEHeadTrackerIDEV)
 
   def odevParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "odev", None)
