@@ -3938,6 +3938,268 @@ class TransformAbsChainCurve:
       self.dirty_ = False
 
 
+class UpdatedChainCurve:
+  logger = logger.getChild("UpdatedChainCurve")
+
+  """Moves next curve to desired value during periodic updates."""
+  MODE_RELATIVE = 0
+  MODE_ABSOLUTE = 1
+
+  def move_by(self, x, timestamp):
+    """Adjusts desired value by x."""
+    self.desiredValue_ = self.next_.probe_by(x)
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move_by(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(self, x, timestamp, self.desiredValue_))
+    return self.desiredValue_
+
+  def move(self, x, timestamp):
+    """Sets desired value to x."""
+    self.desiredValue_ = self.next_.probe(x)
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(self, x, timestamp, self.desiredValue_))
+    return self.desiredValue_
+
+  def probe_by(self, x):
+    """
+    Probes whether can move this curve by x without actually moving it.
+    Returns:
+      The value this curve can move to.
+    """
+    return self.next_.probe_by(x)
+
+  def probe(self, x):
+    """
+    Probes whether can move this curve to x without actually moving it.
+    Returns:
+      The value this curve can move to.
+    """
+    return self.next_.probe(x)
+
+  def reset(self):
+    self.op_.reset()
+    self.next_.reset()
+    self.desiredValue_ = self.next_.get_value()
+
+  def on_move_axis(self, axis, old, new):
+    if self.busy_ == True:
+      return
+    self.next_.on_move_axis(axis, old, new)
+    self.desiredValue_ = self.next_.get_value()
+    self.op_.reset()
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis(): new desired:{: 6.3f}".format(self, self.desiredValue_))
+
+  def get_value(self):
+    return self.desiredValue_
+
+  def update(self, tick, timestamp):
+    if self.state_ == False:
+      return
+    currentValue = self.next_.get_value()
+    desiredValue = self.desiredValue_
+    if abs(currentValue - desiredValue) < 1e-6:
+      return
+    newValue = self.op_.calc(current=currentValue, desired=desiredValue, tick=tick, timestamp=timestamp)
+    if self.head_ is not None:
+      self.head_().set_busy(True)
+    self.busy_ = True
+    try:
+      if self.mode_ == self.MODE_RELATIVE:
+        self.next_.move_by(newValue-currentValue, timestamp)
+      elif self.mode_ == self.MODE_ABSOLUTE:
+        self.next_.move(newValue, timestamp)
+      else:
+        assert False, "Bad mode"
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): curr:{: 6.3f}; des:{: 6.3f}; new:{: 6.3f}; next:{: 6.3f}".format(self, currentValue, desiredValue, newValue, self.next_.get_value()))
+    finally:
+      self.busy_ = False
+      if self.head_ is not None:
+        self.head_().set_busy(False)
+
+  def set_next(self, next):
+    self.next_ = next
+    if self.next_ is not None:
+      self.desiredValue_ = self.next_.get_value()
+
+  def set_head(self, head):
+    self.head_ = weakref.ref(head)
+
+  def set_state(self, state):
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.set_state(): state:{}".format(self, state))
+    self.state_ = state
+    if state == True and self.next_ is not None:
+      self.desiredValue_ = self.next_.get_value()
+
+  def __init__(self, head, next, op, mode=0):
+    """
+    Arguments:
+      head - AxisTrackerChainCurve instance at the top of this curve chain
+      next - next curve in chain
+      op - used to compute new value for next axis
+      mode - how next curve is moved: MODE_RELATIVE or MODE_ABSOLUTE
+    """
+    self.head_ = weakref.ref(head)
+    self.set_next(next)
+    self.op_ = op
+    self.mode_ = mode
+    self.state_ = True
+    self.desiredValue_ = 0.0
+    self.busy_ = False
+
+
+class DistanceUpdatedChainCurveOp:
+  logger = logger.getChild("DistanceUpdatedChainCurveOp")
+
+  def calc(self, **kwargs):
+    current = kwargs.get("current")
+    desired = kwargs.get("desired")
+    tick = kwargs.get("tick")
+    delta = desired - current
+    s, absDelta = sign(delta), abs(delta)
+    if self.desired_ is None:
+      self.desired_ = desired
+    desiredSpeed = (desired - self.desired_) / tick
+    self.desired_ = desired
+    if self.current_ is None:
+      self.current_ = current
+    currentSpeed = (current - self.current_) / tick
+    self.current_ = current
+    speed = self.func_(absDelta)
+    assert speed >= 0.0
+    if s != self.s_ or (absDelta < 0.0001 and abs(desiredSpeed) < 0.0001):
+      self.speed_, self.s_ = 0.0, s
+      self.desired_, self.current_ = None, None
+    if self.keepSpeed_ == True:
+      if speed < self.speed_:
+        speed = self.speed_
+      else:
+        self.speed_ = speed
+    step = speed*tick
+    r = absDelta if absDelta < step else step
+    r *= s
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{}.calc(): desired: {:0.3f}; current: {:0.3f}; dspeed: {:0.3f}; cspeed: {:0.3f}; speed: {:0.3f}; r: {:0.3f}"\
+        .format(self, desired, current, desiredSpeed, currentSpeed, speed, r)
+      )
+    return r + current
+
+  def reset(self):
+    self.speed_, self.s_ = 0.0, 0
+    self.desired_, self.current_ = None, None
+
+  def __init__(self, func, keepSpeed=False):
+    self.func_, self.keepSpeed_ = func, keepSpeed
+    self.speed_, self.s_ = 0.0, 0
+    self.desired_, self.current_ = None, None
+
+
+class AccelUpdatedChainCurveOp:
+  logger = logger.getChild("AccelUpdatedChainCurveOp")
+
+  def calc(self, **kwargs):
+    current = kwargs.get("current")
+    desired = kwargs.get("desired")
+    tick = kwargs.get("tick")
+    r = desired
+    st = "hit"
+    delta = desired - current
+    sDelta, absDelta = sign(delta), abs(delta)
+    if absDelta != 0.0:
+      if self.sDelta_ is None:
+        self.sDelta_ = sDelta
+      if self.sDelta_ != sDelta:
+        self.speed_, self.acceleration_, self.sDelta_ = self.minSpeed_, 0.0, sDelta
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} flip".format(self))
+      #Using internally stored speed, because cannot depend on speed
+      #that is based on desired and current ((desired - current) / tick)
+      speed, acceleration = self.speed_, self.accelerationFunc_(absDelta)
+      assert acceleration >= 0.0
+      if self.acceleration_ == 0.0:
+        self.acceleration_ = acceleration
+      if self.keepAcceleration_ == True:
+        if acceleration < self.acceleration_:
+          acceleration = self.acceleration_
+        else:
+          self.acceleration_ = acceleration
+      st = "acc"
+      #need to decelerate?
+      assert self.minSpeed_ >= 0.0
+      dspeed = speed - self.minSpeed_
+      deceleration = 0.0
+      if self.decelerationFunc_ is not None:
+        deceleration = self.decelerationFunc_(absDelta)
+      if deceleration != 0.0 and dspeed > 0.0001:
+        assert deceleration > 0.0
+        timeToStop = dspeed / deceleration
+        deltaToStop = dspeed*timeToStop - 0.5*deceleration*timeToStop**2
+        if abs(deltaToStop) > absDelta:
+          #calculate actual deceleration
+          timeToStop = 2.0*absDelta / dspeed
+          deceleration = dspeed / timeToStop
+          acceleration = -deceleration
+          st = "dcc"
+      #apply (positive or negative) acceleration
+      assert speed >= 0.0
+      speed += acceleration*tick
+      #limit max speed if needed
+      assert self.maxSpeed_ >= 0.0
+      if self.maxSpeed_ != 0.0 and speed > self.maxSpeed_:
+        speed = self.maxSpeed_
+      if self.desired_ is None:
+        self.desired_ = desired
+      absDesiredSpeed = abs(desired - self.desired_) / tick
+      self.desired_ = desired
+      #don't overshoot desired
+      #if self.minSpeed_ > 0.0, speed > 0.0 even if self.deceleration_ > 0.0
+      if speed > 0.0:
+        absStep = speed*tick
+        if absDelta > absStep:
+          r = sign(delta)*absStep + current
+          self.speed_ = speed
+        else:
+          r = desired
+          if absDesiredSpeed < 0.0001:
+            self.speed_, self.acceleration_ = self.minSpeed_, 0.0
+          st = "clp"
+      else:
+        #can get here only if decelerated too much
+        r = desired
+        self.speed_, self.acceleration_ = self.minSpeed_, 0.0
+        st = "snp"
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} {} speed:{: 6.3f}; accel:{: 6.3f}; curr:{: 6.3f}; desr:{: 6.3f}; r:{: 6.3f}".format(self, st, self.speed_, self.acceleration_, current, desired, r))
+    return r
+
+  def reset(self):
+    self.speed_ = self.minSpeed_
+    self.acceleration_ = 0.0
+    self.sDelta_ = None
+    self.desired_ = None
+
+  def __init__(self, accelerationFunc, decelerationFunc=None, minSpeed=0.0, maxSpeed=0.0, keepAcceleration=False):
+    self.accelerationFunc_ = accelerationFunc
+    self.decelerationFunc_ = decelerationFunc
+    self.minSpeed_ = minSpeed
+    self.maxSpeed_ = maxSpeed
+    self.speed_ = minSpeed
+    self.acceleration_ = 0.0
+    self.keepAcceleration_ = keepAcceleration
+    self.sDelta_ = None
+    self.desired_ = None
+
+
+class SensModUpdatedChainCurveOp:
+  def calc(self, **kwargs):
+    new = self.next_.calc(**kwargs)
+    current = kwargs.get("current")
+    step = new - current
+    step *= self.func_(self.axis_.get())
+    return step + current
+
+  def reset(self):
+    self.next_.reset()
+
+  def __init__(self, next, func, axis):
+    self.next_, self.func_, self.axis_ = next, func, axis
+
+
 class AxisChainCurve:
   logger = logger.getChild("AxisChainCurve")
 
@@ -6674,6 +6936,57 @@ def make_parser():
       bottom = filterCurve
     return bottom
 
+  def makeUpdatedCurve(top, bottom, cfg, state):
+    updatedCfg = get_nested_d(cfg, "updated", None)
+    if updatedCfg is not None:
+      op = None
+      opCfg = get_nested_d(updatedCfg, "op")
+      opType = state.resolve(opCfg, "type")
+      if opType == "distance":
+        funcCfg = get_nested_d(opCfg, "func")
+        func = state.get("main").get("parser")("func", funcCfg, state)
+        keepSpeed = state.resolve_d(opCfg, "keepSpeed", False)
+        op = DistanceUpdatedChainCurveOp(func, keepSpeed)
+      elif opType == "accel":
+        accelerationCfg = state.resolve(opCfg, "acceleration")
+        accelerationFunc = None
+        if is_dict_type(accelerationCfg):
+          accelerationFunc = state.get("parser")("func", accelerationCfg, state)
+        else:
+          acceleration = float(accelerationCfg)
+          accelerationFunc = lambda x : acceleration
+        decelerationCfg = state.resolve_d(opCfg, "deceleration", 0.0)
+        decelerationFunc = None
+        if is_dict_type(decelerationCfg):
+          decelerationFunc = state.get("parser")("func", decelerationCfg, state)
+        else:
+          deceleration = float(decelerationCfg)
+          decelerationFunc = lambda x : deceleration
+        minSpeed = float(state.resolve_d(opCfg, "minSpeed", 0.0))
+        maxSpeed = float(state.resolve_d(opCfg, "maxSpeed", 0.0))
+        keepAcceleration = state.resolve_d(opCfg, "keepAcceleration", False)
+        op = AccelUpdatedChainCurveOp(accelerationFunc, decelerationFunc, minSpeed, maxSpeed, keepAcceleration)
+      else:
+        raise RuntimeError("Unknown op type: '{}'".format(opType))
+      sensModCfg = get_nested_d(updatedCfg, "sensMod")
+      if sensModCfg is not None:
+        sensModAxis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
+        sensModFunc = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
+        op = SensModUpdatedChainCurveOp(op, sensModFunc, sensModAxis)
+      modeName = state.resolve_d(updatedCfg, "mode", "absolute")
+      mode = {
+        "absolute" : UpdatedChainCurve.MODE_ABSOLUTE,
+        "relative" : UpdatedChainCurve.MODE_RELATIVE
+      }.get(modeName.lower())
+      if mode is None:
+        raise RuntimeError("Bad mode: '{}'".format(modeName))
+      updatedChainCurve = UpdatedChainCurve(top, None, op, mode)
+      state.get("main").add_to_updated(lambda tick,ts : updatedChainCurve.update(tick, ts))
+      top.add_stateful(updatedChainCurve)
+      bottom.set_next(updatedChainCurve)
+      bottom = updatedChainCurve
+    return bottom
+
   def parseAccelCurve(cfg, state):
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
@@ -6695,7 +7008,7 @@ def make_parser():
       accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
-    #accumulate, filter, and transform
+    #accumulate, filter, and transform (and update)
     staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
       #accumulate
@@ -6710,6 +7023,8 @@ def make_parser():
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
+      #update
+      bottom = makeUpdatedCurve(top, bottom, cfg, state)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
@@ -6739,7 +7054,7 @@ def make_parser():
       accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=dynamicOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
-    #accumulate, filter, and transform
+    #accumulate, filter, and transform (and update)
     staticCfg = get_nested_d(cfg, "static", None)
     if staticCfg is not None:
       #accumulate
@@ -6757,6 +7072,8 @@ def make_parser():
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
+      #update
+      bottom = makeUpdatedCurve(top, bottom, cfg, state)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
     bottom.set_next(axisChainCurve)
