@@ -6804,8 +6804,8 @@ def make_parser():
     else:
       sensModCfg = get_nested_d(cfg, "dynamic.sensMod", sensModCfg)
     if sensModCfg is not None:
-      axis = state.get_axis_by_full_name(state.resolve(cfg, "sensMod.axis"))
-      func = state.get("parser")("func", get_nested(cfg, "sensMod.func"), state)
+      axis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
+      func = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
       class SensModOp:
         def calc(self, x, timestamp):
           return self.combine_(self.next_.calc(x, timestamp), self.func_(self.axis_.get()))
