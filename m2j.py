@@ -282,17 +282,24 @@ def get_nested_d(d, name, dfault = None, sep = "."):
   if is_str_type(name):
     if len(name) == 0:
       return None
-    tokens = name.split(sep)
+    elif name.find(sep) == -1:
+      pass
+    else:
+      tokens = name.split(sep)
   elif is_list_type(name):
     tokens = name
   else:
     raise ValueError("{} is not str or list".format(name))
   r = dfault
-  for t in tokens:
-    if hasattr(d, "get") == False:
-      d = None
-      break
-    d = d.get(t)
+  def get(d, name):
+    return d.get(name) if hasattr(d, "get") == True else None
+  if tokens is None:
+    d = get(d, name)
+  else:
+    for t in tokens:
+      d = get(d, t)
+      if d is None:
+        break
   if d is not None:
     r = d
   #Fallback
@@ -670,6 +677,8 @@ class ParserState:
 
   def resolve_d(self, d, name, dfault=None, **kwargs):
     v = get_nested_d(d, name, dfault)
+    if v == dfault:
+      return dfault
     return self.deref(v, dfault, **kwargs)
 
   def resolve(self, d, name, **kwargs):
