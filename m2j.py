@@ -4432,15 +4432,18 @@ class AxisLinker:
   """
 
   logger = logger.getChild("AxisLinker")
-  def reset(self):
 
+  def reset(self):
     controlledValue = self.controlledAxis_.get()
     controllingValue = self.controllingAxis_.get()
     desiredControlledValue = self.func_(controllingValue)
     self.offset_ = controlledValue - desiredControlledValue
     self.oldControlledValue_ = None
     self.dirty_ = False
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} : after reset: controlling: {:+0.3f}; controlled: {:+0.3f}; desired controlled: {:+0.3f}; offset: {:+0.3f}".format(self, controllingValue, controlledValue, desiredControlledValue, self.offset_))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{}: after reset: controlling: {:+0.3f}; controlled: {:+0.3f}; desired controlled: {:+0.3f}; offset: {:+0.3f}"
+        .format(self, controllingValue, controlledValue, desiredControlledValue, self.offset_))
 
   def set_state(self, state):
     self.state_ = state
@@ -4471,32 +4474,44 @@ class AxisLinker:
       if axis == self.controlledAxis_:
         if self.oldControlledValue_ is None:
           self.oldControlledValue_ = old
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} : Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}".format(self, new, self.oldControlledValue_))
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug(
+            "{}: Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}"
+            .format(self, new, self.oldControlledValue_))
       elif axis == self.controllingAxis_:
         if self.oldControlledValue_ is not None:
           self.offset_ += self.controlledAxis_.get() - self.oldControlledValue_
           self.oldControlledValue_ = None
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} : Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}".format(self, new, self.offset_))
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug(
+            "{}: Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}"
+            .format(self, new, self.offset_))
         cv = self.func_(new)
         try:
           self.busy_= True
           desired = cv + self.offset_
           actual = self.controlledAxis_.move(desired, relative=False)
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} : Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}".format(self, self.controlledAxis_.get(), desired, actual))
-          if actual != desired:
+          if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(
+              "{}: Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}"
+              .format(self, self.controlledAxis_.get(), desired, actual))
+          if actual != desired and self.adjustOffset_ == True:
             self.offset_ -= (desired - actual)
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} : offset after move {:+0.3f}".format(self, self.offset_))
+          if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("{}: offset after move {:+0.3f}".format(self, self.offset_))
         finally:
           self.busy_= False
 
-  def __init__(self, controllingAxis, controlledAxis, func):
-    self.controllingAxis_, self.controlledAxis_, self.func_ = controllingAxis, controlledAxis, func
+  def __init__(self, controllingAxis, controlledAxis, func, adjustOffset=True):
+    self.controllingAxis_, self.controlledAxis_, = controllingAxis, controlledAxis
+    self.func_, self.adjustOffset_ = func, adjustOffset
     self.oldControlledValue_, self.offset_, self.busy_, self.dirty_, self.state_  = None, 0.0, False, False, False
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{} created".format(self))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
-    pass
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{} destroyed".format(self))
 
   def update_(self):
     if self.dirty_ == True:
@@ -6933,7 +6948,10 @@ def make_parser():
     func = get_func(cfg, state, setter=funcSetter)
     fnControllingAxis = state.resolve(cfg, "leader")
     controllingAxis = state.get_axis_by_full_name(fnControllingAxis)
-    linker = AxisLinker(controllingAxis, controlledAxis, func)
+    adjustOffset = state.resolve_d(cfg, "adjustOffset", True)
+    linker = AxisLinker(controllingAxis, controlledAxis, func, adjustOffset)
+    s = state.resolve_d(cfg, "state", False)
+    linker.set_state(s)
     funcSetter.axisLinker = linker
     controlledAxis.add_listener(linker)
     controllingAxis.add_listener(linker)
