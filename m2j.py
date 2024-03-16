@@ -3084,6 +3084,11 @@ class ReportingAxis(ProbingAxisMixin):
     except ValueError:
       raise RuntimeError("Listener {} not registered".format(listener))
 
+  def remove_all_listeners(self):
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
+    self.listeners_ = []
+
   def __init__(self, next):
     assert(next is not None)
     self.next_, self.listeners_ = next, []
@@ -7284,6 +7289,7 @@ def make_parser():
     return curve
   curveParser.add("noop", parseNoopCurve)
 
+  #EP
   def parseBasesDecorator(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
@@ -8589,6 +8595,7 @@ def make_parser():
     j = NullJoystick(values=values, limits=limits)
     return j
   odevParser.add("null", parseNullJoystickODev)
+  odevParser.add("virtual", parseNullJoystickODev)
 
   def parseExternalODev(cfg, state):
     name = state.resolve(cfg, "name")
