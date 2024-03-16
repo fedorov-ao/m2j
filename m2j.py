@@ -6728,14 +6728,16 @@ def make_parser():
           return self.call_(x)
         else:
           return self.symm_(self.call_, x)
-      def __init__(self, f, xf, yf, xo, yo, symm):
+      def __init__(self, f, xf, yf, xo, yo, ymin, ymax, symm):
         self.f_ = f
         self.xf_, self.yf_ = xf, yf
         self.xo_, self.yo_ = xo, yo
+        self.ymin_, self.ymax_ = ymin, ymax
         self.symm_ = symm
       def call_(self, x):
         x = self.xo_ + self.xf_ * x
         y = self.yo_ + self.yf_ * self.f_(x)
+        y = min(max(y, self.ymin_), self.ymax_)
         return y
     def wrapper(cfg, state):
       f = func(cfg, state)
@@ -6743,6 +6745,8 @@ def make_parser():
       yf = state.resolve_d(cfg, "yfactor", 1.0)
       xo = state.resolve_d(cfg, "xoffset", 0.0)
       yo = state.resolve_d(cfg, "yoffset", 0.0)
+      ymin = state.resolve_d(cfg, "ymin", -float("inf"))
+      ymax = state.resolve_d(cfg, "ymax", float("inf"))
       symm = state.resolve_d(cfg, "symmetric", 0)
       if symm in (1, "x"):
         symm = lambda f,x : f(abs(x))
@@ -6750,7 +6754,7 @@ def make_parser():
         symm = lambda f,x : sign(x) * f(abs(x))
       else:
         symm = None
-      return Wrapper(f, xf, yf, xo, yo, symm)
+      return Wrapper(f, xf, yf, xo, yo, ymin, ymax, symm)
     return wrapper
 
   def make_tracker(cfg, state):
