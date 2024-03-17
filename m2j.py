@@ -7144,7 +7144,7 @@ def make_parser():
     inputDeltaDDOp = DistanceDeltaFromDeltaOp(inputDeltaDOp)
     return inputDeltaDDOp
 
-  def makeStaticFilterCurve(bottom, staticCfg, state):
+  def makeStaticFilterCurve(top, bottom, staticCfg, state):
     staticFilterCfg = get_nested_d(staticCfg, "filter", None)
     if staticFilterCfg is not None:
       filter_ = state.get("parser")("filter", staticFilterCfg, state)
@@ -7234,7 +7234,7 @@ def make_parser():
       bottom.set_next(relToAbsChainCurve)
       bottom = relToAbsChainCurve
       #filter
-      bottom = makeStaticFilterCurve(bottom, staticCfg, state)
+      bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
@@ -7283,7 +7283,7 @@ def make_parser():
       #cannot include filter op in staticOutputOp of the next curve,
       #because staticInputOp calls staticOutputOp to recalculate input value,
       #and this will throw off filter
-      bottom = makeStaticFilterCurve(bottom, staticCfg, state)
+      bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
