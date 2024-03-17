@@ -4368,11 +4368,18 @@ class AxisTrackerChainCurve:
   def add_stateful(self, stateful):
     self.statefuls_.append(stateful)
 
+  def get(self, name):
+    return self.objects_.get(name)
+
+  def add(self, name, obj):
+    self.objects_[name] = obj
+
   def __init__(self, next):
     self.next_ = next
     self.busy_ = False
     self.state_ = True
     self.statefuls_ = []
+    self.objects_ = {}
 
 
 class OffsetAbsChainCurve:
