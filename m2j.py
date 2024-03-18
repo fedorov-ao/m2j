@@ -6186,7 +6186,12 @@ class Info:
       odev = self.get_odev_(output) if is_str_type(output) else output
       if odev is None:
         return
-      tcAxiss = odev.get_supported_axes()
+      tcAxiss = None
+      nAxiss = kwargs.get("axes")
+      if nAxiss is not None:
+        tcAxiss = [fn2tc(n) for n in nAxiss]
+      else:
+        tcAxiss = odev.get_supported_axes()
       tcAxiss.sort(key=lambda tc : tc.code)
       for tcAxis in tcAxiss:
         namesList=tc2ns(*tcAxis)
@@ -8999,7 +9004,7 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseAxesValuesWidget(cfg, state):
-    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev",), state))
+    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev", "axes"), state))
     odevs = state.get("main").get("odevs")
     kwargs["getODev"] = lambda name : odevs.get(name, None)
     widget = Info.AxesValuesWidget(**kwargs)
