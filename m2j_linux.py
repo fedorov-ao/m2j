@@ -69,9 +69,9 @@ class ExternalEvdevJoystick:
       return self.move_axis_to(tcAxis, v)
 
   def move_axis_by(self, tcAxis, v):
-    desired = self.get_axis_value(tcAxis)+v
+    desired = self.get_axis_value(tcAxis) + v
     actual = self.move_axis_to(tcAxis, desired)
-    return v - (actual - desired)
+    return v - (desired - actual)
 
   def move_axis_to(self, tcAxis, v):
     if tcAxis not in self.axes_:
@@ -217,9 +217,9 @@ class EvdevJoystick:
       return self.move_axis_to(tcAxis, v)
 
   def move_axis_by(self, tcAxis, v):
-    desired = self.get_axis_value(tcAxis)+v
+    desired = self.get_axis_value(tcAxis) + v
     actual = self.move_axis_to(tcAxis, desired)
-    return v - (actual - desired)
+    return v - (desired - actual)
 
   def move_axis_to(self, tcAxis, v):
     axisData = self.axesDatum_.get(tcAxis, None)

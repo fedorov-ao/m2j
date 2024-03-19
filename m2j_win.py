@@ -50,13 +50,13 @@ class PPJoystick:
   def move_axis(self, tcAxis, value, relative):
     if tcAxis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(tcAxis))
-    desired = value if not relative else self.get_axis_value(tcAxis)+value
+    desired = value if not relative else self.get_axis_value(tcAxis) + value
     actual = clamp(desired, *self.get_limits(tcAxis))
     self.a_[tcAxis] = actual
     if self.logger.isEnabledFor(logging.DEBUG):
       self.logger.debug("{}: setting axis {} to {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), actual))
     self.dirty_ = True
-    return value - (actual - desired) if relative else actual
+    return value - (desired - actual) if relative else actual
 
   def get_axis_value(self, tcAxis):
     if tcAxis not in self.get_supported_axes():
@@ -180,11 +180,11 @@ class VJoystick:
   def move_axis(self, tcAxis, value, relative):
     if tcAxis not in self.get_supported_axes():
       raise RuntimeError("Axis not supported: {}".format(tcAxis))
-    desired = value if not relative else self.get_axis_value(tcAxis)+value
+    desired = value if not relative else self.get_axis_value(tcAxis) + value
     actual = clamp(desired, *self.get_limits(tcAxis))
     self.a_[tcAxis] = actual
     self.dirty_ = True
-    return value - (actual - desired) if relative else actual
+    return value - (desired - actual) if relative else actual
 
   def get_axis_value(self, tcAxis):
     if tcAxis not in self.get_supported_axes():
@@ -1106,6 +1106,7 @@ class Mouse:
       mi.dwFlags |= MOUSEEVENTF_ABSOLUTE
     if windll.user32.SendInput(1, byref(inpt), sizeof(inpt)) != 1:
       raise WinError()
+    return value
 
   def get_axis_value(self, tcAxis):
     return 0.0
