@@ -22,7 +22,7 @@ import re
 import evdev
 from evdev import UInput, AbsInfo, ecodes
 
-logger = logging.getLogger("m2j_linux")
+logger = get_logger(logging.getLogger(), "m2j_linux")
 
 def code2ecode(code):
   return code
@@ -32,7 +32,7 @@ def ecode2code(code):
 
 
 class ExternalEvdevJoystick:
-  logger = logger.getChild("ExternalEvdevJoystick")
+  logger = get_logger(logger, "ExternalEvdevJoystick")
 
   def __init__(self, js, limits, immediateSyn):
     self.js_ = js
@@ -57,10 +57,10 @@ class ExternalEvdevJoystick:
     for nativeButton in cap.get(ecodes.EV_KEY, ()):
       self.buttons_[ecode2code(nativeButton)] = False
 
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
 
   def move_axis(self, tcAxis, v, relative):
     if relative:
@@ -82,7 +82,8 @@ class ExternalEvdevJoystick:
     nl = self.nlimits_.get(tcAxis, (0.0, 0.0,))
     nv = lerp(v, l[0], l[1], nl[0], nl[1])
     nv = int(nv)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(self, typecode2name(codes.EV_ABS, axis), v, nv))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), v, nv))
     self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nv)
     if self.immediateSyn_ == True:
       self.syn()
@@ -127,7 +128,7 @@ class ExternalEvdevJoystick:
 
 
 class EvdevJoystick2(ExternalEvdevJoystick):
-  logger = logger.getChild("EvdevJoystick2")
+  logger = get_logger(logger, "EvdevJoystick2")
 
   def __init__(self, limits, buttons=None, name=None, phys=None, immediateSyn=True, nativeLimit=32767):
     cap = {}
@@ -160,16 +161,16 @@ class EvdevJoystick2(ExternalEvdevJoystick):
 
     ExternalEvdevJoystick.__init__(self, js=self.js_, limits=limits, immediateSyn=immediateSyn)
 
-    self.logger.debug("{} created".format(self))
+    self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
     if self.js_ is not None:
       self.js_.close()
-    self.logger.debug("{} destroyed".format(self))
+    self.logger.debug("{} destroyed".format(log_loc(self)))
 
 
 class EvdevJoystick:
-  logger = logger.getChild("EvdevJoystick")
+  logger = get_logger(logger, "EvdevJoystick")
 
   class AxisData:
     def __init__(self, limits, nativeLimits=(-32767, 32767), value=0.0, fuzz=0, flat=0, resolution=0):
@@ -202,12 +203,12 @@ class EvdevJoystick:
       name='virtual-joystick'
     self.js_ = UInput(cap, name=name, version=0x3, phys=phys)
 
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
     if self.js_ is not None:
       self.js_.close()
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
 
   def move_axis(self, tcAxis, v, relative):
     if relative:
@@ -229,7 +230,8 @@ class EvdevJoystick:
     axisData.value = v
     nativeValue = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
     nativeValue = int(nativeValue)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(self, tc2ns(*tcAxis), v, nativeValue))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), tc2ns(*tcAxis), v, nativeValue))
     self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nativeValue)
     if self.immediateSyn_ == True:
       self.js_.syn()
@@ -277,7 +279,7 @@ def translate_evdev_event(evdevEvent, idev):
 
 
 class EvdevIDev:
-  logger = logger.getChild("EvdevIDev")
+  logger = get_logger(logger, "EvdevIDev")
 
   def read_one(self):
     if not self.is_ready_():
@@ -289,10 +291,10 @@ class EvdevIDev:
       event = translate_evdev_event(evdevEvent, self.idev_)
       if event is None:
         if self.numEvents_ != 0:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got {} events".format(self, self.numEvents_))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got {} events".format(log_loc(self), self.numEvents_))
           self.numEvents_ = 0
       else:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: read event: {}".format(self, event))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: read event: {}".format(log_loc(self), event))
         self.numEvents_ += 1
       return event
     except (IOError, exceptions.OSError) as e:

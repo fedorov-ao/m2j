@@ -19,7 +19,35 @@ import getopt
 import playsound
 import threading
 
-logger = logging.getLogger("m2j")
+
+def get_func_name():
+  import sys
+  return sys._getframe().f_back.f_code.co_name
+
+
+def log_loc(obj=None):
+  import sys
+  funcName = sys._getframe().f_back.f_code.co_name
+  objInfo = "" if obj is None else "{}(@0x{:x}).".format(obj.__class__.__name__, id(obj))
+  return "{}{}()".format(objInfo, funcName)
+
+
+g_loggers = []
+
+def get_logger(logger, name):
+  l = logger.getChild(name)
+  global g_loggers
+  g_loggers.append(l)
+  return l
+
+def set_loggers_level(level):
+  logging.getLogger().setLevel(level)
+  global g_loggers
+  for logger in g_loggers:
+    logger.setLevel(level)
+
+logger = get_logger(logging.getLogger(), "m2j")
+
 
 class KeyError2(KeyError):
   def __init__(self, key, keys):
@@ -452,7 +480,7 @@ def calc_poly(x, coeffs, degree):
 
 
 class PolynomialApproximator:
-  logger = logger.getChild("PolynomialApproximator")
+  logger = get_logger(logger, "PolynomialApproximator")
 
   def calc(self, x):
     self.update_()
@@ -506,7 +534,7 @@ class PolynomialApproximator:
     self.scratch_ = [0.0 for i in range(numSamples+1)]
     self.dirty_ = False
     if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: created".format(self))
+      self.logger.debug("{}: created".format(log_loc(self)))
 
   def update_(self):
     if self.dirty_ == False:
@@ -516,12 +544,12 @@ class PolynomialApproximator:
     self.matrix_ = self.matrix_.rref()
     extract_poly_coeffs(self.coeffs_, self.matrix_, self.currentDegree_)
     if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: coeffs: {}".format(self, self.coeffs_[:self.currentDegree_]))
+      self.logger.debug("{}: coeffs: {}".format(hex(log_loc(self)), self.coeffs_[:self.currentDegree_]))
     self.dirty_ == False
 
 
 class ParserState:
-  logger = logger.getChild("ParserState")
+  logger = get_logger(logger, "ParserState")
 
   def push(self, n, v):
     self.stacks_.setdefault(n, [])
@@ -652,7 +680,7 @@ class ParserState:
           compiledExpr = compile(expr, "", "eval")
           def op(v):
             globs = { "v" : v }
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: evaluating {} with {}".format(self, expr, str2(globs)))
+            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: evaluating {} with {}".format(hex(log_loc(self)), expr, str2(globs)))
             return eval(compiledExpr, globs)
           mapping = op
           if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
@@ -1097,7 +1125,7 @@ class ExitException:
 class NullJoystick:
   """Placeholder joystick class."""
 
-  logger = logger.getChild("NullJoystick")
+  logger = get_logger(logger, "NullJoystick")
 
   def __init__(self, values=None, limits=None, buttons=None):
     self.v_ = {}
@@ -1112,10 +1140,10 @@ class NullJoystick:
     if buttons is not None:
       for b,s in buttons.limits():
         self.b_[b] = s
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def move_axis(self, tcAxis, v, relative):
@@ -1331,7 +1359,7 @@ class EventCompressorDevice:
 
 
 class EventSource:
-  logger = logger.getChild("EventSource")
+  logger = get_logger(logger, "EventSource")
 
   def run_once(self):
     events =[]
@@ -1348,7 +1376,7 @@ class EventSource:
     events.sort(key = lambda e : e.timestamp)
     if self.ep_ is not None:
       for event in events:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Sending event: {}".format(self, event))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Sending event: {}".format(log_loc(self), event))
         self.ep_(event)
 
   def set_ep(self, ep):
@@ -1370,10 +1398,10 @@ class EventSource:
 
   def __init__(self, devices, ep=None):
     self.devices_, self.ep_ = devices, ep
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
 
@@ -1438,14 +1466,14 @@ class MoveCurve:
 
 
 class SetJoystickAxis:
-  logger = logger.getChild("SetJoystickAxis")
+  logger = get_logger(logger, "SetJoystickAxis")
 
   def __init__(self, joystick, tcAxis, value):
     self.js_, self.axis_, self.value_ = joystick, tcAxis, value
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def __call__(self, event):
@@ -1595,7 +1623,7 @@ def SetButtonState(odev, button, state):
 class ClickEP:
   """Generates key click input events."""
 
-  logger = logger.getChild("ClickEP")
+  logger = get_logger(logger, "ClickEP")
 
   def __call__(self, event):
     numClicks = 0
@@ -1637,10 +1665,10 @@ class ClickEP:
 
   def __init__(self, clickTime):
     self.next_, self.keys_, self.clickTime_ = None, {}, clickTime
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
 
@@ -1653,7 +1681,7 @@ class HoldEvent(InputEvent):
 class HoldEP:
   """Generates key hold input events."""
 
-  logger = logger.getChild("HoldEP")
+  logger = get_logger(logger, "HoldEP")
 
   KeyDesc = collections.namedtuple("KeyDesc", "idev code modifiers")
   HT = collections.namedtuple("HT", "keyDesc period value num")
@@ -1698,7 +1726,7 @@ class HoldEP:
           keyDesc = kd.keyDesc
           modifiers = None if keyDesc.modifiers is None else list(keyDesc.modifiers)
           event = HoldEvent(keyDesc.code, ht.value, timestamp, keyDesc.idev, modifiers, heldTime)
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: {}".format(self, event))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: {}".format(log_loc(self), event))
           self.next_(event)
         if kd.num > 0:
           kd.num = kd.num - 1
@@ -1721,10 +1749,10 @@ class HoldEP:
 
   def __init__(self):
     self.next_, self.keyData_, self.holdTimes_ = None, [], []
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def match_(self, keyDesc, ht):
@@ -1753,7 +1781,7 @@ def cmp_modifiers(eventModifier, referenceModifier):
 class ModifierEP:
   """Adds modifier keys to input events."""
 
-  logger = logger.getChild("ModifierEP")
+  logger = get_logger(logger, "ModifierEP")
 
   APPEND = 0
   OVERWRITE = 1
@@ -1764,17 +1792,17 @@ class ModifierEP:
     elif event.type == codes.EV_KEY:
       if self.addedModifiers_ is not None:
         em = Modifier(idev=event.idev, code=event.code)
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.__call__(): got: {}".format(self, em))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got: {}".format(log_loc(self), em))
         for am in self.addedModifiers_:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.__call__(): checking against: {}".format(self, am))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: checking against: {}".format(log_loc(self), am))
           if cmp_modifiers(em, am):
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.__call__(): {} matched {}".format(self, em, am))
+            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: {} matched {}".format(log_loc(self), em, am))
             if event.value == 1 and em not in self.currentModifiers_:
               self.currentModifiers_.append(em)
             elif event.value == 0 and em in self.currentModifiers_:
               self.currentModifiers_.remove(em)
           else:
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.__call__(): {} mismatched {}".format(self, em, am))
+            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: {} mismatched {}".format(log_loc(self), em, am))
             pass
 
     if self.next_:
@@ -1842,7 +1870,7 @@ class ScaleEP:
 class ScaleEP2:
   """Scales value of relative and absolute axis input events."""
 
-  logger = logger.getChild("ScaleEP2")
+  logger = get_logger(logger, "ScaleEP2")
 
   def __call__(self, event):
     oldValue = None
@@ -1855,7 +1883,7 @@ class ScaleEP2:
             sens = self.sens_.get(keys[1], 1.0)
           oldValue = event.value
           event.value *= sens
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.(): keys:{}, old:{}, sens:{}, new:{}".format(self, keys, oldValue, sens, event.value))
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: keys:{}, old:{}, sens:{}, new:{}".format(log_loc(self), keys, oldValue, sens, event.value))
       return self.next_(event) if self.next_ is not None else False
     finally:
       if oldValue is not None:
@@ -1887,7 +1915,7 @@ class ScaleEP2:
 
 #TODO Unused. Remove?
 class SensSetEP:
-  logger = logger.getChild("SensSetEP")
+  logger = get_logger(logger, "SensSetEP")
 
   def __call__(self, event):
     if event.type in (codes.EV_REL, codes.EV_ABS):
@@ -1967,7 +1995,7 @@ class MappingEP:
 
 #TODO Unused. Remove?
 class CalibratingEP:
-  logger = logger.getChild("CalibratingEP")
+  logger = get_logger(logger, "CalibratingEP")
 
   def __call__(self, event):
     if self.mode_ == 0:
@@ -2041,7 +2069,7 @@ class CalibratingEP:
 
 #Event tests
 class AttrsEventTest:
-  logger = logger.getChild("AttrsEventTest")
+  logger = get_logger(logger, "AttrsEventTest")
 
   __slots__ = ("attrs_", "cmp_",)
 
@@ -2049,10 +2077,10 @@ class AttrsEventTest:
     for attrName, attrValue in self.attrs_:
       eventValue = getattr(event, attrName, None)
       if eventValue is None:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Event [{}] does not have attribute '{}'".format(self, event, attrName))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Event [{}] does not have attribute '{}'".format(log_loc(self), event, attrName))
         return False
       if not self.cmp_(attrName, eventValue, attrValue):
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(self, c.attrs, event, attrName, eventValue, attrValue))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Mismatch while matching attrs {} with event [{}] at attr '{}' (got {}, needed {})".format(log_loc(self), c.attrs, event, attrName, eventValue, attrValue))
         return False
     return True
   def __init__(self, attrs, cmp):
@@ -2076,7 +2104,7 @@ class PropTestsEventTest:
 
 
 class BindEP:
-  logger = logger.getChild("BindEP")
+  logger = get_logger(logger, "BindEP")
 
   class ChildInfo:
     __slots__ = ("child", "name",)
@@ -2090,7 +2118,7 @@ class BindEP:
       return "<op:{}; level:{}; children:{}>".format(self.op, self.level, self.children)
 
   def __call__(self, event):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing {})".format(self, event))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing {})".format(log_loc(self), event))
     self.update_()
     if len(self.children_) == 0:
       return False
@@ -2102,7 +2130,7 @@ class BindEP:
         else:
           level = c.level
       if c.op is None or c.op(event) == True:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Event [{}] matched by op {}".format(self, event, c.op))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Event [{}] matched by op {}".format(log_loc(self), event, c.op))
         for ci in c.children:
           if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Sending event [{}] to {}".format(str(event), ci.child))
           processed = ci.child(event) or processed
@@ -2110,7 +2138,7 @@ class BindEP:
 
   def add(self, op, child, level=0, name=None):
     """Adds one child for given op and level."""
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to {} for level {}".format(self, child, op, level))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to {} for level {}".format(log_loc(self), child, op, level))
     assert(child is not None)
     for ci in self.children_:
       if op == ci.op and level == ci.level:
@@ -2159,10 +2187,10 @@ class BindEP:
   def __init__(self):
     self.children_ = []
     self.dirty_ = False
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def update_(self):
@@ -2336,17 +2364,17 @@ class ET:
 
 
 class StateEP:
-  logger = logger.getChild("StateEP")
+  logger = get_logger(logger, "StateEP")
 
   def __call__(self, event):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing event: {}, state: {}, next: {}".format(self, event, self.state_, self.next_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing event: {}, state: {}, next: {}".format(log_loc(self), event, self.state_, self.next_))
     if (self.state_ == True) and (self.next_ is not None):
       return self.next_(event)
     else:
       return False
 
   def set_state(self, state):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting state to {}".format(self, state))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting state to {}".format(log_loc(self), state))
     self.state_ = state
     if self.next_:
       self.next_(Event(codes.EV_BCT, codes.BCT_INIT, 1 if state == True else 0, time.time()))
@@ -2355,7 +2383,7 @@ class StateEP:
     return self.state_
 
   def set_next(self, next):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting next to {}".format(self, next))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting next to {}".format(log_loc(self), next))
     self.next_ = next
     return next
 
@@ -2385,17 +2413,17 @@ def ToggleState(stateEP):
 
 
 class FilterEP:
-  logger = logger.getChild("FilterEP")
+  logger = get_logger(logger, "FilterEP")
 
   def __call__(self, event):
-   if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing event: {}, next: {}".format(self, event, self.next_))
+   if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: processing event: {}, next: {}".format(log_loc(self), event, self.next_))
    if self.next_ is not None and self.op_(event) == True:
      return self.next_(event)
    else:
      return False
 
   def set_next(self, next):
-   if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting next to {}".format(self, next))
+   if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting next to {}".format(log_loc(self), next))
    self.next_ = next
    return next
 
@@ -2432,11 +2460,11 @@ class ModeInitEvent(Event):
 
 
 class ModeEP:
-  logger = logger.getChild("ModeEP")
+  logger = get_logger(logger, "ModeEP")
 
   def __call__(self, event):
     #if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
-    #  self.logger.debug("{}: Recieved init event: {}".format(self, event.value))
+    #  self.logger.debug("{}: Recieved init event: {}".format(log_loc(self), event.value))
     if self.mode_ is None:
       raise RuntimeError("{}: Initital mode was not set".format(self.name_))
     child = self.children_.get(self.mode_, None)
@@ -2467,7 +2495,7 @@ class ModeEP:
     return self.name_
 
   def add(self, mode, child):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to  mode {}".format(self, child, mode))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding child {} to  mode {}".format(log_loc(self), child, mode))
     if child is None:
       raise RuntimeError("Child is None")
     self.children_[mode] = child
@@ -2486,7 +2514,7 @@ class ModeEP:
     if self.mode_ in self.children_:
       child = self.children_.get(self.mode_, None)
       if child is not None:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Notifying child {} about setting state to {}".format(self, child, state))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Notifying child {} about setting state to {}".format(log_loc(self), child, state))
         child(ModeInitEvent(state=state, other=other))
 
   def __init__(self, name="", reportModeSwitchCb=None):
@@ -2726,7 +2754,7 @@ class MCSCmpOp:
 
 
 class MCSThresholdOp:
-  logger = logger.getChild("MCSThresholdOp")
+  logger = get_logger(logger, "MCSThresholdOp")
 
   def __call__(self, events, timestamp):
     if len(events) == 0:
@@ -2910,7 +2938,7 @@ def calc_bezier(points, t):
 
 
 class BezierFunc:
-  logger = logger.getChild("BezierFunc")
+  logger = get_logger(logger, "BezierFunc")
 
   def __call__(self, x):
     l, r = self.points_[0][0], self.points_[len(self.points_)-1][0]
@@ -2918,9 +2946,9 @@ class BezierFunc:
     #TODO Is this correct?
     t = (x - l) / (r - l)
     points = [p for p in self.points_]
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: points: {}, t: {}".format(self, points, t))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: points: {}, t: {}".format(log_loc(self), points, t))
     y = calc_bezier(points, t)[1]
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: result: {: .3f}".format(self, y))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: result: {: .3f}".format(log_loc(self), y))
     if self.tracker_ is not None:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
@@ -2931,7 +2959,7 @@ class BezierFunc:
 
 
 class SegmentedBezierFunc:
-  logger = logger.getChild("SegmentedBezierFunc")
+  logger = get_logger(logger, "SegmentedBezierFunc")
 
   def __call__(self, x):
     keys = [p["c"][0] for p in self.points_]
@@ -2952,9 +2980,9 @@ class SegmentedBezierFunc:
     if "l" in rightPoints : points.append(rightPoints["l"])
     points.append(rightPoints["c"])
 
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: points: {}".format(self, points))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: points: {}".format(log_loc(self), points))
     y = calc_bezier(points, t)[1]
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: t: {: .3f}, result: {: .3f}".format(self, t, y))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: t: {: .3f}, result: {: .3f}".format(log_loc(self), t, y))
     if self.tracker_ is not None:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
@@ -3050,17 +3078,17 @@ class JoystickButtonAxis(ProbingAxisMixin):
 
 
 class ReportingAxis(ProbingAxisMixin):
-  logger = logger.getChild("ReportingAxis")
+  logger = get_logger(logger, "ReportingAxis")
 
   def move(self, v, relative):
     old = self.next_.get()
     r = self.next_.move(v, relative)
     new = self.next_.get()
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(("{}: {} -> {}".format(self, old, new)))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(("{}: {} -> {}".format(log_loc(self), old, new)))
     dirty = False
     for c in self.listeners_:
       if c() is None:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Listener {} has been removed".format(self, c))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Listener {} has been removed".format(log_loc(self), c))
         dirty = True
         continue
       c().on_move_axis(self, old, new)
@@ -3075,7 +3103,7 @@ class ReportingAxis(ProbingAxisMixin):
     return self.next_.limits()
 
   def add_listener(self, listener):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding listener {}".format(self, listener))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding listener {}".format(log_loc(self), listener))
     self.listeners_.append(weakref.ref(listener))
 
   def remove_listener(self, listener):
@@ -3086,16 +3114,16 @@ class ReportingAxis(ProbingAxisMixin):
 
   def remove_all_listeners(self):
     if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
+      self.logger.debug("{}: Removing all listeners, number of listeners: {}".format(log_loc(self), len(self.listeners_)))
     self.listeners_ = []
 
   def __init__(self, next):
     assert(next is not None)
     self.next_, self.listeners_ = next, []
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Deleted".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def cleanup_(self):
@@ -3109,10 +3137,10 @@ class ReportingAxis(ProbingAxisMixin):
 
 
 class RateSettingAxis(ProbingAxisMixin):
-  logger = logger.getChild("RateSettingAxis")
+  logger = get_logger(logger, "RateSettingAxis")
 
   def move(self, v, relative):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: moving to {} {}".format(self, v, "relative" if relative else "absolute"))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: moving to {} {}".format(log_loc(self), v, "relative" if relative else "absolute"))
     desired = self.v_+v if relative is True else v
     actual = clamp(desired, self.limits_[0], self.limits_[1])
     return v - (desired - actual) if relative else actual
@@ -3221,7 +3249,7 @@ class NoopCurve:
 
 
 class InputBasedCurve2:
-  logger = logger.getChild("InputBasedCurve2")
+  logger = get_logger(logger, "InputBasedCurve2")
 
   def move_by(self, x, timestamp):
     assert(self.deltaOp_)
@@ -3252,7 +3280,7 @@ class InputBasedCurve2:
     return self.axis_
 
   def on_move_axis(self, axis, old, new):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: on_move_axis({}, {}, {})".format(self, axis, old, new))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: on_move_axis({}, {}, {})".format(log_loc(self), axis, old, new))
     assert(axis == self.axis_)
     if self.busy_ or self.dirty_: return
     self.dirty_ = True
@@ -3275,9 +3303,9 @@ class InputBasedCurve2:
     assert(self.inputOp_)
     assert(self.outputOp_)
     assert(self.axis_)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(log_loc(self)))
     if not axisMoved or (axisMoved and self.resetOpsOnAxisMove_):
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting ops".format(self))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting ops".format(log_loc(self)))
       self.inputOp_.reset()
       self.outputOp_.reset()
       self.deltaOp_.reset()
@@ -3286,7 +3314,7 @@ class InputBasedCurve2:
 
 
 class IterativeInputOp:
-  logger = logger.getChild("IterativeInputOp")
+  logger = get_logger(logger, "IterativeInputOp")
 
   def calc(self, outputValue, inputValueLimits):
     """inputValueLimits[0] can be < or > inputValueLimits[1]"""
@@ -3310,7 +3338,7 @@ class IterativeInputOp:
         bInputValue = mInputValue
       else:
         eInputValue = mInputValue
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Found root {} for value {} in {} steps; delta: {}; limits: {}".format(self, mInputValue, outputValue, i, delta, inputValueLimits))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Found root {} for value {} in {} steps; delta: {}; limits: {}".format(log_loc(self), mInputValue, outputValue, i, delta, inputValueLimits))
     return mInputValue
 
   def reset(self):
@@ -3330,7 +3358,7 @@ class LookupInputOp:
       limits = inputValueLimits
     else:
       if not (self.ovs_[ie-1] <= outputValue) or not (self.ovs_[ie] >= outputValue):
-        raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(self, self.ovs_[ie-1], self.ovs_[ie], outputValue))
+        raise RuntimeError("{}: Wrong interval [{}, {}] for value {}".format(log_loc(self), self.ovs_[ie-1], self.ovs_[ie], outputValue))
       limits = (self.ivs_[ie-1], self.ivs_[ie])
     found = self.nextOp_.calc(outputValue, limits)
     return found
@@ -3358,7 +3386,7 @@ class LimitedOpToOp:
 
 
 class LookupOp:
-  logger = logger.getChild("LookupOp")
+  logger = get_logger(logger, "LookupOp")
 
   def calc(self, outputValue):
     ie = self.fill_(outputValue)
@@ -3367,7 +3395,10 @@ class LookupOp:
       raise RuntimeError("Wrong interval [{}, {}] for value {} (ie: {}; ivs: {}; ovs: {})".format(ob, oe, outputValue, ie, self.ivs_, self.ovs_))
     ivLimits = (self.ivs_[ie-1], self.ivs_[ie])
     inputValue = self.inputOp_.calc(outputValue, ivLimits)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: found inputValue {:0.3f} for outputValue {:0.3f} (ivLimits: {}; ivs: {}; ovs: {})".format(self, inputValue, outputValue, ivLimits, self.ivs_, self.ovs_))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{}: found inputValue {:0.3f} for outputValue {:0.3f} (ivLimits: {}; ivs: {}; ovs: {})"
+        .format(log_loc(self), inputValue, outputValue, ivLimits, self.ivs_, self.ovs_))
     return inputValue
 
   def reset(self):
@@ -3410,7 +3441,8 @@ class LookupOp:
           continue
         self.ivs_.insert(0, iv)
         self.ovs_.insert(0, ov)  
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(log_loc(self), outputValue, iv, ov))
         if ov <= outputValue:
           break
       ie = 1
@@ -3425,7 +3457,7 @@ class LookupOp:
         self.ivs_.append(iv)
         self.ovs_.append(ov)
         if self.logger.isEnabledFor(logging.DEBUG):
-          self.logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(self, outputValue, iv, ov))
+          self.logger.debug("{}: outputValue {:0.3f}: inserting iv: {:0.3f}, ov: {:0.3f}".format(log_loc(self), outputValue, iv, ov))
         if ov >= outputValue:
           break
       ie = len(self.ivs_)-1
@@ -3442,7 +3474,7 @@ class LookupOp:
       else:
         assert(False)
     else:
-      raise RuntimeError("Requested input value {} is out of input limits {}".format(iv, self.inputLimits_))
+      raise RuntimeError("Requested input value {: 0.3f} is out of input limits [{: 0.3f}, {: 0.3f}]".format(iv, *self.inputLimits_))
 
 
 class FuncOp:
@@ -3485,7 +3517,7 @@ class FuncDeltaOp:
 
 
 class CombineDeltaOp:
-  logger = logger.getChild("CombineDeltaOp")
+  logger = get_logger(logger, "CombineDeltaOp")
 
   def calc(self, x, timestamp):
     r = None
@@ -3493,7 +3525,7 @@ class CombineDeltaOp:
       r = op.calc(x, timestamp) if r is None else self.combine_(r, op.calc(x, timestamp))
     return r
   def reset(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(log_loc(self)))
     for op in self.ops_:
       op.reset()
   def __init__(self, combine, ops):
@@ -3509,7 +3541,7 @@ class ReturnDeltaOp:
 
 
 class AccumulateDeltaOp:
-  logger = logger.getChild("AccumulateDeltaOp")
+  logger = get_logger(logger, "AccumulateDeltaOp")
 
   def calc(self, x, timestamp):
     for op in self.ops_:
@@ -3517,7 +3549,7 @@ class AccumulateDeltaOp:
     self.distance_ += x
     return self.func_(self.distance_) if self.func_ is not None else self.distance_
   def reset(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(log_loc(self)))
     self.distance_ = 0.0
     for op in self.ops_:
       op.reset()
@@ -3530,7 +3562,7 @@ class AccumulateDeltaOp:
 
 
 class DeadzoneDeltaOp:
-  logger = logger.getChild("DeadzoneDeltaOp")
+  logger = get_logger(logger, "DeadzoneDeltaOp")
 
   def calc(self, x, timestamp):
     """Returns 0 while inside deadzone radius, x otherwise."""
@@ -3546,7 +3578,7 @@ class DeadzoneDeltaOp:
         return 0.0
     return self.next_.calc(x, timestamp)
   def reset(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(log_loc(self)))
     self.s_, self.sd_ = 0, 0.0
     self.next_.reset()
   def __init__(self, next, deadzone=0.0):
@@ -3555,7 +3587,7 @@ class DeadzoneDeltaOp:
 
 #distance-delta ops
 class SignDistanceDeltaOp:
-  logger = logger.getChild("SignDistanceDeltaOp")
+  logger = get_logger(logger, "SignDistanceDeltaOp")
 
   def calc(self, distance, delta, timestamp):
     """
@@ -3570,14 +3602,14 @@ class SignDistanceDeltaOp:
     elif self.s_ != s:
       self.localDistance_ += abs(delta)
       if self.localDistance_ > self.deadzone_:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(self, self.s_, s))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: leaved deadzone, changing sign from {} to {}".format(log_loc(self), self.s_, s))
         self.localDistance_, self.s_, factor = 0.0, s, 0.0
     elif self.localDistance_ != 0.0:
       self.localDistance_ = 0.0
     r = distance if self.next_ is None else self.next_.calc(distance, delta, timestamp)
     return factor * r
   def reset(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting".format(log_loc(self)))
     self.s_, self.localDistance_ = 0, 0.0
     if self.next_:
       self.next_.reset()
@@ -3587,7 +3619,7 @@ class SignDistanceDeltaOp:
 
 
 class TimeDistanceDeltaOp:
-  logger = logger.getChild("TimeDistanceDeltaOp")
+  logger = get_logger(logger, "TimeDistanceDeltaOp")
 
   def calc(self, distance, delta, timestamp):
     """
@@ -3603,7 +3635,8 @@ class TimeDistanceDeltaOp:
     self.timestamp_ = timestamp
     if dt > self.holdTime_:
       factor = clamp(1.0 - (dt - self.holdTime_) / self.resetTime_, 0.0, 1.0)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.calc(): r:{:.3f}".format(self, r))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: factor:{:.3f}".format(log_loc(self), factor))
     r = distance if self.next_ is None else self.next_.calc(distance, delta, timestamp)
     return factor * r
   def reset(self):
@@ -3657,7 +3690,7 @@ class DistanceDeltaFromDeltaOp:
 
 #Chain curves
 class AccumulateRelChainCurve:
-  logger = logger.getChild("AccumulateRelChainCurve")
+  logger = get_logger(logger, "AccumulateRelChainCurve")
 
   """
   Computes value by accumulating input deltas and passes this value to next (absolute) curve.
@@ -3671,7 +3704,7 @@ class AccumulateRelChainCurve:
     newValue = self.next_.move(self.value_, timestamp)
     if newValue != self.value_:
       self.value_ = newValue
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: value_:{:+.3f}".format(log_loc(self), self.value_))
     return self.value_
 
   def reset(self):
@@ -3680,7 +3713,7 @@ class AccumulateRelChainCurve:
     self.dirty_ = False
 
   def on_move_axis(self, axis, old, new):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis({}, {:+0.3f}, {:+0.3f})".format(self, axis, old, new))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis({}, {:+0.3f}, {:+0.3f})".format(log_loc(self), axis, old, new))
     self.dirty_ = True
     self.next_.on_move_axis(axis, old, new)
 
@@ -3706,7 +3739,7 @@ class AccumulateRelChainCurve:
       if self.resetOnMoveAxis_ == True:
         self.reset_self_()
       self.value_ = self.inputOp_.calc(self.next_.get_value())
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: recalculated value_: {:+0.3f}".format(log_loc(self), self.value_))
       self.dirty_ = False
 
 
@@ -3760,6 +3793,8 @@ class DeltaRelChainCurve:
 
 
 class FullDeltaRelChainCurve:
+  logger = get_logger(logger, "FullDeltaRelChainCurve")
+
   def move_by(self, x, timestamp):
     """x is relative."""
     #update if needed
@@ -3888,23 +3923,23 @@ class RelToAbsChainCurve:
 
 
 class TransformAbsChainCurve:
-  logger = logger.getChild("TransformAbsChainCurve")
+  logger = get_logger(logger, "TransformAbsChainCurve")
 
   def move(self, x, timestamp):
     """Moves current curve to x and next curve to transformed value."""
     self.update_()
     outputValue = self.outputOp_.calc(x, timestamp)
     newOutputValue = self.next_.move(outputValue, timestamp)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(self, x, outputValue, newOutputValue))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(log_loc(self), x, outputValue, newOutputValue))
     if newOutputValue != outputValue:
       #TODO If outputOp_.calc() changes state of outputOp_, and this state corellates with outputValue,
       #TODO but curve is set to newOutputValue, then outputOp_ is out of sync.
       #TODO Mb replace outputOp_ and inputOp_ with funcs
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: nov != ov".format(self))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: nov != ov".format(log_loc(self)))
       self.value_ = self.inputOp_.calc(newOutputValue)
     else:
       self.value_ = x
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: value_:{:+.3f}".format(self, self.value_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: value_:{:+.3f}".format(log_loc(self), self.value_))
     return self.value_
 
   def probe(self, x):
@@ -3948,12 +3983,12 @@ class TransformAbsChainCurve:
       self.value_ = self.inputOp_.calc(self.next_.get_value())
       if self.resetOnMoveAxis_ == True:
         self.reset()
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(self, self.value_))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(log_loc(self), self.value_))
       self.dirty_ = False
 
 
 class UpdatedChainCurve:
-  logger = logger.getChild("UpdatedChainCurve")
+  logger = get_logger(logger, "UpdatedChainCurve")
 
   """Moves next curve to desired value during periodic updates."""
   MODE_RELATIVE = 0
@@ -3962,13 +3997,14 @@ class UpdatedChainCurve:
   def move_by(self, x, timestamp):
     """Adjusts desired value by x."""
     self.desiredValue_ = self.next_.probe_by(x)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move_by(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(self, x, timestamp, self.desiredValue_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move_by(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(log_loc(self), x, timestamp, self.desiredValue_))
     return self.desiredValue_
 
   def move(self, x, timestamp):
     """Sets desired value to x."""
     self.desiredValue_ = self.next_.probe(x)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(self, x, timestamp, self.desiredValue_))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(log_loc(self), x, timestamp, self.desiredValue_))
     return self.desiredValue_
 
   def probe_by(self, x):
@@ -3998,7 +4034,7 @@ class UpdatedChainCurve:
     self.next_.on_move_axis(axis, old, new)
     self.desiredValue_ = self.next_.get_value()
     self.op_.reset()
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis(): new desired:{: 6.3f}".format(self, self.desiredValue_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: new desired:{: 6.3f}".format(log_loc(self), self.desiredValue_))
 
   def get_value(self):
     return self.desiredValue_
@@ -4021,7 +4057,10 @@ class UpdatedChainCurve:
         self.next_.move(newValue, timestamp)
       else:
         assert False, "Bad mode"
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): curr:{: 6.3f}; des:{: 6.3f}; new:{: 6.3f}; next:{: 6.3f}".format(self, currentValue, desiredValue, newValue, self.next_.get_value()))
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug(
+          "{}: curr:{: 6.3f}; des:{: 6.3f}; new:{: 6.3f}; next:{: 6.3f}"
+          .format(log_loc(self), currentValue, desiredValue, newValue, self.next_.get_value()))
     finally:
       self.busy_ = False
       if self.head_ is not None:
@@ -4036,7 +4075,7 @@ class UpdatedChainCurve:
     self.head_ = weakref.ref(head)
 
   def set_state(self, state):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.set_state(): state:{}".format(self, state))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: state:{}".format(log_loc(self), state))
     self.state_ = state
     if state == True and self.next_ is not None:
       self.desiredValue_ = self.next_.get_value()
@@ -4059,7 +4098,7 @@ class UpdatedChainCurve:
 
 
 class DistanceUpdatedChainCurveOp:
-  logger = logger.getChild("DistanceUpdatedChainCurveOp")
+  logger = get_logger(logger, "DistanceUpdatedChainCurveOp")
 
   def calc(self, **kwargs):
     current = kwargs.get("current")
@@ -4090,8 +4129,8 @@ class DistanceUpdatedChainCurveOp:
     r *= s
     if self.logger.isEnabledFor(logging.DEBUG):
       self.logger.debug(
-        "{}.calc(): desired: {:0.3f}; current: {:0.3f}; dspeed: {:0.3f}; cspeed: {:0.3f}; speed: {:0.3f}; r: {:0.3f}"\
-        .format(self, desired, current, desiredSpeed, currentSpeed, speed, r)
+        "{}: desired: {:0.3f}; current: {:0.3f}; dspeed: {:0.3f}; cspeed: {:0.3f}; speed: {:0.3f}; r: {:0.3f}"\
+        .format(log_loc(self), desired, current, desiredSpeed, currentSpeed, speed, r)
       )
     return r + current
 
@@ -4106,7 +4145,7 @@ class DistanceUpdatedChainCurveOp:
 
 
 class AccelUpdatedChainCurveOp:
-  logger = logger.getChild("AccelUpdatedChainCurveOp")
+  logger = get_logger(logger, "AccelUpdatedChainCurveOp")
 
   def calc(self, **kwargs):
     current = kwargs.get("current")
@@ -4121,7 +4160,7 @@ class AccelUpdatedChainCurveOp:
         self.sDelta_ = sDelta
       if self.sDelta_ != sDelta:
         self.speed_, self.acceleration_, self.sDelta_ = self.minSpeed_, 0.0, sDelta
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} flip".format(self))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} flip".format(log_loc(self)))
       #Using internally stored speed, because cannot depend on speed
       #that is based on desired and current ((desired - current) / tick)
       speed, acceleration = self.speed_, self.accelerationFunc_(absDelta)
@@ -4178,7 +4217,7 @@ class AccelUpdatedChainCurveOp:
         r = desired
         self.speed_, self.acceleration_ = self.minSpeed_, 0.0
         st = "snp"
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} {} speed:{: 6.3f}; accel:{: 6.3f}; curr:{: 6.3f}; desr:{: 6.3f}; r:{: 6.3f}".format(self, st, self.speed_, self.acceleration_, current, desired, r))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} {} speed:{: 6.3f}; accel:{: 6.3f}; curr:{: 6.3f}; desr:{: 6.3f}; r:{: 6.3f}".format(log_loc(self), st, self.speed_, self.acceleration_, current, desired, r))
     return r
 
   def reset(self):
@@ -4215,18 +4254,21 @@ class SensModUpdatedChainCurveOp:
 
 
 class AxisChainCurve:
-  logger = logger.getChild("AxisChainCurve")
-
   """Moves axis. Is meant to be at the bottom of chain."""
+
+  logger = get_logger(logger, "AxisChainCurve")
+
   def move_by(self, x, timestamp):
-    self.axis_.move(x, relative=True)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
-    return self.axis_.get()
+    r = self.axis_.move(x, relative=True)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: x:{: .3f}; r:{: .3f}; v:{: .3f}".format(log_loc(self), x, r, self.get_value()))
+    return r
 
   def move(self, x, timestamp):
-    self.axis_.move(x, relative=False)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, v:{:+.3f}".format(self, x, self.axis_.get()))
-    return self.axis_.get()
+    r = self.axis_.move(x, relative=False)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: x:{: .3f}; r:{: .3f}; v:{: .3f}".format(log_loc(self), x, r, self.get_value()))
+    return r
 
   def probe_by(self, x):
     """
@@ -4264,7 +4306,7 @@ class AxisTrackerChainCurve:
   Subscribe as axis listener.
   """
 
-  logger = logger.getChild("AxisTrackerChainCurve")
+  logger = get_logger(logger, "AxisTrackerChainCurve")
 
   def move_by(self, x, timestamp):
     """x is relative."""
@@ -4334,11 +4376,11 @@ class AxisTrackerChainCurve:
 
 
 class OffsetAbsChainCurve:
-  logger = logger.getChild("OffsetAbsChainCurve")
+  logger = get_logger(logger, "OffsetAbsChainCurve")
 
   def move(self, x, timestamp):
     """x is absolute."""
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}".format(self, x))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}".format(log_loc(self), x))
     if self.value_ is not None:
       self.offset_ += (self.next_.get_value() - self.value_)
       self.value_ = None
@@ -4346,7 +4388,7 @@ class OffsetAbsChainCurve:
     if self.s_ != s:
       if self.s_ != 0:
         self.offset_ += self.x_
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: new offset_: {}".format(self, self.offset_))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: new offset_: {}".format(log_loc(self), self.offset_))
       self.s_ = s
     elif abs(x) < abs(self.x_):
       self.offset_ += self.x_ - x
@@ -4354,21 +4396,21 @@ class OffsetAbsChainCurve:
       return self.x_
     ox = x + self.offset_
     nox = self.next_.move(ox, timestamp)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(self, ox, nox))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: ox:{:+.3f}, nox:{:+.3f}".format(log_loc(self), ox, nox))
     #nox can still be outside of next_ input limits, so have to store sign of x to be able to backtrack
     if nox == ox:
       #within limits
       if self.state_ == 1:
         self.sx_, self.state_ = 0, 0
       self.x_ = x
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: within limits, x: {}, x_: {}".format(self, x, self.x_))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: within limits, x: {}, x_: {}".format(log_loc(self), x, self.x_))
     else:
       #outside limits
       if self.state_ == 0:
         self.sx_, self.state_ = s, 1
       self.x_ = x if self.sx_ != s else (nox - self.offset_)
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: outside limits, x: {}, x_: {}".format(self, x, self.x_))
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: outside limits, x: {}, x_: {}".format(log_loc(self), x, self.x_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: offset_:{:+.3f}, x_:{:+.3f}".format(log_loc(self), self.offset_, self.x_))
     return self.x_
 
   def reset(self):
@@ -4380,7 +4422,7 @@ class OffsetAbsChainCurve:
     if self.value_ is None:
       self.value_ = self.next_.get_value()
     self.next_.on_move_axis(axis, old, new)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis(): offset_:{:+.3f}, x_:{:+.3f}".format(self, self.offset_, self.x_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: offset_:{:+.3f}, x_:{:+.3f}".format(log_loc(self), self.offset_, self.x_))
 
   def get_value(self):
     return self.x_
@@ -4436,7 +4478,7 @@ class AxisLinker:
   When resetting axes, reset controlling axis first, then controlled.
   """
 
-  logger = logger.getChild("AxisLinker")
+  logger = get_logger(logger, "AxisLinker")
 
   def reset(self):
     controlledValue = self.controlledAxis_.get()
@@ -4448,7 +4490,7 @@ class AxisLinker:
     if self.logger.isEnabledFor(logging.DEBUG):
       self.logger.debug(
         "{}: after reset: controlling: {:+0.3f}; controlled: {:+0.3f}; desired controlled: {:+0.3f}; offset: {:+0.3f}"
-        .format(self, controllingValue, controlledValue, desiredControlledValue, self.offset_))
+        .format(log_loc(self), controllingValue, controlledValue, desiredControlledValue, self.offset_))
 
   def set_state(self, state):
     self.state_ = state
@@ -4482,7 +4524,7 @@ class AxisLinker:
         if self.logger.isEnabledFor(logging.DEBUG):
           self.logger.debug(
             "{}: Controlled axis has moved to {:+0.3f}; oldControlledValue_: {:+0.3f}"
-            .format(self, new, self.oldControlledValue_))
+            .format(log_loc(self), new, self.oldControlledValue_))
       elif axis == self.controllingAxis_:
         if self.oldControlledValue_ is not None:
           self.offset_ += self.controlledAxis_.get() - self.oldControlledValue_
@@ -4490,7 +4532,7 @@ class AxisLinker:
         if self.logger.isEnabledFor(logging.DEBUG):
           self.logger.debug(
             "{}: Controlling axis has moved to {:+0.3f}; offset_: {:+0.3f}"
-            .format(self, new, self.offset_))
+            .format(log_loc(self), new, self.offset_))
         cv = self.func_(new)
         try:
           self.busy_= True
@@ -4499,11 +4541,11 @@ class AxisLinker:
           if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(
               "{}: Moving controlled axis: from: {:+0.3f}; desired: {:+0.3f}, actual: {:+0.3f}"
-              .format(self, self.controlledAxis_.get(), desired, actual))
+              .format(log_loc(self), self.controlledAxis_.get(), desired, actual))
           if actual != desired and self.adjustOffset_ == True:
             self.offset_ -= (desired - actual)
           if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug("{}: offset after move {:+0.3f}".format(self, self.offset_))
+            self.logger.debug("{}: offset after move {:+0.3f}".format(log_loc(self), self.offset_))
         finally:
           self.busy_= False
 
@@ -4512,11 +4554,11 @@ class AxisLinker:
     self.func_, self.adjustOffset_ = func, adjustOffset
     self.oldControlledValue_, self.offset_, self.busy_, self.dirty_, self.state_  = None, 0.0, False, False, False
     if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{} created".format(self))
+      self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
     if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{} destroyed".format(self))
+      self.logger.debug("{} destroyed".format(log_loc(self)))
 
   def update_(self):
     if self.dirty_ == True:
@@ -4578,7 +4620,7 @@ class DeviceGrabberEP:
 
 
 class SwallowDevices:
-  logger = logger.getChild("SwallowDevices")
+  logger = get_logger(logger, "SwallowDevices")
 
   def __call__(self, event):
     self.set_mode_(self.mode_)
@@ -4586,41 +4628,41 @@ class SwallowDevices:
 
   def __init__(self, devices, mode):
     self.mode_, self.devices_ = mode, devices
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def set_mode_(self, mode):
     for d in self.devices_:
       try:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting swallow state {} to {}".format(self, self.mode_, d))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting swallow state {} to {}".format(log_loc(self), self.mode_, d))
         d.swallow(mode)
       except IOError as e:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got IOError ({}), but that was expected".format(self, e))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got IOError ({}), but that was expected".format(log_loc(self), e))
         continue
 
 
 class SwallowSource:
-  logger = logger.getChild("SwallowSource")
+  logger = get_logger(logger, "SwallowSource")
 
   def __call__(self, event):
     for name,mode in self.deviceNamesAndModes_:
       try:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting swallow state {} to {}".format(self, mode, name))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting swallow state {} to {}".format(log_loc(self), mode, name))
         self.source_.swallow(name, mode)
       except (IOError, OSError) as e:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got exception ({}), but that was expected".format(self, e))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got exception ({}), but that was expected".format(log_loc(self), e))
         continue
     return True
 
   def __init__(self, source, deviceNamesAndModes):
     self.source_, self.deviceNamesAndModes_ = source, deviceNamesAndModes
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
 
@@ -4637,7 +4679,7 @@ class FreePIEHeadTrackerIDEV:
   MODE_ABS = 0
   MODE_REL = 1
 
-  logger = logger.getChild("FreePIEHeadTrackerIDEV")
+  logger = get_logger(logger, "FreePIEHeadTrackerIDEV")
 
   def read_one(self):
     relAxesIds = (codes.REL_RX, codes.REL_RY, codes.REL_RZ)
@@ -4909,7 +4951,7 @@ def make_il2_6dof_packet(**kwargs):
 class JoystickPoseManager:
   """Sets joystick axes to preset values and also can update preset values from joystick"""
 
-  logger = logger.getChild("JoystickPoseManager")
+  logger = get_logger(logger, "JoystickPoseManager")
 
   def set_pose(self, i, l):
     self.poses_[i] = [[p[0], p[1]] for p in l]
@@ -4918,7 +4960,7 @@ class JoystickPoseManager:
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("update_pose({})".format(i))
     pose = self.poses_.get(i, None)
     if pose is None:
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(self, i))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), i))
       return False
     else:
       for j in xrange(len(pose)):
@@ -4929,7 +4971,7 @@ class JoystickPoseManager:
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("pose_to({})".format(i))
     pose = self.poses_.get(i, None)
     if pose is None:
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(self, i))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), i))
       return False
     else:
       for p in pose:
@@ -4943,7 +4985,7 @@ class JoystickPoseManager:
 class AxisPoseManager:
   """Axis-based pose manager"""
 
-  logger = logger.getChild("AxisPoseManager")
+  logger = get_logger(logger, "AxisPoseManager")
 
   def set_pose(self, i, l):
     self.poses_[i] = [[p[0], p[1]] for p in l]
@@ -4958,10 +5000,10 @@ class AxisPoseManager:
     return self.poses_
 
   def update_pose(self, i):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: updating pose {}".format(self, i))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: updating pose {}".format(log_loc(self), i))
     pose = self.poses_.get(i, None)
     if pose is None:
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(self, i))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), i))
       return False
     else:
       for p in pose:
@@ -4979,10 +5021,10 @@ class AxisPoseManager:
     return self.apply_pose(i)
 
   def apply_pose(self, i):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: poseping to {}".format(self, i))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: poseping to {}".format(log_loc(self), i))
     pose = self.poses_.get(i, None)
     if pose is None:
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(self, i))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), i))
       return False
     else:
       for p in pose:
@@ -5318,7 +5360,7 @@ class MetricsJoystick:
 
 
 class ReportingJoystickAxis(ProbingAxisMixin):
-  logger = logger.getChild("ReportingJoystickAxis")
+  logger = get_logger(logger, "ReportingJoystickAxis")
 
   def move(self, v, relative):
     return self.joystick_.move_axis(self.tcAxis_, v, relative)
@@ -5330,18 +5372,18 @@ class ReportingJoystickAxis(ProbingAxisMixin):
     return self.joystick_.get_limits(self.tcAxis_)
 
   def add_listener(self, listener):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Adding listener: {}, number of listeners: {}".format(log_loc(self), listener, len(self.listeners_)))
     self.listeners_.append(weakref.ref(listener))
 
   def remove_listener(self, listener):
     try:
       self.listeners_.remove(listener)
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Removing listener: {}, number of listeners: {}".format(self, listener, len(self.listeners_)))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Removing listener: {}, number of listeners: {}".format(log_loc(self), listener, len(self.listeners_)))
     except ValueError:
       raise RuntimeError("Listener {} not registered".format(listener))
 
   def remove_all_listeners(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Removing all listeners, number of listeners: {}".format(self, len(self.listeners_)))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Removing all listeners, number of listeners: {}".format(log_loc(self), len(self.listeners_)))
     self.listeners_ = []
 
   def on_move(self, old, new):
@@ -5351,7 +5393,7 @@ class ReportingJoystickAxis(ProbingAxisMixin):
       if cc is None:
         dirty = True
       else:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: moving listener {}, old: {:0.3f}, new: {:0.3f}".format(self, cc, old, new))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: moving listener {}, old: {:0.3f}, new: {:0.3f}".format(log_loc(self), cc, old, new))
         cc.on_move_axis(self, old, new)
     if dirty:
       self.cleanup_()
@@ -5360,10 +5402,10 @@ class ReportingJoystickAxis(ProbingAxisMixin):
     if tcAxis not in joystick.get_supported_axes():
       raise RuntimeError("Axis '{}' is not supported by {}".format(tc2ns(*tcAxis)[0], joystick))
     self.joystick_, self.tcAxis_, self.listeners_ = joystick, tcAxis, []
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(self))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
     pass
 
   def cleanup_(self):
@@ -5373,11 +5415,11 @@ class ReportingJoystickAxis(ProbingAxisMixin):
         self.listeners_.pop(i)
       else:
         i += 1
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: listeners after cleanup {}".format(self, self.listeners_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: listeners after cleanup {}".format(log_loc(self), self.listeners_))
 
 
 class ReportingJoystick(NodeJoystick):
-  logger = logger.getChild("ReportingJoystick")
+  logger = get_logger(logger, "ReportingJoystick")
 
   def move_axis(self, tcAxis, value, relative):
     old = self.get_axis_value(tcAxis)
@@ -5412,7 +5454,7 @@ class ReportingJoystick(NodeJoystick):
           axes.pop(i)
         else:
           i += 1
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: axes after cleanup {}".format(self, self.axes_))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: axes after cleanup {}".format(log_loc(self), self.axes_))
 
 
 def make_reporting_joystick(f):
@@ -5497,7 +5539,7 @@ def vec_copy(v):
 
 
 class RelativeHeadMovementJoystick:
-  logger = logger.getChild("RelativeHeadMovementJoystick")
+  logger = get_logger(logger, "RelativeHeadMovementJoystick")
 
   tcPosAxes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_X, codes.ABS_Y, codes.ABS_Z))
   tcAngleAxes_ = tuple(TypeCode(codes.EV_ABS, c) for c in (codes.ABS_RX, codes.ABS_RY, codes.ABS_RZ))
@@ -6622,7 +6664,7 @@ class IntrusiveSelectParser:
 
 
 class DerefSelectParser:
-  logger = logger.getChild("DerefSelectParser")
+  logger = get_logger(logger, "DerefSelectParser")
 
   def __call__(self, key, cfg, state):
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
@@ -6663,12 +6705,12 @@ class DerefParser:
 
 
 class HeadEP:
-  logger = logger.getChild("HeadEP")
+  logger = get_logger(logger, "HeadEP")
 
   def __call__(self, event):
     #Can be actually called during init when next_ is not set yet
     if self.next_ is None:
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: next ep is not set".format(self))
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: next ep is not set".format(log_loc(self)))
       return False
     else:
       return self.next_(event)
@@ -6712,7 +6754,7 @@ class ObjectsComponent:
 
 def make_parser():
   global logger
-  logger = logger.getChild("make_parser()")
+  logger = get_logger(logger, "make_parser()")
 
   def make_double_deref_parser(keyOp):
     return DerefParser(parser=IntrusiveSelectParser(keyOp=keyOp, parser=DerefSelectParser()))
@@ -9226,21 +9268,24 @@ class Main:
     handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
     logger.addHandler(handler)
 
-  def preinit_log(self, level=logging.NOTSET, handler=logging.StreamHandler(sys.stdout), fmt="%(levelname)s:%(asctime)s:%(message)s", datefmt="%H:%M:%S"):
+  def preinit_log(self):
     root = logging.getLogger()
+    level = logging.INFO
     root.setLevel(level)
+    handler = logging.StreamHandler(sys.stdout)
+    fmt = "%(levelname)s:%(asctime)s:%(message)s"
+    datefmt = "%H:%M:%S"
     self.add_logging_handler(root, handler, level, fmt, datefmt)
 
   def init_log(self, state):
     config = self.get("config")
     logLevelName = state.resolve_d(config, "logLevel", "NOTSET").upper()
     logLevel = name2loglevel(logLevelName)
-    root = logging.getLogger()
-    root.setLevel(logLevel)
-    print("Setting global log level to {}".format(logLevelName))
+    set_loggers_level(logLevel)
+    print("Setting default log level to {}".format(logLevelName))
     def parse_logger(logger, config, state):
       #logger levels are set in set_logger_levels()
-      childrenCfg = state.resolve_d(config, "children", {})
+      childrenCfg = state.resolve_d(config, "loggers", {})
       for childName,childCfg in childrenCfg.items():
         child = logger.getChild(childName)
         parse_logger(child, childCfg, state)
@@ -9253,6 +9298,8 @@ class Main:
           stream = streams.get(name, None)
         elif t == "file":
           stream = open(name, "w")
+        else:
+          raise RuntimeError("bad handler type: '{}'".format(t))
         if stream is None:
           raise RuntimeError("Cannot create log handler '{}' of type '{}'".format(name, t))
         fmt = state.resolve_d(handlerCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
@@ -9261,7 +9308,7 @@ class Main:
         level = name2loglevel(levelName)
         handler = logging.StreamHandler(stream)
         self.add_logging_handler(logger, handler, level, fmt, datefmt)
-    parse_logger(root, state.resolve_d(config, "logs", {}), state)
+    parse_logger(logging.getLogger(), state.resolve_d(config, "loggers", {}), state)
 
   def init_config2(self):
     if self.get("config") is not None and self.get("state") != self.STATE_RELOADING:
