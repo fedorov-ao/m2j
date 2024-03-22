@@ -3032,9 +3032,16 @@ class GainTracker:
 #Axes
 class ProbingAxisMixin:
   def probe(self, v, relative):
-    if relative == True:
-      v += self.get()
-    return clamp(v, *self.limits())
+    """
+    Checks whether can move to/by v.
+    Arguments:
+      v - desired absolute/relative axis position
+      relative - False if v is absolute, True if relative
+    Returns:
+      clamped absolute/relative axis positon
+    """
+    value = self.get() if relative == True else 0.0
+    return clamp(value + v, *self.limits()) - value
 
 
 class JoystickAxis(ProbingAxisMixin):
