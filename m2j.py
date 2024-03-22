@@ -3751,6 +3751,8 @@ class AccumulateRelChainCurve:
 
 
 class DeltaRelChainCurve:
+  logger = get_logger(logger, "DeltaRelChainCurve")
+
   def move_by(self, x, timestamp):
     """x is relative."""
     self.update_()
@@ -3759,16 +3761,26 @@ class DeltaRelChainCurve:
     factor = self.outputOp_.calc(self.value_)
     delta = self.deltaDDOp_.calc(self.value_, x, timestamp)
     delta = self.combineDelta_(delta, factor)
-    self.next_.move_by(delta, timestamp)
-    return self.value_
+    originalX, originalDelta = x, delta
+    actualDelta = self.next_.move_by(delta, timestamp)
+    n = 0
+    while n < 50:
+      if abs(actualDelta - delta) < self.eps_:
+        if n > 0:
+          if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(
+              "{} orig x:{: 0.3f}; adj x:{: 0.3f}; orig delta:{: 0.3f}; adj delta:{: 0.3f}; n:{}"
+              .format(log_loc(self), originalX, x, originalDelta, delta, n))
+        break
+      n += 1
+      x *= actualDelta / delta
+      delta = self.combineDelta_(self.deltaDDOp_.calc(self.value_, x, timestamp), factor)
+    return x
 
   def reset(self):
-    self.valueDDOp_.reset()
-    self.deltaDDOp_.reset()
-    self.outputOp_.reset()
-    self.next_.reset()
-    self.value_ = 0.0
-    self.dirty_ = False
+    if self.next_ is not None and self.resetNext_ == True:
+      self.next_.reset()
+    self.reset_self_()
 
   def on_move_axis(self, axis, old, new):
     self.dirty_ = True
@@ -3781,16 +3793,19 @@ class DeltaRelChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, valueDDOp, deltaDDOp, outputOp, combineValue, combineDelta, resetOnMoveAxis):
-    self.next_, self.valueDDOp_, self.deltaDDOp_, self.outputOp_, self.resetOnMoveAxis_ = next, valueDDOp, deltaDDOp, outputOp, resetOnMoveAxis
+  def __init__(self, next, valueDDOp, deltaDDOp, outputOp, combineValue, combineDelta, resetOnMoveAxis, resetNext=True, eps=1e-4):
+    self.next_, self.valueDDOp_, self.deltaDDOp_, self.outputOp_ = next, valueDDOp, deltaDDOp, outputOp
     self.combineValue_, self.combineDelta_ = combineValue, combineDelta
+    self.resetOnMoveAxis_, self.resetNext_ = resetOnMoveAxis, resetNext
     self.value_, self.dirty_ = 0.0, False
+    self.eps_ = eps
 
   def reset_self_(self):
     self.valueDDOp_.reset()
     self.deltaDDOp_.reset()
     self.outputOp_.reset()
     self.value_ = 0.0
+    self.dirty_ = False
 
   def update_(self):
     if self.dirty_ == True:
@@ -3804,6 +3819,8 @@ class FullDeltaRelChainCurve:
 
   def move_by(self, x, timestamp):
     """x is relative."""
+    if x == 0.0:
+      return 0.0
     #update if needed
     self.update_()
     #adjust stored input value (i.e. set to 0.0 if delta has changed sign, or on timeout)
@@ -3814,22 +3831,51 @@ class FullDeltaRelChainCurve:
       self.inputValue_ = inputValue
     #adjust input delta (for sens etc.)
     inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
+    if inputDelta == 0.0:
+      return 0.0
+    #assumes that inputDelta == 0.0 for x == 0.0, might not always be the case
+    deltaFactor = inputDelta / x
     #add input delta to stored input value
-    self.inputValue_ += inputDelta
+    inputValue = self.inputValue_ + inputDelta
     #compute new output value
-    outputValue = self.outputValueOp_.calc(self.inputValue_)
-    #compute output delta and update output value
+    outputValue = self.outputValueOp_.calc(inputValue)
+    #compute output delta
     outputDelta = outputValue - self.outputValue_
-    self.outputValue_ = outputValue
     #call next
-    if self.next_ is not None:
-      self.next_.move_by(outputDelta, timestamp)
-    #return output delta
-    return outputDelta
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{} x:{: 0.3f}; iv:{: 0.3f}; id:{: 0.3f}; df:{: 0.3f}"
+        .format(log_loc(self), x, inputValue, inputDelta, deltaFactor))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{} old ov:{: 0.3f}; ov:{: 0.3f}; od:{: 0.3f}"
+        .format(log_loc(self), self.outputValue_, outputValue, outputDelta))
+    actualOutputDelta = self.next_.move_by(outputDelta, timestamp)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug(
+        "{} od:{: 0.3f}; aod:{: 0.3f}"
+        .format(log_loc(self), outputDelta, actualOutputDelta))
+    #recalculate values and deltas backward if needed
+    if abs(actualOutputDelta - outputDelta) > 1e-6:
+      outputValue = self.outputValue_ + actualOutputDelta
+      inputValue = self.inputValueOp_.calc(outputValue)
+      inputDelta = inputValue - self.inputValue_
+      assert deltaFactor != 0.0
+      x = inputDelta / deltaFactor
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug(
+          "{} recalculated x:{: 0.3f}; id:{: 0.3f}; iv:{: 0.3f}; ov:{: 0.3f}"
+          .format(log_loc(self), x, inputDelta, inputValue, outputValue))
+    self.inputValue_, self.outputValue_ = inputValue, outputValue
+    #return x, adjusted or not
+    return x
 
   def reset(self):
-    if self.next_ is not None:
+    if self.next_ is not None and self.resetNext_ == True:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} resetting next".format(log_loc(self)))
       self.next_.reset()
+    else:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} not resetting next".format(log_loc(self)))
     self.reset_self_()
 
   def on_move_axis(self, axis, old, new):
@@ -3844,16 +3890,18 @@ class FullDeltaRelChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, inputValueDDOp, inputDeltaDDOp, outputValueOp, resetOnMoveAxis):
+  def __init__(self, next, inputValueDDOp, inputDeltaDDOp, outputValueOp, inputValueOp, resetOnMoveAxis, resetNext=True):
     """
     next: Next curve (relative).
     inputValueDDOp: Adjusts input value based on current input value, input delta and timestamp. Is reset on call to reset(), so can have state.
     inputDeltaDDOp: Adjusts input delta based on current input value, input delta and timestamp. Is reset on call to reset(), so can have state.
     outputValueOp: Computes output value from input value. Is not reset on call to reset(), so supposed to be stateless.
+    inputValueOp: Inverse of outputValueOp: computes input value from output value. Supposed to be stateless.
     resetOnMoveAxis: If True, curve will be reset after call to on_move_axis().
     """
-    self.next_, self.inputValueDDOp_, self.outputValueOp_, self.inputDeltaDDOp_ = next, inputValueDDOp, outputValueOp, inputDeltaDDOp
-    self.resetOnMoveAxis_ = resetOnMoveAxis
+    self.next_, self.inputValueDDOp_, self.outputValueOp_, self.inputValueOp_, self.inputDeltaDDOp_ = \
+      next, inputValueDDOp, outputValueOp, inputValueOp, inputDeltaDDOp
+    self.resetOnMoveAxis_, self.resetNext_ = resetOnMoveAxis, resetNext
     self.inputValue_ = 0.0
     self.outputValue_ = self.outputValueOp_.calc(self.inputValue_)
     self.dirty_ = False
@@ -3881,12 +3929,10 @@ class RelToAbsChainCurve:
     """
     Moves this (and next) curve by x.
     Returns:
-      The value this curve has moved to.
+      The value this curve has moved by.
     """
-    nextValue = self.next_.get_value()
-    nextValue += x
-    self.next_.move(nextValue, timestamp)
-    return self.next_.get_value()
+    v = self.get_value()
+    return self.next_.move(v + x, timestamp) - v
 
   def move(self, x, timestamp):
     """
@@ -3894,16 +3940,16 @@ class RelToAbsChainCurve:
     Returns:
       The value this curve has moved to.
     """
-    self.next_.move(x, timestamp)
-    return self.next_.get_value()
+    return self.next_.move(x, timestamp)
 
   def probe_by(self, x):
     """
     Probes whether can move this curve by x without actually moving it.
     Returns:
-      The value this curve can move to.
+      The value this curve can move by.
     """
-    return self.probe(x+self.get_value())
+    v = self.get_value()
+    return self.probe(v + x) - v
 
   def probe(self, x):
     """
@@ -3936,18 +3982,30 @@ class TransformAbsChainCurve:
     """Moves current curve to x and next curve to transformed value."""
     self.update_()
     outputValue = self.outputOp_.calc(x, timestamp)
-    newOutputValue = self.next_.move(outputValue, timestamp)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, nov:{:+.3f}".format(log_loc(self), x, outputValue, newOutputValue))
-    if newOutputValue != outputValue:
+    actualOutputValue = self.next_.move(outputValue, timestamp)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, aov:{:+.3f}".format(log_loc(self), x, outputValue, actualOutputValue))
+    if actualOutputValue != outputValue and self.allowOffLimits_ == False:
       #TODO If outputOp_.calc() changes state of outputOp_, and this state corellates with outputValue,
-      #TODO but curve is set to newOutputValue, then outputOp_ is out of sync.
+      #TODO but curve is set to actualOutputValue, then outputOp_ is out of sync.
       #TODO Mb replace outputOp_ and inputOp_ with funcs
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: nov != ov".format(log_loc(self)))
-      self.value_ = self.inputOp_.calc(newOutputValue)
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("{}: aov != ov".format(log_loc(self)))
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("{}: wanted outputValue {:+.6f}, got {:+.6f}".format(log_loc(self), outputValue, actualOutputValue))
+      self.value_ = self.inputOp_.calc(actualOutputValue)
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("{}: recalculated value_:{:+.6f}".format(log_loc(self), self.value_))
     else:
       self.value_ = x
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: value_:{:+.3f}".format(log_loc(self), self.value_))
     return self.value_
+
+  #TODO Remove since it's abs curve?
+  #move_by() is deliberately implemented via move() to avoid out-of-sync situations
+  #when allowOffLimits_ == True and value_ is out of limits of next_ curve
+  def move_by(self, x, timestamp):
+    v = self.get_value()
+    return self.move(v + x) - v
 
   def probe(self, x):
     """
@@ -3958,10 +4016,17 @@ class TransformAbsChainCurve:
     #Assuming this call to calc() does not change outputOp_ state.
     outputValue = self.outputOp_.calc(x)
     newOutputValue = self.next_.probe(outputValue)
-    if newOutputValue != outputValue:
+    if newOutputValue != outputValue and self.allowOffLimits_ == False:
       return self.inputOp_.calc(newOutputValue)
     else:
       return x
+
+  #TODO Remove since it's abs curve?
+  #probe_by() is deliberately implemented via probe() to avoid out-of-sync situations
+  #when allowOffLimits_ == True and value_ is out of limits of next_ curve
+  def probe_by(self, x):
+    v = self.get_value()
+    return self.probe(v + x) - v
 
   def reset(self):
     self.inputOp_.reset()
@@ -3981,16 +4046,19 @@ class TransformAbsChainCurve:
   def set_next(self, next):
     self.next_ = next
 
-  def __init__(self, next, inputOp, outputOp, resetOnMoveAxis=False):
-    self.next_, self.inputOp_, self.outputOp_, self.resetOnMoveAxis_ = next, inputOp, outputOp, resetOnMoveAxis
+  def __init__(self, next, inputOp, outputOp, resetOnMoveAxis=False, allowOffLimits=False):
+    self.next_, self.inputOp_, self.outputOp_ = next, inputOp, outputOp
+    self.resetOnMoveAxis_, self.allowOffLimits_ = resetOnMoveAxis, allowOffLimits
     self.value_, self.dirty_ = 0.0, False
 
   def update_(self):
     if self.dirty_ == True:
-      self.value_ = self.inputOp_.calc(self.next_.get_value())
+      if self.allowOffLimits_ == False:
+        self.value_ = self.inputOp_.calc(self.next_.get_value())
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("{}: recalculated value_: {:+0.3f}".format(log_loc(self), self.value_))
       if self.resetOnMoveAxis_ == True:
         self.reset()
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update_(): recalculated value_: {:+0.3f}".format(log_loc(self), self.value_))
       self.dirty_ = False
 
 
@@ -4003,9 +4071,11 @@ class UpdatedChainCurve:
 
   def move_by(self, x, timestamp):
     """Adjusts desired value by x."""
-    self.desiredValue_ = self.next_.probe_by(x)
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move_by(): x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(log_loc(self), x, timestamp, self.desiredValue_))
-    return self.desiredValue_
+    r = self.next_.probe_by(x)
+    self.desiredValue_ += r
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: x:{: 6.3f}; timestamp:{}; desired:{: 6.3f}".format(log_loc(self), x, timestamp, self.desiredValue_))
+    return r
 
   def move(self, x, timestamp):
     """Sets desired value to x."""
@@ -7229,8 +7299,18 @@ def make_parser():
       dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
-      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = DeltaRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp, combineValue=combineValue, combineDelta=combineDelta, resetOnMoveAxis=resetOnMoveAxis)
+      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", None)
+      if resetOnMoveAxis is not None:
+        logger.warning("'resetOnMoveAxis' in 'accel' curve config is deprecated, move it into 'dynamic' ({})".format(str2(cfg, 100)))
+      else:
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
+      resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+      eps = state.resolve_d(dynamicCfg, "eps", 1e-4)
+      accelChainCurve = DeltaRelChainCurve(
+        next=None,
+        valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp,
+        combineValue=combineValue, combineDelta=combineDelta,
+        resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext, eps=eps)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate, filter, and transform (and update)
@@ -7275,8 +7355,15 @@ def make_parser():
       #settings are taken from cfg here
       inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
+      dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state)
       resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
-      accelChainCurve = FullDeltaRelChainCurve(next=None, inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp, outputValueOp=dynamicOutputValueOp, resetOnMoveAxis=resetOnMoveAxis)
+      #resetNext is taken from dynamicCfg
+      resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+      accelChainCurve = FullDeltaRelChainCurve(
+        next=None,
+        inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp,
+        outputValueOp=dynamicOutputValueOp, inputValueOp=dynamicInputValueOp,
+        resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate, filter, and transform (and update)
@@ -7294,7 +7381,11 @@ def make_parser():
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
-      staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+      staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False)
+      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
+      staticChainCurve = TransformAbsChainCurve(
+        next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
+        resetOnMoveAxis=staticResetOnMoveAxis, allowOffLimits=staticAllowOffLimits)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
       #update
