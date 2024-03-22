@@ -3412,10 +3412,16 @@ class LookupOp:
     self.inputOp_.reset()
     self.outputOp_.reset()
 
-  def __init__(self, inputOp, outputOp, inputStep, inputLimits, expandLimits=False):
-    self.inputOp_, self.outputOp_, self.inputStep_, self.inputLimits_, self.expandLimits_ = inputOp, outputOp, inputStep, list(inputLimits), expandLimits
-    if self.inputLimits_[0] > self.inputLimits_[1]:
-      self.inputLimits_[0], self.inputLimits_[1] = self.inputLimits_[1], self.inputLimits_[0]
+  def __init__(self, inputOp, outputOp, inputStep=0.1, inputLimits=None, expandLimits=False):
+    if inputLimits is None:
+      expandLimits = True
+      inputLimits = [0.0, inputStep]
+    else:
+      inputLimits = list(inputLimits)
+    if inputLimits[0] > inputLimits[1]:
+      inputLimits[0], inputLimits[1] = inputLimits[1], inputLimits[0]
+    self.inputOp_, self.outputOp_, self.inputStep_, self.expandLimits_ = inputOp, outputOp, inputStep, expandLimits
+    self.inputStep_, self.inputLimits_, self.expandLimits_ = inputStep, inputLimits, expandLimits
     self.ivs_, self.ovs_ = [], []
     ivp = self.inputLimits_[0]
     ovp = self.outputOp_.calc(ivp)
@@ -7113,7 +7119,7 @@ def make_parser():
 
   def makeIterativeInputOp(cfg, outputOp, state):
     inputOp = IterativeInputOp(outputOp=outputOp, eps=state.resolve_d(cfg, "eps", 0.001), numSteps=state.resolve_d(cfg, "numSteps", 100))
-    inputLimits = state.resolve(cfg, "inputLimits")
+    inputLimits = state.resolve_d(cfg, "inputLimits", None)
     inputStep = state.resolve_d(cfg, "inputStep", 0.1)
     expandLimits = state.resolve_d(cfg, "expandLimits", False)
     inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
