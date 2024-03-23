@@ -7122,11 +7122,24 @@ def make_parser():
       sensOp = SensModOp(combine, sensOp, func, axis)
     return sensOp
 
-  def makeIterativeInputOp(cfg, outputOp, state):
-    inputOp = IterativeInputOp(outputOp=outputOp, eps=state.resolve_d(cfg, "eps", 0.001), numSteps=state.resolve_d(cfg, "numSteps", 100))
-    inputLimits = state.resolve_d(cfg, "inputLimits", None)
-    inputStep = state.resolve_d(cfg, "inputStep", 0.1)
-    expandLimits = state.resolve_d(cfg, "expandLimits", False)
+  def makeIterativeInputOp(cfg, outputOp, state, sectionName=None):
+    def get_prop(cfg, propName, sectionName, dfault):
+      v = None
+      if sectionName is None:
+        v = state.resolve_d(cfg, propName, dfault)
+      else:
+        v = state.resolve_d(cfg, propName, None)
+        if v is not None:
+          logger.warning("'{}' in curve config is deprecated, move in into '{}' ({})".format(propName, sectionName, str2(cfg, 100)))
+        else:
+          v = state.resolve_d(get_nested(cfg, sectionName), propName, dfault)
+      return v
+    eps = get_prop(cfg, "eps", sectionName, 0.001)
+    numSteps = get_prop(cfg, "numSteps", sectionName, 100)
+    inputOp = IterativeInputOp(outputOp=outputOp, eps=eps, numSteps=numSteps)
+    inputLimits = get_prop(cfg, "inputLimits", sectionName, None)
+    inputStep = get_prop(cfg, "inputStep", sectionName, 0.1)
+    expandLimits = get_prop(cfg, "expandLimits", sectionName, False)
     inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
     #inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
@@ -7142,7 +7155,7 @@ def make_parser():
       ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", dynamicCfg, state), ops=[signDDOp, timeDDOp]))
     )
     outputOp = FuncOp(func=state.get("parser")("func", get_nested(cfg, "static"), state))
-    inputOp = makeIterativeInputOp(cfg, outputOp, state)
+    inputOp = makeIterativeInputOp(cfg, outputOp, state, "static")
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
     resetOpsOnAxisMove = state.resolve_d(cfg, "resetOpsOnAxisMove", True)
@@ -7182,7 +7195,7 @@ def make_parser():
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
-    dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state)
+    dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state, "dynamic")
     dymamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
     accumulateChainCurve.set_next(dymamicChainCurve)
     #offset transformed
@@ -7191,7 +7204,7 @@ def make_parser():
     #transform offset
     staticCfg = get_nested(cfg, "static")
     staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
-    staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+    staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
     staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
     offsetChainCurve.set_next(staticChainCurve)
     #move axis
@@ -7224,7 +7237,11 @@ def make_parser():
     else:
       deadzone = state.resolve_d(cfg, "dynamic.deadzone", 0.0)
     inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, deadzone)
-    filterCfg = state.resolve_d(cfg, "filter", None)
+    filterCfg = get_nested_d(cfg, "filter", None)
+    if filterCfg is not None:
+      logger.warning("'filter' config in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
+    else:
+      filterCfg = get_nested_d(cfg, "dynamic.filter", None)
     if filterCfg is not None:
       filter_ = state.get("parser")("filter", filterCfg, state)
       inputDeltaDOp = FilterOp(filter_, inputDeltaDOp)
@@ -7335,7 +7352,7 @@ def make_parser():
       bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
-      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
@@ -7366,8 +7383,12 @@ def make_parser():
       #settings are taken from cfg here
       inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
-      dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state)
-      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
+      dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
+      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", None)
+      if resetOnMoveAxis is not None:
+        logger.warning("'resetOnMoveAxis' in 'fulldelta' curve config is deprecated, move it into 'dynamic' ({})".format(str2(cfg, 100)))
+      else:
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
       #resetNext is taken from dynamicCfg
       resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
       accelChainCurve = FullDeltaRelChainCurve(
@@ -7391,7 +7412,7 @@ def make_parser():
       bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
-      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state)
+      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
       staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False)
       staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
       staticChainCurve = TransformAbsChainCurve(
