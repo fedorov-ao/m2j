@@ -7102,13 +7102,22 @@ def make_parser():
     return linker
   curveParser.add("linker", parseAxisLinker)
 
+  def get_deprecated_prop(cfg, propName, sectionName, dfault, state):
+    v = None
+    if sectionName is None:
+      v = state.resolve_d(cfg, propName, dfault)
+    else:
+      v = state.resolve_d(cfg, propName, None)
+      if v is not None:
+        logger.warning("'{}' in curve config is deprecated, move in into '{}' ({})".format(propName, sectionName, str2(cfg, 100)))
+      else:
+        sectionCfg = get_nested_d(cfg, sectionName, None)
+        v = dfault if sectionCfg is None else state.resolve_d(sectionCfg, propName, dfault)
+    return v
+
   def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
     #cfg is curve cfg
-    sensModCfg = get_nested_d(cfg, "sensMod", None)
-    if sensModCfg is not None:
-      logger.warning("'sensMod' in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
-    else:
-      sensModCfg = get_nested_d(cfg, "dynamic.sensMod", sensModCfg)
+    sensModCfg = get_deprecated_prop(cfg, "sensMod", "dynamic", None, state)
     if sensModCfg is not None:
       axis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
       func = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
@@ -7123,23 +7132,12 @@ def make_parser():
     return sensOp
 
   def makeIterativeInputOp(cfg, outputOp, state, sectionName=None):
-    def get_prop(cfg, propName, sectionName, dfault):
-      v = None
-      if sectionName is None:
-        v = state.resolve_d(cfg, propName, dfault)
-      else:
-        v = state.resolve_d(cfg, propName, None)
-        if v is not None:
-          logger.warning("'{}' in curve config is deprecated, move in into '{}' ({})".format(propName, sectionName, str2(cfg, 100)))
-        else:
-          v = state.resolve_d(get_nested(cfg, sectionName), propName, dfault)
-      return v
-    eps = get_prop(cfg, "eps", sectionName, 0.001)
-    numSteps = get_prop(cfg, "numSteps", sectionName, 100)
+    eps = get_deprecated_prop(cfg, "eps", sectionName, 0.001, state)
+    numSteps = get_deprecated_prop(cfg, "numSteps", sectionName, 100, state)
     inputOp = IterativeInputOp(outputOp=outputOp, eps=eps, numSteps=numSteps)
-    inputLimits = get_prop(cfg, "inputLimits", sectionName, None)
-    inputStep = get_prop(cfg, "inputStep", sectionName, 0.1)
-    expandLimits = get_prop(cfg, "expandLimits", sectionName, False)
+    inputLimits = get_deprecated_prop(cfg, "inputLimits", sectionName, None, state)
+    inputStep = get_deprecated_prop(cfg, "inputStep", sectionName, 0.1, state)
+    expandLimits = get_deprecated_prop(cfg, "expandLimits", sectionName, False, state)
     inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
     #inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
@@ -7231,17 +7229,9 @@ def make_parser():
   def makeInputDeltaDDOp(cfg, state):
     #cfg is curve cfg
     inputDeltaDOp = ReturnDeltaOp()
-    deadzone = state.resolve_d(cfg, "deadzone", None)
-    if deadzone is not None:
-      logger.warning("'deadzone' in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
-    else:
-      deadzone = state.resolve_d(cfg, "dynamic.deadzone", 0.0)
+    deadzone = get_deprecated_prop(cfg, "deadzone", "dynamic", 0.0, state)
     inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, deadzone)
-    filterCfg = get_nested_d(cfg, "filter", None)
-    if filterCfg is not None:
-      logger.warning("'filter' config in curve config is deprecated, put it into 'dynamic' ({})".format(str2(cfg, 100)))
-    else:
-      filterCfg = get_nested_d(cfg, "dynamic.filter", None)
+    filterCfg = get_deprecated_prop(cfg, "filter", "dynamic", None, state)
     if filterCfg is not None:
       filter_ = state.get("parser")("filter", filterCfg, state)
       inputDeltaDOp = FilterOp(filter_, inputDeltaDOp)
@@ -7327,11 +7317,7 @@ def make_parser():
       dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
-      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", None)
-      if resetOnMoveAxis is not None:
-        logger.warning("'resetOnMoveAxis' in 'accel' curve config is deprecated, move it into 'dynamic' ({})".format(str2(cfg, 100)))
-      else:
-        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
+      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
       resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
       eps = state.resolve_d(dynamicCfg, "eps", 1e-4)
       accelChainCurve = DeltaRelChainCurve(
@@ -7384,11 +7370,7 @@ def make_parser():
       inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
       dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
-      resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", None)
-      if resetOnMoveAxis is not None:
-        logger.warning("'resetOnMoveAxis' in 'fulldelta' curve config is deprecated, move it into 'dynamic' ({})".format(str2(cfg, 100)))
-      else:
-        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
+      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
       #resetNext is taken from dynamicCfg
       resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
       accelChainCurve = FullDeltaRelChainCurve(
@@ -7413,7 +7395,7 @@ def make_parser():
       #transform
       staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
-      staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False)
+      staticResetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "static", True, state)
       staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
       staticChainCurve = TransformAbsChainCurve(
         next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
