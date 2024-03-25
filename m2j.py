@@ -6762,10 +6762,13 @@ class IntrusiveSelectParser:
 class DerefSelectParser:
   logger = get_logger(logger, "DerefSelectParser")
 
-  def __call__(self, key, cfg, state):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("DerefSelectParser.(): key: {}, cfg: {}".format(str2(key), str2(cfg)))
+  def __call__(self, key, cfg, state, **kwargs):
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: key: '{}', cfg: '{}'".format(log_loc(self), str2(key), str2(cfg)))
     d = key if self.derefKey_ else cfg
-    r = state.deref(d)
+    r = state.deref(d, **kwargs)
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: dereferenced '{}' to '{}'".format(log_loc(self), str2(d), str2(r)))
     return self.p_(key, cfg, state) if r == d else r
 
   def add(self, key, parser):
@@ -6783,8 +6786,8 @@ class DerefSelectParser:
 
 
 class DerefParser:
-  def __call__(self, cfg, state):
-    r = state.deref(cfg)
+  def __call__(self, cfg, state, **kwargs):
+    r = state.deref(cfg, **kwargs)
     return self.p_(cfg, state) if r == cfg else r
 
   def add(self, key, parser):
