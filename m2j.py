@@ -5111,7 +5111,7 @@ class AxisPoseManager:
     return self.apply_pose(i)
 
   def apply_pose(self, i):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: poseping to {}".format(log_loc(self), i))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: poseing to {}".format(log_loc(self), i))
     pose = self.poses_.get(i, None)
     if pose is None:
       if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), i))
@@ -5130,8 +5130,9 @@ class AxisPoseManager:
   def merge_pose(self, frm, to):
     f = self.poses_.get(frm)
     if f is None:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: no pose {}".format(log_loc(self), frm))
       return False
-    t = self.poses_.get(to, [])
+    t = self.poses_.setdefault(to, [])
     r = []
     for i in range(len(f)):
       for j in range(len(t)):
