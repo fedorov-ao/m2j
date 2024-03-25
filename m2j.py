@@ -7054,12 +7054,6 @@ def make_parser():
     return func
   funcParser.add("hermite", hermite)
 
-  def get_func(cfg, state, **kwargs):
-    op = state.resolve(cfg, "func", **kwargs)
-    if is_str_type(op):
-      op = state.get("parser")("func", cfg, state)
-    return op
-
   #Filters
   filterParserKeyOp = lambda cfg,state : get_nested(cfg, "type")
   filterParser = IntrusiveSelectParser(keyOp=filterParserKeyOp, parser=SelectParser())
@@ -7091,7 +7085,7 @@ def make_parser():
       def __call__(self, func):
         self.axisLinker.set_func(func)
     funcSetter = FuncSetter()
-    func = get_func(cfg, state, setter=funcSetter)
+    func = get_deprecated_func(cfg, state, setter=funcSetter)
     fnControllingAxis = state.resolve(cfg, "leader")
     controllingAxis = state.get_axis_by_full_name(fnControllingAxis)
     adjustOffset = state.resolve_d(cfg, "adjustOffset", True)
@@ -7118,6 +7112,19 @@ def make_parser():
         sectionCfg = get_nested_d(cfg, sectionName, None)
         v = dfault if sectionCfg is None else state.resolve_d(sectionCfg, propName, dfault)
     return v
+
+  def get_deprecated_func(cfg, state, *args, **kwargs):
+    cfg2 = get_nested(cfg, "func")
+    funcOrCfg = state.deref(cfg2, "func", *args, **kwargs)
+    if cfg2 != funcOrCfg:
+      return funcOrCfg
+    if is_str_type(cfg2):
+      logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
+    elif is_dict_type(cfg2):
+      cfg = cfg2
+    else:
+      raise RuntimeError("invalid func: {}".format(cfg2))
+    return state.get("parser")("func", cfg, state)
 
   def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
     #cfg is curve cfg
@@ -7154,9 +7161,9 @@ def make_parser():
     timeDDOp = TimeDistanceDeltaOp(resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
-      ops=(ReturnDeltaOp(), AccumulateDeltaOp(state.get("parser")("func", dynamicCfg, state), ops=[signDDOp, timeDDOp]))
+      ops=(ReturnDeltaOp(), AccumulateDeltaOp(get_deprecated_func(dynamicCfg, state), ops=[signDDOp, timeDDOp]))
     )
-    outputOp = FuncOp(func=state.get("parser")("func", get_nested(cfg, "static"), state))
+    outputOp = FuncOp(func=get_deprecated_func(get_nested(cfg, "static"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state, "static")
     deltaOp = makeSensModOp(cfg, state, deltaOp)
     deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
@@ -7196,7 +7203,7 @@ def make_parser():
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
-    dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
+    dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
     dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state, "dynamic")
     dymamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
     accumulateChainCurve.set_next(dymamicChainCurve)
@@ -7205,7 +7212,7 @@ def make_parser():
     dymamicChainCurve.set_next(offsetChainCurve)
     #transform offset
     staticCfg = get_nested(cfg, "static")
-    staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+    staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
     staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
     staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
     offsetChainCurve.set_next(staticChainCurve)
@@ -7318,7 +7325,7 @@ def make_parser():
       valueDDOp = makeInputValueDDOp(dynamicCfg, state)
       #settings are taken from cfg here
       deltaDDOp = makeInputDeltaDDOp(cfg, state)
-      dynamicOutputOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
+      dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
       resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
@@ -7341,7 +7348,7 @@ def make_parser():
       #filter
       bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
-      staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+      staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
       bottom.set_next(staticChainCurve)
@@ -7372,7 +7379,7 @@ def make_parser():
       inputValueDDOp = makeInputValueDDOp(dynamicCfg, state)
       #settings are taken from cfg here
       inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
-      dynamicOutputValueOp = FuncOp(func=state.get("parser")("func", dynamicCfg, state))
+      dynamicOutputValueOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
       dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
       resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
       #resetNext is taken from dynamicCfg
@@ -7397,7 +7404,7 @@ def make_parser():
       #and this will throw off filter
       bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
       #transform
-      staticOutputOp = FuncOp(func=state.get("parser")("func", staticCfg, state))
+      staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
       staticResetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "static", True, state)
       staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
