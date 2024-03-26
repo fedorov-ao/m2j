@@ -49,14 +49,6 @@ def set_loggers_level(level):
 logger = get_logger(logging.getLogger(), "m2j")
 
 
-class KeyError2(KeyError):
-  def __init__(self, key, keys):
-    KeyError.__init__(self, key)
-    self.key, self.keys = key, keys
-  def __str__(self):
-    return "{} not in {}".format(self.key, self.keys)
-
-
 def sign(v):
   return -1 if v < 0 else 1 if v > 0 else 0
 
@@ -300,9 +292,16 @@ def get_nested(d, name, sep = "."):
       path = str(sep.join(tokens[:tokens.index(t)]))
       token = sep.join((path, str(t))) if len(path) != 0 else str(t)
       keys = [sep.join((path, str(k))) if len(path) != 0 else str(k) for k in d.keys()]
-      raise KeyError2(token, keys)
+      raise KeyErrorEx(token, keys)
     d = nd
   return d
+
+
+def get_nested_ex(d, name, state, sep = "."):
+  try:
+    return get_nested(d, name, sep)
+  except KeyErrorEx as e:
+    raise ParseError(d, state.get_path(d), e)
 
 
 def get_nested_d(d, name, dfault = None, sep = "."):
@@ -353,20 +352,39 @@ def get_nested_from_stack_d(stack, name, dfault = None):
   return dfault if r is None else r
 
 
-class ArgNotFoundError(RuntimeError):
-  def __init__(self, argName):
-    self.argName = argName
+def v2p_fill(seq, v2p, parent):
+  class CI:
+    def __init__(self, parent, key):
+      self.parent, self.key = parent, key
+  def is_seq(v):
+    return is_dict_type(v) or is_list_type(v)
+  ts = type(seq)
+  kvs = enumerate(seq) if ts in (list, tuple) else seq.items() if ts in (dict, collections.OrderedDict) else ()
+  for key,value in kvs:
+    ci = CI(parent, key)
+    v2p[id(value)] = ci
+    if is_seq(value):
+      v2p_fill(value, v2p, ci)
 
-  def __str__(self):
-    return "Argument '{}' was not found".format(self.argName)
+
+def v2p_make(seq):
+  v2p = {}
+  v2p_fill(seq, v2p, None)
+  return v2p
 
 
-class ObjNotFoundError(RuntimeError):
-  def __init__(self, objName):
-    self.objName = objName
+def v2p_path(v, v2p):
+  ci = v2p.get(id(v))
+  p = []
+  while ci is not None:
+    p.append(ci.key)
+    ci = ci.parent
+  p.reverse()
+  return p
 
-  def __str__(self):
-    return "Object '{}' was not found".format(self.objName)
+
+def v2p_path2str(path, sep="."):
+  return sep + sep.join(str(v) for v in path)
 
 
 def remove_value_tag(d):
@@ -548,6 +566,40 @@ class PolynomialApproximator:
     self.dirty_ == False
 
 
+class KeyErrorEx(KeyError):
+  def __init__(self, key, keys):
+    KeyError.__init__(self, key)
+    self.key, self.keys = key, keys
+  def __str__(self):
+    return "'{}' not in {}".format(self.key, str2(self.keys))
+
+
+class NotFoundError(RuntimeError):
+  def __init__(self, what, name):
+    self.what, self.name = what, name
+
+  def __str__(self):
+    return "{} '{}' not found".format(self.what, self.name)
+
+
+class ConfigReadError(RuntimeError):
+  def __init__(self, configName, e):
+    self.configName, self.e = configName, e
+  def __str__(self):
+    return "Cannot read config file {} ({})".format(self.configName, self.e)
+
+
+class ParseError(RuntimeError):
+  def __init__(self, cfg, path=None, e=None):
+    if path is None:
+      path = []
+    if is_str_type(e):
+      e = RuntimeError(e)
+    self.cfg, self.path, self.e = cfg, path, e
+  def __str__(self):
+    return "could not parse '{}' at '{}': {}".format(str2(self.cfg), v2p_path2str(self.path), self.e)
+
+
 class ParserState:
   logger = get_logger(logger, "ParserState")
 
@@ -591,7 +643,7 @@ class ParserState:
           break
       i += 1
     if objects is None or obj is None:
-      raise ObjNotFoundError(name)
+      raise NotFoundError("obj", name)
     if len(objectName) > 1:
       for s in objectName[1].split(memberSep):
         obj = obj.get(s)
@@ -606,7 +658,7 @@ class ParserState:
         o = self.resolve_def(v)
         cb(k, o)
       except RuntimeError as e:
-        self.logger.warning("Could not create object '{}' ({})".format(k, e))
+        self.logger.warning("Could not create object '{}': {}".format(k, e))
 
   def get_arg(self, name, **kwargs):
     r = None
@@ -614,7 +666,7 @@ class ParserState:
     if args is not None:
       r = get_nested_from_stack_d(args, name, None)
       if r is None:
-        raise ArgNotFoundError(name)
+        raise NotFoundError("arg", name)
     else:
       raise RuntimeError("No args were specified, so cannot get arg: {}".format(str2(name)))
     return self.get_var_or_value_(r, **kwargs)
@@ -655,7 +707,7 @@ class ParserState:
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Created mapping {} from {}".format(op, str2(mappingCfg)))
     return op
 
-  def deref(self, refOrValue, dfault=None, **kwargs):
+  def deref(self, refOrValue, **kwargs):
     prefix, suffix, mapping, cfgDfault = None, None, None, None
     r = refOrValue
     if is_dict_type(refOrValue):
@@ -693,8 +745,11 @@ class ParserState:
       elif prefix == "arg":
         try:
           r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
-        except ArgNotFoundError as e:
-          r = cfgDfault if cfgDfault is not None else dfault
+        except NotFoundError as e:
+          if cfgDfault is not None:
+            r = cfgDfault
+          else:
+            raise
       elif prefix == "var":
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
@@ -707,14 +762,19 @@ class ParserState:
     v = get_nested_d(d, name, dfault)
     if v == dfault:
       return dfault
-    return self.deref(v, dfault, **kwargs)
+    try:
+      return self.deref(v, **kwargs)
+    except NotFoundError as e:
+      return dfault
+    except RuntimeError as e:
+      raise ParseError(cfg, self.get_path(cfg), e)
 
   def resolve(self, d, name, **kwargs):
-    r = self.resolve_d(d, name, None, **kwargs)
-    if r is None:
-      #TODO Use more appropriate exception
-      raise RuntimeError("Cannot get '{}' from '{}'".format(name, str2(d, 100)))
-    return r
+    cfg = get_nested_ex(d, name, self)
+    try:
+      return self.deref(cfg, **kwargs)
+    except RuntimeError as e:
+      raise ParseError(cfg, self.get_path(cfg), e)
 
   def parse_def(self, cfg):
     assert is_dict_type(cfg)
@@ -722,10 +782,10 @@ class ParserState:
     obj = None
     className = cfg.get("class", None)
     if className is None:
-      raise RuntimeError("Cannot create object from: {} ('class' property is missing)".format(str2(cfg, 100)))
+      raise ParseError(cfg, self.get_path(cfg), KeyErrorEx("class", cfg.keys()))
     obj = parser(className, cfg, self)
     if obj is None:
-      raise RuntimeError("Cannot create object from: {}".format(str2(cfg, 100)))
+      raise ParseError(cfg, self.get_path(cfg))
     return obj
 
   def resolve_def(self, cfg):
@@ -733,6 +793,9 @@ class ParserState:
     if is_dict_type(r) and not has_value_tag(r):
       r = self.parse_def(r)
     return r
+
+  def get_path(self, v):
+    return self.get("main").get_path(v)
 
   def get_axis_by_full_name(self, fnAxis):
     return self.get("main").get_axis_by_full_name(fnAxis)
@@ -870,7 +933,7 @@ codes = type("codes", (object,), codesDict)
 def name2code(name):
   r = codesDict.get(name)
   if r is None:
-    raise RuntimeError("Bad name: {}".format(str2(name)))
+    raise RuntimeError("bad name: {}".format(str2(name)))
   return r
 
 
@@ -6593,20 +6656,6 @@ def init_main_ep(state):
   return mainEP
 
 
-class ConfigReadError(RuntimeError):
-  def __init__(self, configName, e):
-    self.configName, self.e = configName, e
-  def __str__(self):
-    return "Cannot read config file {} ({})".format(self.configName, self.e)
-
-
-class ParseError(RuntimeError):
-  def __init__(self, path, e):
-    self.path, self.e = path, e
-  def __str__(self):
-    return "Cannot parse {} ({})".format(self.path, self.e)
-
-
 def init_config(configFilesNames):
   cfg = {}
   for configName in configFilesNames:
@@ -6641,14 +6690,11 @@ def init_preset_config(state):
       parser = main.get("parser")
       r = parser("ep", presetCfg, state)
       return r
-    except KeyError2 as e:
-      logger.error("Error while initializing config preset '{}': cannot find key '{}' in {}".format(presetName, e.key, e.keys))
+    except (ParseError, Exception) as e:
+      logger.error("Error while initializing config preset '{}': {}".format(presetName, e))
       raise
     except KeyError as e:
       logger.error("Error while initializing config preset '{}': cannot find key '{}'".format(presetName, str(e)))
-      raise
-    except Exception as e:
-      logger.error("Error while initializing config preset '{}': {}".format(presetName, e))
       raise
 
 
@@ -6696,25 +6742,10 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update, exceptionHandler=
   return d
 
 
-class ParserError(RuntimeError):
-  def __init__(self, cfg):
-    self.cfg = cfg
-  def __str__(self):
-    return "Could not parse {}".format(str2(self.cfg, 100))
-
-
-class ParserNotFoundError(KeyError2):
-  def __init__(self, requestetParser, availableParsers, cfg=None):
-    KeyError2.__init__(self, requestetParser, availableParsers)
-    self.cfg = cfg
-  def __str__(self):
-    return "Parser {} not found, available parsers are: {} (encountered when parsing: {})".format(self.key, self.keys, str2(self.cfg, 100))
-
-
 class SelectParser:
   def __call__(self, key, cfg, state):
     if key not in self.parsers_:
-      raise ParserNotFoundError(key, self.parsers_.keys(), cfg)
+      raise ParseError(key, state.get_path(cfg), KeyErrorEx(key, self.parsers_.keys()))
     else:
       parser = self.parsers_[key]
       try:
@@ -6870,7 +6901,7 @@ def make_parser():
     return state.resolve(cfg, "literal")
   mainParser.add("literal", literalParser)
 
-  funcParserKeyOp = lambda cfg,state : get_nested(cfg, "func")
+  funcParserKeyOp = lambda cfg,state : get_nested_ex(cfg, "func", state)
   funcParser = IntrusiveSelectParser(keyOp=funcParserKeyOp, parser=SelectParser())
   mainParser.add("func", funcParser)
 
@@ -6947,10 +6978,10 @@ def make_parser():
       elif is_list_type(pointsCfg):
         for p in pointsCfg:
           if len(p) != 2:
-            raise RuntimeError("Points should be a list of value pairs, got: {}".format(pointsCfg))
+            raise ParseError(pointsCfg, state.get_path(pointsCfg), "points should be a list of value pairs")
         setter = lambda points : func.set_points(points)
       else:
-        raise RuntimeError("Bad points format: {}".format(points))
+        raise ParseError(pointsCfg, state.get_path(pointsCfg), "bad points format")
       #Registering setter in case "points" is bound to Var
       state.resolve(cfg, "points", setter=setter)
     else:
@@ -6974,7 +7005,7 @@ def make_parser():
         if is_list_type(pointsCfg):
           setter = make_setter(func, lambda l : l)
     if pointsCfg is None:
-      raise RuntimeError("Must specify either 'points' or 'pointsEx'")
+      raise ParseError(cfg, state.get_path(cfg), "must specify either 'points' or 'pointsEx'")
     assert setter is not None
     setter(pointsCfg)
     return func
@@ -6994,7 +7025,7 @@ def make_parser():
     coeffsSetter = CoeffsSetter()
     coeffs = state.resolve(cfg, "coeffs", setter=coeffsSetter)
     if not is_dict_type(coeffs):
-      raise RuntimeError("coeffs should be dict-like")
+      raise ParseError(coeffs, state.get_path(coeffs), "coeffs should be dict-like")
     coeffs = {int(p) : k for p,k in coeffs.items()}
     offset = state.resolve_d(cfg, "offset", 0.0)
     func = PolynomialFunc(coeffs, offset, make_tracker(cfg, state))
@@ -7079,15 +7110,19 @@ def make_parser():
   mainParser.add("curve", curveParser)
 
   def parseAxisLinker(cfg, state):
-    fnControlledAxis = state.resolve(cfg, "follower")
-    controlledAxis = state.get_axis_by_full_name(fnControlledAxis)
+    def resolve_axis(cfg, name, state):
+      fnAxis = state.resolve(cfg, name)
+      try:
+        return fnAxis, state.get_axis_by_full_name(fnAxis)
+      except RuntimeError as e:
+        raise ParseError(fnAxis, state.get_path(fnAxis), e)
+    fnControlledAxis, controlledAxis = resolve_axis(cfg, "follower", state)
     class FuncSetter:
       def __call__(self, func):
         self.axisLinker.set_func(func)
     funcSetter = FuncSetter()
     func = get_deprecated_func(cfg, state, setter=funcSetter)
-    fnControllingAxis = state.resolve(cfg, "leader")
-    controllingAxis = state.get_axis_by_full_name(fnControllingAxis)
+    fnControllingAxis, controllingAxis = resolve_axis(cfg, "leader", state)
     adjustOffset = state.resolve_d(cfg, "adjustOffset", True)
     linker = AxisLinker(controllingAxis, controlledAxis, func, adjustOffset)
     s = state.resolve_d(cfg, "state", False)
@@ -7098,6 +7133,7 @@ def make_parser():
     state.add_curve(fnControlledAxis, linker)
     state.add_curve(fnControllingAxis, linker)
     return linker
+
   curveParser.add("linker", parseAxisLinker)
 
   def get_deprecated_prop(cfg, propName, sectionName, dfault, state):
@@ -7113,9 +7149,9 @@ def make_parser():
         v = dfault if sectionCfg is None else state.resolve_d(sectionCfg, propName, dfault)
     return v
 
-  def get_deprecated_func(cfg, state, *args, **kwargs):
-    cfg2 = get_nested(cfg, "func")
-    funcOrCfg = state.deref(cfg2, "func", *args, **kwargs)
+  def get_deprecated_func(cfg, state, **kwargs):
+    cfg2 = get_nested_ex(cfg, "func", state)
+    funcOrCfg = state.deref(cfg2, **kwargs)
     if cfg2 != funcOrCfg:
       return funcOrCfg
     if is_str_type(cfg2):
@@ -7123,7 +7159,7 @@ def make_parser():
     elif is_dict_type(cfg2):
       cfg = cfg2
     else:
-      raise RuntimeError("invalid func: {}".format(cfg2))
+      raise ParseError(cfg2, state.get_path(cfg2), "invalid func")
     return state.get("parser")("func", cfg, state)
 
   def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
@@ -7291,7 +7327,7 @@ def make_parser():
         keepAcceleration = state.resolve_d(opCfg, "keepAcceleration", False)
         op = AccelUpdatedChainCurveOp(accelerationFunc, decelerationFunc, minSpeed, maxSpeed, keepAcceleration)
       else:
-        raise RuntimeError("Unknown op type: '{}'".format(opType))
+        raise ParseError(opType, state.get_path(opType), "unknown op type")
       sensModCfg = get_nested_d(updatedCfg, "sensMod")
       if sensModCfg is not None:
         sensModAxis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
@@ -7303,7 +7339,7 @@ def make_parser():
         "relative" : UpdatedChainCurve.MODE_RELATIVE
       }.get(modeName.lower())
       if mode is None:
-        raise RuntimeError("Bad mode: '{}'".format(modeName))
+        raise ParseError(modeName, state.get_path(modeName), "bad mode")
       updatedChainCurve = UpdatedChainCurve(top, None, op, mode)
       state.get("main").add_to_updated(lambda tick,ts : updatedChainCurve.update(tick, ts))
       top.add_stateful(updatedChainCurve)
@@ -7427,11 +7463,11 @@ def make_parser():
     config = state.get("main").get("config")
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
-      raise RuntimeError("Preset name was not specified")
+      raise ParseError(cfg, state.get_path(cfg), "preset name was not specified")
     presets = config.get("presets", {})
     presetCfg = get_nested_d(presets, presetName, None)
     if presetCfg is None:
-      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, [str2(k) for k in presets.keys()]))
+      raise ParseError(cfg, state.get_path(cfg), "preset '{}' does not exist; available presets are: '{}'".format(presetName, [str2(k) for k in presets.keys()]))
     #creating curve
     if "args" in cfg:
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parsePresetCurve(): args: '{}'".format(str2(get_nested_d(cfg, "args"))))
@@ -7476,7 +7512,7 @@ def make_parser():
           if logger.isEnabledFor(logging.DEBUG): logger.debug("Parsing base : {}".format(baseName))
           base = get_nested_from_sections_d(config, sectNames, baseName, None)
           if base is None:
-            raise RuntimeError("No preset: {}".format(str2(baseName)))
+            raise ParseError(cfg, state.get_path(cfg), "preset '{}' was not found".format(str2(baseName)))
           merge_dicts(full, worker(base, state))
         merge_dicts(full, cfg)
         del full["bases"]
@@ -7498,7 +7534,7 @@ def make_parser():
       name = state.deref(name)
       externalCfg = get_nested_from_sections_d(config, groupNames, name, None)
       if externalCfg is None:
-        raise RuntimeError("No class {}".format(str2(name)))
+        raise ParseError(cfg, state.get_path(cfg), "'{}' not found".format(str2(name)))
       state.push_args(cfg)
       try:
         return state.get("parser")("ep", externalCfg, state)
@@ -7572,7 +7608,7 @@ def make_parser():
         return noop
       #Parse components
       if "modes" in cfg and "next" in cfg:
-        raise RuntimeError("'next' and 'modes' components are mutually exclusive")
+        raise ParseError(cfg, state.get_path(cfg), "'next' and 'modes' components are mutually exclusive")
       def set_component(headEP, name, t):
         headEP.set_component(name, t)
       assert headEP is state.at("eps", 0)
@@ -7619,13 +7655,10 @@ def make_parser():
     objectsCfg = cfg.get("objects", None)
     if objectsCfg is not None:
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parseObjects(): parsing objects from '{}'".format(str2(objectsCfg)))
-      try:
-        objectsComponent = ObjectsComponent()
-        state.at("eps", 0).set("objects", objectsComponent)
-        state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
-        return objectsComponent
-      except RuntimeError as e:
-        raise RuntimeError("{} ({})".format(e, str2(objectsCfg, 100)))
+      objectsComponent = ObjectsComponent()
+      state.at("eps", 0).set("objects", objectsComponent)
+      state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
+      return objectsComponent
     else:
       return None
   scParser.add("objects", parseObjects)
@@ -7654,7 +7687,7 @@ def make_parser():
         scaleEP.set_sens(key, value)
       return scaleEP
     except RuntimeError as e:
-      raise RuntimeError("'{}' ({})".format(e, str2(sens)))
+      raise ParseError(cfg, state.get_path(cfg), e)
   scParser.add("sens", parseSens)
 
   @parseBasesDecorator
@@ -7755,7 +7788,7 @@ def make_parser():
     ep = get_ep(cfg, state)
     component = ep.get_component(name)
     if component is None:
-      raise RuntimeError("No component '{}' in '{}', available components are: {}".format(name, ep, ep.components_.keys()))
+      raise ParseError(cfg, state.get_path(cfg), "component '{}' not found".format(name))
     return component
 
   def actionParserKeyOp(cfg, state):
@@ -7836,15 +7869,15 @@ def make_parser():
     for fnInputAxis,curveCfg in axesData.items():
       curve = state.get("parser")("curve", curveCfg, state)
       curves[fn2hc(state.deref(fnInputAxis))] = curve
-    op = None
-    if state.resolve(cfg, "op") == "min":
+    op = state.resolve(cfg, "op")
+    if op == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
-    elif state.resolve(cfg, "op") == "max":
+    elif op == "max":
       op = MCSCmpOp(cmp = lambda new,old : new > old)
-    elif state.resolve(cfg, "op") == "thresholds":
+    elif op == "thresholds":
       op = MCSThresholdOp(thresholds = {fn2hc(state.deref(fnInputAxis)):state.deref(threshold) for fnInputAxis,threshold in state.resolve(cfg, "thresholds").items()})
     else:
-      raise Exception("parseMoveOneOf(): Unknown op: {}".format(state.resolve(cfg, "op")))
+      raise ParseError(cfg, state.get_path(cfg), "unknown op '{}'".format(op))
     mcs = MultiCurveEP(curves, op)
     state.get("main").add_to_updated(lambda tick,ts : mcs.update(tick, ts))
     return mcs
@@ -7916,7 +7949,7 @@ def make_parser():
     nOutput, cKey = fn2dc(fnKey)
     odev = state.get("main").get("odevs").get(nOutput)
     if odev is None:
-      raise RuntimeError("Cannot find key '{}' because odev '{}' is missing".format(fnKey, nOutput))
+      raise ParseError(cfg, state.get_path(cfg), "odev '{}' not found".format(nOutput))
     return SetButtonState(odev, cKey, s)
 
   def parseSetKeyState(cfg, state):
@@ -7937,7 +7970,7 @@ def make_parser():
     nODev, cKey = fn2dc(fnKey)
     odev = state.get("main").get("odevs").get(nODev)
     if odev is None:
-      raise RuntimeError("Cannot find key '{}' because odev '{}' is missing".format(fnKey, nODev))
+      raise ParseError(cfg, state.get_path(cfg), "odev '{}' not found".format(nOutput))
     numClicks = int(state.resolve_d(cfg, "numClicks", 1))
     delay = float(state.resolve_d(cfg, "delay", 0.0))
     class Clicker:
@@ -7994,10 +8027,10 @@ def make_parser():
         #TODO Use state.deref() here and specify object name as "obj:..." for unification
         curve = state.get_obj(objectName)
         if curve is None:
-          raise RuntimeError("Curve {} not found".format(str2(objectName)))
+          raise ParseError(objectName, state.get_path(objectName), "curve '{}' not found".format(str2(objectName)))
         curvesToReset.append(curve)
     else:
-      raise RuntimeError("Must specify either 'axes' or 'objects' in {}".format(str2(cfg, 100)))
+      raise ParseError(cfg, state.get_path(cfg), "must specify either 'axes' or 'objects'")
     return ResetCurves(curvesToReset)
   actionParser.add("resetCurves", parseResetCurves)
 
@@ -8119,7 +8152,7 @@ def make_parser():
     soundName = state.resolve(cfg, "sound")
     soundFileName = state.get("main").get("sounds").get(soundName, None)
     if soundFileName is None:
-      raise RuntimeError("Sound '{}' is not registered".format(soundName))
+      raise ParseError(cfg, state.get_path(cfg), "sound '{}' not found".format(soundName))
     immediate = state.resolve_d(cfg, "immediate", False)
     def op(e):
       soundPlayer.queue(soundFileName, immediate)
@@ -8135,7 +8168,7 @@ def make_parser():
       value = var.get()
       if key is not None:
         if not hasattr(value, "__getitem__"):
-          raise RuntimeError("Var '{}' has no subscript getter".format(varName))
+          raise ParseError(varName, state.get_path(varName), "var '{}' has no subscript getter".format(varName))
         value = value[key]
       logger.log(level, "{} is {}".format(varName, str2(value)))
       return True
@@ -8153,7 +8186,7 @@ def make_parser():
       if key is not None:
         v = var.get()
         if not hasattr(v, "__setitem__"):
-          raise RuntimeError("Var '{}' has no subscript setter".format(varName))
+          raise ParseError(varName, state.get_path(varName), "var '{}' has no subscript setter".format(varName))
         v[key] = value
       else:
         v = value
@@ -8163,6 +8196,15 @@ def make_parser():
     return op
   actionParser.add("setVar", parseSetVar)
 
+  def check_var(var, key):
+    value = var.get()
+    if not hasattr(value, "__getitem__"):
+      raise ParseError(varName, state.get_path(varName), "var '{}' has no subscript getter".format(varName))
+    if not hasattr(value, "__setitem__"):
+      raise ParseError(varName, state.get_path(varName), "var '{}' has no subscript setter".format(varName))
+    if key not in value:
+      raise ParseError(varName, state.get_path(varName), "var '{}' has no key '{}'".format(varName, key))
+
   def parseChangeVar(cfg, state):
     varName = state.resolve(cfg, "varName")
     delta = state.resolve(cfg, "delta")
@@ -8170,13 +8212,7 @@ def make_parser():
     var = state.get("main").get("varManager").get_var(varName)
     r = None
     if key is not None:
-      value = var.get()
-      if not hasattr(value, "__getitem__"):
-        raise RuntimeError("Var '{}' has no subscript getter".format(varName))
-      if not hasattr(value, "__setitem__"):
-        raise RuntimeError("Var '{}' has no subscript setter".format(varName))
-      if key not in value:
-        raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+      check_var(var, key)
       def op(e):
         value = var.get()
         v = value[key]
@@ -8204,13 +8240,7 @@ def make_parser():
     step = state.resolve(cfg, "step")
     r = None
     if key is not None:
-      value = var.get()
-      if not hasattr(value, "__getitem__"):
-        raise RuntimeError("Var '{}' has no subscript getter".format(varName))
-      if not hasattr(value, "__setitem__"):
-        raise RuntimeError("Var '{}' has no subscript setter".format(varName))
-      if key not in value:
-        raise RuntimeError("Var '{}' has no key '{}'".format(varName, key))
+      check_var(var, key)
       def op(e):
         current = values.index(var.get()[key])
         n = clamp(current + step, 0, len(values) - 1)
@@ -8281,7 +8311,7 @@ def make_parser():
   def parseSetObjectState(cfg, state):
     obj = state.resolve(cfg, "object")
     if obj is None:
-      raise RuntimeError("Cannot get object by '{}'".format(get_nested(cfg, "object")))
+      raise ParseError(cfg, state.get_path(cfg), "object '{}' not found".format(get_nested(cfg, "object")))
     return SetState(obj, state.resolve(cfg, "state"))
   actionParser.add("setObjectState", parseSetObjectState)
 
@@ -8291,7 +8321,7 @@ def make_parser():
     code, value = int(state.resolve_d(cfg, "code", 0)), get_nested_d(cfg, "value")
     ep = get_ep(cfg, state)
     if ep is None:
-      raise RuntimeError("Cannot find target ep")
+      raise ParseError(cfg, state.get_path(cfg), "target ep not found")
     def callback(e):
       event = Event(etype, code, value)
       return ep(event)
@@ -8301,7 +8331,7 @@ def make_parser():
   def parseForwardEvent(cfg, state):
     ep = get_ep(cfg, state)
     if ep is None:
-      raise RuntimeError("Cannot find target ep")
+      raise ParseError(cfg, state.get_path(cfg), "target ep not found")
     def callback(e):
       return ep(e)
     return callback
@@ -8407,7 +8437,7 @@ def make_parser():
     if key is None:
       key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting either \"et\" or \"type\" keys in {}".format(str2(cfg, 100)))
+      raise ParseError(cfg, state.get_path(cfg), "must specify either 'et' or 'type'")
     return key
   etParser = IntrusiveSelectParser(keyOp=etParserKeyOp, parser=SelectParser())
   mainParser.add("et", etParser)
@@ -8479,7 +8509,7 @@ def make_parser():
       elif isinstance(num, int):
         pass
       else:
-        raise RuntimeError("Bad numClicks: {}".format(num))
+        raise ParseError(num, state.get_path(num), "invalid numClicks")
       numClicksPropTest = lambda v : True if num == -1 else v == num
     r.append(("num_clicks", numClicksPropTest))
     return r
@@ -8618,19 +8648,19 @@ def make_parser():
         elif is_dict_type(cfgs):
           cfgs = (cfgs,)
         else:
-          raise RuntimeError("'{}' in must be a dictionary or a list of dictionaries, got {} ({})".format(name, type(cfgs), str2(cfg, 100)))
+          raise ParseError(cfg, state.get_path(cfg), "'{}' in must be a dictionary or a list of dictionaries".format(name))
         r, t = [], None
         for c in cfgs:
           try:
             t = parser(c, state)
           except RuntimeError as e:
-            logger.warning("{} (encountered when parsing '{}' '{}')".format(e, name, str2(c, 100)))
+            logger.warning("{} when parsing '{}' '{}' at '{}'".format(e, name, str2(c, 100), v2p_path2str(state.get_path(c))))
             continue
           except Exception as e:
-            logger.error("{} (encountered when parsing '{}' '{}')".format(e, name, str2(c, 200)))
-            raise ParserError(c)
+            logger.error("{} when parsing '{}' '{}' at '{}'".format(e, name, str2(c, 200), v2p_path2str(state.get_path(c))))
+            raise ParseError(c, state.get_path(c))
           except:
-            logger.warning("Unknown exception while parsing '{}' '{}')".format(name, str2(c, 100)))
+            logger.warning("Unknown exception while parsing '{}' '{}'".format(name, str2(c, 100)))
             continue
           if t is None:
             logger.warning("Could not parse '{}' '{}')".format(name, str2(c, 100)))
@@ -8642,7 +8672,7 @@ def make_parser():
         mainParser = state.get("parser")
         try:
           return mainParser("action", cfg, state)
-        except ParserNotFoundError as e:
+        except ParseError as e:
           if logger.isEnabledFor(logging.DEBUG): logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg, 100)))
           r = mainParser("ep", cfg, state)
           if r is None:
@@ -8652,11 +8682,11 @@ def make_parser():
       mainParser = state.get("parser")
       ons = parseGroup("on", lambda cfg,state: mainParser("et", cfg, state), cfg, state)
       if len(ons) == 0:
-        logger.warning("No 'on' instances were constructed ({})".format(str2(cfg, 100)))
+        logger.warning("No 'on' instances were constructed in '{}' at '{}'".format(str2(cfg, 100), v2p_path2str(state.get_path(cfg))))
 
       dos = parseGroup("do", parseActionOrEP, cfg, state)
       if len(dos) == 0:
-        logger.warning("No 'do' instances were constructed ({})".format(str2(cfg, 100)))
+        logger.warning("No 'do' instances were constructed in '{}' at '{}'".format(str2(cfg, 100), v2p_path2str(state.get_path(cfg))))
 
       return ((on,dos) for on in ons)
 
@@ -8693,7 +8723,7 @@ def make_parser():
   def idevParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting \"type\" keys in {}".format(str2(cfg, 100)))
+      raise ParseError(cfg, state.get_path(cfg), "'type' not found")
     return key
   idevParser = IntrusiveSelectParser(keyOp=idevParserKeyOp, parser=SelectParser())
   mainParser.add("idev", idevParser)
@@ -8722,7 +8752,7 @@ def make_parser():
     elif mode == "absolute":
       mode = FreePIEHeadTrackerIDEV.MODE_ABS
     else:
-      raise RuntimeError("invalid mode: {}".format(mode))
+      raise ParseError(mode, state.get_path(mode), "invalid mode")
     idev = FreePIEHeadTrackerIDEV(idevHash, address, from_, mode)
     state.get("main").add_to_updated(lambda tick,ts : idev.update(tick, ts))
     return idev
@@ -8733,7 +8763,7 @@ def make_parser():
     if key is None:
       key = get_nested_d(cfg, "type", None)
     if key is None:
-      raise RuntimeError("Was expecting either \"odev\" or \"type\" keys in {}".format(str2(cfg, 100)))
+      raise ParseError(cfg, state.get_path(cfg), "must specify either 'odev' or 'type'")
     return key
   odevParser = IntrusiveSelectParser(keyOp=odevParserKeyOp, parser=SelectParser())
   mainParser.add("odev", odevParser)
@@ -8827,7 +8857,7 @@ def make_parser():
             func = state.get("parser")("func", state.resolve(opCfg, "func"), state)
             rateOp = AxisRateOp(rateOp, axis, func)
           else:
-            raise RuntimeError("Unknown op type : '{}'".format(t))
+            raise ParseError(t, state.get_path(t), "unknown op type")
       tcAxis = fn2tc(nAxis)
       rateOps[tcAxis] = rateOp
     j = RateSettingJoystick(next, rateOps, limits)
@@ -8924,7 +8954,7 @@ def make_parser():
     valueName = state.resolve(cfg, "value")
     value = state.get("main").get("valueManager").get_var(valueName)
     if value is None:
-      raise RuntimeError("No such value: '{}'".format(valueName))
+      raise ParseError(valueName, state.get_path(valueName), "value '{}' is missing".format(valueName))
     def op(values):
       value.set(values)
     return GainTracker(op)
@@ -8934,7 +8964,7 @@ def make_parser():
   def widgetParserKeyOp(cfg,state):
     tpe = get_nested_d(cfg, "type", None)
     if tpe is None:
-      raise RuntimeError("Key '{}' was not found in '{}'".format("type", str2(cfg, 100)))
+      raise ParseError(cfg, state.get_path(cfg), "must specify 'type'")
     return tpe
   widgetParser = IntrusiveSelectParser(keyOp=widgetParserKeyOp, parser=SelectParser())
   mainParser.add("widget", widgetParser)
@@ -9083,8 +9113,8 @@ def make_parser():
         def read_(self, varValue):
           try:
             return get_nested(varValue, self.keys_)
-          except KeyError2 as e:
-            raise RuntimeError("Cannot get value from var '{}' by keys {}, available keys are {}".format(self.varName_, str2(list(self.keys_)), str2(e.keys)))
+          except KeyErrorEx as e:
+            raise ParseError(cfg, state.get_path(cfg), "cannot get value from var '{}' by keys {}, available keys are {}".format(self.varName_, str2(list(self.keys_)), str2(e.keys)))
       boxManager = KeyBoxManager(box, var, keys, varName)
     else:
       boxManager = BoxManager(box, var)
@@ -9220,7 +9250,7 @@ def make_parser():
         c = 0
         r += 1
     else:
-      raise RuntimeError("Unknown format: {}".format(f))
+      raise ParseError(cfg, state.get_path(cfg), "unknown format: {}".format(f))
     return info
   widgetParser.add("info", parseInfoWidget)
 
@@ -9229,11 +9259,11 @@ def make_parser():
     config = state.get("main").get("config")
     presetName = state.resolve_d(cfg, "name", None)
     if presetName is None:
-      raise RuntimeError("Preset name was not specified")
+      raise ParseError(cfg, state.get_path(cfg), "'name' is missing")
     presets = config.get("presets", {})
     presetCfg = get_nested_d(presets, presetName, None)
     if presetCfg is None:
-      raise RuntimeError("Preset '{}' does not exist; available presets are: '{}'".format(presetName, presets.keys()))
+      raise ParseError(cfg, state.get_path(cfg), "preset '{}' does not exist; available presets are: '{}'".format(presetName, presets.keys()))
     state.push_args(cfg)
     parent = cfg.get("parent", None)
     if parent is not None:
@@ -9336,7 +9366,7 @@ class VarManager:
         set_nested(self.vars_, varName, var)
         assert(get_nested(self.vars_, varName) == var)
       else:
-        raise RuntimeError("Var '{}' was not registered".format(varName))
+        raise NotFoundError("var", varName)
     return var
 
   def get_var_d(self, varName, dfault=None):
@@ -9429,9 +9459,9 @@ class Main:
         elif t == "file":
           stream = open(name, "w")
         else:
-          raise RuntimeError("bad handler type: '{}'".format(t))
+          raise ParseError(t, state.get_path(t), "bad handler type: '{}'".format(t))
         if stream is None:
-          raise RuntimeError("Cannot create log handler '{}' of type '{}'".format(name, t))
+          raise ParseError(cfg, state.get_path(cfg), "cannot create log handler '{}' of type '{}'".format(name, t))
         fmt = state.resolve_d(handlerCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
         datefmt = state.resolve_d(handlerCfg, "datefmt", "%T")
         levelName = state.resolve_d(handlerCfg, "level", "NOTSET").upper()
@@ -9450,6 +9480,7 @@ class Main:
       merge_dicts(externalConfig, config)
       config = externalConfig
     self.set("config", config)
+    self.set("v2p", v2p_make(config))
     logger.info("Configs loaded successfully")
     self.set("numTraceLines", config.get("numTraceLines", 0))
 
@@ -9499,7 +9530,7 @@ class Main:
           if update == True:
             var = varManager.get_var_d(path, None)
             if var is None:
-              raise RuntimeError("Var {} not found".format(path))
+              raise ParseError(cfg2, state.get_path(cfg2), "var '{}' not found".format(path))
             var.set(varValue)
           else:
             var = Var(varValue)
@@ -9792,6 +9823,9 @@ class Main:
     except ValueError:
       pass
 
+  def get_path(self, v):
+    return v2p_path(v, self.get("v2p"))
+
   def __init__(self, parser=make_parser(), get_idevs_info=lambda a:None):
     self.loop_ = None
     self.get_idevs_info_ = get_idevs_info
@@ -9801,6 +9835,7 @@ class Main:
     self.props_["source"] = None
     self.props_["mainEP"] = None
     self.props_["config"] = None
+    self.props_["v2p"] = {}
     self.props_["parser"] = parser
     self.props_["info"] = None
     self.props_["updated"] = []
