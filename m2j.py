@@ -747,7 +747,7 @@ class ParserState:
           r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
         except NotFoundError as e:
           if cfgDfault is not None:
-            r = cfgDfault
+            r = clear_value_tag(cfgDfault)
           else:
             raise
       elif prefix == "var":
