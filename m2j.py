@@ -8653,6 +8653,9 @@ def make_parser():
         for c in cfgs:
           try:
             t = parser(c, state)
+          except ParseError as e:
+            logger.warning("{}".format(e))
+            continue
           except RuntimeError as e:
             logger.warning("{} when parsing '{}' '{}' at '{}'".format(e, name, str2(c, 100), v2p_path2str(state.get_path(c))))
             continue
