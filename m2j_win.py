@@ -1825,7 +1825,7 @@ def parseRawInputIDev(cfg, state):
 
 def get_idevs_info(**kwargs):
   r = []
-  devices = RawInputEventSource().get_native_infos()
+  devices = RawInputIDevManager().get_native_infos()
   for d in devices:
     r.append({ "name" : d.name, "handle" : d.handle, "type" : "{} ({})".format(rimtype2str(d.type), d.type), "hash" : d.hash })
   return r
