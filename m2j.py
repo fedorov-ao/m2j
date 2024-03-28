@@ -6215,10 +6215,15 @@ class Info:
       odev = self.get_odev_(odev) if is_str_type(odev) else odev
       if odev is None:
         return
-      buttonIDs = odev.get_supported_buttons()
-      for buttonID in buttonIDs:
-        name = str(buttonID - codes.BTN_0)
-        getButtonState = self.GetButtonState(odev, buttonID)
+      idButtons = None
+      nButtons = kwargs.get("buttons")
+      if nButtons is not None:
+        idButtons = [fn2tc(n).code for n in nButtons]
+      else:
+        idButtons = odev.get_supported_buttons()
+      for idButton in idButtons:
+        name = str(idButton - codes.BTN_0)
+        getButtonState = self.GetButtonState(odev, idButton)
         button = Info.ButtonStateWidget(parent=self, name=name, getButtonState=getButtonState, style=self.style_)
         self.add(child=button)
     def __init__(self, **kwargs):
@@ -6256,7 +6261,7 @@ class Info:
         tcAxiss = [fn2tc(n) for n in nAxiss]
       else:
         tcAxiss = odev.get_supported_axes()
-      tcAxiss.sort(key=lambda tc : tc.code)
+        tcAxiss.sort(key=lambda tc : tc.code)
       for tcAxis in tcAxiss:
         namesList=tc2ns(*tcAxis)
         name=namesList[0][4:]
@@ -9064,7 +9069,7 @@ def make_parser():
   @parseBasesDecorator
   @namedWidgetDecorator
   def parseButtonsWidget(cfg, state):
-    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev", "style"), state))
+    kwargs = merge_dicts(mapEntriesWidgetProps(cfg, state), mapProps(cfg, ("idev", "buttons", "style"), state))
     odevs = state.get("main").get("odevs")
     kwargs["getODev"] = lambda name : odevs.get(name, None)
     widget = Info.ButtonsStatesWidget(**kwargs)
