@@ -8309,6 +8309,29 @@ def make_parser():
   actionParser.add("setOffset", parseSetOffset)
 
   def parseSetObjectState(cfg, state):
+    logger.warning("'setObjectState' action is deprecated, use 'call'")
+    obj = state.resolve(cfg, "object")
+    if obj is None:
+      raise ParseError(cfg, state.get_path(cfg), "object '{}' not found".format(get_nested(cfg, "object")))
+    return SetState(obj, state.resolve(cfg, "state"))
+  actionParser.add("setObjectState", parseSetObjectState)
+
+  def parseCall(cfg, state):
+    target = state.resolve(cfg, "target")
+    methodName = state.resolve(cfg, "method")
+    try:
+      method = getattr(target, methodName)
+    except AttributeError as e:
+      raise ParseError(methodName, state.get_path(methodName), e)
+    args = state.resolve_d(cfg, "args", ())
+    kwargs = state.resolve_d(cfg, "kwargs", {})
+    def op(event):
+      method(*args, **kwargs)
+      return True
+    return op
+  actionParser.add("call", parseCall)
+
+  def parseSetObjectState(cfg, state):
     obj = state.resolve(cfg, "object")
     if obj is None:
       raise ParseError(cfg, state.get_path(cfg), "object '{}' not found".format(get_nested(cfg, "object")))
