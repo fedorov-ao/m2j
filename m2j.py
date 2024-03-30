@@ -6332,6 +6332,7 @@ class Info:
           command(v)
         self.box_["command"] = cmd
         self.command_ = cmd
+        self.box_.bind("<Return>", lambda event : cmd())
       elif name == "getter":
         self.getter_ = value
       elif name == "format":
