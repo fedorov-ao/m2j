@@ -6051,8 +6051,10 @@ class Marker:
       x0, y0, x1, y1 = sx, sy, sc[2] + dx, sc[3] + dy
       canvas.coords(shape, x0, y0, x1, y1)
 
-  def __init__(self, parent, vpx, vpy, shapes, size):
-    self.parent_, self.vpx_, self.vpy_, self.shapes_, self.size_ = parent, vpx, vpy, shapes, size
+  def __init__(self, parent, vpx, vpy, shapes):
+    self.parent_, self.vpx_, self.vpy_, self.shapes_ = parent, vpx, vpy, shapes
+    bbox = self.parent_.canvas_.bbox(*self.shapes_)
+    self.size_ = (bbox[2] - bbox[0], bbox[3] - bbox[1])
 
 
 class AxesWidget(FrameWidget):
@@ -6082,9 +6084,8 @@ class AxesWidget(FrameWidget):
         return vp
     sx, sy = kwargs.get("sx", None), kwargs.get("sy", None)
     vpx, vpy = make_vp(vpx, sx), make_vp(vpy, sy)
-    size = kwargs.get("size", (11, 11))
     shapes = self.create_shapes_(shapeType, **kwargs)
-    marker = Marker(self, vpx, vpy, shapes, size)
+    marker = Marker(self, vpx, vpy, shapes)
     marker.update()
     self.markers_.append(marker)
     return marker
@@ -6117,21 +6118,21 @@ class AxesWidget(FrameWidget):
   def create_shapes_(self, shapeType, **kwargs):
     size = kwargs.get("size", (11, 11))
     color = kwargs.get("color", "white")
-    width = kwargs.get("width", 1)
     canvas = self.canvas_
     if shapeType == "oval":
       return [canvas.create_oval(0,0,size[0],size[1], fill=color)]
     elif shapeType == "rect":
       return [canvas.create_rectangle(0,0,size[0],size[1], fill=color)]
     elif shapeType == "cross":
+      width = kwargs.get("width", 1)
       return [
         canvas.create_line(0,0.5*size[1],size[0],0.5*size[1], fill=color, width=width),
         canvas.create_line(0.5*size[0],0,0.5*size[0],size[1], fill=color, width=width),
       ]
     elif shapeType == "hline":
-      return [canvas.create_line(0,0,size[0],0, fill=color, width=width)]
+      return [canvas.create_line(0,0,size[0],0, fill=color, width=size[1])]
     elif shapeType == "vline":
-      return [canvas.create_line(0,0,0,size[1], fill=color, width=width)]
+      return [canvas.create_line(0,0,0,size[1], fill=color, width=size[0])]
     else:
       raise RuntimeError("Unknown shape type: '{}'".format(shapeType))
 
