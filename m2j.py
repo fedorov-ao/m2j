@@ -111,23 +111,25 @@ def is_list_type(a):
   return type(a) in (tuple, list,)
 
 
-def merge_dicts(destination, source):
+def merge_dicts(destination, source, should_overwrite=None):
   """https://stackoverflow.com/questions/20656135/python-deep-merge-dictionary-data"""
-  for key, value in source.items():
-    if isinstance(value, collections.OrderedDict):
-      # get node or create one
-      node = destination.setdefault(key, collections.OrderedDict())
-      merge_dicts(node, value)
-    elif isinstance(value, dict):
-      # get node or create one
-      node = destination.setdefault(key, {})
-      merge_dicts(node, value)
-    elif isinstance(value, list):
-      node = destination.get(key, [])
-      node += value
-      destination[key] = node
+  for key, sourceValue in source.items():
+    if is_dict_type(sourceValue):
+      destinationValue = destination.setdefault(key, sourceValue.__class__())
+      if should_overwrite is not None and should_overwrite(key, destinationValue, sourceValue) == True:
+        destination[key] = sourceValue
+      else:
+        #print "merging {} with {}".format(str2(destinationValue), str2(sourceValue))
+        merge_dicts(destinationValue, sourceValue, should_overwrite)
+    elif is_list_type(sourceValue):
+      destinationValue = destination.get(key, [])
+      if should_overwrite is not None and should_overwrite(key, destinationValue, sourceValue) == True:
+        destination[key] = sourceValue
+      else:
+        destinationValue += sourceValue
+        destination[key] = destinationValue
     else:
-      destination[key] = value
+      destination[key] = sourceValue
   return destination
 
 
@@ -9559,8 +9561,16 @@ class Main:
 
   def init_vars(self, state, update=False):
     parser = state.get("main").get("parser")
-    varsCfg = self.get("config").get("vars", {})
-    varMappingsCfg = self.get("config").get("varMappings", {})
+    config = self.get("config")
+    varsCfg = config.get("vars", {})
+    varsFileName = state.resolve_d(config, "varsConfig", None)
+    if varsFileName is not None:
+      with open(varsFileName, "r") as f:
+        varsFileCfg = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
+        varsFileCfg = varsFileCfg.get("vars", {})
+        should_overwrite = lambda key,destinationValue,sourceValue : is_dict_type(sourceValue) and has_value_tag(sourceValue)
+        merge_dicts(varsCfg, varsFileCfg, should_overwrite)
+    varMappingsCfg = config.get("varMappings", {})
     varManager = self.get("varManager")
     def get_mapping_cfg(tokens, varMappingsCfg):
       if len(tokens) == 0:
