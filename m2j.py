@@ -9671,6 +9671,7 @@ class Main:
     self.remove_axes_listeners()
     ep = init_preset_config(state)
     self.get("mainEP").set_next(ep)
+    state.push("eps", ep)
 
   def init_info(self, state):
     cfg = state.resolve_d(self.get("config"), "info", { "type" : "info" })
@@ -9713,6 +9714,7 @@ class Main:
 
   def reinit_or_fallback(self):
     state = ParserState(self)
+    state.push("eps", self.get("mainEP"))
     try:
       self.init_config2()
       self.init_vars(state, update=True)
