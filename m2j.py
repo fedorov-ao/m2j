@@ -6764,7 +6764,9 @@ def init_config(configFilesNames):
           current = parent
         #Next config file overwrites previous
         merge_dicts(cfg, current)
-    except (KeyError, ValueError, IOError) as e:
+    except IOError as e:
+      logger.warning("{} is missing".format(configName))
+    except (KeyError, ValueError) as e:
       raise ConfigReadError(configName, str2(e))
   return cfg
 
