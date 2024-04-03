@@ -273,7 +273,7 @@ def set_nested(d, name, value, sep = "."):
   token = tokens[-1]
   check_type(currDict, token)
   currDict[token] = value
-  return value
+  return d
 
 
 def get_nested(d, name, sep = "."):
@@ -635,7 +635,6 @@ class ParserState:
       ep = self.at("eps", i)
       if ep is None:
         break
-      assert isinstance(ep, HeadEP)
       objects = ep.get("objects", None)
       if objects is not None:
         obj = objects.get(objectName[0])
@@ -648,7 +647,7 @@ class ParserState:
       for s in objectName[1].split(memberSep):
         obj = obj.get(s)
         if obj is None:
-          raise RuntimeError("Cannot get '{}': '{}' is missing".format(objectName[1], s))
+          raise NotFoundError("obj", s)
     return self.get_var_or_value_(obj, **kwargs)
 
   def make_objs(self, cfg, cb):
@@ -675,8 +674,12 @@ class ParserState:
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
     for n,a in args.items():
-      r[n] = self.resolve_def(a)
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
+      try:
+        r[n] = self.resolve_def(a)
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
+      except NotFoundError as e:
+        self.logger.warning(e)
+        continue
     return r
 
   def push_args(self, cfg):
@@ -740,11 +743,14 @@ class ParserState:
       suffix = self.deref(suffix, **kwargs)
       setter = kwargs.get("setter")
       asValue = kwargs.get("asValue", True)
-      if prefix == "obj":
-        r = self.get_obj(suffix, setter=setter, mapping=mapping, asValue=asValue)
-      elif prefix == "arg":
+      if prefix in ("arg", "obj"):
         try:
-          r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
+          if prefix == "obj":
+            r = self.get_obj(suffix, setter=setter, mapping=mapping, asValue=asValue)
+          elif prefix == "arg":
+            r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
+          else:
+            assert False
         except NotFoundError as e:
           if cfgDfault is not None:
             r = clear_value_tag(cfgDfault)
@@ -6510,6 +6516,9 @@ class MainEP:
   def add_stateful(self, stateful):
     self.stateful_.append(stateful)
 
+  def get(self, name, dfault=None):
+    return dfault
+
   def __init__(self, top=None, bottom=None, stateful=None, state=False):
     self.top_, self.bottom_ = top, bottom
     self.stateful_ = [st for st in stateful] if stateful is not None else []
@@ -7159,7 +7168,10 @@ def make_parser():
     cfg2 = get_nested_ex(cfg, "func", state)
     funcOrCfg = state.deref(cfg2, **kwargs)
     if cfg2 != funcOrCfg:
-      return funcOrCfg
+      if is_dict_type(funcOrCfg):
+        cfg2 = funcOrCfg
+      else:
+        return funcOrCfg
     if is_str_type(cfg2):
       logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
     elif is_dict_type(cfg2):
@@ -9360,17 +9372,28 @@ class BaseVar:
 
 
 class Var(BaseVar):
-  def get(self):
-    return self.value_
+  def get(self, keys=None):
+    return self.value_ if keys is None else get_nested(self.value_, keys)
 
-  def set(self, value):
+  def set(self, value, keys=None):
     if self.validate_ is not None:
-      self.validate_(value)
-    self.value_ = value
+      if keys is not None:
+        self.validate_(value, keys)
+      else:
+        self.validate_(value)
+    if keys is not None:
+      self.value_ = set_nested(self.value_, keys, value)
+    else:
+      self.value_ = value
+    value = self.value_
     if self.mapping_ is not None:
       value = self.mapping_(value)
-    for cb in self.callbacks_:
-      cb(value)
+    if keys is not None:
+      for cb in self.callbacks_:
+        cb(value, keys)
+    else:
+      for cb in self.callbacks_:
+        cb(value)
 
   def add_callback(self, callback):
     self.callbacks_.append(callback)
