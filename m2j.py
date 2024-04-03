@@ -6473,6 +6473,9 @@ class Info:
   def get_frame(self):
     return self.w_
 
+  def destroy(self):
+    self.w_.destroy()
+
   def __init__(self, **kwargs):
     self.state_, self.widgets_ = False, []
     self.w_ = tk.Tk()
@@ -9674,6 +9677,10 @@ class Main:
     state.push("eps", ep)
 
   def init_info(self, state):
+    info = self.get("info")
+    if info is not None:
+      info.destroy()
+      self.set("info", None)
     cfg = state.resolve_d(self.get("config"), "info", { "type" : "info" })
     info = state.get("parser")("widget", cfg, state)
     self.add_to_updated(lambda tick,ts : info.update())
@@ -9721,6 +9728,7 @@ class Main:
       self.init_poses(state)
       self.set_logger_levels(state)
       self.init_worker_ep(state)
+      self.init_info(state)
       self.set("state", self.STATE_INITIALIZED)
     except Exception as e:
       logger.error("Could not create or recreate loop; reason: '{}'".format(e))
@@ -9797,7 +9805,6 @@ class Main:
       self.log_input_()
     self.init_odevs(state)
     self.init_vars(state)
-    self.init_info(state)
     self.init_sounds(state)
     self.init_main_ep(state)
 
