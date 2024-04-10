@@ -406,11 +406,11 @@ def add_value_tag(d):
 
 
 def has_value_tag(d):
-  return "_value" in d
+  return is_dict_type(d) and "_value" in d
 
 
 def clear_value_tag(d):
-  return remove_value_tag(d) if is_dict_type(d) and has_value_tag(d) else d
+  return remove_value_tag(d) if has_value_tag(d) else d
 
 
 import pymatrix27
@@ -652,14 +652,29 @@ class ParserState:
           raise NotFoundError("obj", s)
     return self.get_var_or_value_(obj, **kwargs)
 
-  def make_objs(self, cfg, cb):
+  def make_objs(self, cfg, cb, keys=None):
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Constructing objects from '{}'".format(str2(cfg)))
+    if keys is None:
+      keys = []
     for k,v in cfg.items():
+      keys.append(k)
       try:
-        o = self.resolve_def(v)
-        cb(k, o)
+        o = None
+        if is_dict_type(v):
+          if has_value_tag(v):
+            o = v
+          elif "class" in v:
+            o = self.resolve_def(v)
+          else:
+            self.make_objs(v, cb, keys)
+        else:
+          o = self.resolve_def(v)
+        if o is not None:
+          cb(keys, o)
       except RuntimeError as e:
-        self.logger.warning("Could not create object '{}': {}".format(k, e))
+        self.logger.warning("Could not create object '{}': {}".format(".".join(keys), e))
+      finally:
+        keys.pop()
 
   def get_arg(self, name, **kwargs):
     r = None
@@ -675,9 +690,19 @@ class ParserState:
   def resolve_args(self, args):
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Resolving args '{}'".format(str2(args)))
     r = collections.OrderedDict()
-    for n,a in args.items():
+    for n,v in args.items():
       try:
-        r[n] = self.resolve_def(a)
+        o = None
+        if is_dict_type(v):
+          if has_value_tag(v):
+            o = v
+          elif "class" in v:
+            o = self.resolve_def(v)
+          else:
+            o = self.resolve_args(v)
+        else:
+          o = self.resolve_def(v)
+        r[n] = o
         if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
       except NotFoundError as e:
         self.logger.warning(e)
@@ -6971,7 +6996,7 @@ class ObjectsComponent:
     return o
 
   def set(self, name, obj):
-    self.objects_[name] = obj
+    set_nested(self.objects_, name, obj)
 
   def __init__(self):
     self.objects_ = {}
@@ -9453,7 +9478,7 @@ class BaseVar:
 
 class Var(BaseVar):
   def get(self, keys=None):
-    return self.value_ if keys is None else get_nested(self.value_, keys)
+    return self.value_ if keys is None else get_nested_d(self.value_, keys, None)
 
   def set(self, value, keys=None):
     if self.validate_ is not None:
