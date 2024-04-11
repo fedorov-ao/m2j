@@ -7824,23 +7824,28 @@ def make_parser():
     resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
     inputOp = ResetOp(0.0 if resetOnMoveAxis else None)
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
+    top.add("accumulate", accumulateChainCurve)
     curve.set_next(accumulateChainCurve)
     #transform accumulated
     dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
     dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state, "dynamic")
     dymamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
+    top.add("dynamic", dynamicChainCurve)
     accumulateChainCurve.set_next(dymamicChainCurve)
     #offset transformed
     offsetChainCurve = OffsetAbsChainCurve(next=None)
+    top.add("offset", offsetChainCurve)
     dymamicChainCurve.set_next(offsetChainCurve)
     #transform offset
     staticCfg = get_nested(cfg, "static")
     staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
     staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
     staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+    top.add("static", staticChainCurve)
     offsetChainCurve.set_next(staticChainCurve)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
+    top.add("axis", axisChainCurve)
     staticChainCurve.set_next(axisChainCurve)
     state.add_curve(fnAxis, curve)
     return top
@@ -7879,6 +7884,7 @@ def make_parser():
       filter_ = state.get("parser")("filter", staticFilterCfg, state)
       filterOp = FilterOp(filter_, None)
       filterCurve = TransformAbsChainCurve(next=None, inputOp=ReturnValueInputOp(), outputOp=filterOp, resetOnMoveAxis=True)
+      top.add("staticFilter", filterCurve)
       bottom.set_next(filterCurve)
       bottom = filterCurve
     return bottom
@@ -7930,6 +7936,7 @@ def make_parser():
       updatedChainCurve = UpdatedChainCurve(top, None, op, mode)
       state.get("main").add_to_updated(lambda tick,ts : updatedChainCurve.update(tick, ts))
       top.add_stateful(updatedChainCurve)
+      top.add("updated", updatedChainCurve)
       bottom.set_next(updatedChainCurve)
       bottom = updatedChainCurve
     return bottom
@@ -7959,6 +7966,7 @@ def make_parser():
         valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp,
         combineValue=combineValue, combineDelta=combineDelta,
         resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext, eps=eps)
+      top.add("dynamic", accelChainCurve)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate, filter, and transform (and update)
@@ -7966,6 +7974,7 @@ def make_parser():
     if staticCfg is not None:
       #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
+      top.add("rel2abs", relToAbsChainCurve)
       bottom.set_next(relToAbsChainCurve)
       bottom = relToAbsChainCurve
       #filter
@@ -7974,12 +7983,14 @@ def make_parser():
       staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
       staticChainCurve = TransformAbsChainCurve(next=None, inputOp=staticInputOp, outputOp=staticOutputOp)
+      top.add("static", staticChainCurve)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
       #update
       bottom = makeUpdatedCurve(top, bottom, cfg, state)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
+    top.add("axis", axisChainCurve)
     bottom.set_next(axisChainCurve)
     state.add_curve(fnAxis, top)
     return top
@@ -8012,6 +8023,7 @@ def make_parser():
         inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp,
         outputValueOp=dynamicOutputValueOp, inputValueOp=dynamicInputValueOp,
         resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext)
+      top.add("dynamic", accelChainCurve)
       bottom.set_next(accelChainCurve)
       bottom = accelChainCurve
     #accumulate, filter, and transform (and update)
@@ -8019,6 +8031,7 @@ def make_parser():
     if staticCfg is not None:
       #accumulate
       relToAbsChainCurve = RelToAbsChainCurve(next=None)
+      top.add("rel2abs", relToAbsChainCurve)
       bottom.set_next(relToAbsChainCurve)
       bottom = relToAbsChainCurve
       #filter
@@ -8034,12 +8047,14 @@ def make_parser():
       staticChainCurve = TransformAbsChainCurve(
         next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
         resetOnMoveAxis=staticResetOnMoveAxis, allowOffLimits=staticAllowOffLimits)
+      top.add("static", staticChainCurve)
       bottom.set_next(staticChainCurve)
       bottom = staticChainCurve
       #update
       bottom = makeUpdatedCurve(top, bottom, cfg, state)
     #move axis
     axisChainCurve = AxisChainCurve(axis=axis)
+    top.add("axis", axisChainCurve)
     bottom.set_next(axisChainCurve)
     state.add_curve(fnAxis, top)
     return top
