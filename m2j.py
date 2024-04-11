@@ -103,6 +103,11 @@ def select_nearest(b, e, values, selectExactMatch=True):
   return selected
 
 
+def is_inside_bbox(x, y, bbox):
+  x0, y0, x1, y1 = bbox
+  return x >= x0 and x <= x1 and y >= y0 and y <= y1
+
+
 def is_dict_type(a):
   return type(a) in (dict, collections.OrderedDict,)
 
@@ -6587,6 +6592,311 @@ class TopLevelWidget(Widget):
     self.frame_.destroy()
 
 
+class VarPointsSource:
+  def set_points(self, points):
+    if m2j.is_dict_type(self.var_.get(self.keys_)):
+      points = { str(x) : y for x,y in points }
+    self.var_.set(points, self.keys_)
+
+  def get_points(self):
+    points = self.var_.get(self.keys_)
+    if m2j.is_dict_type(points):
+      points = [[float(k), float(v)] for k,v in points.items()]
+    points.sort(key=lambda p : p[0])
+    return points
+
+  def __init__(self, var, keys=None):
+    self.var_, self.keys_ = var, keys
+
+
+class CurveEditorWidget(FrameWidget):
+  def update(self):
+    pass
+
+  def set_func(self, func):
+    self.func_ = func
+    self.update_curve_()
+
+  def set_points_source(self, ps):
+    self.pointsSource_ = ps
+    self.update_curve_()
+
+  def __init__(self, **kwargs):
+    parent = kwargs.get("parent")
+    FrameWidget.__init__(self, parent=parent)
+    #TODO Should not be needed
+    self.get_frame().pack(expand=True, fill="both")
+    self.nodes_ = []
+    self.func_ = kwargs.get("func")
+    self.pointsSource_ = kwargs.get("pointsSource")
+    self.screenSize_ = kwargs.get("screenSize", [200, 200])
+    worldPos, worldSize = None, None
+    worldBBox = kwargs.get("worldBBox", None)
+    if worldBBox is not None:
+      worldPos = [worldBBox[0], worldBBox[1]]
+      worldSize = [worldBBox[2] - worldBBox[0], worldBBox[3] - worldBBox[1]]
+    else:
+      worldPos = kwargs.get("worldPos", [0.0, 0.0])
+      worldSize = kwargs.get("worldSize", [1.0, 1.0])
+    self.worldPos_, self.worldSize_ = worldPos, worldSize
+    style = kwargs.get("style")
+    self.style_ = style
+    self.selected_ = None
+    #TODO Move screen width and height out of style and pass them as ctor params
+    self.canvas_ = tk.Canvas(
+      self.get_frame(),
+      width=self.screenSize_[0],
+      height=self.screenSize_[1],
+      bg=get_nested_d(style, "bg", "white")
+    )
+    self.canvas_.pack(expand=True, fill="both")
+    self.canvas_.bind("<Button-1>", self.add_or_select_node_)
+    self.canvas_.bind("<ButtonRelease-1>", self.deselect_node_)
+    self.canvas_.bind("<Motion>", self.motion_)
+    self.canvas_.bind("<B1-Motion>", self.drag_node_)
+    self.canvas_.bind("<Button-3>", self.remove_node_)
+    self.canvas_.bind("<Configure>", self.configure_)
+    color = get_nested_d(self.style_, "vline.color", "black")
+    width = get_nested_d(self.style_, "vline.width", 1)
+    dash = get_nested_d(self.style_, "vline.dash", None)
+    self.vline_ = self.canvas_.create_line(0, 0, 0, self.screenSize_[1], fill=color, width=width, dash=dash, state="hidden")
+    self.intersectionText_ = self.canvas_.create_text(0, 0, anchor="nw", text="", fill=color, state="hidden")
+    self.update_grid_()
+    if self.func_ is not None:
+      for center in self.pointsSource_.get_points():
+        self.add_node_(center)
+      self.update_curve_()
+    self.set_vline_state_(True)
+
+  class Node:
+    def __init__(self, shapes, center):
+      self.shapes, self.center = shapes, center
+
+  def to_screen_(self, p):
+    return (
+      None if p[0] is None else lerp(float(p[0]), self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0], 0.0, self.screenSize_[0]),
+      None if p[1] is None else lerp(float(p[1]), self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1], self.screenSize_[1], 0.0)
+    )
+
+  def from_screen_(self, p):
+    return (
+      None if p[0] is None else lerp(float(p[0]), 0.0, self.screenSize_[0], self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0]),
+      None if p[1] is None else lerp(float(p[1]), self.screenSize_[1], 1.1, self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1])
+    )
+
+  def set_vline_state_(self, s):
+    state = "normal" if s == True and len(self.nodes_) >= 2 else "hidden"
+    self.canvas_.itemconfigure(self.vline_, state=state)
+    self.canvas_.itemconfigure(self.intersectionText_, state=state)
+
+  def add_or_select_node_(self, event):
+    x, y = event.x, event.y
+    for node in self.nodes_:
+      if is_inside_bbox(x, y, self.canvas_.bbox(node.shapes["marker"])):
+        self.selected_ = node
+        #TODO Save offset between event x and y, and node center, to use this offset in drag_node_()
+        self.set_vline_state_(False)
+        return
+    center = self.from_screen_((x, y))
+    self.add_node_(center)
+    self.update_curve_()
+    self.set_vline_state_(True)
+
+  def add_node_(self, center):
+    x, y = self.to_screen_(center)
+    w, h = get_nested_d(self.style_, "curve.marker.size", (10, 10))
+    fill = get_nested_d(self.style_, "curve.marker.fill", None)
+    outline = get_nested_d(self.style_, "curve.marker.outline", "black")
+    hw, hh = 0.5 * w, 0.5 * h
+    precision = get_nested_d(self.style_, "curve.text.precision", 3)
+    fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+    shapes = {
+      "marker" : self.canvas_.create_rectangle(x - hw, y - hh, x + hw, y + hh, fill=fill, outline=outline),
+      "text" : self.canvas_.create_text(x, y, anchor="nw", text=fmt.format(center[0], center[1]))
+    }
+    self.nodes_.append(self.Node(shapes, center))
+
+  def deselect_node_(self, event):
+    self.selected_ = None
+    self.set_vline_state_(True)
+
+  def remove_node_(self, event):
+    x, y = event.x, event.y
+    for node in self.nodes_:
+      if is_inside_bbox(x, y, self.canvas_.bbox(node.shapes["marker"])):
+        for shape in node.shapes.values():
+          self.canvas_.delete(shape)
+        self.nodes_.remove(node)
+        if self.selected_ == node:
+          self.selected_ = None
+    self.update_curve_()
+    self.set_vline_state_(True)
+
+  def drag_node_(self, event):
+    node = self.selected_
+    if node is not None:
+      x, y = event.x, event.y
+      node.center = self.from_screen_((x, y))
+      self.update_node_(node)
+      text = node.shapes["text"]
+      precision = get_nested_d(self.style_, "curve.line.precision", 3)
+      fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+      self.canvas_.itemconfigure(text, text=fmt.format(node.center[0], node.center[1]))
+      textBBox = self.canvas_.bbox(text)
+      textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
+      textX = clamp(x, 0.0, self.screenSize_[0] - textW)
+      textY = clamp(y, 0.0, self.screenSize_[1] - textH)
+      self.canvas_.coords(text, textX, textY)
+      self.update_curve_()
+
+  def update_node_(self, node=None):
+    def update_node(node):
+      c = self.to_screen_(node.center)
+      cx, cy = c[0], c[1]
+      for shape in node.shapes.values():
+        coords = self.canvas_.coords(shape)
+        lc = len(coords)
+        if lc == 2:
+          self.canvas_.coords(shape, cx, cy)
+        elif lc == 4:
+          w, h = coords[3] - coords[1], coords[2] - coords[0]
+          hw, hh = 0.5 * w, 0.5 * h
+          self.canvas_.coords(shape, cx - hw, cy - hh, cx + hw, cy + hh)
+        else:
+          assert False
+    if node is not None:
+      update_node(node)
+    else:
+      for node in self.nodes_:
+        update_node(node)
+
+  def update_curve_(self):
+    tag = "curve"
+    self.canvas_.delete(tag)
+    if self.func_ is None or len(self.nodes_) < 2:
+      return
+    centers = [node.center for node in self.nodes_]
+    centers.sort(key=lambda c : c[0])
+    self.pointsSource_.set_points(centers)
+    points = []
+    step = self.worldSize_[0] / self.screenSize_[0]
+    x = self.worldPos_[0]
+    xTo = self.worldPos_[0] + self.worldSize_[0]
+    while x <= xTo:
+      y = self.func_(x)
+      if y is not None:
+        points.append((x, y))
+      x += step
+    for i in range(len(points)):
+      points[i] = self.to_screen_(points[i])
+    color = get_nested_d(self.style_, "curve.line.color", "black")
+    width = get_nested_d(self.style_, "curve.line.width", 1)
+    dash = get_nested_d(self.style_, "curve.line.dash", None)
+    self.canvas_.create_line(points, fill=color, width=width, dash=dash, tag=tag)
+
+  def update_grid_(self):
+    def create_vline(self, x, **kwargs):
+      x, _ = self.to_screen_((x, None))
+      self.canvas_.create_line(x, 0, x, self.screenSize_[1], **kwargs)
+    def create_hline(self, y, **kwargs):
+      _, y = self.to_screen_((None, y))
+      self.canvas_.create_line(0, y, self.screenSize_[0], y, **kwargs)
+    tag = "grid"
+    self.canvas_.delete(tag)
+    fmt = "{{: 0.{}f}}".format(get_nested_d(self.style_, "grid.text.precision", 2))
+    color = get_nested_d(self.style_, "grid.axis.color", "black")
+    width = get_nested_d(self.style_, "grid.axis.width", 2)
+    create_hline(self, 0.0, fill=color, width=width, tag=tag)
+    create_vline(self, 0.0, fill=color, width=width, tag=tag)
+    self.canvas_.create_text(self.to_screen_((0.0, 0.0)), anchor="nw", text=fmt.format(0.0), tag=tag)
+    color = get_nested_d(self.style_, "grid.line.color", "black")
+    width = get_nested_d(self.style_, "grid.line.width", 1)
+    dash = get_nested_d(self.style_, "grid.line.dash", None)
+    xStep = get_nested_d(self.style_, "grid.step.x", 0.10)
+    x = int(self.worldPos_[0] / xStep) * xStep
+    xTo = self.worldPos_[0] + self.worldSize_[0]
+    while x <= xTo:
+      if abs(x) > 1e-6:
+        create_vline(self, x, fill=color, width=width, dash=dash, tag=tag)
+        self.canvas_.create_text(self.to_screen_((x, 0.0)), anchor="nw", text=fmt.format(x), tag=tag)
+      x += xStep
+    yStep = get_nested_d(self.style_, "grid.step.y", 0.10)
+    y = int(self.worldPos_[1] / yStep) * yStep
+    yTo = self.worldPos_[1] + self.worldSize_[1]
+    while y <= yTo:
+      if abs(y) > 1e-6:
+        create_hline(self, y, fill=color, width=width, dash=dash, tag=tag)
+        self.canvas_.create_text(self.to_screen_((0.0, y)), anchor="nw", text=fmt.format(y), tag=tag)
+      y += yStep
+
+  def configure_(self, event):
+    self.screenSize_[0], self.screenSize_[1] = event.width, event.height
+    self.update_curve_()
+    self.update_grid_()
+    self.update_node_()
+
+  def motion_(self, event):
+    if len(self.nodes_) < 2:
+      return
+    self.canvas_.coords(self.vline_, event.x, 0, event.x, self.screenSize_[1])
+    nx, _ = self.from_screen_((event.x, None))
+    ny = self.func_(nx)
+    if ny is not None:
+      precision = get_nested_d(self.style_, "vline.precision", 3)
+      fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+      self.canvas_.coords(self.intersectionText_, *self.to_screen_((nx, ny)))
+      self.canvas_.itemconfigure(self.intersectionText_, text=fmt.format(nx, ny))
+      self.canvas_.itemconfigure(self.intersectionText_, state="normal")
+    else:
+      self.canvas_.itemconfigure(self.intersectionText_, state="hidden")
+
+
+class FuncEditorWidget(FrameWidgetNode):
+  def get_frame(self):
+    return self.entriesWidget_.get_frame()
+
+  def __init__(self, **kwargs):
+    FrameWidgetNode.__init__(self, **kwargs)
+    self.entriesWidget_ = EntriesWidget(parent=kwargs["parent"], layout="h", dim=4)
+    self.funcs_ = kwargs["funcs"]
+    self.main_ = kwargs.get("main", None)
+    self.currentDev_, self.currentAxis_, self.currentFunc_ = None, None, None
+    #First create widgets and add them to parent, then set commands,
+    #then set values to dev combobox, which should invoke commands of other boxes and fill self.current... members
+    self.devBox_ = ComboboxWidget(parent=self.entriesWidget_, width=get_nested_d(kwargs, "style.devbox.width", None))
+    self.entriesWidget_.add(child=self.devBox_)
+    self.axisBox_ = ComboboxWidget(parent=self.entriesWidget_, width=get_nested_d(kwargs, "style.axisbox.width", None))
+    self.entriesWidget_.add(child=self.axisBox_)
+    self.funcBox_ = ComboboxWidget(parent=self.entriesWidget_, width=get_nested_d(kwargs, "style.funcbox.width", None))
+    self.entriesWidget_.add(child=self.funcBox_)
+    self.btn_ = ButtonWidget(parent=self.entriesWidget_, text="edit", command=self.edit_func_)
+    self.entriesWidget_.add(child=self.btn_)
+    self.devBox_.configure("command", self.select_dev_)
+    self.axisBox_.configure("command", self.select_axis_)
+    self.funcBox_.configure("command", self.select_func_)
+    self.devBox_.configure("values", self.funcs_.keys())
+
+  def select_dev_(self, v):
+    self.currentDev_ = v
+    self.axisBox_.configure("values", self.funcs_[v].keys())
+
+  def select_axis_(self, v):
+    self.currentAxis_ = v
+    self.funcBox_.configure("values", self.funcs_[self.currentDev_][self.currentAxis_].keys())
+
+  def select_func_(self, v):
+    self.currentFunc_ = v
+
+  def edit_func_(self):
+    tlw = TopLevelWidget(parent=self)
+    funcCfg = self.funcs_[self.currentDev_][self.currentAxis_][self.currentFunc_]
+    funcCfg["parent"] = tlw
+    state = ParserState(self.main_)
+    ce = self.main_.get("parser")("widget", funcCfg, state)
+    ce.pack(expand=True, fill="both")
+    self.main_.get("info").add_top_level_widget(tlw)
+
+
 class InfoWidget(Widget):
   def add(self, child):
     self.widgets_.append(child)
@@ -9464,6 +9774,89 @@ def make_parser():
     widget = ButtonWidget(**kwargs)
     return widget
   widgetParser.add("button", parseButtonWidget)
+
+  @parseBasesDecorator
+  def parse_curve_editor_props(cfg, state):
+    defaultStyle = {
+      "grid" : { "precision" : 1 },
+      "curve" : {
+        "marker" : { "fill" : None, "outline" : "black" },
+        "text" : { "precision" : 2 },
+        "line" : { "color" : "black", "widht" : 1 }
+      }
+    }
+    main = state.get("main")
+    func = state.resolve(cfg, "func")
+    if is_str_type(func):
+      func = get_nested(main.get("config"), func)
+    if is_dict_type(func):
+      func = main.get("parser")("func", func, state)
+    var = state.resolve(cfg, "var_", asValue=False)
+    keys = state.resolve_d(cfg, "keys", None)
+    pointsSource = VarPointsSource(var, keys)
+    screenSize = state.resolve_d(cfg, "screenSize", [200, 200])
+    style = {}
+    merge_dicts(style, defaultStyle)
+    merge_dicts(style, state.resolve_d(cfg, "style", {}))
+    r = { "func" : func, "var" : var, "keys" : keys, "pointsSource" : pointsSource, "screenSize" : screenSize, "style" : style }
+    worldBBox = state.resolve_d(cfg, "worldBBox", None)
+    if worldBBox is not None:
+      r["worldBBox"] = worldBBox
+    else:
+      r["worldPos"] = state.resolve_d(cfg, "worldPos", [0.0, 0.0])
+      r["worldSize"] = state.resolve_d(cfg, "worldSize", [1.0, 1.0])
+    return r
+
+  def preparse(cfg, state):
+    if is_dict_type(cfg):
+      r = cfg.__class__()
+      for k,v in cfg.items():
+        r[k] = preparse(state.deref(v, asValue=False), state)
+    elif is_list_type(cfg):
+      r = cfg.__class__()
+      for v in cfg:
+        r.append(preparse(state.deref(v), state))
+    else:
+      r = cfg
+    return r
+
+  @parseBasesDecorator
+  def parseCurveEditorFrameWidget(cfg, state):
+    curveEditorKwargs = parse_curve_editor_props(cfg, state)
+    info = state.get("main").get("info")
+    ce = CurveEditorWidget(parent=cfg["parent"], **curveEditorKwargs)
+    return ce
+  widgetParser.add("curveEditorFrame", parseCurveEditorFrameWidget)
+
+  @parseBasesDecorator
+  def parseCurveEditorWidget(cfg, state):
+    curveEditorKwargs = parse_curve_editor_props(cfg, state)
+    info = state.get("main").get("info")
+    def create_curve_editor():
+      tlw = TopLevelWidget()
+      info.add_top_level_widget(tlw)
+      ce = CurveEditorWidget(parent=tlw, **curveEditorKwargs)
+      ce.pack(expand=True, fill="both")
+    kwargs = mapProps(cfg, ("parent", "text"), state)
+    kwargs["command"] = create_curve_editor
+    widget = ButtonWidget(**kwargs)
+    return widget
+  widgetParser.add("curveEditor", parseCurveEditorWidget)
+
+  @parseBasesDecorator
+  @namedWidgetDecorator
+  def parseFuncEditorWidget(cfg, state):
+    kwargs = mapProps(cfg, ("parent", ), state)
+    funcsCfg = state.resolve(cfg, "funcs")
+    funcs = preparse(funcsCfg, state)
+    kwargs["funcs"] = funcs
+    style = state.resolve_d(cfg, "style", None)
+    if style is not None:
+      kwargs["style"] = style
+    kwargs["main"] = state.get("main")
+    widget = FuncEditorWidget(**kwargs)
+    return widget
+  widgetParser.add("funcEditor", parseFuncEditorWidget)
 
   @parseBasesDecorator
   @namedWidgetDecorator
