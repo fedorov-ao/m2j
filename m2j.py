@@ -7259,6 +7259,90 @@ def make_parser():
     return func
   funcParser.add("hermite", hermite)
 
+  @make_func_wrapper
+  def presetFunc(cfg, state):
+    config = state.get("main").get("config")
+    presetName = state.resolve_d(cfg, "name", None)
+    if presetName is None:
+      raise ParseError(cfg, state.get_path(cfg), "preset name was not specified")
+    presets = config.get("presets", {})
+    presetCfg = get_nested_d(presets, presetName, None)
+    if presetCfg is None:
+      raise ParseError(cfg, state.get_path(cfg), "preset '{}' does not exist; available presets are: '{}'".format(presetName, [str2(k) for k in presets.keys()]))
+    argsPresent = False
+    if "args" in cfg:
+      state.push_args(cfg)
+      argsPresent = True
+    try:
+      return state.get("parser")("func", presetCfg, state)
+    finally:
+      if argsPresent == True:
+        state.pop_args()
+  funcParser.add("preset", presetFunc)
+
+  @make_func_wrapper
+  def proxyFunc(cfg, state):
+    class ProxyFunc:
+      def __call__(self, x):
+        assert self.next_ is not None
+        return self.next_(x)
+      def set_next(self, next_):
+        self.next_ = next_
+      def get_next(self):
+        return self.next_
+      def __init__(self, next_):
+        self.next_ = next_
+    func = ProxyFunc(None)
+    main = state.get("main")
+    class Setter:
+      def __call__(self, cfg, keys=None):
+        if keys is None or self.nextSetter_(cfg, keys) == False:
+          parser = self.main_.get("parser")
+          state = ParserState(self.main_)
+          next_ = parser("func", cfg, state)
+          self.func_.set_next(next_)
+          nextSetter = parser("funcSetter", cfg, state)
+          nextSetter.set_func(next_)
+          self.nextSetter_ = nextSetter
+      def __init__(self, main, func):
+        self.main_, self.func_, self.nextSetter_ = main, func, None
+    setter = Setter(main, func)
+    nextCfg = state.resolve(cfg, "next", setter=setter)
+    #should init func
+    setter(nextCfg)
+    return func
+  funcParser.add("proxy", proxyFunc)
+
+
+  #func setters
+  funcSetterParserKeyOp = lambda cfg,state : get_nested_ex(cfg, "func", state)
+  funcSetterParser = IntrusiveSelectParser(keyOp=funcSetterParserKeyOp, parser=SelectParser())
+  mainParser.add("funcSetter", funcSetterParser)
+
+  def hermiteSetter(cfg, state):
+    class Setter:
+      def __call__(self, cfg, keys):
+        """Returns True if property was set, False otherwise (in this case caller should recreate func and setter)."""
+        if keys is None:
+          return False
+        elif keys[0] == "symmetric":
+          return False
+        elif keys[0] == "points":
+          assert self.func_ is not None
+          points = cfg["points"]
+          if is_dict_type(points):
+            points = [[float(k), float(v)] for k,v in points.items()]
+          points.sort(key=lambda p : p[0])
+          self.func_.set_points(points)
+          return True
+        else:
+          raise RuntimeError("unknown keys: '{}'".format(keys))
+      def set_func(self, func):
+        self.func_ = func
+    return Setter()
+  funcSetterParser.add("hermite", hermiteSetter)
+
+
   #Filters
   filterParserKeyOp = lambda cfg,state : get_nested(cfg, "type")
   filterParser = IntrusiveSelectParser(keyOp=filterParserKeyOp, parser=SelectParser())
