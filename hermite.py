@@ -82,6 +82,102 @@ class Hermite:
     self.xs_, self.ps_, self.ms_ = xs, ps, ms
 
 
+class HermiteFunc:
+  def __call__(self, x):
+    if len(self.xs_) < 2:
+      return None
+    x0, x1 = self.xs_[0], self.xs_[-1]
+    if x0 > x1: x0, x1 = x1, x0
+    y = None
+    i = 0 if x < x0 else len(self.xs_) - 1 if x > x1 else None
+    if i is not None:
+      if self.extend_ == 0:
+        y = None
+      elif self.extend_ == 1:
+        y = self.ys_[i]
+      elif self.extend_ == 2:
+        y = self.ys_[i] + self.ms_[i] * (x - self.xs_[i])
+    else:
+      y = hermite_m(x, self.xs_, self.ys_, self.ms_)
+    if self.tracker_ is not None:
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
+    return y
+
+  def set_points(self, points):
+    self.xs_ = [p[0] for p in points]
+    self.ys_ = [p[1] for p in points]
+    self.ms_ = self.calc_ms_(self.xs_, self.ys_)
+
+  def get_points(self):
+    return zip(self.xs_, self.ys_)
+
+  def __init__(self, points, calc_ms, extend=0, tracker=None):
+    self.calc_ms_ = calc_ms
+    self.extend_ = extend
+    self.tracker_ = tracker
+    self.set_points(points)
+
+
+class HermiteFunc2:
+  def __call__(self, x):
+    if len(self.xs_) < 2:
+      return None
+    x0, x1 = self.xs_[0], self.xs_[-1]
+    if x0 > x1: x0, x1 = x1, x0
+    y = None
+    i = 0 if x < x0 else len(self.xs_) - 1 if x > x1 else None
+    if i is not None:
+      if self.extend_ == 0:
+        y = None
+      elif self.extend_ == 1:
+        y = self.ys_[i]
+      elif self.extend_ == 2:
+        y = self.ys_[i] + self.ms_[i] * (x - self.xs_[i])
+    else:
+      import bisect
+      i = bisect.bisect_right(self.xs_, x) - 1
+      assert 0 <= i  and i < len(self.xs_)
+      if i == len(self.xs_) - 1:
+        i -= 1
+      x0, x1 = self.xs_[i], self.xs_[i + 1]
+      assert x0 <= x and x <= x1
+      dx = x1 - x0
+      t = (x - x0) / dx
+      assert 0.0 <= t and t <= 1.0
+      t2 = t * t
+      t3 = t2 * t
+      cs = self.coeffs_[i]
+      y = cs[0] * t3 + cs[1] * dx * t3 + cs[2] * t2 + cs[3] * dx * t2 + self.ms_[i] * dx * t + self.ys_[i]
+    if self.tracker_ is not None:
+      self.tracker_({ "caller" : self, "x" : x, "y" : y })
+    return y
+
+  def set_points(self, points):
+    points.sort(key=lambda p : p[0])
+    self.xs_ = [p[0] for p in points]
+    self.ys_ = [p[1] for p in points]
+    self.ms_ = self.calc_ms_(self.xs_, self.ys_)
+    self.coeffs_ = []
+    for i in range(len(self.xs_) - 1):
+      y0, y1 = self.ys_[i], self.ys_[i + 1]
+      m0, m1 = self.ms_[i], self.ms_[i + 1]
+      a = 2.0 * (y0 - y1)
+      b = m0 + m1
+      c = 3.0 * (y1 - y0)
+      d = -(2.0 * m0 + m1)
+      self.coeffs_.append((a, b, c, d))
+
+
+  def get_points(self):
+    return zip(self.xs_, self.ys_)
+
+  def __init__(self, points, calc_ms, extend=0, tracker=None):
+    self.calc_ms_ = calc_ms
+    self.extend_ = extend
+    self.tracker_ = tracker
+    self.set_points(points)
+
+
 class HermiteErrorsTest(unittest.TestCase):
   def test_neq_length(self):
     xs = [0.0, 1.0]

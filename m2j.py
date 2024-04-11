@@ -7192,16 +7192,26 @@ def make_parser():
   def hermite(cfg, state):
     import hermite
     points = state.resolve(cfg, "points")
-    xs, ps = [p[0] for p in points], [p[1] for p in points]
-    lxs = len(xs)
-    ms = None
+    if is_dict_type(points):
+      points = points.items()
+    for i in range(len(points)):
+      points[i] = tuple(float(e) for e in points[i])
+    points.sort(key=lambda p : p[0])
     c = state.resolve_d(cfg, "c", None)
+    calc_ms = None
     if c is None:
-      ms = [hermite.m_fd(k, xs, ps) for k in range(lxs)]
+      calc_ms = lambda xs,ys : [hermite.m_fd(k, xs, ys) for k in range(len(xs))]
     else:
       c = float(c)
-      ms = [hermite.m_c(k, xs, ps, c) for k in range(lxs)]
-    func = hermite.Hermite(xs, ps, ms)
+      calc_ms = lambda xs,ys : [hermite.m_c(k, xs, ys, c) for k in range(len(xs))]
+    extend = state.resolve_d(cfg, "extend", 0)
+    func = hermite.HermiteFunc2(points, calc_ms, extend, make_tracker(cfg, state))
+    def set_points(points):
+      if is_dict_type(points):
+        points = [[float(x), y] for x,y in points.items()]
+      points.sort(key=lambda p : p[0])
+      func.set_points(points)
+    state.resolve(cfg, "points", setter=set_points)
     return func
   funcParser.add("hermite", hermite)
 
