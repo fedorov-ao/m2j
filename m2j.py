@@ -53,6 +53,10 @@ def sign(v):
   return -1 if v < 0 else 1 if v > 0 else 0
 
 
+def copysign(v, x):
+  return None if v is None or x is None else sign(x) * v
+
+
 def slopes(seq, op):
   r = []
   for i in range(0, len(seq)-1):
@@ -3940,7 +3944,7 @@ class FullDeltaRelChainCurve:
       self.inputValue_ = inputValue
     #adjust input delta (for sens etc.)
     inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
-    if inputDelta == 0.0:
+    if inputDelta is None or inputDelta == 0.0:
       return 0.0
     #assumes that inputDelta == 0.0 for x == 0.0, might not always be the case
     deltaFactor = inputDelta / x
@@ -3948,6 +3952,8 @@ class FullDeltaRelChainCurve:
     inputValue = self.inputValue_ + inputDelta
     #compute new output value
     outputValue = self.outputValueOp_.calc(inputValue)
+    if outputValue is None:
+      return 0.0
     #compute output delta
     outputDelta = outputValue - self.outputValue_
     #call next
@@ -7083,7 +7089,10 @@ def make_parser():
         self.symm_ = symm
       def call_(self, x):
         x = self.xo_ + self.xf_ * x
-        y = self.yo_ + self.yf_ * self.f_(x)
+        y = self.f_(x)
+        if y is None:
+          return None
+        y = self.yo_ + self.yf_ * y
         y = min(max(y, self.ymin_), self.ymax_)
         return y
     def wrapper(cfg, state):
@@ -7098,7 +7107,7 @@ def make_parser():
       if symm in (1, "x"):
         symm = lambda f,x : f(abs(x))
       elif symm in (2, "xy"):
-        symm = lambda f,x : sign(x) * f(abs(x))
+        symm = lambda f,x : copysign(f(abs(x)), x)
       else:
         symm = None
       return Wrapper(f, xf, yf, xo, yo, ymin, ymax, symm)
@@ -7338,7 +7347,8 @@ def make_parser():
       func = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
       class SensModOp:
         def calc(self, x, timestamp):
-          return self.combine_(self.next_.calc(x, timestamp), self.func_(self.axis_.get()))
+          n, f = self.next_.calc(x, timestamp), self.func_(self.axis_.get())
+          return None if n is None or f is None else self.combine_(n, f)
         def reset(self):
           self.next_.reset()
         def __init__(self, combine, next, func, axis):
