@@ -8824,6 +8824,7 @@ def make_parser():
             continue
           except Exception as e:
             logger.error("{} when parsing '{}' '{}' at '{}'".format(e, name, str2(c, 200), v2p_path2str(state.get_path(c))))
+            state.get("main").print_trace()
             raise ParseError(c, state.get_path(c))
           except:
             logger.warning("Unknown exception while parsing '{}' '{}'".format(name, str2(c, 100)))
