@@ -9391,32 +9391,16 @@ def make_parser():
 
   @parseBasesDecorator
   def parseInfoWidget(cfg, state):
-    parser = state.get("parser")
-    f = state.resolve_d(cfg, "format", 1)
-    title = state.resolve_d(cfg, "title", "")
-    info = InfoWidget(title=title)
-    widgetsCfg = state.resolve_d(cfg, "widgets", ())
-    if f == 1:
-      for widgetCfg in widgetsCfg:
-        widgetCfg["parent"] = info
-        try:
-          widget = parser("widget", widgetCfg, state)
-        finally:
-          del widgetCfg["parent"]
-        info.add(child=widget)
-        #Layout parameters are taken from immediate widget cfg (and not from i.e. preset cfg)
-        gridKwargs = map_dict_d(
-          widgetCfg,
-          {"r":("row",0), "c":("column",0), "rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
-          lambda d,f,dfault : state.resolve_d(d, f, dfault)
-        )
-        gridKwargs["row"], gridKwargs["column"] = r, c
-        widget.grid(**gridKwargs)
-    elif f == 2:
-      contentsFrame = info.get_frame()
-      r, c = 0, 0
-      for row in widgetsCfg:
-        for widgetCfg in row:
+    try:
+      parser = state.get("parser")
+      f = state.resolve_d(cfg, "format", 1)
+      title = state.resolve_d(cfg, "title", "")
+      info = InfoWidget(title=title)
+      #setting info in main right after creation so widgets can access info
+      state.get("main").set("info", info)
+      widgetsCfg = state.resolve_d(cfg, "widgets", ())
+      if f == 1:
+        for widgetCfg in widgetsCfg:
           widgetCfg["parent"] = info
           try:
             widget = parser("widget", widgetCfg, state)
@@ -9426,19 +9410,41 @@ def make_parser():
           #Layout parameters are taken from immediate widget cfg (and not from i.e. preset cfg)
           gridKwargs = map_dict_d(
             widgetCfg,
-            {"rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
+            {"r":("row",0), "c":("column",0), "rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
             lambda d,f,dfault : state.resolve_d(d, f, dfault)
           )
           gridKwargs["row"], gridKwargs["column"] = r, c
           widget.grid(**gridKwargs)
-          contentsFrame.grid_rowconfigure(r, weight=state.resolve_d(widgetCfg, "rw", 1))
-          contentsFrame.grid_columnconfigure(c, weight=state.resolve_d(widgetCfg, "cw", 1))
-          c += gridKwargs.get("columnspan", 1)
-        c = 0
-        r += 1
-    else:
-      raise ParseError(cfg, state.get_path(cfg), "unknown format: {}".format(f))
-    return info
+      elif f == 2:
+        contentsFrame = info.get_frame()
+        r, c = 0, 0
+        for row in widgetsCfg:
+          for widgetCfg in row:
+            widgetCfg["parent"] = info
+            try:
+              widget = parser("widget", widgetCfg, state)
+            finally:
+              del widgetCfg["parent"]
+            info.add(child=widget)
+            #Layout parameters are taken from immediate widget cfg (and not from i.e. preset cfg)
+            gridKwargs = map_dict_d(
+              widgetCfg,
+              {"rs":("rowspan",1), "cs":("columnspan",1), "sticky":("sticky",None)},
+              lambda d,f,dfault : state.resolve_d(d, f, dfault)
+            )
+            gridKwargs["row"], gridKwargs["column"] = r, c
+            widget.grid(**gridKwargs)
+            contentsFrame.grid_rowconfigure(r, weight=state.resolve_d(widgetCfg, "rw", 1))
+            contentsFrame.grid_columnconfigure(c, weight=state.resolve_d(widgetCfg, "cw", 1))
+            c += gridKwargs.get("columnspan", 1)
+          c = 0
+          r += 1
+      else:
+        raise ParseError(cfg, state.get_path(cfg), "unknown format: {}".format(f))
+      return info
+    except:
+      state.get("main").set("info", None)
+      raise
   widgetParser.add("info", parseInfoWidget)
 
   @parseBasesDecorator
