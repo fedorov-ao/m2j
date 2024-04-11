@@ -2987,6 +2987,7 @@ class SegmentFunc:
 
   def set_points(self, points):
     self.points_ = points
+    self.update_points_()
 
   def get_points(self):
     self.update_points_()
@@ -3048,6 +3049,12 @@ class BezierFunc:
     if self.tracker_ is not None:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
+
+  def set_points(self, points):
+    self.points_ = points
+
+  def get_points(self):
+    return self.points_
 
   def __init__(self, points, tracker=None):
     self.points_ = tuple((p[0],p[1]) for p in points)
