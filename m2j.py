@@ -6490,7 +6490,19 @@ class ComboboxWidget(FrameWidget):
       else:
         self.boxvar_.set(value)
       if self.command_ is not None:
-        self.command_(None)
+        self.command_(value)
+      width = self.box_["width"]
+      if width == 0:
+        width = max((len(v) for v in self.box_["values"]))
+      self.box_.configure(width=width)
+    elif name == "values":
+      self.box_.configure(values=value)
+      if len(value):
+        self.configure("value", value[0])
+      width = self.box_["width"]
+      if width == 0:
+        width = max((len(v) for v in value))
+      self.box_.configure(width=width)
     elif name == "command":
       command = value
       def cmd(event):
@@ -6502,6 +6514,9 @@ class ComboboxWidget(FrameWidget):
       self.getter_ = value
     else:
       raise RuntimeError("Unsupported property: '{}'".format(name))
+
+  def get_value(self):
+    return self.boxvar_.get() if self.boxvar_ is not None else None
 
   def __init__(self, **kwargs):
     FrameWidget.__init__(self, **kwargs)
