@@ -4095,6 +4095,121 @@ class RelToAbsChainCurve:
     self.next_ = next
 
 
+class AbsToRelChainCurve:
+  """
+  Converts absolute movement along an axis to relative.
+  """
+
+  logger = logger.getChild("AbsToRelChainCurve")
+
+  NEXT_NONE = 0
+  NEXT_REL = 1
+  NEXT_ABS = 2
+  NEXT_BOTH = 3
+
+  def move_by(self, x, timestamp):
+    """
+    Moves this curve by x.
+    """
+    if self.value_ is None:
+      raise RuntimeError("value was not set")
+    value = clamp(self.value_ + x, *self.get_limits())
+    delta = value - self.value_
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{} x:{: 0.3f}; old v:{: 0.3f}; v:{: 0.3f}; dv:{: 0.3f}".format(log_loc(self), x, self.value_, value, delta))
+    r = 0.0
+    if delta != 0.0:
+      if self.state_ == True:
+        if self.nextRelative_ is not None:
+          r = self.nextRelative_.move_by(delta, timestamp)
+      else:
+        if self.nextAbsolute_ is not None:
+          r = self.nextAbsolute_.move_by(delta, timestamp)
+      self.value_ += r
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} r:{: 0.3f}".format(log_loc(self), r))
+    return r
+
+  def move(self, x, timestamp):
+    """
+    Moves this curve to x.
+    """
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.move() x:{}".format(self, x))
+    x = clamp(x, *self.get_limits())
+    if self.value_ is None:
+      self.value_ = x
+    delta = x - self.value_
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{} x:{: 0.3f}; old v:{: 0.3f}; v:{: 0.3f}; dv:{: 0.3f}".format(log_loc(self), x, self.value_, value, delta))
+    r = 0.0
+    if self.state_ == True:
+      if self.nextRelative_ is not None and delta != 0.0:
+        r = self.nextRelative_.move_by(delta, timestamp)
+        r += x
+    else:
+      if self.nextAbsolute_ is not None:
+        r = self.nextAbsolute_.move(x, timestamp)
+    self.value_ = r
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} r:{: 0.3f}".format(log_loc(self), r))
+    return r
+
+  def reset(self):
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}".format(log_loc(self)))
+    if self.resetNext_ & self.NEXT_REL == True:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting next relative".format(log_loc(self)))
+      if self.nextRelative_ is not None:
+        self.nextRelative_.reset()
+    if self.resetNext_ & self.NEXT_ABS == True:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: resetting next absolute".format(log_loc(self)))
+      if self.nextAbsolute_ is not None:
+        self.nextAbsolute_.reset()
+    self.head_().set_busy(True)
+    try:
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.reset(): moving next absolute to {}".format(self, self.value_))
+      if self.nextAbsolute_ is not None:
+        self.nextAbsolute_.move(self.value_, time.time())
+    finally:
+      self.head_().set_busy(False)
+
+  def on_move_axis(self, axis, old, new):
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.on_move_axis() {} {} {}".format(self, axis, old, new))
+    if self.nextRelative_ is not None:
+      self.nextRelative_.on_move_axis(axis, old, new)
+    if self.nextAbsolute_ is not None:
+      self.value_ = self.nextAbsolute_.get_value()
+
+  def get_value(self):
+    return self.value_
+
+  def get_limits(self):
+    return self.limits_
+
+  def set_state(self, state):
+    self.state_ = state
+
+  def get_state(self):
+    return self.state_
+
+  def set_next(self, next, which=1):
+    if which == self.NEXT_REL:
+      self.nextRelative_ = next
+    elif which == self.NEXT_ABS:
+      self.nextAbsolute_ = next
+    else:
+      raise ValueError(which)
+
+  def __init__(self, head, nextRelative, nextAbsolute, state=True, resetNext=1, limits=None):
+    #head is AxisTrackerChainCurve
+    #nextRelative is FullDeltaRelChainCurve, nextAbsolute is RelToAbsChainCurve
+    self.head_ = weakref.ref(head)
+    self.nextRelative_, self.nextAbsolute_ = nextRelative, nextAbsolute
+    self.value_ = None
+    self.state_ = state
+    self.resetNext_ = resetNext
+    if limits is None:
+      limits = (-float("inf"), float("inf"))
+    self.limits_ = limits
+
+
 class TransformAbsChainCurve:
   logger = get_logger(logger, "TransformAbsChainCurve")
 
@@ -4180,6 +4295,68 @@ class TransformAbsChainCurve:
       if self.resetOnMoveAxis_ == True:
         self.reset()
       self.dirty_ = False
+
+
+class UnlinkableAbsChainCurve:
+  logger = get_logger(logger, "UnlinkableAbsChainCurve")
+
+  def move(self, x, timestamp):
+    """Moves current curve to x with offset."""
+    r = 0.0
+    if self.state_ == True:
+      #self.value_ is actual output value; value is desired output value
+      value = x + self.offset_
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("{}: linked x:{: 0.3f}, off:{: 0.3f}, value:{: 0.3f}".format(log_loc(self), x, self.offset_, value))
+      actualValue = self.next_.move(value, timestamp)
+      self.value_ = actualValue if self.allowOffLimits_ == False else value
+      r = x if value == self.value_ else self.value_ - self.offset_
+    else:
+      r = self.next_.probe(x)
+      self.offset_ = self.value_ - r
+      if self.logger.isEnabledFor(logging.DEBUG):
+        self.logger.debug("{}: unlinked x:{: 0.3f}, off:{: 0.3f}, value_:{: 0.3f}".format(log_loc(self), x, self.offset_, self.value_))
+    if self.logger.isEnabledFor(logging.DEBUG):
+      self.logger.debug("{}: r:{: 0.3f}".format(log_loc(self), r))
+    return r
+
+  def probe(self, x):
+    """
+    Probes whether can move this curve to x without actually moving it.
+    """
+    return self.next_.probe(x + self.offset_) - self.offset_
+
+  def reset(self):
+    self.next_.reset()
+    self.value_ = self.next_.get_value()
+    self.offset_ = 0.0
+
+  def on_move_axis(self, axis, old, new):
+    self.next_.on_move_axis(axis, old, new)
+    self.value_ = self.next_.get_value()
+    self.offset_ = 0.0
+
+  def get_value(self):
+    return self.value_ - self.offset_
+
+  def set_next(self, next):
+    self.next_ = next
+    if self.next_ is not None:
+      self.value_ = self.next_.get_value()
+
+  def set_state(self, state):
+    self.state_ = state
+
+  def get_state(self):
+    return self.state_
+
+  def __init__(self, next, state=True, allowOffLimits=False):
+    self.next_ = next
+    self.offset_, self.value_ = 0.0, 0.0
+    if self.next_ is not None:
+      self.value_ = self.next_.get_value()
+    self.state_ = state
+    self.allowOffLimits_ = allowOffLimits
 
 
 class UpdatedChainCurve:
@@ -8059,6 +8236,107 @@ def make_parser():
     state.add_curve(fnAxis, top)
     return top
   curveParser.add("fulldelta", parseFullDeltaCurve)
+
+  def parseAbsToAbsCurve(cfg, state):
+    #axis tracker
+    top = AxisTrackerChainCurve(next=None)
+    bottom = top
+    fnAxis = state.resolve(cfg, "axis")
+    axis = state.get_axis_by_full_name(fnAxis)
+    axis.add_listener(top)
+    #convert abs changes to deltas
+    st = state.resolve_d(cfg, "abs2rel.state", True)
+    resetNext = state.resolve_d(cfg, "abs2rel.resetNext", "relative")
+    resetNext = {
+      "none" : AbsToRelChainCurve.NEXT_NONE,
+      "relative" : AbsToRelChainCurve.NEXT_REL,
+      "absolute" : AbsToRelChainCurve.NEXT_ABS,
+      "both" : AbsToRelChainCurve.NEXT_BOTH
+    }.get(resetNext.lower())
+    limits = state.resolve_d(cfg, "abs2rel.limits", None)
+    absToRelChainCurve = AbsToRelChainCurve(top, None, None, st, resetNext, limits)
+    top.add("abs2rel", absToRelChainCurve)
+    bottom.set_next(absToRelChainCurve)
+    bottom = absToRelChainCurve
+    #accelerate
+    accelChainCurve = None
+    dynamicCfg = get_nested_d(cfg, "dynamic", None)
+    if dynamicCfg is not None:
+      dynamicCurveType = state.resolve_d(dynamicCfg, "type", "fulldelta")
+      if dynamicCurveType == "accel":
+        valueDDOp = makeInputValueDDOp(dynamicCfg, state)
+        deltaDDOp = makeInputDeltaDDOp(cfg, state) #settings are taken from cfg here
+        dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
+        combineValue = lambda value,x: value + x
+        combineDelta = lambda delta,factor: delta * factor
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
+        resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+        eps = state.resolve_d(dynamicCfg, "eps", 1e-4)
+        accelChainCurve = DeltaRelChainCurve(
+          next=None,
+          valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp,
+          combineValue=combineValue, combineDelta=combineDelta,
+          resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext, eps=eps)
+      elif dynamicCurveType == "fulldelta":
+        inputValueDDOp = makeInputValueDDOp(dynamicCfg, state)
+        inputDeltaDDOp = makeInputDeltaDDOp(cfg, state) #settings are taken from cfg here
+        dynamicOutputValueOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
+        dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
+        resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+        accelChainCurve = FullDeltaRelChainCurve(
+          next=None,
+          inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp,
+          outputValueOp=dynamicOutputValueOp, inputValueOp=dynamicInputValueOp,
+          resetOnMoveAxis=resetOnMoveAxis, resetNext=resetNext)
+      else:
+        raise RuntimeError("unknown dynamic curve type: '{}'".format(dynamicCurveType))
+      top.add("dynamic", accelChainCurve)
+      absToRelChainCurve.set_next(accelChainCurve, AbsToRelChainCurve.NEXT_REL)
+      bottom = accelChainCurve
+    #accumulate
+    relToAbsChainCurve = RelToAbsChainCurve(next=None)
+    top.add("rel2abs", relToAbsChainCurve)
+    absToRelChainCurve.set_next(relToAbsChainCurve, AbsToRelChainCurve.NEXT_ABS)
+    bottom.set_next(relToAbsChainCurve)
+    bottom = relToAbsChainCurve
+    #filter, and transform (and update)
+    staticCfg = get_nested_d(cfg, "static", None)
+    if staticCfg is not None:
+      #accumulate
+      #filter
+      #cannot include filter op in staticOutputOp of the next curve,
+      #because staticInputOp calls staticOutputOp to recalculate input value,
+      #and this will throw off filter
+      bottom = makeStaticFilterCurve(top, bottom, staticCfg, state)
+      #transform
+      staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
+      staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
+      staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False)
+      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
+      staticChainCurve = TransformAbsChainCurve(
+        next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
+        resetOnMoveAxis=staticResetOnMoveAxis, allowOffLimits=staticAllowOffLimits)
+      top.add("static", staticChainCurve)
+      bottom.set_next(staticChainCurve)
+      bottom = staticChainCurve
+    #unlink on demand
+    unlinkableCfg = get_nested_d(cfg, "unlinkable", {})
+    unlinkableState = state.resolve_d(unlinkableCfg, "state", True)
+    unlinkableAllowOffLimits = state.resolve_d(unlinkableCfg, "allowOffLimits", False)
+    unlinkableAbsChainCurve = UnlinkableAbsChainCurve(None, state=unlinkableState, allowOffLimits=unlinkableAllowOffLimits)
+    top.add("unlinkable", unlinkableAbsChainCurve)
+    bottom.set_next(unlinkableAbsChainCurve)
+    bottom = unlinkableAbsChainCurve
+    #update
+    bottom = makeUpdatedCurve(top, bottom, cfg, state)
+    #move axis
+    axisChainCurve = AxisChainCurve(axis=axis)
+    top.add("axis", axisChainCurve)
+    bottom.set_next(axisChainCurve)
+    state.add_curve(fnAxis, top)
+    return top
+  curveParser.add("abs2abs", parseAbsToAbsCurve)
 
   def parsePresetCurve(cfg, state):
     if logger.isEnabledFor(logging.DEBUG): logger.debug("parsePresetCurve(): cfg: '{}'".format(str2(cfg)))
