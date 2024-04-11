@@ -6009,19 +6009,33 @@ class Widget:
     pass
 
 
-class FrameWidget(Widget):
+class FrameWidgetNode(Widget):
   def grid(self, **kwargs):
-    self.frame_.grid(**self.map_in_(kwargs))
+    self.get_frame().grid(**self.map_in_(kwargs))
 
   def grid_configure(self, **kwargs):
-    self.frame_.grid_configure(**self.map_in_(kwargs))
+    self.get_frame().grid_configure(**self.map_in_(kwargs))
 
   def pack(self, **kwargs):
-    self.frame_.pack(**self.map_in_(kwargs))
+    self.get_frame().pack(**self.map_in_(kwargs))
 
   def pack_configure(self, **kwargs):
-    self.frame_.pack_configure(**self.map_in_(kwargs))
+    self.get_frame().pack_configure(**self.map_in_(kwargs))
 
+  def get_frame(self):
+    assert False, "not implemented"
+
+  def __init__(self, **kwargs):
+    pass
+
+  def map_in_(self, kwargs):
+    in_ = kwargs.get("in_")
+    if in_ is not None:
+      kwargs["in_"] = in_.get_frame()
+    return kwargs
+
+
+class FrameWidget(FrameWidgetNode):
   def get_frame(self):
     return self.frame_
 
@@ -6031,12 +6045,6 @@ class FrameWidget(Widget):
     if parent is not None:
       master = parent.get_frame()
     self.frame_ = tk.Frame(master=master)
-
-  def map_in_(self, kwargs):
-    in_ = kwargs.get("in_")
-    if in_ is not None:
-      kwargs["in_"] = in_.get_frame()
-    return kwargs
 
 
 class NamedWidget(FrameWidget):
