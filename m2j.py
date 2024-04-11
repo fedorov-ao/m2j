@@ -6545,6 +6545,19 @@ class ButtonWidget(Widget):
     return kwargs
 
 
+class TopLevelWidget(Widget):
+  def __init__(self, **kwargs):
+    parent = kwargs.get("parent")
+    master = None if parent is None else parent.get_frame()
+    self.frame_ = tk.Toplevel(master=master)
+  def get_frame(self):
+    return self.frame_
+  def update(self):
+    pass
+  def destroy(self):
+    self.frame_.destroy()
+
+
 class InfoWidget(Widget):
   def add(self, child):
     self.widgets_.append(child)
@@ -6559,6 +6572,9 @@ class InfoWidget(Widget):
       self.refresh()
     elif s == False:
       self.w_.withdraw()
+      for tlw in self.tlws_:
+        tlw.destroy()
+      self.tlws_ = []
 
   def get_state(self):
     return self.state_
@@ -6578,11 +6594,15 @@ class InfoWidget(Widget):
   def get_frame(self):
     return self.w_
 
+  def add_top_level_widget(self, tlw):
+    self.tlws_.append(tlw)
+
   def destroy(self):
     self.w_.destroy()
 
   def __init__(self, **kwargs):
     self.state_, self.widgets_ = False, []
+    self.tlws_ = []
     self.w_ = tk.Tk()
     self.w_.title(kwargs.get("title", ""))
     self.w_.propagate(True)
