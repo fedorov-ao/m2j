@@ -6771,13 +6771,13 @@ class TopLevelWidget(Widget):
 
 class VarPointsSource:
   def set_points(self, points):
-    if m2j.is_dict_type(self.var_.get(self.keys_)):
+    if is_dict_type(self.var_.get(self.keys_)):
       points = { str(x) : y for x,y in points }
     self.var_.set(points, self.keys_)
 
   def get_points(self):
     points = self.var_.get(self.keys_)
-    if m2j.is_dict_type(points):
+    if is_dict_type(points):
       points = [[float(k), float(v)] for k,v in points.items()]
     points.sort(key=lambda p : p[0])
     return points
@@ -7597,6 +7597,8 @@ def make_parser():
         y = self.yo_ + self.yf_ * y
         y = min(max(y, self.ymin_), self.ymax_)
         return y
+      def __getattr__(self, name):
+        return getattr(self.f_, name)
     def wrapper(cfg, state):
       f = func(cfg, state)
       xf = state.resolve_d(cfg, "xfactor", 1.0)
