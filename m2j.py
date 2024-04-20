@@ -7463,7 +7463,11 @@ class DerefSelectParser:
     r = state.deref(d, **kwargs)
     if self.logger.isEnabledFor(logging.DEBUG):
       self.logger.debug("{}: dereferenced '{}' to '{}'".format(log_loc(self), str2(d), str2(r)))
-    return self.p_(key, cfg, state) if r == d else r
+    if r == d: #r (or d) is not a reference
+      r = self.p_(key, cfg, state)
+    elif is_dict_type(r) and not has_value_tag(r):
+      r = self.p_(key, r, state)
+    return r
 
   def add(self, key, parser):
     self.p_.add(key, parser)
