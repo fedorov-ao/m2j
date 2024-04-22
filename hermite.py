@@ -12,7 +12,7 @@ def m_fd(k, xs, ps):
   if k < lxs - 1:
     dx = xs[k + 1] - xs[k]
     if dx == 0.0:
-      raise ValueError("xs for indices {} and {} are equal (must not be)".format(k, k + 1))
+      raise ValueError("xs for indices {} and {} are equal: {}".format(k, k + 1, xs[k]))
     r += (ps[k + 1] - ps[k]) / dx
     d += 1
   if k > 0:
@@ -153,20 +153,22 @@ class HermiteFunc2:
     return y
 
   def set_points(self, points):
-    points.sort(key=lambda p : p[0])
-    self.xs_ = [p[0] for p in points]
-    self.ys_ = [p[1] for p in points]
-    self.ms_ = self.calc_ms_(self.xs_, self.ys_)
-    self.coeffs_ = []
-    for i in range(len(self.xs_) - 1):
-      y0, y1 = self.ys_[i], self.ys_[i + 1]
-      m0, m1 = self.ms_[i], self.ms_[i + 1]
-      a = 2.0 * (y0 - y1)
-      b = m0 + m1
-      c = 3.0 * (y1 - y0)
-      d = -(2.0 * m0 + m1)
-      self.coeffs_.append((a, b, c, d))
-
+    try:
+      points.sort(key=lambda p : p[0])
+      self.xs_ = [p[0] for p in points]
+      self.ys_ = [p[1] for p in points]
+      self.ms_ = self.calc_ms_(self.xs_, self.ys_)
+      self.coeffs_ = []
+      for i in range(len(self.xs_) - 1):
+        y0, y1 = self.ys_[i], self.ys_[i + 1]
+        m0, m1 = self.ms_[i], self.ms_[i + 1]
+        a = 2.0 * (y0 - y1)
+        b = m0 + m1
+        c = 3.0 * (y1 - y0)
+        d = -(2.0 * m0 + m1)
+        self.coeffs_.append((a, b, c, d))
+    except Exception as e:
+      raise RuntimeError("Failed to set points: {} ({})".format(points, e))
 
   def get_points(self):
     return zip(self.xs_, self.ys_)
