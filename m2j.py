@@ -8012,13 +8012,13 @@ def make_parser():
     #transform accumulated
     dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
     dynamicInputOp = makeIterativeInputOp(cfg, dynamicOutputOp, state, "dynamic")
-    dymamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
+    dynamicChainCurve = TransformAbsChainCurve(next=None, inputOp=dynamicInputOp, outputOp=dynamicOutputOp)
     top.add("dynamic", dynamicChainCurve)
-    accumulateChainCurve.set_next(dymamicChainCurve)
+    accumulateChainCurve.set_next(dynamicChainCurve)
     #offset transformed
     offsetChainCurve = OffsetAbsChainCurve(next=None)
     top.add("offset", offsetChainCurve)
-    dymamicChainCurve.set_next(offsetChainCurve)
+    dynamicChainCurve.set_next(offsetChainCurve)
     #transform offset
     staticCfg = get_nested(cfg, "static")
     staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
