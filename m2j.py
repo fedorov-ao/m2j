@@ -7087,10 +7087,10 @@ class InfoWidget(Widget):
       self.w_.deiconify()
       self.refresh()
     elif s == False:
-      self.w_.withdraw()
       for tlw in self.tlws_:
         tlw.destroy()
       self.tlws_ = []
+      self.w_.withdraw()
 
   def get_state(self):
     return self.state_
