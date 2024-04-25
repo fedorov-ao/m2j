@@ -743,7 +743,7 @@ class ParserState:
         else:
           o = self.resolve_def(v)
         r[n] = o
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(a), r[n]))
+        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(v), r[n]))
       except NotFoundError as e:
         self.logger.warning(e)
         continue
@@ -802,7 +802,7 @@ class ParserState:
           compiledExpr = compile(expr, "", "eval")
           def op(v):
             globs = { "v" : v }
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: evaluating {} with {}".format(hex(log_loc(self)), expr, str2(globs)))
+            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: evaluating {} with {}".format(log_loc(self), expr, str2(globs)))
             return eval(compiledExpr, globs)
           mapping = op
           if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
