@@ -308,14 +308,42 @@ def set_nested(d, name, value, sep = "."):
     tokens = name
   else:
     raise ValueError("{} is not str or list".format(name))
-  currDict = d
+  currSeq = d
   for token in tokens[:-1]:
-    check_type(currDict, token)
-    currDict = currDict.setdefault(token, currDict.__class__())
+    check_type(currSeq, token)
+    currSeq = currSeq.setdefault(token, currSeq.__class__())
   token = tokens[-1]
-  check_type(currDict, token)
-  currDict[token] = value
+  check_type(currSeq, token)
+  currSeq[token] = value
   return d
+
+
+def set_nested_strict(seq, name, value, sep = "."):
+  def check_type(seq, name):
+    if type(seq) not in (list, dict, collections.OrderedDict):
+      raise ValueError("{}: invalid type".format(name))
+  tokens = None
+  if is_str_type(name):
+    tokens = name.split(sep)
+  elif is_list_type(name):
+    tokens = name
+  else:
+    raise ValueError("{} is not str or list".format(name))
+  currSeq = seq
+  for token in tokens[:-1]:
+    check_type(currSeq, token)
+    if type(currSeq) in (dict, collections.OrderedDict):
+      currSeq = currSeq[token]
+    elif type(currSeq) in (list,):
+      token = int(token)
+      currSeq = currSeq[token]
+  token = tokens[-1]
+  check_type(currSeq, token)
+  if type(currSeq) in (list,):
+    token = int(token)
+  cls = currSeq[token].__class__
+  currSeq[token] = cls(value)
+  return seq
 
 
 def get_nested(d, name, sep = "."):
@@ -10381,6 +10409,9 @@ class Main:
       externalConfig = init_config(configNames)
       merge_dicts(externalConfig, config)
       config = externalConfig
+    overrides = self.get("overrides")
+    for k,v in overrides:
+      set_nested_strict(config, k, v)
     self.set("config", config)
     self.set("v2p", v2p_make(config))
     logger.info("Configs loaded successfully")
@@ -10614,7 +10645,7 @@ class Main:
     MODE_NORMAL = 0
     MODE_LOG_INPUT = 1
     mode = MODE_NORMAL
-    opts, args = getopt.getopt(sys.argv[1:], "hd:j:ip:v:c:", ["help", "devices=", "devices_json=", "log_input", "preset=", "log_level=", "config="])
+    opts, args = getopt.getopt(sys.argv[1:], "hd:j:ip:v:c:o:", ["help", "devices=", "devices_json=", "log_input", "preset=", "log_level=", "config=", "override="])
     for o, a in opts:
       if o in ("-h", "--help"):
         self.print_help()
@@ -10637,6 +10668,12 @@ class Main:
       elif o in ("-c", "--config"):
         cns = self.options_.setdefault("configNames", [])
         cns.append(a)
+      elif o in ("-o", "--override"):
+        overrides = self.get("overrides")
+        keySep, keyValueSep = ".", "="
+        k,v = a.split(keyValueSep)
+        k = k.split(keySep)
+        overrides.append((k, v))
 
     self.init_config2()
     state = ParserState(self)
@@ -10751,6 +10788,7 @@ class Main:
     self.props_["source"] = None
     self.props_["mainEP"] = None
     self.props_["config"] = None
+    self.props_["overrides"] = []
     self.props_["v2p"] = {}
     self.props_["parser"] = parser
     self.props_["info"] = None
