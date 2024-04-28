@@ -809,7 +809,10 @@ class ParserState:
     return op
 
   def deref(self, refOrValue, **kwargs):
-    prefix, suffix, mapping, cfgDfault = None, None, None, None
+    prefix, suffix, mapping, dfault = None, None, None, None
+    cls = kwargs.get("cls")
+    if cls is not None:
+      del kwargs["cls"]
     r = refOrValue
     if is_dict_type(refOrValue):
       for p in ("obj", "arg", "var"):
@@ -820,7 +823,7 @@ class ParserState:
             mappingCfg = self.resolve_d(refOrValue, "mapping", None)
             if mappingCfg is not None:
               mapping = make_mapping(mappingCfg)
-          cfgDfault = self.resolve_d(refOrValue, "default", None)
+          dfault = self.resolve_d(refOrValue, "default", None)
           break
     elif is_str_type(refOrValue):
       refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
@@ -850,14 +853,16 @@ class ParserState:
           else:
             assert False
         except NotFoundError as e:
-          if cfgDfault is not None:
-            r = clear_value_tag(cfgDfault)
+          if dfault is not None:
+            r = clear_value_tag(dfault)
           else:
             raise
       elif prefix == "var":
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
         raise RuntimeError("Unknown prefix: '{}'".format(prefix))
+    if cls is not None and r.__class__ is not cls:
+      r = cls(r)
     if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Dereferenced '{}' to '{}'".format(str2(refOrValue), str2(r)))
     #This return statement must be at deref() scope, not in nested blocks!
     return r
