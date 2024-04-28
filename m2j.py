@@ -863,21 +863,21 @@ class ParserState:
     return r
 
   def resolve_d(self, d, name, dfault=None, **kwargs):
-    v = get_nested_d(d, name, dfault)
-    if v == dfault:
+    cfg = get_nested_d(d, name, dfault)
+    if cfg == dfault:
       return dfault
     try:
-      return self.deref(v, **kwargs)
+      return self.deref(cfg, **kwargs)
     except NotFoundError as e:
       return dfault
-    except RuntimeError as e:
+    except StandardError as e:
       raise ParseError(cfg, self.get_path(cfg), e)
 
   def resolve(self, d, name, **kwargs):
     cfg = get_nested_ex(d, name, self)
     try:
       return self.deref(cfg, **kwargs)
-    except RuntimeError as e:
+    except StandardError as e:
       raise ParseError(cfg, self.get_path(cfg), e)
 
   def parse_def(self, cfg):
