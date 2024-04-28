@@ -329,21 +329,24 @@ def set_nested_strict(seq, name, value, sep = "."):
     tokens = name
   else:
     raise ValueError("{} is not str or list".format(name))
-  currSeq = seq
-  for token in tokens[:-1]:
+  currSeq, token = seq, None
+  try:
+    for token in tokens[:-1]:
+      check_type(currSeq, token)
+      if type(currSeq) in (dict, collections.OrderedDict):
+        currSeq = currSeq[token]
+      elif type(currSeq) in (list,):
+        token = int(token)
+        currSeq = currSeq[token]
+    token = tokens[-1]
     check_type(currSeq, token)
-    if type(currSeq) in (dict, collections.OrderedDict):
-      currSeq = currSeq[token]
-    elif type(currSeq) in (list,):
+    if type(currSeq) in (list,):
       token = int(token)
-      currSeq = currSeq[token]
-  token = tokens[-1]
-  check_type(currSeq, token)
-  if type(currSeq) in (list,):
-    token = int(token)
-  cls = currSeq[token].__class__
-  currSeq[token] = cls(value)
-  return seq
+    cls = currSeq[token].__class__
+    currSeq[token] = cls(value)
+    return seq
+  except (KeyError, IndexError) as e:
+    raise KeyError(token)
 
 
 def get_nested(d, name, sep = "."):

@@ -90,5 +90,26 @@ class SelectNearestTestCase(unittest.TestCase):
     self.assertIsNone(select_nearest(0.0, 0.5, values, False))
     self.assertEqual(1.0, select_nearest(0.0, 1.5, values, False))
 
+
+class SetNestedStrictTest(unittest.TestCase):
+  def testInvalidSeqType(self):
+    with self.assertRaises(ValueError):
+      set_nested_strict(tuple(), "name", 42, ".")
+
+  def testValidKeysType(self):
+    seq = {"42" : 24}
+    set_nested_strict(seq, "42", 42, ".")
+    self.assertEqual({"42" : 42}, seq)
+    seq = {"42" : 24}
+    set_nested_strict(seq, ("42",), 42, ".")
+    self.assertEqual({"42" : 42}, seq)
+    seq = {"42" : 24}
+    set_nested_strict(seq, ["42"], 42, ".")
+    self.assertEqual({"42" : 42}, seq)
+
+  def testInvalidKeysType(self):
+    with self.assertRaises(ValueError):
+      set_nested_strict({}, 42, 42, ".")
+
 if __name__ == '__main__':
     unittest.main() 
