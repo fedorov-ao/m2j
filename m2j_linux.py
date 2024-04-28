@@ -424,14 +424,14 @@ class EvdevIDevParser:
   def __call__(self, cfg, state):
     config = state.get("main").get("config")
     assert is_dict_type(cfg)
-    def get_prop(name, dfault):
-      return state.resolve_d(cfg, name, config.get(name, dfault))
-    compressEvents = get_prop("compressSourceEvents", False)
-    deviceUpdatePeriod = get_prop("missingSourceUpdatePeriod", 2)
-    swallowDelay = get_prop("swallowDelay", 0.0)
+    def get_prop(name, dfault, **kwargs):
+      return state.resolve_d(cfg, name, config.get(name, dfault), **kwargs)
+    compressEvents = get_prop("compressSourceEvents", False, cls=bool)
+    deviceUpdatePeriod = get_prop("missingSourceUpdatePeriod", 2.0, cls=float)
+    swallowDelay = get_prop("swallowDelay", 0.0, cls=float)
 
-    idev = state.resolve(cfg, "idev") #name
-    identifier = state.resolve(cfg, "identifier") #hash of device props, path, etc
+    idev = state.resolve(cfg, "idev", cls=str) #name
+    identifier = state.resolve(cfg, "identifier", cls=str) #hash of device props, path, etc
 
     idevName = idev
     idevHash = register_dev(idev)

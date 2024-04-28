@@ -7059,27 +7059,27 @@ def init_main_ep(state):
     DevCodeState(None, m, True) for m in
     (codes.KEY_LEFTSHIFT, codes.KEY_RIGHTSHIFT, codes.KEY_LEFTCTRL, codes.KEY_RIGHTCTRL, codes.KEY_LEFTALT, codes.KEY_RIGHTALT)
   ]
-  modifiers = state.resolve_d(config, "modifiers", None)
+  modifiers = state.resolve_d(config, "modifiers", None, cls=list)
   modifierDescs = defaultModifierDescs if modifiers is None else [parse_modifier_desc(m, None) for m in modifiers]
   modifierEP = ModifierEP(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierEP.OVERWRITE)
   bottomEP.set_next(modifierEP)
-  clickEP = modifierEP.set_next(ClickEP(state.resolve_d(config, "clickTime", 0.5)))
-  holdDataCfg = state.resolve_d(config, "holds", [])
+  clickEP = modifierEP.set_next(ClickEP(state.resolve_d(config, "clickTime", 0.5, cls=float)))
+  holdDataCfg = state.resolve_d(config, "holds", [], cls=list)
   holdEP = clickEP.set_next(HoldEP())
   for hd in holdDataCfg:
-    keyFullName = state.resolve_d(hd, "key", None)
+    keyFullName = state.resolve_d(hd, "key", None, cls=str)
     keyIDev, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
-    modifiers = state.resolve_d(hd, "modifiers", None)
+    modifiers = state.resolve_d(hd, "modifiers", None, cls=list)
     if modifiers is not None:
       modifiers = (parse_modifier_desc(m, state) for m in modifiers)
-    num = state.resolve_d(hd, "num", -1)
-    holdEP.add(keyIDev, keyCode, modifiers, state.resolve_d(hd, "period"), state.resolve_d(hd, "value"), num)
+    num = state.resolve_d(hd, "num", -1, cls=int)
+    holdEP.add(keyIDev, keyCode, modifiers, state.resolve(hd, "period", cls=float), state.resolve(hd, "value", cls=int), num)
   main.add_to_updated(lambda tick,ts : holdEP.update(tick, ts))
 
-  sensSetsCfg = state.resolve_d(config, "sens", None)
+  sensSetsCfg = state.resolve_d(config, "sens", None, cls=dict)
   scaleEP = None
   if sensSetsCfg is not None:
-    sensSet = state.resolve_d(config, "sensSet", None)
+    sensSet = state.resolve_d(config, "sensSet", None, cls=str)
     if sensSet not in sensSetsCfg:
       raise Exception("Invalid sensitivity set: {}".format(sensSet))
     sensCfg = { "sens" : sensSetsCfg[sensSet] }
@@ -7092,9 +7092,9 @@ def init_main_ep(state):
   stateEP = StateEP()
   mainEP.add_stateful(stateEP)
 
-  released = state.resolve_d(config, "released", [])
+  released = state.resolve_d(config, "released", [], cls=list)
   for i in range(len(released)):
-    released[i] = state.deref(released[i])
+    released[i] = state.deref(released[i], cls=str)
   idevFilterOp = IDevFilterOp(released)
   filterEP = stateEP.set_next(FilterEP(idevFilterOp))
   namesOfReleasedStr = ", ".join(released)
@@ -7149,9 +7149,9 @@ def init_main_ep(state):
   bindEP.add(None, stateEP, 1)
   scaleEP.set_next(bindEP)
 
-  grabbed = state.resolve_d(config, "grabbed", [])
+  grabbed = state.resolve_d(config, "grabbed", [], cls=list)
   for i in range(len(grabbed)):
-    grabbed[i] = state.deref(grabbed[i])
+    grabbed[i] = state.deref(grabbed[i], cls=str)
   namesOfGrabbedStr = ", ".join(grabbed)
 
   def print_enabled(event):
@@ -7160,7 +7160,7 @@ def init_main_ep(state):
     logger.info("Emulation disabled; {} ungrabbed".format(namesOfGrabbedStr))
 
   stateValue = None
-  stateValueName = state.resolve_d(config, "stateValueName", None)
+  stateValueName = state.resolve_d(config, "stateValueName", None, cls=str)
   if stateValueName is not None:
     stateValue = state.get("main").get("valueManager").get_var(stateValueName)
   def make_set_state_val(s):
@@ -7177,7 +7177,7 @@ def init_main_ep(state):
 
   mainEP.set_bottom(nextEP)
 
-  initialState = state.resolve_d(config, "initialState", False)
+  initialState = state.resolve_d(config, "initialState", False, cls=bool)
   mainEP.set_state(initialState)
 
   logger.info("Initialization successfull")
@@ -7210,9 +7210,9 @@ def init_config(configFilesNames):
 def init_preset_config(state):
   main = state.get("main")
   config = main.get("config")
-  presetName = state.resolve(config, "preset")
+  presetName = state.resolve(config, "preset", cls=str)
   logger.info("Using '{}' preset from config".format(presetName))
-  presetsCfg = state.resolve_d(config, "presets", {})
+  presetsCfg = state.resolve_d(config, "presets", {}, cls=dict)
   presetCfg = get_nested_d(presetsCfg, presetName, None)
   if presetCfg is None:
     raise Exception("'{}' preset not found in config".format(presetName))
@@ -7473,12 +7473,12 @@ def make_parser():
         return getattr(self.f_, name)
     def wrapper(cfg, state):
       f = func(cfg, state)
-      xf = state.resolve_d(cfg, "xfactor", 1.0)
-      yf = state.resolve_d(cfg, "yfactor", 1.0)
-      xo = state.resolve_d(cfg, "xoffset", 0.0)
-      yo = state.resolve_d(cfg, "yoffset", 0.0)
-      ymin = state.resolve_d(cfg, "ymin", -float("inf"))
-      ymax = state.resolve_d(cfg, "ymax", float("inf"))
+      xf = state.resolve_d(cfg, "xfactor", 1.0, cls=float)
+      yf = state.resolve_d(cfg, "yfactor", 1.0, cls=float)
+      xo = state.resolve_d(cfg, "xoffset", 0.0, cls=float)
+      yo = state.resolve_d(cfg, "yoffset", 0.0, cls=float)
+      ymin = state.resolve_d(cfg, "ymin", -float("inf"), cls=float)
+      ymax = state.resolve_d(cfg, "ymax", float("inf"), cls=float)
       symm = state.resolve_d(cfg, "symmetric", 0)
       if symm in (1, "x"):
         symm = lambda f,x : f(abs(x))
@@ -7491,21 +7491,21 @@ def make_parser():
 
   def make_tracker(cfg, state):
     tracker = None
-    trackerCfg = state.resolve_d(cfg, "tracker", None)
+    trackerCfg = state.resolve_d(cfg, "tracker", None, cls=dict)
     if trackerCfg is not None:
       tracker = state.get("parser")("tracker", trackerCfg, state)
       assert(tracker is not None)
     return tracker
 
   def constant(cfg, state):
-    return ConstantFunc(state.resolve(cfg, "value"), make_tracker(cfg, state))
+    return ConstantFunc(state.resolve(cfg, "value", cls=float), make_tracker(cfg, state))
   funcParser.add("constant", constant)
 
   @make_func_wrapper
   def segment(cfg, state):
-    factor = state.resolve_d(cfg, "factor", 1.0)
-    clampLeft = state.resolve_d(cfg, "clampLeft", True)
-    clampRight = state.resolve_d(cfg, "clampRight", True)
+    factor = state.resolve_d(cfg, "factor", 1.0, cls=float)
+    clampLeft = state.resolve_d(cfg, "clampLeft", True, cls=bool)
+    clampRight = state.resolve_d(cfg, "clampRight", True, cls=bool)
     func = SegmentFunc(None, factor, clampLeft, clampRight, make_tracker(cfg, state))
     pointsCfg, setter = None, None
     pointsCfg = state.resolve_d(cfg, "points")
@@ -7525,7 +7525,7 @@ def make_parser():
       #Registering setter in case "points" is bound to Var
       state.resolve(cfg, "points", setter=setter)
     else:
-      pointsCfg = state.resolve_d(cfg, "pointsEx")
+      pointsCfg = state.resolve_d(cfg, "pointsEx", cls=dict)
       if pointsCfg is not None:
         def make_setter(func, get_items):
           def setter(pointsCfg):
@@ -7567,7 +7567,7 @@ def make_parser():
     if not is_dict_type(coeffs):
       raise ParseError(coeffs, state.get_path(coeffs), "coeffs should be dict-like")
     coeffs = {int(p) : k for p,k in coeffs.items()}
-    offset = state.resolve_d(cfg, "offset", 0.0)
+    offset = state.resolve_d(cfg, "offset", 0.0, cls=float)
     func = PolynomialFunc(coeffs, offset, make_tracker(cfg, state))
     coeffsSetter.set_func(func)
     return func
@@ -7575,35 +7575,35 @@ def make_parser():
 
   @make_func_wrapper
   def sigmoid(cfg, state):
-    k = state.resolve_d(cfg, "k", 1.0)
-    p0 = state.resolve_d(cfg, "p0", 0.5)
-    r = state.resolve_d(cfg, "r", 1.0)
-    s = state.resolve_d(cfg, "s", 0.0)
+    k = state.resolve_d(cfg, "k", 1.0, cls=float)
+    p0 = state.resolve_d(cfg, "p0", 0.5, cls=float)
+    r = state.resolve_d(cfg, "r", 1.0, cls=float)
+    s = state.resolve_d(cfg, "s", 0.0, cls=float)
     func = SigmoidFunc(k, p0, r, s, make_tracker(cfg, state))
     return func
   funcParser.add("sigmoid", sigmoid)
 
   @make_func_wrapper
   def bezier(cfg, state):
-    points = state.resolve(cfg, "points")
+    points = state.resolve(cfg, "points", cls=list)
     func = BezierFunc(points, make_tracker(cfg, state))
     return func
   funcParser.add("bezier", bezier)
 
   @make_func_wrapper
   def sbezier(cfg, state):
-    points = state.resolve(cfg, "points")
+    points = state.resolve(cfg, "points", cls=list)
     func = SegmentedBezierFunc(points, make_tracker(cfg, state))
     return func
   funcParser.add("sbezier", sbezier)
 
   @make_func_wrapper
   def weighted(cfg, state):
-    o = state.resolve(cfg, "degree")
-    w = state.resolve(cfg, "weight")
-    db = state.resolve_d(cfg, "deadband", 0.0)
-    offset = state.resolve_d(cfg, "offset", 0.0)
-    factor = state.resolve_d(cfg, "factor", 1.0)
+    o = state.resolve(cfg, "degree", cls=float)
+    w = state.resolve(cfg, "weight", cls=float)
+    db = state.resolve_d(cfg, "deadband", 0.0, cls=float)
+    offset = state.resolve_d(cfg, "offset", 0.0, cls=float)
+    factor = state.resolve_d(cfg, "factor", 1.0, cls=float)
     func = WeightedFunc(o, w, db, factor, offset, make_tracker(cfg, state))
     return func
   funcParser.add("weighted", weighted)
@@ -7617,14 +7617,14 @@ def make_parser():
     for i in range(len(points)):
       points[i] = tuple(float(e) for e in points[i])
     points.sort(key=lambda p : p[0])
-    c = state.resolve_d(cfg, "c", None)
+    c = state.resolve_d(cfg, "c", None, cls=float)
     calc_ms = None
     if c is None:
       calc_ms = lambda xs,ys : [hermite.m_fd(k, xs, ys) for k in range(len(xs))]
     else:
       c = float(c)
       calc_ms = lambda xs,ys : [hermite.m_c(k, xs, ys, c) for k in range(len(xs))]
-    extend = state.resolve_d(cfg, "extend", 0)
+    extend = state.resolve_d(cfg, "extend", 0, cls=int)
     func = hermite.HermiteFunc2(points, calc_ms, extend, make_tracker(cfg, state))
     def set_points(points):
       if is_dict_type(points):
@@ -7638,7 +7638,7 @@ def make_parser():
   @make_func_wrapper
   def presetFunc(cfg, state):
     config = state.get("main").get("config")
-    presetName = state.resolve_d(cfg, "name", None)
+    presetName = state.resolve_d(cfg, "name", None, cls=str)
     if presetName is None:
       raise ParseError(cfg, state.get_path(cfg), "preset name was not specified")
     presets = config.get("presets", {})
@@ -7725,14 +7725,14 @@ def make_parser():
   mainParser.add("filter", filterParser)
 
   def parseExpFilter(cfg, state):
-    weight = state.resolve(cfg, "weight")
+    weight = state.resolve(cfg, "weight", cls=float)
     return ExpFilter(weight)
   filterParser.add("exp", parseExpFilter)
 
   def parsePolyFilter(cfg, state):
-    degree = state.resolve(cfg, "degree")
-    numSamples = state.resolve(cfg, "numSamples")
-    delay = state.resolve_d(cfg, "delay", 0.0)
+    degree = state.resolve(cfg, "degree", cls=float)
+    numSamples = state.resolve(cfg, "numSamples", cls=int)
+    delay = state.resolve_d(cfg, "delay", 0.0, cls=float)
     return PolyApproxFilter(degree, numSamples, delay)
   filterParser.add("poly", parsePolyFilter)
 
@@ -7745,7 +7745,7 @@ def make_parser():
 
   def parseAxisLinker(cfg, state):
     def resolve_axis(cfg, name, state):
-      fnAxis = state.resolve(cfg, name)
+      fnAxis = state.resolve(cfg, name, cls=str)
       try:
         return fnAxis, state.get_axis_by_full_name(fnAxis)
       except RuntimeError as e:
@@ -7757,9 +7757,9 @@ def make_parser():
     funcSetter = FuncSetter()
     func = get_deprecated_func(cfg, state, setter=funcSetter)
     fnControllingAxis, controllingAxis = resolve_axis(cfg, "leader", state)
-    adjustOffset = state.resolve_d(cfg, "adjustOffset", True)
+    adjustOffset = state.resolve_d(cfg, "adjustOffset", True, cls=bool)
     linker = AxisLinker(controllingAxis, controlledAxis, func, adjustOffset)
-    s = state.resolve_d(cfg, "state", False)
+    s = state.resolve_d(cfg, "state", False, cls=bool)
     linker.set_state(s)
     funcSetter.axisLinker = linker
     controlledAxis.add_listener(linker)
@@ -7770,17 +7770,17 @@ def make_parser():
 
   curveParser.add("linker", parseAxisLinker)
 
-  def get_deprecated_prop(cfg, propName, sectionName, dfault, state):
+  def get_deprecated_prop(cfg, propName, sectionName, dfault, state, **kwargs):
     v = None
     if sectionName is None:
-      v = state.resolve_d(cfg, propName, dfault)
+      v = state.resolve_d(cfg, propName, dfault, **kwargs)
     else:
-      v = state.resolve_d(cfg, propName, None)
+      v = state.resolve_d(cfg, propName, None, **kwargs)
       if v is not None:
         logger.warning("'{}' in curve config is deprecated, move in into '{}' ({})".format(propName, sectionName, str2(cfg, 100)))
       else:
         sectionCfg = get_nested_d(cfg, sectionName, None)
-        v = dfault if sectionCfg is None else state.resolve_d(sectionCfg, propName, dfault)
+        v = dfault if sectionCfg is None else state.resolve_d(sectionCfg, propName, dfault, **kwargs)
     return v
 
   def get_deprecated_func(cfg, state, **kwargs):
@@ -7803,7 +7803,7 @@ def make_parser():
     #cfg is curve cfg
     sensModCfg = get_deprecated_prop(cfg, "sensMod", "dynamic", None, state)
     if sensModCfg is not None:
-      axis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
+      axis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis", cls=str))
       func = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
       class SensModOp:
         def calc(self, x, timestamp):
@@ -7817,22 +7817,25 @@ def make_parser():
     return sensOp
 
   def makeIterativeInputOp(cfg, outputOp, state, sectionName=None):
-    eps = get_deprecated_prop(cfg, "eps", sectionName, 0.001, state)
-    numSteps = get_deprecated_prop(cfg, "numSteps", sectionName, 100, state)
+    eps = get_deprecated_prop(cfg, "eps", sectionName, 0.001, state, cls=float)
+    numSteps = get_deprecated_prop(cfg, "numSteps", sectionName, 100, state, cls=int)
     inputOp = IterativeInputOp(outputOp=outputOp, eps=eps, numSteps=numSteps)
     inputLimits = get_deprecated_prop(cfg, "inputLimits", sectionName, None, state)
-    inputStep = get_deprecated_prop(cfg, "inputStep", sectionName, 0.1, state)
-    expandLimits = get_deprecated_prop(cfg, "expandLimits", sectionName, False, state)
+    inputStep = get_deprecated_prop(cfg, "inputStep", sectionName, 0.1, state, cls=float)
+    expandLimits = get_deprecated_prop(cfg, "expandLimits", sectionName, False, state, cls=bool)
     inputOp = LookupOp(inputOp, outputOp, inputStep, inputLimits, expandLimits)
     #inputOp = LimitedOpToOp(inputOp, inputLimits)
     return inputOp
 
   def parseInputBasedCurve2(cfg, state):
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     axis = state.get_axis_by_full_name(fnAxis)
     dynamicCfg = get_nested(cfg, "dynamic")
     signDDOp = SignDistanceDeltaOp()
-    timeDDOp = TimeDistanceDeltaOp(resetTime=dynamicCfg.get("resetTime", float("inf")), holdTime=dynamicCfg.get("holdTime", 0.0))
+    timeDDOp = TimeDistanceDeltaOp(
+      resetTime=state.resolve_d(dynamicCfg, "resetTime", float("inf"), cls=float),
+      holdTime=state.resolve_d(dynamicCfg, "holdTime", 0.0, cls=float)
+    )
     deltaOp = CombineDeltaOp(
       combine=lambda x,s : x*s,
       ops=(ReturnDeltaOp(), AccumulateDeltaOp(get_deprecated_func(dynamicCfg, state), ops=[signDDOp, timeDDOp]))
@@ -7840,9 +7843,9 @@ def make_parser():
     outputOp = FuncOp(func=get_deprecated_func(get_nested(cfg, "static"), state))
     inputOp = makeIterativeInputOp(cfg, outputOp, state, "static")
     deltaOp = makeSensModOp(cfg, state, deltaOp)
-    deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0))
-    resetOpsOnAxisMove = state.resolve_d(cfg, "resetOpsOnAxisMove", True)
-    ivLimits = state.resolve_d(cfg, "inputLimits", (-1.0, 1.0))
+    deltaOp = DeadzoneDeltaOp(deltaOp, state.resolve_d(cfg, "deadzone", 0.0, cls=float))
+    resetOpsOnAxisMove = state.resolve_d(cfg, "resetOpsOnAxisMove", True, cls=bool)
+    ivLimits = state.resolve_d(cfg, "inputLimits", (-1.0, 1.0), cls=list)
     curve = InputBasedCurve2(axis=axis, inputOp=inputOp, outputOp=outputOp, deltaOp=deltaOp, inputValueLimits=ivLimits, resetOpsOnAxisMove=resetOpsOnAxisMove)
     axis.add_listener(curve)
     state.add_curve(fnAxis, curve)
@@ -7853,7 +7856,7 @@ def make_parser():
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
     curve = top
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     axis = state.get_axis_by_full_name(fnAxis)
     axis.add_listener(curve)
     #accumulate
@@ -7872,7 +7875,7 @@ def make_parser():
         pass
       def __init__(self, value=None):
         self.value_ = value
-    resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True)
+    resetOnMoveAxis = state.resolve_d(cfg, "resetOnMoveAxis", True, cls=bool)
     inputOp = ResetOp(0.0 if resetOnMoveAxis else None)
     accumulateChainCurve = AccumulateRelChainCurve(next=None, valueDDOp=valueDDOp, deltaDOp=deltaDOp, combine=combine, inputOp=inputOp, resetOnMoveAxis=resetOnMoveAxis)
     top.add("accumulate", accumulateChainCurve)
@@ -7903,7 +7906,7 @@ def make_parser():
   curveParser.add("offset", parseOffsetCurve)
 
   def makeInputValueDDOp(cfg, state):
-    signChangeDeadZone = state.resolve_d(cfg, "signChangeDeadZone", 0.0)
+    signChangeDeadZone = state.resolve_d(cfg, "signChangeDeadZone", 0.0, cls=bool)
     inputValueDDOp = SignDistanceDeltaOp(deadzone=signChangeDeadZone)
     resetFuncCfg = get_nested_d(cfg, "resetFunc", None)
     if resetFuncCfg is not None:
@@ -7919,7 +7922,7 @@ def make_parser():
   def makeInputDeltaDDOp(cfg, state):
     #cfg is curve cfg
     inputDeltaDOp = ReturnDeltaOp()
-    deadzone = get_deprecated_prop(cfg, "deadzone", "dynamic", 0.0, state)
+    deadzone = get_deprecated_prop(cfg, "deadzone", "dynamic", 0.0, state, cls=float)
     inputDeltaDOp = DeadzoneDeltaOp(inputDeltaDOp, deadzone)
     filterCfg = get_deprecated_prop(cfg, "filter", "dynamic", None, state)
     if filterCfg is not None:
@@ -7945,11 +7948,11 @@ def make_parser():
     if updatedCfg is not None:
       op = None
       opCfg = get_nested_d(updatedCfg, "op")
-      opType = state.resolve(opCfg, "type")
+      opType = state.resolve(opCfg, "type", cls=str)
       if opType == "distance":
         funcCfg = get_nested_d(opCfg, "func")
         func = state.get("main").get("parser")("func", funcCfg, state)
-        keepSpeed = state.resolve_d(opCfg, "keepSpeed", False)
+        keepSpeed = state.resolve_d(opCfg, "keepSpeed", False, cls=bool)
         op = DistanceUpdatedChainCurveOp(func, keepSpeed)
       elif opType == "accel":
         accelerationCfg = state.resolve(opCfg, "acceleration")
@@ -7959,25 +7962,25 @@ def make_parser():
         else:
           acceleration = float(accelerationCfg)
           accelerationFunc = lambda x : acceleration
-        decelerationCfg = state.resolve_d(opCfg, "deceleration", 0.0)
+        decelerationCfg = state.resolve_d(opCfg, "deceleration", 0.0, cls=float)
         decelerationFunc = None
         if is_dict_type(decelerationCfg):
           decelerationFunc = state.get("parser")("func", decelerationCfg, state)
         else:
           deceleration = float(decelerationCfg)
           decelerationFunc = lambda x : deceleration
-        minSpeed = float(state.resolve_d(opCfg, "minSpeed", 0.0))
-        maxSpeed = float(state.resolve_d(opCfg, "maxSpeed", 0.0))
-        keepAcceleration = state.resolve_d(opCfg, "keepAcceleration", False)
+        minSpeed = float(state.resolve_d(opCfg, "minSpeed", 0.0, cls=float))
+        maxSpeed = float(state.resolve_d(opCfg, "maxSpeed", 0.0, cls=float))
+        keepAcceleration = state.resolve_d(opCfg, "keepAcceleration", False, cls=bool)
         op = AccelUpdatedChainCurveOp(accelerationFunc, decelerationFunc, minSpeed, maxSpeed, keepAcceleration)
       else:
         raise ParseError(opType, state.get_path(opType), "unknown op type")
       sensModCfg = get_nested_d(updatedCfg, "sensMod")
       if sensModCfg is not None:
-        sensModAxis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis"))
+        sensModAxis = state.get_axis_by_full_name(state.resolve(sensModCfg, "axis", cls=str))
         sensModFunc = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
         op = SensModUpdatedChainCurveOp(op, sensModFunc, sensModAxis)
-      modeName = state.resolve_d(updatedCfg, "mode", "absolute")
+      modeName = state.resolve_d(updatedCfg, "mode", "absolute", cls=str)
       mode = {
         "absolute" : UpdatedChainCurve.MODE_ABSOLUTE,
         "relative" : UpdatedChainCurve.MODE_RELATIVE
@@ -7996,7 +7999,7 @@ def make_parser():
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
     bottom = top
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     axis = state.get_axis_by_full_name(fnAxis)
     axis.add_listener(top)
     #accelerate
@@ -8009,9 +8012,9 @@ def make_parser():
       dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
       combineValue = lambda value,x: value+x
       combineDelta = lambda delta,factor: delta*factor
-      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
-      resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
-      eps = state.resolve_d(dynamicCfg, "eps", 1e-4)
+      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state, cls=bool)
+      resetNext = state.resolve_d(dynamicCfg, "resetNext", True, cls=bool)
+      eps = state.resolve_d(dynamicCfg, "eps", 1e-4, cls=float)
       accelChainCurve = DeltaRelChainCurve(
         next=None,
         valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp,
@@ -8051,7 +8054,7 @@ def make_parser():
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
     bottom = top
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     axis = state.get_axis_by_full_name(fnAxis)
     axis.add_listener(top)
     #accelerate
@@ -8066,9 +8069,9 @@ def make_parser():
       inputDeltaDDOp = makeInputDeltaDDOp(cfg, state)
       dynamicOutputValueOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
       dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
-      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state)
+      resetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "dynamic", True, state, cls=bool)
       #resetNext is taken from dynamicCfg
-      resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+      resetNext = state.resolve_d(dynamicCfg, "resetNext", True, cls=bool)
       accelChainCurve = FullDeltaRelChainCurve(
         next=None,
         inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp,
@@ -8093,8 +8096,8 @@ def make_parser():
       #transform
       staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
-      staticResetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "static", True, state)
-      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
+      staticResetOnMoveAxis = get_deprecated_prop(cfg, "resetOnMoveAxis", "static", True, state, cls=bool)
+      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False, cls=bool)
       staticChainCurve = TransformAbsChainCurve(
         next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
         resetOnMoveAxis=staticResetOnMoveAxis, allowOffLimits=staticAllowOffLimits)
@@ -8115,19 +8118,19 @@ def make_parser():
     #axis tracker
     top = AxisTrackerChainCurve(next=None)
     bottom = top
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     axis = state.get_axis_by_full_name(fnAxis)
     axis.add_listener(top)
     #convert abs changes to deltas
-    st = state.resolve_d(cfg, "abs2rel.state", True)
-    resetNext = state.resolve_d(cfg, "abs2rel.resetNext", "relative")
+    st = state.resolve_d(cfg, "abs2rel.state", True, cls=bool)
+    resetNext = state.resolve_d(cfg, "abs2rel.resetNext", "relative", cls=str)
     resetNext = {
       "none" : AbsToRelChainCurve.NEXT_NONE,
       "relative" : AbsToRelChainCurve.NEXT_REL,
       "absolute" : AbsToRelChainCurve.NEXT_ABS,
       "both" : AbsToRelChainCurve.NEXT_BOTH
     }.get(resetNext.lower())
-    limits = state.resolve_d(cfg, "abs2rel.limits", None)
+    limits = state.resolve_d(cfg, "abs2rel.limits", None, cls=list)
     absToRelChainCurve = AbsToRelChainCurve(top, None, None, st, resetNext, limits)
     top.add("abs2rel", absToRelChainCurve)
     bottom.set_next(absToRelChainCurve)
@@ -8136,16 +8139,16 @@ def make_parser():
     accelChainCurve = None
     dynamicCfg = get_nested_d(cfg, "dynamic", None)
     if dynamicCfg is not None:
-      dynamicCurveType = state.resolve_d(dynamicCfg, "type", "fulldelta")
+      dynamicCurveType = state.resolve_d(dynamicCfg, "type", "fulldelta", cls=str)
       if dynamicCurveType == "accel":
         valueDDOp = makeInputValueDDOp(dynamicCfg, state)
         deltaDDOp = makeInputDeltaDDOp(cfg, state) #settings are taken from cfg here
         dynamicOutputOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
         combineValue = lambda value,x: value + x
         combineDelta = lambda delta,factor: delta * factor
-        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
-        resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
-        eps = state.resolve_d(dynamicCfg, "eps", 1e-4)
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True, cls=bool)
+        resetNext = state.resolve_d(dynamicCfg, "resetNext", True, cls=bool)
+        eps = state.resolve_d(dynamicCfg, "eps", 1e-4, cls=float)
         accelChainCurve = DeltaRelChainCurve(
           next=None,
           valueDDOp=valueDDOp, deltaDDOp=deltaDDOp, outputOp=dynamicOutputOp,
@@ -8156,8 +8159,8 @@ def make_parser():
         inputDeltaDDOp = makeInputDeltaDDOp(cfg, state) #settings are taken from cfg here
         dynamicOutputValueOp = FuncOp(func=get_deprecated_func(dynamicCfg, state))
         dynamicInputValueOp = makeIterativeInputOp(dynamicCfg, dynamicOutputValueOp, state, None)
-        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True)
-        resetNext = state.resolve_d(dynamicCfg, "resetNext", True)
+        resetOnMoveAxis = state.resolve_d(dynamicCfg, "resetOnMoveAxis", True, cls=bool)
+        resetNext = state.resolve_d(dynamicCfg, "resetNext", True, cls=bool)
         accelChainCurve = FullDeltaRelChainCurve(
           next=None,
           inputValueDDOp=inputValueDDOp, inputDeltaDDOp=inputDeltaDDOp,
@@ -8186,8 +8189,8 @@ def make_parser():
       #transform
       staticOutputOp = FuncOp(func=get_deprecated_func(staticCfg, state))
       staticInputOp = makeIterativeInputOp(cfg, staticOutputOp, state, "static")
-      staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False)
-      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False)
+      staticResetOnMoveAxis = state.resolve_d(staticCfg, "resetOnMoveAxis", False, cls=bool)
+      staticAllowOffLimits = state.resolve_d(staticCfg, "allowOffLimits", False, cls=bool)
       staticChainCurve = TransformAbsChainCurve(
         next=None, inputOp=staticInputOp, outputOp=staticOutputOp,
         resetOnMoveAxis=staticResetOnMoveAxis, allowOffLimits=staticAllowOffLimits)
@@ -8196,8 +8199,8 @@ def make_parser():
       bottom = staticChainCurve
     #unlink on demand
     unlinkableCfg = get_nested_d(cfg, "unlinkable", {})
-    unlinkableState = state.resolve_d(unlinkableCfg, "state", True)
-    unlinkableAllowOffLimits = state.resolve_d(unlinkableCfg, "allowOffLimits", False)
+    unlinkableState = state.resolve_d(unlinkableCfg, "state", True, cls=bool)
+    unlinkableAllowOffLimits = state.resolve_d(unlinkableCfg, "allowOffLimits", False, cls=bool)
     unlinkableAbsChainCurve = UnlinkableAbsChainCurve(None, state=unlinkableState, allowOffLimits=unlinkableAllowOffLimits)
     top.add("unlinkable", unlinkableAbsChainCurve)
     bottom.set_next(unlinkableAbsChainCurve)
@@ -8215,7 +8218,7 @@ def make_parser():
   def parsePresetCurve(cfg, state):
     if logger.isEnabledFor(logging.DEBUG): logger.debug("parsePresetCurve(): cfg: '{}'".format(str2(cfg)))
     config = state.get("main").get("config")
-    presetName = state.resolve_d(cfg, "name", None)
+    presetName = state.resolve_d(cfg, "name", None, cls=str)
     if presetName is None:
       raise ParseError(cfg, state.get_path(cfg), "preset name was not specified")
     presets = config.get("presets", {})
@@ -8243,10 +8246,10 @@ def make_parser():
   curveParser.add("preset", parsePresetCurve)
 
   def parseNoopCurve(cfg, state):
-    fnAxis = state.resolve(cfg, "axis")
+    fnAxis = state.resolve(cfg, "axis", cls=str)
     #To init state
     state.get_axis_by_full_name(fnAxis)
-    curve = NoopCurve(value=state.resolve_d(cfg, "value", 0.0))
+    curve = NoopCurve(value=state.resolve_d(cfg, "value", 0.0, cls=float))
     state.add_curve(fnAxis, curve)
     return curve
   curveParser.add("noop", parseNoopCurve)
@@ -8255,7 +8258,7 @@ def make_parser():
   def parseBasesDecorator(wrapped):
     def worker(cfg, state):
       """Merges all base config definitions if they are specified."""
-      bases = state.resolve_d(cfg, "bases", None)
+      bases = state.resolve_d(cfg, "bases", None, cls=list)
       if bases is None:
         return cfg
       else:
@@ -8282,7 +8285,7 @@ def make_parser():
       config = state.get("main").get("config")
       name = cfg.get(propName, None)
       if name is None:
-        name = state.resolve(cfg, "name")
+        name = state.resolve(cfg, "name", cls=str)
       if logger.isEnabledFor(logging.DEBUG): logger.debug("Parsing {} '{}'".format(propName, name))
       #preset or class name can be specified by arg, so need to deref it here
       name = state.deref(name)
@@ -8352,7 +8355,7 @@ def make_parser():
         defaultBindET = state.resolve_d(cfg, "defaultBind.on", None)
         if defaultBindET is not None:
           defaultBindET = state.get("parser")("et", defaultBindET, state)
-        defaultBindLevel = state.resolve_d(cfg, "defaultBind.level", 0)
+        defaultBindLevel = state.resolve_d(cfg, "defaultBind.level", 0, cls=int)
         ep.add(defaultBindET, next, defaultBindLevel)
     try:
       #TODO Refactor
@@ -8418,7 +8421,7 @@ def make_parser():
   scParser.add("objects", parseObjects)
 
   def parseModifiers(cfg, state):
-    modifierDescs = [parse_modifier_desc(m, state) for m in state.resolve(cfg, "modifiers")]
+    modifierDescs = [parse_modifier_desc(m, state) for m in state.resolve(cfg, "modifiers", cls=list)]
     modifierEP = ModifierEP(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierEP.APPEND)
     return modifierEP
   scParser.add("modifiers", parseModifiers)
@@ -8430,7 +8433,7 @@ def make_parser():
       def __init__(self, scaleEP, key):
         self.scaleEP_, self.key_ = scaleEP, key
     try:
-      name = state.resolve_d(cfg, "name", None)
+      name = state.resolve_d(cfg, "name", None, cls=str)
       sens = state.resolve(cfg, "sens")
       scaleEP = ScaleEP2(sens={}, name=name)
       sens2 = {}
@@ -8451,14 +8454,14 @@ def make_parser():
         self.msmm_.set(v, self.save_, self.current_, self.report_)
       def __init__(self, msmm, save, current, report):
         self.msmm_, self.save_, self.current_, self.report_ = msmm, save, current, report
-    name = state.resolve_d(cfg, "name", "")
-    allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False)
+    name = state.resolve_d(cfg, "name", "", cls=str)
+    allowMissingModes = state.resolve_d(cfg, "allowMissingModes", False, cls=bool)
     headEP = state.at("eps", 0)
     def mode_callback(modeEP, old, new):
       logger.info("{}: Setting mode: {}".format(modeEP.get_name(), str2(new)))
     modeEP = ModeEP(name)
     modeEP.add_mode_callback(mode_callback)
-    modeValueName = state.resolve_d(cfg, "modeValueName", None)
+    modeValueName = state.resolve_d(cfg, "modeValueName", None, cls=str)
     if modeValueName is not None:
       modeValue = state.get("main").get("valueManager").get_var(modeValueName)
       def cb(modeEP, old, new):
@@ -8479,9 +8482,9 @@ def make_parser():
             continue
           else:
             raise
-      savePolicy = nameToMSMMSavePolicy(state.resolve_d(cfg, "setter.save", "clearAndSave"))
+      savePolicy = nameToMSMMSavePolicy(state.resolve_d(cfg, "setter.save", "clearAndSave", cls=str))
       current = state.resolve_d(cfg, "setter.current", None)
-      report = state.resolve_d(cfg, "setter.report", True)
+      report = state.resolve_d(cfg, "setter.report", True, cls=bool)
       modeSetter = ModeSetter(msmm, savePolicy, current, report)
       mode = state.resolve(cfg, "mode", setter=modeSetter)
       if mode is not None:
@@ -8554,17 +8557,17 @@ def make_parser():
   mainParser.add("action", actionParser)
 
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
-  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(state.resolve_d(cfg, "report", True)))
-  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(state.resolve(cfg, "mode"), state.resolve_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(state.resolve(cfg, "mode"), state.resolve_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(state.resolve(cfg, "f"), state.resolve(cfg, "t"), state.resolve_d(cfg, "current", None), state.resolve_d(cfg, "report", True)))
-  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(state.resolve(cfg, "modes"), state.resolve_d(cfg, "current"), get_nested_d(cfg, "report", True)))
+  actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(state.resolve_d(cfg, "report", True, cls=bool)))
+  actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(state.resolve(cfg, "mode"), state.resolve_d(cfg, "current"), state.resolve_d(cfg, "report", True, cls=bool)))
+  actionParser.add("removeMode", lambda cfg, state : get_component("msmm", cfg, state).make_remove(state.resolve(cfg, "mode"), state.resolve_d(cfg, "current"), state.resolve_d(cfg, "report", True, cls=bool)))
+  actionParser.add("swapMode", lambda cfg, state : get_component("msmm", cfg, state).make_swap(state.resolve(cfg, "f"), state.resolve(cfg, "t"), state.resolve_d(cfg, "current", None), state.resolve_d(cfg, "report", True, cls=bool)))
+  actionParser.add("cycleSwapMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle_swap(state.resolve(cfg, "modes"), state.resolve_d(cfg, "current"), state.resolve_d(cfg, "report", True, cls=bool)))
   actionParser.add("clearMode", lambda cfg, state : get_component("msmm", cfg, state).make_clear())
-  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(state.resolve(cfg, "mode"), nameToMSMMSavePolicy(state.resolve_d(cfg, "savePolicy", "noop")), state.resolve_d(cfg, "current"), get_nested_d(cfg, "report", True)))
-  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(state.resolve(cfg, "modes"), state.resolve_d(cfg, "step", 1), state.resolve_d(cfg, "loop", True), nameToMSMMSavePolicy(state.resolve_d(cfg, "savePolicy", "noop")), state.resolve_d(cfg, "report", True)))
+  actionParser.add("setMode", lambda cfg, state : get_component("msmm", cfg, state).make_set(state.resolve(cfg, "mode"), nameToMSMMSavePolicy(state.resolve_d(cfg, "savePolicy", "noop")), state.resolve_d(cfg, "current"), state.resolve_d(cfg, "report", True, cls=bool)))
+  actionParser.add("cycleMode", lambda cfg, state : get_component("msmm", cfg, state).make_cycle(state.resolve(cfg, "modes"), state.resolve_d(cfg, "step", 1, cls=int), state.resolve_d(cfg, "loop", True, cls=bool), nameToMSMMSavePolicy(state.resolve_d(cfg, "savePolicy", "noop", cls=str)), state.resolve_d(cfg, "report", True, cls=bool)))
 
   def parseSetState(cfg, state):
-    s = state.resolve(cfg, "state")
+    s = state.resolve(cfg, "state", cls=bool)
     return SetState(get_component("state", cfg, state), s)
   actionParser.add("setState", parseSetState)
 
@@ -8574,8 +8577,8 @@ def make_parser():
 
   def parseSetSens(cfg, state):
     try:
-      htc = fn2htc(state.resolve(cfg, "axis"))
-      value = state.resolve(cfg, "value")
+      htc = fn2htc(state.resolve(cfg, "axis", cls=str))
+      value = state.resolve(cfg, "value", cls=float)
       scaleEP = get_component("sens", cfg, state)
       def op(e):
         scaleEP.set_sens(htc, value)
@@ -8589,8 +8592,8 @@ def make_parser():
 
   def parseChangeSens(cfg, state):
     try:
-      htc = fn2htc(state.resolve(cfg, "axis"))
-      delta = state.resolve(cfg, "delta")
+      htc = fn2htc(state.resolve(cfg, "axis", cls=str))
+      delta = state.resolve(cfg, "delta", cls=float)
       scaleEP = get_component("sens", cfg, state)
       def op(e):
         sens = scaleEP.get_sens(htc)
@@ -8612,7 +8615,7 @@ def make_parser():
         self.mc_ = mc
     curve = state.get("parser")("curve", cfg, state)
     mc = MoveCurve(curve)
-    factor = state.resolve_d(cfg, "factor", 1.0, setter=FactorSetter(mc))
+    factor = state.resolve_d(cfg, "factor", 1.0, setter=FactorSetter(mc), cls=float)
     mc.set_factor(factor)
     return mc
   actionParser.add("move", parseMove)
@@ -8623,7 +8626,7 @@ def make_parser():
     for fnInputAxis,curveCfg in axesData.items():
       curve = state.get("parser")("curve", curveCfg, state)
       curves[fn2hc(state.deref(fnInputAxis))] = curve
-    op = state.resolve(cfg, "op")
+    op = state.resolve(cfg, "op", cls=str)
     if op == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
     elif op == "max":
@@ -8638,18 +8641,18 @@ def make_parser():
   actionParser.add("moveOneOf", parseMoveOneOf)
 
   def parseSetAxis(cfg, state):
-    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
+    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis", cls=str))
     valueSetter = MoveAxisValueSetter()
-    value = float(state.resolve(cfg, "value", setter=valueSetter))
+    value = state.resolve(cfg, "value", setter=valueSetter, cls=float)
     r = MoveAxisTo(axis, value)
     valueSetter.set_move_axis(r)
     return r
   actionParser.add("setAxis", parseSetAxis)
 
   def parseMoveAxisBy(cfg, state):
-    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
+    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis", cls=str))
     valueSetter = MoveAxisValueSetter()
-    value = float(state.resolve(cfg, "value", setter=valueSetter))
+    value = state.resolve(cfg, "value", setter=valueSetter, cls=float)
     stopAt = state.resolve_d(cfg, "stopAt", None)
     valueFunc = None
     valueFuncCfg = state.resolve_d(cfg, "valueFunc", None)
@@ -8668,14 +8671,14 @@ def make_parser():
   actionParser.add("moveAxisBy", parseMoveAxisBy)
 
   def parseMoveAxisByEvent(cfg, state):
-    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis"))
+    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis", cls=str))
     r = MoveAxisByEvent(axis)
     return r
   actionParser.add("moveAxisByEvent", parseMoveAxisByEvent)
 
   def parseSetAxes(cfg, state):
     axesAndValues = state.resolve(cfg, "axesAndValues")
-    allRelative = state.resolve_d(cfg, "relative", False)
+    allRelative = state.resolve_d(cfg, "relative", False, cls=bool)
     if logger.isEnabledFor(logging.DEBUG): logger.debug("parseSetAxes(): {}".format(axesAndValues))
     assert is_dict_type(axesAndValues)
     axesAndValues = axesAndValues.items()
@@ -8699,7 +8702,7 @@ def make_parser():
   actionParser.add("setAxes", parseSetAxes)
 
   def parseSetKeyState_(cfg, state, s):
-    fnKey = state.resolve(cfg, "key")
+    fnKey = state.resolve(cfg, "key", cls=str)
     nOutput, cKey = fn2dc(fnKey)
     odev = state.get("main").get("odevs").get(nOutput)
     if odev is None:
@@ -8707,7 +8710,7 @@ def make_parser():
     return SetButtonState(odev, cKey, s)
 
   def parseSetKeyState(cfg, state):
-    s = int(state.resolve(cfg, "state"))
+    s = state.resolve(cfg, "state", cls=int)
     return parseSetKeyState_(cfg, state, s)
   actionParser.add("setKeyState", parseSetKeyState)
 
@@ -8720,13 +8723,13 @@ def make_parser():
   actionParser.add("release", parseRelease)
 
   def parseClick(cfg, state):
-    fnKey = state.resolve(cfg, "key")
+    fnKey = state.resolve(cfg, "key", cls=str)
     nODev, cKey = fn2dc(fnKey)
     odev = state.get("main").get("odevs").get(nODev)
     if odev is None:
       raise ParseError(cfg, state.get_path(cfg), "odev '{}' not found".format(nOutput))
-    numClicks = int(state.resolve_d(cfg, "numClicks", 1))
-    delay = float(state.resolve_d(cfg, "delay", 0.0))
+    numClicks = state.resolve_d(cfg, "numClicks", 1, cls=int)
+    delay = state.resolve_d(cfg, "delay", 0.0, cls=float)
     class Clicker:
       def on_event(self, event):
         if self.delay_ == 0.0:
@@ -8769,7 +8772,7 @@ def make_parser():
     allCurves = state.at("curves", 0)
     assert(allCurves is not None)
     if "axes" in cfg:
-      for fnAxis in state.resolve(cfg, "axes"):
+      for fnAxis in state.resolve(cfg, "axes", cls=list):
         curves = allCurves.get(state.deref(fnAxis), None)
         if curves is None:
           logger.warning("No curves were initialized for '{}' axis ({})".format(fnAxis, str2(cfg, 100)))
@@ -8777,7 +8780,7 @@ def make_parser():
           curvesToReset += curves
     elif "objects" in cfg:
       ep = state.at("eps", 0)
-      for objectName in state.resolve(cfg, "objects"):
+      for objectName in state.resolve(cfg, "objects", cls=list):
         #TODO Use state.deref() here and specify object name as "obj:..." for unification
         curve = state.get_obj(objectName)
         if curve is None:
@@ -8798,7 +8801,7 @@ def make_parser():
   def parseCycleFuncs(cfg, state):
     curve = state.resolve(cfg, "curve")
     funcs = [state.deref(func) for func in state.resolve(cfg, "funcs")]
-    step = state.resolve(cfg, "step")
+    step = state.resolve(cfg, "step", cls=int)
     def worker(e):
       current = funcs.index(curve.get_func())
       n = clamp(current + step, 0, len(funcs) - 1)
@@ -8871,8 +8874,8 @@ def make_parser():
   def parseWritePoses(cfg, state):
     main = state.get("main")
     poseManager = main.get("poseManager")
-    fileName = state.resolve(cfg, "file")
-    update = state.resolve_d(cfg, "update", False)
+    fileName = state.resolve(cfg, "file", cls=str)
+    update = state.resolve_d(cfg, "update", False, cls=bool)
     poseNamesToWrite = state.resolve_d(cfg, "poses", None)
     def op(e):
       posesToWrite = None
@@ -8903,19 +8906,19 @@ def make_parser():
   def parsePlaySound(cfg, state):
     main = state.get("main")
     soundPlayer = main.get("soundPlayer")
-    soundName = state.resolve(cfg, "sound")
+    soundName = state.resolve(cfg, "sound", cls=str)
     soundFileName = state.get("main").get("sounds").get(soundName, None)
     if soundFileName is None:
       raise ParseError(cfg, state.get_path(cfg), "sound '{}' not found".format(soundName))
-    immediate = state.resolve_d(cfg, "immediate", False)
+    immediate = state.resolve_d(cfg, "immediate", False, cls=bool)
     def op(e):
       soundPlayer.queue(soundFileName, immediate)
     return op
   actionParser.add("playSound", parsePlaySound)
 
   def parsePrintVar(cfg, state):
-    varName = state.resolve(cfg, "varName")
-    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    varName = state.resolve(cfg, "varName", cls=str)
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO", cls=str))
     key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     def op(e):
@@ -8930,8 +8933,8 @@ def make_parser():
   actionParser.add("printVar", parsePrintVar)
 
   def parseSetVar(cfg, state):
-    varName = state.resolve(cfg, "varName")
-    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    varName = state.resolve(cfg, "varName", cls=str)
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO", cls=str))
     value = state.resolve(cfg, "value")
     key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
@@ -8960,7 +8963,7 @@ def make_parser():
       raise ParseError(varName, state.get_path(varName), "var '{}' has no key '{}'".format(varName, key))
 
   def parseChangeVar(cfg, state):
-    varName = state.resolve(cfg, "varName")
+    varName = state.resolve(cfg, "varName", cls=str)
     delta = state.resolve(cfg, "delta")
     key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
@@ -8987,7 +8990,7 @@ def make_parser():
   actionParser.add("changeVar", parseChangeVar)
 
   def parseCycleVars(cfg, state):
-    varName = state.resolve(cfg, "varName")
+    varName = state.resolve(cfg, "varName", cls=str)
     key = state.resolve_d(cfg, "key", None)
     var = state.get("main").get("varManager").get_var(varName)
     values = [state.deref(value) for value in state.resolve(cfg, "values")]
@@ -9033,8 +9036,8 @@ def make_parser():
         else:
           logger.error("Unexpected element {} of type {} in vars".format(name, type(value)))
       return r
-    fileName = state.resolve(cfg, "file")
-    groupName = state.resolve_d(cfg, "group", None)
+    fileName = state.resolve(cfg, "file", cls=str)
+    groupName = state.resolve_d(cfg, "group", None, cls=str)
     def op(e):
       varsCfg = state.get("main").get("varManager").get_vars()
       if groupName is not None:
@@ -9055,7 +9058,7 @@ def make_parser():
 
   def parseSetOffset(cfg, state):
     curve = state.resolve(cfg, "object")
-    offset = state.resolve(cfg, "offset")
+    offset = state.resolve(cfg, "offset", cls=float)
     def op(event):
       curve.set_offset(offset)
       return True
@@ -9072,7 +9075,7 @@ def make_parser():
 
   def parseCall(cfg, state):
     target = state.resolve(cfg, "target")
-    methodName = state.resolve(cfg, "method")
+    methodName = state.resolve(cfg, "method", cls=str)
     try:
       method = getattr(target, methodName)
     except AttributeError as e:
@@ -9089,13 +9092,13 @@ def make_parser():
     obj = state.resolve(cfg, "object")
     if obj is None:
       raise ParseError(cfg, state.get_path(cfg), "object '{}' not found".format(get_nested(cfg, "object")))
-    return SetState(obj, state.resolve(cfg, "state"))
+    return SetState(obj, state.resolve(cfg, "state", cls=bool))
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
-    etype = state.resolve_d(cfg, "etype", None)
+    etype = state.resolve_d(cfg, "etype", None, cls=str)
     etype = codes.EV_CUSTOM if etype is None else name2code(etype)
-    code, value = int(state.resolve_d(cfg, "code", 0)), get_nested_d(cfg, "value")
+    code, value = state.resolve_d(cfg, "code", 0, cls=int), state.resolve(cfg, "value")
     ep = get_ep(cfg, state)
     if ep is None:
       raise ParseError(cfg, state.get_path(cfg), "target ep not found")
@@ -9115,7 +9118,7 @@ def make_parser():
   actionParser.add("forward", parseForwardEvent)
 
   def parseLog(cfg, state):
-    message, level = state.resolve(cfg, "message"), state.resolve_d(cfg, "level", "INFO")
+    message, level = state.resolve(cfg, "message", cls=str), state.resolve_d(cfg, "level", "INFO", cls=str)
     def callback(e):
       logger.log(name2loglevel(level), message)
       return True
@@ -9123,7 +9126,7 @@ def make_parser():
   actionParser.add("log", parseLog)
 
   def parseLogEvent(cfg, state):
-    levelName = state.resolve_d(cfg, "level", "INFO")
+    levelName = state.resolve_d(cfg, "level", "INFO", cls=str)
     level = name2loglevel(levelName)
     def callback(e):
       logger.log(level, str2(e))
@@ -9132,7 +9135,7 @@ def make_parser():
   actionParser.add("logEvent", parseLogEvent)
 
   def parseSetValueItem(cfg, state):
-    value = state.resolve(cfg, "name")
+    value = state.resolve(cfg, "name", cls=str)
     i = state.resolve(cfg, "item")
     v = state.resolve(cfg, "value")
     values = get_component("values", cfg, state)
@@ -9151,7 +9154,7 @@ def make_parser():
         return {k:copy(vv) for k,vv in v.items()}
       else:
         return v
-    value = state.resolve(cfg, "name")
+    value = state.resolve(cfg, "name", cls=str)
     v = state.resolve(cfg, "value")
     values = get_component("values", cfg, state)
     def callback(e):
@@ -9232,7 +9235,7 @@ def make_parser():
 
   def parseKey_(cfg, state, value):
     """Helper"""
-    idevHash, eventType, key = fn2htc(state.resolve(cfg, "key"))
+    idevHash, eventType, key = fn2htc(state.resolve(cfg, "key", cls=str))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(key)), ("value", EqPropTest(value))]
     if idevHash is not None:
       r.append(("idev", EqPropTest(idevHash)))
@@ -9275,7 +9278,7 @@ def make_parser():
       or a -1 to match any number of clicks
     '''
     r = parseKey_(cfg, state, 3)
-    num = state.resolve(cfg, "numClicks")
+    num = state.resolve(cfg, "numClicks", cls=int)
     numClicksPropTest = None
     if is_list_type(num):
       num = [int(n) for n in num]
@@ -9294,8 +9297,8 @@ def make_parser():
 
   @make_et
   def parseHold(cfg, state):
-    r = parseKey_(cfg, state, state.resolve_d(cfg, "value", 4))
-    holdTime = state.resolve_d(cfg, "heldTime", None)
+    r = parseKey_(cfg, state, state.resolve_d(cfg, "value", 4, cls=int))
+    holdTime = state.resolve_d(cfg, "heldTime", None, cls=float)
     if holdTime is not None:
       holdTime = float(holdTime)
       r.append(("heldTime", CmpPropTest(holdTime, lambda ev,v : ev >= v)))
@@ -9304,7 +9307,7 @@ def make_parser():
 
   @make_et
   def parseMove(cfg, state):
-    idevHash, eventType, axis = fn2htc(state.resolve(cfg, "axis"))
+    idevHash, eventType, axis = fn2htc(state.resolve(cfg, "axis", cls=str))
     r = [("type", EqPropTest(eventType)), ("code", EqPropTest(axis))]
     if idevHash is not None:
       r.append(("idev", EqPropTest(idevHash)))
@@ -9336,7 +9339,7 @@ def make_parser():
   @make_et
   def parseInit(cfg, state):
     r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_INIT))]
-    eventName = state.resolve_d(cfg, "event")
+    eventName = state.resolve_d(cfg, "event", cls=str)
     if eventName is not None:
       value = 1 if eventName == "enter" else 0 if eventName == "leave" else None
       assert(value is not None)
@@ -9349,7 +9352,7 @@ def make_parser():
 
   def parseValue(cfg, state):
     r = [("type", EqPropTest(codes.EV_BCT)), ("code", EqPropTest(codes.BCT_VALUE))]
-    name = state.resolve_d(cfg, "name")
+    name = state.resolve_d(cfg, "name", cls=str)
     if name is not None:
       r.append(("name", EqPropTest(name)))
     value = state.resolve_d(cfg, "value")
@@ -9364,7 +9367,7 @@ def make_parser():
 
   @make_et
   def parseEvent(cfg, state):
-    propValue = state.resolve_d(cfg, "etype", None)
+    propValue = state.resolve_d(cfg, "etype", None, cls=str)
     propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
     r = [("type", EqPropTest(propValue))]
     def eq(ev, pv):
@@ -9493,7 +9496,7 @@ def make_parser():
     binds.sort(key=bindsKey)
     bindingEP = BindEP()
     for bind in binds:
-      level, name = state.resolve_d(bind, "level", 0), state.resolve_d(bind, "name", None)
+      level, name = state.resolve_d(bind, "level", 0, cls=int), state.resolve_d(bind, "name", None, cls=str)
       for on,dos in parseOnsDos(bind, state):
         names = None if name is None else (name for i in range(len(dos)))
         bindingEP.add_several(on, dos, level, names)
@@ -9510,7 +9513,7 @@ def make_parser():
   mainParser.add("idev", idevParser)
 
   def parseFreePIEHeadTrackerIDEV(cfg, state):
-    idevName = state.resolve(cfg, "idev")
+    idevName = state.resolve(cfg, "idev", cls=str)
     idevHash = register_dev(idevName)
     address = state.resolve(cfg, "address")
     i = address.find(":")
@@ -9520,14 +9523,14 @@ def make_parser():
     else:
       #ip and port
       address = (address[:i], int(address[i + 1:]))
-    from_ = state.resolve_d(cfg, "from", None)
+    from_ = state.resolve_d(cfg, "from", None, cls=str)
     if from_ is not None:
       i = from_.find(":")
       if i == -1:
         from_ = (from_, None)
       else:
         from_ = (from_[:i], int(from_[i + 1:]))
-    mode = state.resolve_d(cfg, "mode", "relative")
+    mode = state.resolve_d(cfg, "mode", "relative", cls=str)
     if mode == "relative":
       mode = FreePIEHeadTrackerIDEV.MODE_REL
     elif mode == "absolute":
@@ -9581,7 +9584,7 @@ def make_parser():
   odevParser.add("virtual", parseNullJoystickODev)
 
   def parseExternalODev(cfg, state):
-    name = state.resolve(cfg, "name")
+    name = state.resolve(cfg, "name", cls=str)
     return get_or_make_odev(name, state)
   odevParser.add("external", parseExternalODev)
 
@@ -9629,12 +9632,12 @@ def make_parser():
         rateOp = ConstantRateOp(rateOrCfg)
       else:
         for opCfg in rateOrCfg:
-          t = state.resolve(opCfg, "type")
+          t = state.resolve(opCfg, "type", cls=str)
           if t == "time":
             func = state.get("parser")("func", state.resolve(opCfg, "func"), state)
             rateOp = TimeRateOp(rateOp, func)
           elif t == "axis":
-            axis = state.get_axis_by_full_name(state.resolve(opCfg, "axis"))
+            axis = state.get_axis_by_full_name(state.resolve(opCfg, "axis", cls=str))
             func = state.get("parser")("func", state.resolve(opCfg, "func"), state)
             rateOp = AxisRateOp(rateOp, axis, func)
           else:
@@ -9649,7 +9652,11 @@ def make_parser():
   @make_reporting_joystick
   def parseRelativeODev(cfg, state):
     next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
-    j = RelativeHeadMovementJoystick(next=next, r=state.resolve_d(cfg, "clampRadius", float("inf")), stick=state.resolve_d(cfg, "stick", True))
+    j = RelativeHeadMovementJoystick(
+      next=next,
+      r=state.resolve_d(cfg, "clampRadius", float("inf"), cls=float),
+      stick=state.resolve_d(cfg, "stick", True, cls=bool)
+    )
     return j
   odevParser.add("relative", parseRelativeODev)
 
@@ -9657,7 +9664,7 @@ def make_parser():
   def parseCompositeODev(cfg, state):
     parser = state.get("parser")
     children = parse_list(state.resolve(cfg, "children"), state, lambda cfg,state : parser("odev", cfg, state))
-    checkChild = state.resolve(cfg, "checkChild")
+    checkChild = state.resolve(cfg, "checkChild", cls=bool)
     union = state.resolve(cfg, "union")
     j = CompositeJoystick(children=children, checkChild=checkChild, union=union)
     return j
@@ -9667,21 +9674,21 @@ def make_parser():
   def parseMappingODev(cfg, state):
     j = MappingJoystick()
     for fromAxis,to in state.resolve_d(cfg, "axisMapping", {}).items():
-      toJoystick, toAxis = fn2dc(state.resolve(to, "to"))
+      toJoystick, toAxis = fn2dc(state.resolve(to, "to", cls=str))
       toJoystick = get_or_make_odev(toJoystick, state)
-      factor = state.resolve_d(to, "factor", 1.0)
+      factor = state.resolve_d(to, "factor", 1.0, cls=float)
       j.add_axis(fn2tc(fromAxis), toJoystick, toAxis, factor)
     for fromButton,to in state.resolve_d(cfg, "buttonMapping", {}).items():
-      toJoystick, toButton = fn2dc(state.resolve(to, "to"))
+      toJoystick, toButton = fn2dc(state.resolve(to, "to", cls=str))
       toJoystick = get_or_make_odev(toJoystick, state)
-      negate = state.resolve_d(to, "negate", False)
+      negate = state.resolve_d(to, "negate", False, cls=bool)
       j.add_button(name2code(fromButton), toJoystick, toButton, negate)
     return j
   odevParser.add("mapping", parseMappingODev)
 
   @make_reporting_joystick
   def parseOpentrackODev(cfg, state):
-    j = Opentrack(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")))
+    j = Opentrack(state.resolve(cfg, "ip", cls=str), state.resolve(cfg, "port", cls=int))
     state.get("main").add_to_updated(lambda tick,ts : j.send())
     return j
   odevParser.add("opentrack", parseOpentrackODev)
@@ -9693,7 +9700,12 @@ def make_parser():
       "il2_6dof" : make_il2_6dof_packet,
       "opentrack" : make_opentrack_packet
     }
-    j = UdpJoystick(state.resolve(cfg, "ip"), int(state.resolve(cfg, "port")), packetMakers[state.resolve(cfg, "format")], int(state.resolve_d(cfg, "numPackets", 1)))
+    j = UdpJoystick(
+      state.resolve(cfg, "ip", cls=str),
+      state.resolve(cfg, "port", cls=int),
+      packetMakers[state.resolve(cfg, "format", cls=str)],
+      int(state.resolve_d(cfg, "numPackets", 1, cls=int))
+    )
     for nAxis,l in state.resolve_d(cfg, "limits", {}).items():
       j.set_limits(fn2tc(nAxis), l)
     state.get("main").add_to_updated(lambda tick,ts : j.send())
@@ -9723,8 +9735,8 @@ def make_parser():
   mainParser.add("tracker", trackerParser)
 
   def parseConsoleTracker(cfg, state):
-    fmt = state.resolve(cfg, "fmt")
-    level = name2loglevel(state.resolve_d(cfg, "level", "INFO"))
+    fmt = state.resolve(cfg, "fmt", cls=str)
+    level = name2loglevel(state.resolve_d(cfg, "level", "INFO", cls=str))
     def op(values):
       msg = fmt.format(values)
       logger.log(level, msg)
@@ -9732,7 +9744,7 @@ def make_parser():
   trackerParser.add("console", parseConsoleTracker)
 
   def parseValueTracker(cfg, state):
-    valueName = state.resolve(cfg, "value")
+    valueName = state.resolve(cfg, "value", cls=str)
     value = state.get("main").get("valueManager").get_var(valueName)
     if value is None:
       raise ParseError(valueName, state.get_path(valueName), "value '{}' is missing".format(valueName))
@@ -9914,7 +9926,7 @@ def make_parser():
         self.var_, self.boxVar_ = var, boxVar
         self.busy_ = False
 
-    varName = state.resolve_d(cfg, "varName", None)
+    varName = state.resolve_d(cfg, "varName", None, cls=str)
     if varName is None:
       return
     manager = None
@@ -10127,8 +10139,8 @@ def make_parser():
   def parseInfoWidget(cfg, state):
     try:
       parser = state.get("parser")
-      f = state.resolve_d(cfg, "format", 1)
-      title = state.resolve_d(cfg, "title", "")
+      f = state.resolve_d(cfg, "format", 1, cls=int)
+      title = state.resolve_d(cfg, "title", "", cls=str)
       info = InfoWidget(title=title)
       #setting info in main right after creation so widgets can access info
       state.get("main").set("info", info)
@@ -10184,7 +10196,7 @@ def make_parser():
   @parseBasesDecorator
   def parsePresetWidget(cfg, state):
     config = state.get("main").get("config")
-    presetName = state.resolve_d(cfg, "name", None)
+    presetName = state.resolve_d(cfg, "name", None, cls=str)
     if presetName is None:
       raise ParseError(cfg, state.get_path(cfg), "'name' is missing")
     presets = config.get("presets", {})
@@ -10377,7 +10389,7 @@ class Main:
 
   def init_log(self, state):
     config = self.get("config")
-    logLevelName = state.resolve_d(config, "logLevel", "NOTSET").upper()
+    logLevelName = state.resolve_d(config, "logLevel", "NOTSET", cls=str).upper()
     logLevel = name2loglevel(logLevelName)
     set_loggers_level(logLevel)
     print("Setting default log level to {}".format(logLevelName))
@@ -10388,8 +10400,8 @@ class Main:
         child = logger.getChild(childName)
         parse_logger(child, childCfg, state)
       for handlerCfg in state.resolve_d(config, "handlers", ()):
-        t = state.resolve(handlerCfg, "type")
-        name = state.resolve(handlerCfg, "name")
+        t = state.resolve(handlerCfg, "type", cls=str)
+        name = state.resolve(handlerCfg, "name", cls=str)
         stream = None
         if t == "stream":
           streams = { "stdout" : sys.stdout, "stderr" : sys.stderr }
@@ -10400,9 +10412,9 @@ class Main:
           raise ParseError(t, state.get_path(t), "bad handler type: '{}'".format(t))
         if stream is None:
           raise ParseError(cfg, state.get_path(cfg), "cannot create log handler '{}' of type '{}'".format(name, t))
-        fmt = state.resolve_d(handlerCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s")
-        datefmt = state.resolve_d(handlerCfg, "datefmt", "%T")
-        levelName = state.resolve_d(handlerCfg, "level", "NOTSET").upper()
+        fmt = state.resolve_d(handlerCfg, "fmt", "%(levelname)s:%(asctime)s:%(message)s", cls=str)
+        datefmt = state.resolve_d(handlerCfg, "datefmt", "%T", cls=str)
+        levelName = state.resolve_d(handlerCfg, "level", "NOTSET", cls=str).upper()
         level = name2loglevel(levelName)
         handler = logging.StreamHandler(stream)
         self.add_logging_handler(logger, handler, level, fmt, datefmt)
@@ -10432,7 +10444,7 @@ class Main:
     def exception_handler(key, value, e):
       logger.error("Cannot create output '{}' ({})".format(key, e))
       return True
-    orderOp = lambda i : state.resolve_d(i[1], "seq", 100000)
+    orderOp = lambda i : state.resolve_d(i[1], "seq", 100000, cls=int)
     cfg = state.resolve(self.get("config"), "odevs")
     state = ParserState(self)
     parse_dict_live_ordered(self.get("odevs"), cfg, state=state, kp=nameParser, vp=odevParser, op=orderOp, update=False, exceptionHandler=exception_handler)
@@ -10508,7 +10520,7 @@ class Main:
 
   def set_logger_levels(self, state):
     def set_logger_level(logger, config, state):
-      levelName = state.resolve_d(config, "level", None)
+      levelName = state.resolve_d(config, "level", None, cls=str)
       if levelName is not None:
         level = name2loglevel(levelName.upper())
         logger.setLevel(level)
@@ -10568,7 +10580,7 @@ class Main:
     self.set("info", info)
 
   def init_loop(self, state):
-    refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0)
+    refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0, cls=float)
     step = 1.0 / refreshRate
     source = self.get("source")
     assert(source is not None)
