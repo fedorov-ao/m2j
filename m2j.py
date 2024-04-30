@@ -6987,7 +6987,8 @@ class InfoWidget:
   def __init__(self, **kwargs):
     self.state_, self.widgets_ = False, []
     self.tlws_ = []
-    self.w_ = tk.Tk()
+    master = kwargs.get("master")
+    self.w_ = tk.Toplevel(master=master) if master is not None else tk.Tk()
     self.w_.title(kwargs.get("title", ""))
     self.w_.propagate(True)
     self.w_.grid_propagate(True)
@@ -10141,7 +10142,7 @@ def make_parser():
       parser = state.get("parser")
       f = state.resolve_d(cfg, "format", 1, cls=int)
       title = state.resolve_d(cfg, "title", "", cls=str)
-      info = InfoWidget(title=title)
+      info = InfoWidget(master=state.get("main").get("tk"), title=title)
       #setting info in main right after creation so widgets can access info
       state.get("main").set("info", info)
       widgetsCfg = state.resolve_d(cfg, "widgets", ())
@@ -10825,6 +10826,9 @@ class Main:
     poseManager = AxisPoseManager()
     self.props_["poseManager"] = poseManager
     self.props_["poseTracker"] = PoseTracker(poseManager)
+    tk_ = tk.Tk()
+    tk_.withdraw()
+    self.props_["tk"] = tk_
 
   def output_devices_(self, mode, fname):
     r = self.get_idevs_info_()
