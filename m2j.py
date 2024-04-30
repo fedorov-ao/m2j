@@ -10430,6 +10430,9 @@ class Main:
       externalConfig = init_config(configNames)
       merge_dicts(externalConfig, config)
       config = externalConfig
+    else:
+      logger.info("No configs specified, exiting")
+      raise ExitException
     overrides = self.get("overrides")
     for k,v in overrides:
       set_nested_strict(config, k, v)
@@ -10655,12 +10658,20 @@ class Main:
     finally:
       callbackManager.pop_callbacks()
 
+  def ask_for_config(self):
+    if self.options_.get("configNames") is not None:
+      return
+    print "Asking for config file..."
+    import tkFileDialog as tkf
+    fname = tkf.askopenfilename(master=self.get("tk"))
+    if fname != tuple():
+      print "Selected config file '{}'".format(fname)
+      self.options_["configNames"] = [fname]
+
   def preinit(self):
     self.preinit_log()
     if (len(sys.argv)) == 1:
-      self.print_help()
-      self.set("state", self.STATE_EXITING)
-      raise ExitException
+      print "Launch as '{} -h|--help' for help on command-line parameters".format(sys.argv[0])
 
     self.set("state", self.STATE_INITIALIZING)
     MODE_NORMAL = 0
@@ -10696,6 +10707,7 @@ class Main:
         k = k.split(keySep)
         overrides.append((k, v))
 
+    self.ask_for_config()
     self.init_config2()
     state = ParserState(self)
     self.init_log(state)
