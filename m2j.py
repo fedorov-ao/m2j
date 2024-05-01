@@ -10662,13 +10662,50 @@ class Main:
     if self.options_.get("configNames") is not None:
       return
     print "Asking for config file..."
+    lastPath = ""
+    try:
+      with open(".lastrun.cfg", "r") as f:
+        j = json.load(f)
+        lastPath = j["config"]
+    except IOError:
+      if logger.isEnabledFor(logging.DEBUG): logger.debug(".lastrun.cfg does not exist")
+    import os
+    initialdir, initialfile = os.path.split(lastPath)
     import tkFileDialog as tkf
-    fname = tkf.askopenfilename(master=self.get("tk"))
+    fname = tkf.askopenfilename(master=self.get("tk"), initialdir=initialdir, initialfile=initialfile)
     if fname != tuple():
       print "Selected config file '{}'".format(fname)
       self.options_["configNames"] = [fname]
+      with open(".lastrun.cfg", "w") as f:
+        json.dump({ "config" : fname }, f)
+
+  def init_gui(self):
+    if sys.__stdin__ is not None and sys.__stdin__.isatty() == True:
+      return
+    gui = tk.Toplevel(master=self.get("tk"))
+    def on_close(*args, **kwargs):
+      self.set("state", self.STATE_NEED_TO_EXIT)
+    gui.protocol("WM_DELETE_WINDOW", on_close)
+    self.add_to_updated(lambda tick,ts : gui.update())
+    textWidget = tk.Text(master=gui, wrap="word")
+    textWidget.bind("<Key>", lambda e : "break")
+    textWidget.pack(side="left", fill="both", expand=True)
+    vScrollbarWidget = tk.Scrollbar(master=gui, command=textWidget.yview)
+    textWidget.configure(yscrollcommand=vScrollbarWidget.set)
+    vScrollbarWidget.pack(side="right", fill="y", expand=False)
+    class Redirector:
+      def write(self, string):
+        self.tw_.insert("end", string)
+        self.tw_.see("end")
+        #Updating gui after each text input is a workaround for printing log messages during init
+        #TODO Need to run gui in separate thread
+        self.gui_.update()
+      def __init__(self, tw, gui):
+        self.tw_, self.gui_ = tw, gui
+    sys.stdout = Redirector(textWidget, gui)
 
   def preinit(self):
+    self.init_gui()
     self.preinit_log()
     if (len(sys.argv)) == 1:
       print "Launch as '{} -h|--help' for help on command-line parameters".format(sys.argv[0])
