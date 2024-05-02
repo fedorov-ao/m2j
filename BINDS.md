@@ -153,12 +153,29 @@ This section describes which axes/buttons of which virtual joystick are controll
 |move|lmouse.Y||move|joystick.RUDDER|brakes|||
 |move|lmouse.WHEEL||move|head.THROTTLE|zoom|zoom||
 |press|rmouse.RMB||switch to|fwd||||
-|press|lmouse.LMB||switch to|head_rotation|||if var `2mice2.switcher` == yaw; save prev view if var `2mice2.prevPoseMode` == on_release|
-|click and press|lmouse.LMB||switch to|head_rotation|||if var `2mice2.switcher` == yaw; save prev view if var `2mice2.prevPoseMode` == on_hold|
-|release|lmouse.LMB||switch to|head_rotation|||if var `2mice2.switcher` == head_rotation|
-|press/release|lmouse.LEFT|rmouse.SIDE|switch to/from|head_movement|||if var `2mice2.switcher` == head_rotation|
 |press/release|lmouse.SIDE|rmouse.SIDE|switch to/from|aux1||||
 |press/release|lmouse.SIDE|rmouse.EXTRA|switch to/from|aux2||||
+
+__var `2mice2.switcher` == yaw__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|press|lmouse.LMB||switch to|head_rotation|||save prev view if var `2mice2.prevPoseMode` == on_release|
+|click and press|lmouse.LMB||switch to|head_rotation|||save prev view if var `2mice2.prevPoseMode` == on_hold|
+
+__var `2mice2.switcher` == head_rotation__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|release|lmouse.LMB||switch to|head_rotation||||
+|press/release|lmouse.LEFT|rmouse.SIDE|switch to/from|head_movement||||
+
+__var `2mice2.switcher` == toggle__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|lmouse.LMB||switch to|head_rotation||||
+|click|lmouse.RMB|lmouse.LMB|switch to|head_movement||||
 
 **fwd**
 
@@ -180,10 +197,27 @@ When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward 
 |move|lmouse.X|rmouse.EXTRA, rmouse.SIDE|move|head.RZ|roll view rotation (via TrackIR emulator)|roll view rotation||
 |move|lmouse.Y||move|head.RY|vertical view rotation (via TrackIR emulator)|vertical view rotation||
 |move|lmouse.WHEEL||move|head.THROTTLE|zoom|zoom||
-|press/release|rmouse.SIDE||switch to/from|head_movement|||if var `2mice2.switcher` == yaw|
-|press|lmouse.LMB||switch to|yaw|||if var `2mice2.switcher` == head_rotation|
-|release|lmouse.LMB||switch to|yaw|||if var `2mice2.switcher` == yaw; restore prev view if var `2mice2.prevPoseMode` == on_hold|
-|release|lmouse.LMB|rmouse.EXTRA|switch to|yaw|||if var `2mice2.switcher` == yaw; restore prev view if var `2mice2.prevPoseMode` == on_release|
+
+__var `2mice2.switcher` == yaw__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|press/release|rmouse.SIDE||switch to/from|head_movement||||
+|release|lmouse.LMB||switch to|yaw|||restore prev view if var `2mice2.prevPoseMode` == on_hold|
+|release|lmouse.LMB|rmouse.EXTRA|switch to|yaw|||restore prev view if var `2mice2.prevPoseMode` == on_release|
+
+__var `2mice2.switcher` == head_rotation__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|press|lmouse.LMB||switch to|yaw||||
+
+__var `2mice2.switcher` == toggle__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|lmouse.LMB||switch to|yaw||||
+|click|lmouse.RMB|lmouse.LMB|switch to|head_movement||||
 
 **head_movement**
 
@@ -192,6 +226,12 @@ When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward 
 |move|lmouse.X||move|head.X|horizontal view position (via TrackIR emulator)|||
 |move|lmouse.Y||move|head.Y|vertical view position (via TrackIR emulator)|||
 |move|lmouse.WHEEL||move|head.Z|lateral view position (via TrackIR emulator)|||
+
+__var `2mice2.switcher` == toggle__
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|lmouse.RMB|lmouse.LMB|switch to|previous mode (yaw or head_rotation)||||
 
 **aux1**
 
