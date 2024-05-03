@@ -5701,7 +5701,13 @@ class RateSettingJoystick:
     return self.v_.get(tcAxis, 0.0)
 
   def get_limits(self, tcAxis):
-    return self.limits_.get(tcAxis, (0.0, 0.0))
+    limits = self.limits_.get(tcAxis, None)
+    if limits is None:
+      if self.next_ is not None:
+        limits = self.next_.get_limits(tcAxis)
+      else:
+        limits = (0.0, 0.0)
+    return limits
 
   def set_limits(self, tcAxis, limits):
     self.limits_[tcAxis] = limits
@@ -9623,7 +9629,7 @@ def make_parser():
         return value * self.rate_
       def init(self, rate):
         self.rate_ = rate
-    limits = {fn2tc(nAxis):value for nAxis,value in state.resolve(cfg, "limits").items()}
+    limits = {fn2tc(nAxis):value for nAxis,value in state.resolve_d(cfg, "limits", {}).items()}
     next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
     rateOps = {}
     ratesCfg = state.resolve(cfg, "rates")
