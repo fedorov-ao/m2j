@@ -6110,16 +6110,15 @@ class RelativeHeadMovementJoystick:
   def update_dirs_(self):
     if self.dirsDirty_ == True and self.next_ is not None:
       dYaw, dPitch, dRoll = (tca for tca in (self.next_.get_axis_value(tcAxis) for tcAxis in self.tcAngleAxes_))
-      #Angles should be negated for correct calculation
-      #Can instead negate sines or adjust signs in dirs_ calculation
-      rYaw, rPitch, rRoll = (-math.radians(a) for a in (dYaw, dPitch, dRoll))
+      rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
       sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
       cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
 
       #x - 0, y - 1, z - 2
-      self.dirs_[0] = (cosRoll*cosYaw - sinRoll*sinPitch*sinYaw, -sinRoll*cosYaw - cosRoll*sinPitch*sinYaw, -cosPitch*sinYaw)
-      self.dirs_[1] = (sinRoll*cosPitch, cosRoll*cosPitch, -sinPitch)
-      self.dirs_[2] = (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, -sinRoll*sinYaw + cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
+      #caclulated by negating sines as if dPitch and dRoll are negated (dYaw is not)
+      self.dirs_[0] = (cosRoll*cosYaw - sinRoll*sinPitch*sinYaw, sinRoll*cosYaw + cosRoll*sinPitch*sinYaw, -cosPitch*sinYaw)
+      self.dirs_[1] = (-sinRoll*cosPitch, cosRoll*cosPitch, sinPitch)
+      self.dirs_[2] = (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, sinRoll*sinYaw - cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
 
       self.dirsDirty_ = False
       self.limitsDirty_ = True
