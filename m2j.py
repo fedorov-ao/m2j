@@ -6010,6 +6010,7 @@ class RelativeHeadMovementJoystick:
        This class needs to know about angles, so set them via object of this class.
        Using with curves that set absolute positions may produce unexpected and undesired results.
     """
+
     if self.next_ is None:
       return 0.0 if relative else value
 
@@ -6053,6 +6054,30 @@ class RelativeHeadMovementJoystick:
       return value
     elif tcAxis in self.tcAngleAxes_:
       self.dirsDirty_ = True
+      ov = self.angles_[tcAxis]
+      v = value + ov if relative else value
+      if v == ov:
+        return 0.0 if relative else v
+      #FIXME Not exactly correct, because yaw and pitch limits do change if roll != 0.0.
+      #Essentially, yaw-pitch limits "box" is rotated by -roll angle.
+      v = clamp(v, *self.get_limits(tcAxis))
+      self.angles_[tcAxis] = v
+      tcYaw, tcPitch, tcRoll = self.tcAngleAxes_
+      dRoll = self.angles_[tcRoll]
+      if dRoll != 0.0 and tcAxis in (tcYaw, tcPitch):
+        rRoll = math.radians(dRoll)
+        sinRoll, cosRoll = math.sin(rRoll), math.cos(rRoll)
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("dRoll:{:+0.3f} sinRoll:{:+0.3f} cosRoll:{:+0.3f}".format(dRoll, sinRoll, cosRoll))
+        dThisYaw, dThisPitch = self.angles_[tcYaw], self.angles_[tcPitch]
+        #Assuming that yaw increases when moving right, pitch increases when moving down, roll increases when tilting head to the right
+        dYaw = dThisYaw * cosRoll - dThisPitch * sinRoll
+        dPitch = dThisYaw * sinRoll + dThisPitch * cosRoll
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("dYaw:{:+0.3f} dPitch:{:+0.3f}".format(dYaw, dPitch))
+        self.next_.move_axis(tcYaw, dYaw, relative=False)
+        self.next_.move_axis(tcPitch, dPitch, relative=False)
+        return v - ov if relative else v
     return self.next_.move_axis(tcAxis, value, relative)
 
 
@@ -6105,6 +6130,7 @@ class RelativeHeadMovementJoystick:
   def __init__(self, next=None, r=float("inf"), stick=True):
     self.next_, self.r_, self.stick_ = next, r, stick
     self.dirs_, self.limits_ = [0.0, 0.0, 0.0], [(), (), ()]
+    self.angles_ = { self.tcAngleAxes_[i] : 0.0 for i in range(len(self.tcAngleAxes_)) }
     self.dirsDirty_, self.limitsDirty_ = True, True
 
   def update_dirs_(self):
