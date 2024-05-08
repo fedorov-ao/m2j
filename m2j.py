@@ -5739,6 +5739,8 @@ class RateSettingJoystick:
       if rateOp is None:
         continue
       rate = rateOp.calc(value, timestamp)
+      if rate == 0.0:
+        continue
       delta = rate*tick
       self.next_.move_axis(tcAxis, delta, relative=True)
 
