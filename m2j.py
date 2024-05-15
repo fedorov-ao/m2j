@@ -6984,6 +6984,13 @@ class FuncEditorWidget(tk.Frame):
     state = ParserState(self.main_)
     ce = self.main_.get("parser")("widget", funcCfg, state)
     ce.pack(expand=True, fill="both")
+    #Needed to ensure that tlw.winfo_width() and tlw.winfo_height() will return correct dimensions
+    tlw.update_idletasks()
+    width, height = tlw.winfo_width(), tlw.winfo_height()
+    swidth, sheight = tlw.winfo_screenwidth(), tlw.winfo_screenheight()
+    x, y = 0.5 * (swidth - width), 0.5 * (sheight - height)
+    geometry = "+{x:.0f}+{y:.0f}".format(x=x, y=y)
+    tlw.geometry(geometry)
     self.main_.get("info").add_top_level_widget(tlw)
 
 
