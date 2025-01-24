@@ -809,21 +809,36 @@ class ParserState:
     return op
 
   def deref(self, refOrValue, **kwargs):
+    def make_expression_mapping(p, s):
+      expr = "{}v{}".format(p, s)
+      compiledExpr = compile(expr, "", "eval")
+      def op(v):
+        globs = { "v" : v }
+        if self.logger.isEnabledFor(logging.DEBUG):
+          self.logger.debug("{}: evaluating {} with {}".format(log_loc(self), expr, str2(globs)))
+        return eval(compiledExpr, globs)
+      return op
     prefix, suffix, mapping, dfault = None, None, None, None
     cls = kwargs.get("cls")
     if cls is not None:
       del kwargs["cls"]
     r = refOrValue
     if is_dict_type(refOrValue):
+      dfault = self.resolve_d(refOrValue, "default", None)
       for p in ("obj", "arg", "var"):
         suffix = get_nested_d(refOrValue, p, None)
         if suffix is not None:
           prefix = p
-          if prefix == "var":
-            mappingCfg = self.resolve_d(refOrValue, "mapping", None)
-            if mappingCfg is not None:
-              mapping = make_mapping(mappingCfg)
-          dfault = self.resolve_d(refOrValue, "default", None)
+          mappingCfg = self.resolve_d(refOrValue, "mapping", None)
+          if prefix == "var" and mappingCfg is not None:
+            mapping = make_mapping(mappingCfg)
+          else:
+            refOrValueRe = re.compile("([+\-*/&|]*)([^ +\-*/&|]*)(.*?)")
+            refOrValueMatch = refOrValueRe.match(suffix)
+            if refOrValueMatch is not None:
+              suffix = refOrValueMatch.group(2)
+              g1, g3 = refOrValueMatch.group(1), refOrValueMatch.group(3)
+              mapping = make_expression_mapping(g1, g3)
           break
     elif is_str_type(refOrValue):
       refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
@@ -832,14 +847,9 @@ class ParserState:
         prefix, suffix = refOrValueMatch.group(2), refOrValueMatch.group(3)
         g1, g4 = refOrValueMatch.group(1), refOrValueMatch.group(4)
         if len(g1) or len(g4):
-          expr = "{}v{}".format(g1, g4)
-          compiledExpr = compile(expr, "", "eval")
-          def op(v):
-            globs = { "v" : v }
-            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: evaluating {} with {}".format(log_loc(self), expr, str2(globs)))
-            return eval(compiledExpr, globs)
-          mapping = op
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
+          mapping = make_expression_mapping(g1, g4)
+          if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
     if prefix is not None:
       suffix = self.deref(suffix, **kwargs)
       setter = kwargs.get("setter")
