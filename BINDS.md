@@ -84,8 +84,6 @@ This section describes which axes/buttons of which virtual joystick are controll
 |hold/release|rmouse.RMB||press/release|joystick.12|supercharger 1|toggle radar||
 |click|rmouse.MMB||click|joystick.10|extend/retract airbrake|extend airbrake||
 |hold/release|rmouse.MMB||press/release|joystick.13||retract airbrake||
-|press/release|rmouse.LMB|rmouse.SIDE|press/release|joystick.14|extend/retract gears|||
-|press/release|rmouse.RMB|rmouse.SIDE|press/release|joystick.15|lock/unlock tail wheel|||
 |move|rmouse.WHEEL||move|joystick.RZ|flaps|||
 
 **qua**
@@ -198,8 +196,8 @@ When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |move|lmouse.X||move|head.RX|horizontal view rotation (via TrackIR emulator)|horizontal view rotation||
-|move|lmouse.X|rmouse.EXTRA, rmouse.SIDE|move|head.RZ|roll view rotation (via TrackIR emulator)|roll view rotation||
 |move|lmouse.Y||move|head.RY|vertical view rotation (via TrackIR emulator)|vertical view rotation||
+|move|lmouse.X|lmouse.SIDE, rmouse.EXTRA, rmouse.SIDE|move|head.RZ|roll view rotation (via TrackIR emulator)|roll view rotation||
 |move|lmouse.WHEEL||move|head.THROTTLE|zoom|zoom||
 
 __var `2mice2.switcher` == yaw__
