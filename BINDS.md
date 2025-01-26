@@ -58,7 +58,10 @@ This section describes which axes/buttons of which virtual joystick are controll
 |move|rmouse.WHEEL|keyboard.LALT|move|joystick2.RZ|left engines mix|||
 |press/release|rmouse.SIDE||switch to/from|sec||||
 |press/release|rmouse.EXTRA||switch to/from|ter||||
-|press/release|lmouse.SIDE||switch to/from|qua||||
+|press|rmouse.SIDE|lmouse.SIDE|switch to|reng|||actually switching from qua mode|
+|release|rmouse.SIDE||switch from|reng||||
+|press|rmouse.EXTRA|lmouse.SIDE|switch to|leng|||actually switching from qua mode|
+|release|lmouse.SIDE||switch from|qua||||
 |press/release|rmouse.SIDE|rmouse.EXTRA|switch to/from|pent|||switching to pent mode requires pressing both rmouse.SIDE and rmouse.EXTRA|
 |press/release|rmouse.EXTRA|rmouse.SIDE|switch to/from|pent|||switching to pent mode requires pressing both rmouse.SIDE and rmouse.EXTRA|
 |press/release|lmouse.EXTRA||switch to/from|hat||||
@@ -102,6 +105,22 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.LMB||press/release|joystick.14|extend/retract gears|||
 |press/release|rmouse.RMB||press/release|joystick.15|lock/unlock tail wheel|||
 |move|rmouse.WHEEL||move|joystick.Z|rudder|||
+
+**reng**
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|move|rmouse.WHEEL||move|joystick2.X|right engines throttle|||
+|move|rmouse.WHEEL|rmouse.SIDE|move|joystick2.Y|right engines propellers pitch|||
+|move|rmouse.WHEEL|rmouse.EXTRA|move|joystick2.Z|right engines mix|||
+
+**leng**
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|move|rmouse.WHEEL||move|joystick2.RX|left engines throttle|||
+|move|rmouse.WHEEL|rmouse.SIDE|move|joystick2.RY|left engines propellers pitch|||
+|move|rmouse.WHEEL|rmouse.EXTRA|move|joystick2.RZ|left engines mix|||
 
 **hat**
 
