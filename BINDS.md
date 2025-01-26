@@ -59,6 +59,8 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.SIDE||switch to/from|sec||||
 |press/release|rmouse.EXTRA||switch to/from|ter||||
 |press/release|lmouse.SIDE||switch to/from|qua||||
+|press/release|rmouse.SIDE|rmouse.EXTRA|switch to/from|pent|||switching to pent mode requires pressing both rmouse.SIDE and rmouse.EXTRA|
+|press/release|rmouse.EXTRA|rmouse.SIDE|switch to/from|pent|||switching to pent mode requires pressing both rmouse.SIDE and rmouse.EXTRA|
 |press/release|lmouse.EXTRA||switch to/from|hat||||
 |press/release|lmouse.EXTRA|rmouse.SIDE|switch to/from|aux3||||
 |press/release|lmouse.EXTRA|rmouse.EXTRA|switch to/from|aux4||||
@@ -94,6 +96,14 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.RMB||press/release|joystick.6|bomb bay doors|flare||
 |press/release|rmouse.MMB||press/release|joystick.7||||
 |move|rmouse.WHEEL||move|joystick.RY|radiator|||
+
+**pent**
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|press/release|rmouse.LMB||press/release|joystick.14|extend/retract gears|||
+|press/release|rmouse.RMB||press/release|joystick.15|lock/unlock tail wheel|||
+|move|rmouse.WHEEL||move|joystick.Z|rudder|||
 
 **hat**
 
