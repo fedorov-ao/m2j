@@ -50,12 +50,12 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.RMB||press/release|joystick.1|weapon 2 (guns)|lock target||
 |click|rmouse.MMB||center|joystick.Z||||
 |hold|rmouse.MMB||center|joystick.X, joystick.Y, joystick.Z||||
-|move|rmouse.WHEEL||move|joystick.THROTTLE|throttle|thrust||
-|move|rmouse.WHEEL|keyboard.RSHIFT|move|joystick.THROTTLE||||
-|move|rmouse.WHEEL|keyboard.RCTRL|move|joystick.RX||||
-|move|rmouse.WHEEL|keyboard.RALT|move|joystick.RZ||||
-|move|rmouse.WHEEL|keyboard.LSHIFT|move|joystick.RY||||
-|move|rmouse.WHEEL|keyboard.LCTRL|move|joystick.RUDDER||||
+|move|rmouse.WHEEL|keyboard.RSHIFT|move|joystick2.X|right engines throttle|||
+|move|rmouse.WHEEL|keyboard.RCTRL|move|joystick2.Y|right engines propellers pitch|||
+|move|rmouse.WHEEL|keyboard.RALT|move|joystick2.Z|right engines mix|||
+|move|rmouse.WHEEL|keyboard.LSHIFT|move|joystick2.RX|left engines throttle|||
+|move|rmouse.WHEEL|keyboard.LCTRL|move|joystick2.RY|left engines propellers pitch|||
+|move|rmouse.WHEEL|keyboard.LALT|move|joystick2.RZ|left engines mix|||
 |press/release|rmouse.SIDE||switch to/from|sec||||
 |press/release|rmouse.EXTRA||switch to/from|ter||||
 |press/release|lmouse.SIDE||switch to/from|qua||||
@@ -71,12 +71,6 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.RMB||press/release|joystick.3|weapon 4 (bombs)|change weapon||
 |press/release|rmouse.MMB||press/release|joystick.4||toggle cannon||
 |move|rmouse.WHEEL||move|joystick.RX|propeller pitch|||
-|move|rmouse.WHEEL|keyboard.RSHIFT|move|joystick2.X|right engines throttle|||
-|move|rmouse.WHEEL|keyboard.RCTRL|move|joystick2.Y|right engines propellers pitch|||
-|move|rmouse.WHEEL|keyboard.RALT|move|joystick2.Z|right engines propellers pitch|||
-|move|rmouse.WHEEL|keyboard.LSHIFT|move|joystick2.RX|left engines throttle|||
-|move|rmouse.WHEEL|keyboard.LCTRL|move|joystick2.RY|left engines propellers pitch|||
-|move|rmouse.WHEEL|keyboard.LALT|move|joystick2.RZ|left engines propellers pitch|||
 
 **ter**
 
