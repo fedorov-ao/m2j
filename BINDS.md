@@ -12,7 +12,7 @@ Virtual joysticks should have 8 axes and 16 buttons. Joystick axes are `X`, `Y`,
 Mouse operated by right hand is referred here and in config as `rmouse`, by left hand - as `lmouse`. For example, `rmouse.X` is the X axis of rmouse.  
 `rmouse` and `lmouse` each operate primarilly in independent modes, though there are modes that use both mice.  
 `rmouse` modes are `pri`, `sec`, `ter`, `qua`, `hat`, `aux3`, `aux4`.  
-`lmouse` modes are `yaw`, `fwd`, `head_rotation`, `head_movement`, `aux1`, `aux2`.  
+`lmouse` modes are `yaw`, `fwd`, `fwd2`, `fwd3`, `fwd4`, `head_rotation`, `head_movement`, `aux1`, `aux2`.
 See **Mode-specific bindings** section to find out which axes and buttons of which virtual joystick are controlled in a given mode.  
 
 Virtual joysticks are also referred by names. For example, `joystick1.X` is X axis of joystick `joystick1`.  
@@ -173,7 +173,10 @@ This section describes which axes/buttons of which virtual joystick are controll
 |move|lmouse.X||move|joystick.Z|yaw|yaw||
 |move|lmouse.Y||move|joystick.RUDDER|brakes|||
 |move|lmouse.WHEEL||move|head.THROTTLE|zoom|zoom||
-|press|rmouse.RMB||switch to|fwd||||
+|press/release|lmouse.RMB||switch to/from|fwd||||
+|press/release|lmouse.RMB|rmouse.EXTRA|switch to/from|fwd2||||
+|press/release|lmouse.RMB|rmouse.SIDE|switch to/from|fwd3||||
+|press/release|lmouse.RMB|rmouse.SIDE, rmouse.EXTRA|switch to/from|fwd4||||
 |press/release|lmouse.SIDE|rmouse.SIDE|switch to/from|aux1||||
 |press/release|lmouse.SIDE|rmouse.EXTRA|switch to/from|aux2||||
 
@@ -206,9 +209,21 @@ When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward 
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |move|lmouse.X||move|joystick.Z|yaw|yaw||
 |move|lmouse.Y||move|joystick.RUDDER|brakes|||
+|press|lmouse.LMB||update pose|saved pose||||
 |release|rmouse.RMB||switch to|yaw|||return view to previous state, lmouse.X controls joystick.Z|
 |release|rmouse.RMB|rmouse.SIDE|switch to|yaw|||look straight forward and zoom full out|
 |release|rmouse.RMB|rmouse.EXTRA|switch to|yaw|||look straight forward and zoom full in|
+
+**fwd2**, **fwd3**, **fwd4**
+
+When entering `fwd2`, `fwd3`, `fwd4` mode the `head` joystick is set respectively to `pose2`, `pose3`, `pose4` pose
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|move|lmouse.X||move|joystick.Z|yaw|yaw||
+|move|lmouse.Y||move|joystick.RUDDER|brakes|||
+|press|lmouse.LMB||update pose|saved pose||||
+|release|rmouse.RMB||switch to|yaw|||return view to previous state, lmouse.X controls joystick.Z|
 
 **head_rotation**
 
