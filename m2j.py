@@ -703,18 +703,21 @@ class ParserState:
     nameSep = kwargs.get("nameSep", ":")
     memberSep = kwargs.get("memberSep", ".") 
     objectName = name.split(nameSep)
-    objects, i = None, 0
-    while True:
-      ep = self.at("eps", i)
-      if ep is None:
-        break
-      objects = ep.get("objects", None)
-      if objects is not None:
-        obj = objects.get(objectName[0])
-        if obj is not None:
+    obj, i = None, 0
+    if objectName[0] == "self":
+      obj = self.at("eps", 0)
+    else:
+      while True:
+        ep = self.at("eps", i)
+        if ep is None:
           break
-      i += 1
-    if objects is None or obj is None:
+        objects = ep.get("objects", None)
+        if objects is not None:
+          obj = objects.get(objectName[0])
+          if obj is not None:
+            break
+        i += 1
+    if obj is None:
       raise NotFoundError("obj", name)
     if len(objectName) > 1:
       for s in objectName[1].split(memberSep):
