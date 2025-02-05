@@ -10637,8 +10637,10 @@ class Main:
     self.set("info", info)
 
   def init_loop(self, state):
-    refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0, cls=float)
-    step = 1.0 / refreshRate
+    step = state.resolve_d(self.get("config"), "updatePeriod", 0.01, cls=float)
+    if step is None:
+      refreshRate = state.resolve_d(self.get("config"), "refreshRate", 100.0, cls=float)
+      step = 1.0 / refreshRate
     source = self.get("source")
     assert(source is not None)
     def run_source(tick, ts):
