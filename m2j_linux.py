@@ -352,12 +352,13 @@ def calc_device_hash(device):
 
 
 class NativeEvdevIDevFactory:
+  logger = get_logger(logger, "NativeEvdevIDevFactory")
   def make_device(self, identifier, update=False):
     if update:
       self.update()
     m = self.identifierRe_.match(identifier)
     found = None
-    for di in self.deviceInfos_:
+    for di in self.dis_:
       if m is None:
         if identifier in di.info:
           found = di
@@ -371,14 +372,22 @@ class NativeEvdevIDevFactory:
     return found.device if found else None
 
   def update(self):
-    devices = (evdev.InputDevice(fn) for fn in evdev.list_devices())
-    self.deviceInfos_ = [self.DeviceInfo_(device, self.Info_(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))) for device in devices]
+    def device_generator():
+      for device in evdev.list_devices():
+        try:
+          yield evdev.InputDevice(device)
+        except OSError, e:
+          logger.warning("Failed to create evdev device that should be present: {}".format(e))
+          continue
+    def make_info_(device):
+      return self.Info_(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))
+    self.dis_ = [self.DeviceAndInfo_(device, make_info_(device)) for device in device_generator()]
 
   def __init__(self):
     self.update()
 
   Info_ = collections.namedtuple("Info", "path name phys hash")
-  DeviceInfo_ = collections.namedtuple("DeviceInfo", "device info")
+  DeviceAndInfo_= collections.namedtuple("DeviceAndInfo", "device info")
   identifierRe_ = re.compile("([^:]*):(.*)")
 
 
