@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import bisect
 import unittest
 
 def m_fd(k, xs, ps):
@@ -120,12 +121,13 @@ class HermiteFunc:
 
 class HermiteFunc2:
   def __call__(self, x):
-    if len(self.xs_) < 2:
+    lxs = len(self.xs_)
+    if lxs < 2:
       return None
     x0, x1 = self.xs_[0], self.xs_[-1]
     if x0 > x1: x0, x1 = x1, x0
     y = None
-    i = 0 if x < x0 else len(self.xs_) - 1 if x > x1 else None
+    i = 0 if x < x0 else lxs - 1 if x > x1 else None
     if i is not None:
       if self.extend_ == 0:
         y = None
@@ -134,10 +136,9 @@ class HermiteFunc2:
       elif self.extend_ == 2:
         y = self.ys_[i] + self.ms_[i] * (x - self.xs_[i])
     else:
-      import bisect
       i = bisect.bisect_right(self.xs_, x) - 1
-      assert 0 <= i  and i < len(self.xs_)
-      if i == len(self.xs_) - 1:
+      assert 0 <= i  and i < lxs
+      if i == lxs - 1:
         i -= 1
       x0, x1 = self.xs_[i], self.xs_[i + 1]
       assert x0 <= x and x <= x1
