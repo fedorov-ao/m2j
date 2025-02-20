@@ -2329,6 +2329,7 @@ class BindEP:
     else:
       self.children_.append(self.ChildrenInfo(op, level, [self.ChildInfo(child, name)]))
     self.dirty_ = True
+    #TODO Remove?
     return child
 
   def add_several(self, op, children, level=0, names=None):
@@ -9236,6 +9237,21 @@ def make_parser():
   def parseAny(cfg, state):
     return []
   etParser.add("any", parseAny)
+
+  @make_et
+  def parseIdev(cfg, state):
+    idevHash = get_dev_hash(state.resolve(cfg, "idev", cls=str))
+    return [("idev", EqPropTest(idevHash))]
+  etParser.add("idev", parseIdev)
+
+  @make_et
+  def parseKey(cfg, state):
+    idevHash, eventType, key = fn2htc(state.resolve(cfg, "key", cls=str))
+    r = [("type", EqPropTest(eventType)), ("code", EqPropTest(key))]
+    if idevHash is not None:
+      r.append(("idev", EqPropTest(idevHash)))
+    return r
+  etParser.add("key", parseKey)
 
   @make_et
   def parsePress(cfg, state):
