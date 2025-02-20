@@ -1309,18 +1309,19 @@ class NullJoystick:
   logger = get_logger(logger, "NullJoystick")
 
   def __init__(self, values=None, limits=None, buttons=None):
-    self.v_ = {}
-    if values is not None:
-      for a,v in values.items():
-        self.v_[a] = v
     self.limits_ = {}
     if limits is not None:
       for tca,l in limits.items():
         self.limits_[tca] = l
+    self.v_ = {}
+    noLimits = (float("-inf"), float("+inf"))
+    if values is not None:
+      for a,v in values.items():
+        self.v_[a] = clamp(v, *self.limits_[a]) if a in self.limits_ else v
     self.b_ = {}
     if buttons is not None:
-      for b,s in buttons.limits():
-        self.b_[b] = s
+      for b in buttons:
+        self.b_[b] = False
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
@@ -1354,7 +1355,7 @@ class NullJoystick:
     return self.limits_.get(tcAxis, (-float("inf"), float("inf")))
 
   def get_supported_axes(self):
-    return self.v_.keys()
+    return self.limits_.keys()
 
   def set_button_state(self, button, state):
     if button in self.b_:
@@ -9562,13 +9563,30 @@ def make_parser():
 
   @make_reporting_joystick
   def parseNullJoystickODev(cfg, state):
-    values = get_nested_d(cfg, "values")
-    if values is not None:
-      values = {fn2tc(n) : v for n,v in values.items()}
-    limits = get_nested_d(cfg, "limits")
-    if limits is not None:
-      limits = {fn2tc(n) : v for n,v in limits.items()}
-    j = NullJoystick(values=values, limits=limits)
+    values, limits = None, None
+    axesDatum = get_nested_d(cfg, "axesDatum")
+    if axesDatum is not None:
+      values, limits = {}, {}
+      for axisName, axisData in axesDatum.items():
+        axisId = fn2tc(axisName)
+        axisValue = get_nested_d(axisData, "value")
+        if axisValue is not None:
+          values[axisId] = axisValue
+        axisLimits = get_nested_d(axisData, "limits")
+        if axisLimits is not None:
+          limits[axisId] = axisLimits
+    else:
+      values = get_nested_d(cfg, "values")
+      if values is not None:
+        values = {fn2tc(n) : v for n,v in values.items()}
+      limits = get_nested_d(cfg, "limits")
+      if limits is not None:
+        limits = {fn2tc(n) : v for n,v in limits.items()}
+    buttons = None
+    numButtons = get_nested_d(cfg, "numButtons")
+    if numButtons is not None:
+      buttons = [codes.BTN_0+i for i in range(numButtons)]
+    j = NullJoystick(values=values, limits=limits, buttons=buttons)
     return j
   odevParser.add("null", parseNullJoystickODev)
   odevParser.add("virtual", parseNullJoystickODev)
