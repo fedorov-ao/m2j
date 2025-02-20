@@ -57,10 +57,11 @@ class ExternalEvdevJoystick:
     for nativeButton in cap.get(ecodes.EV_KEY, ()):
       self.buttons_[ecode2code(nativeButton)] = False
 
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
+    pass
 
   def move_axis(self, tcAxis, v, relative):
     if relative:
@@ -82,8 +83,7 @@ class ExternalEvdevJoystick:
     nl = self.nlimits_.get(tcAxis, (0.0, 0.0,))
     nv = lerp(v, l[0], l[1], nl[0], nl[1])
     nv = int(nv)
-    if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), v, nv))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), v, nv))
     self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nv)
     if self.immediateSyn_ == True:
       self.syn()
@@ -203,12 +203,12 @@ class EvdevJoystick:
       name='virtual-joystick'
     self.js_ = UInput(cap, name=name, version=0x3, phys=phys)
 
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
     if self.js_ is not None:
       self.js_.close()
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
 
   def move_axis(self, tcAxis, v, relative):
     if relative:
@@ -230,8 +230,7 @@ class EvdevJoystick:
     axisData.value = v
     nativeValue = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
     nativeValue = int(nativeValue)
-    if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), tc2ns(*tcAxis), v, nativeValue))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), tc2ns(*tcAxis), v, nativeValue))
     self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nativeValue)
     if self.immediateSyn_ == True:
       self.js_.syn()
@@ -291,10 +290,10 @@ class EvdevIDev:
       event = translate_evdev_event(evdevEvent, self.idev_)
       if event is None:
         if self.numEvents_ != 0:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got {} events".format(log_loc(self), self.numEvents_))
+          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got {} events".format(log_loc(self), self.numEvents_))
           self.numEvents_ = 0
       else:
-        if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: read event: {}".format(log_loc(self), event))
+        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: read event: {}".format(log_loc(self), event))
         self.numEvents_ += 1
       return event
     except (IOError, exceptions.OSError) as e:

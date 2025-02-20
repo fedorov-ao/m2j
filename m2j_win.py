@@ -53,8 +53,7 @@ class PPJoystick:
     desired = value if not relative else self.get_axis_value(tcAxis) + value
     actual = clamp(desired, *self.get_limits(tcAxis))
     self.a_[tcAxis] = actual
-    if self.logger.isEnabledFor(logging.DEBUG):
-      self.logger.debug("{}: setting axis {} to {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), actual))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: setting axis {} to {}".format(log_loc(self), typecode2name(codes.EV_ABS, axis), actual))
     self.dirty_ = True
     return value - (desired - actual) if relative else actual
 
@@ -669,7 +668,7 @@ g_vkey2codeDict = {
 def vkey2code(vkey):
   r = g_vkey2codeDict.get(vkey, None)
   #rStr = "0x{:x} ({})".format(r, typecode2name(codes.EV_KEY, r)) if r is not None else "None"
-  if logger.isEnabledFor(logging.DEBUG): logger.debug("vkey2code(): 0x{:x} -> {}".format(vkey, rStr))
+  #if logger.isEnabledFor(logging.DEBUG): logger.debug("vkey2code(): 0x{:x} -> {}".format(vkey, rStr))
   return r
 
 
@@ -1041,7 +1040,7 @@ class Keyboard:
   MODE_SCANCODE = 1
 
   def set_key_state(self, key, state):
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Setting key {} (0x{:X}) to {}".format(log_loc(self), typecode2name(codes.EV_KEY, key), key, state))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Setting key {} (0x{:X}) to {}".format(log_loc(self), typecode2name(codes.EV_KEY, key), key, state))
     extra = ULONG(0)
     inpt = INPUT()
     inpt.type = INPUT_KEYBOARD
@@ -1412,7 +1411,7 @@ class RawInputIDevManager:
     self.trackedDeviceInfos_ = dict()
     #set of (usage page, usage)
     self.usagePageUsage_ = set()
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: created".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: created".format(log_loc(self)))
 
   def __del__(self):
     self.stop()
@@ -1439,14 +1438,14 @@ class RawInputIDevManager:
     Gets native events from queue, makes InputEvents, distributes the latter among instances of RawInputIDev.
     Needs to be run at least once per global loop iteration.
     """
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update()".format(log_loc(self)))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update()".format(log_loc(self)))
     msg = MSG()
     PM_REMOVE = 1
     while windll.user32.PeekMessageA(byref(msg), self.hwnd_, 0, 0, PM_REMOVE) != 0:
       if msg.message != WM_INPUT:
         windll.user32.DispatchMessageA(byref(msg))
         continue
-      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): got WM_INPUT".format(log_loc(self)))
+      #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): got WM_INPUT".format(log_loc(self)))
       dwSize = c_uint(0)
       r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
       if r < 0:
@@ -1464,13 +1463,13 @@ class RawInputIDevManager:
         idevID = tdi.idevID
         events = None
         if raw.header.dwType == RIM_TYPEMOUSE:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got mouse event".format(log_loc(self)))
+          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got mouse event".format(log_loc(self)))
           events = self.process_mouse_event_(raw, idevID)
         elif raw.header.dwType == RIM_TYPEKEYBOARD:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got keyboard event".format(log_loc(self)))
+          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got keyboard event".format(log_loc(self)))
           events = self.process_kbd_event_(raw, idevID)
         elif raw.header.dwType == RIM_TYPEHID:
-          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got HID event".format(log_loc(self)))
+          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got HID event".format(log_loc(self)))
           events = self.process_hid_event_(raw, idevID)
         if events is not None:
           tdi.idev.add_events(events)
@@ -1623,7 +1622,7 @@ class RawInputIDevManager:
       return ()
     ts = time.time()
     v = 1 if (raw.keyboard.Flags & 1) == RI_KEY_MAKE else 0
-    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
+    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("raw.keyboard: MakeCode: 0x{:04x}, Flags: 0x{:04x}, Message: 0x{:04x}, VKey: 0x{:x}".format(raw.keyboard.MakeCode, raw.keyboard.Flags, raw.keyboard.Message, raw.keyboard.VKey))
     r = InputEvent(codes.EV_KEY, makecode2code(raw.keyboard.MakeCode, raw.keyboard.Flags), v, ts, idevID)
     return (r,)
 
