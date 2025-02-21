@@ -704,6 +704,8 @@ class ParserState:
     obj, i = None, 0
     if objectName[0] == "self":
       obj = self.at("eps", 0)
+    if objectName[0] == "root":
+      obj = self.at("eps", -1)
     else:
       while True:
         ep = self.at("eps", i)
