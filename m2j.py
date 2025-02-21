@@ -1869,7 +1869,7 @@ class HoldEP:
   HT = collections.namedtuple("HT", "keyDesc period value num")
 
   def __call__(self, event):
-    if event.type == codes.EV_BCT and event.code == codes.BCT_INIT and event.value == 0:
+    if event.type == codes.EV_BCT and event.code == codes.BCT_INIT:
       self.clear()
     elif event.type == codes.EV_KEY:
       if event.value == 0:
@@ -7058,7 +7058,7 @@ def init_main_ep(state):
   modifierEP = ModifierEP(modifierDescs=modifierDescs, saveModifiers=False, mode=ModifierEP.OVERWRITE)
   bottomEP.set_next(modifierEP)
   clickEP = modifierEP.set_next(ClickEP(state.resolve_d(config, "clickTime", 0.5, cls=float)))
-  holdDataCfg = state.resolve_d(config, "holds", [], cls=list)
+  holdDataCfg = state.resolve_d(config, "holds", state.resolve_d(config, "hold", [], cls=list), cls=list)
   holdEP = clickEP.set_next(HoldEP())
   for hd in holdDataCfg:
     keyFullName = state.resolve_d(hd, "key", None, cls=str)
@@ -8361,12 +8361,16 @@ def make_parser():
       def set_component(headEP, name, t):
         headEP.set_component(name, t)
       assert headEP is state.at("eps", 0)
-      parseOrder = (("objects", None), ("next", set_component), ("values", set_component), ("modes", None), ("state", set_component), ("sens", set_component), ("modifiers", set_component), ("binds", set_component), ("mapping", set_component) )
+      parseOrder = (
+        ("objects", None), ("next", set_component), ("values", set_component), ("modes", None), ("state", set_component),
+        ("sens", set_component), ("hold", set_component), ("modifiers", set_component), ("binds", set_component), ("mapping", set_component))
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
       #Linking is performed in reverse order - from "tail" to "head", with linking "tail" to "head"
-      linkOrder = (("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("values", set_next), ("sens", set_next), ("modifiers", set_next), ("mapping", set_next))
+      linkOrder = (
+        ("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("values", set_next),
+        ("sens", set_next), ("hold", set_next), ("modifiers", set_next), ("mapping", set_next))
       assert headEP is state.at("eps", 0)
       for p in linkOrder:
         link_component(p[0], p[1])
@@ -8417,6 +8421,24 @@ def make_parser():
     modifierEP = ModifierEP(next=None, modifierDescs=modifierDescs, saveModifiers=True, mode=ModifierEP.APPEND)
     return modifierEP
   scParser.add("modifiers", parseModifiers)
+
+  def parseHold(cfg, state):
+    holdDataCfg = get_nested_d(cfg, "hold", None)
+    if holdDataCfg is not None:
+      holdEP = HoldEP()
+      for hd in holdDataCfg:
+        keyFullName = state.resolve_d(hd, "key", None, cls=str)
+        keyIDev, keyCode = fn2hc(keyFullName) if keyFullName is not None else (None, None)
+        modifiers = state.resolve_d(hd, "modifiers", None, cls=list)
+        if modifiers is not None:
+          modifiers = (parse_modifier_desc(m, state) for m in modifiers)
+        num = state.resolve_d(hd, "num", -1, cls=int)
+        holdEP.add(keyIDev, keyCode, modifiers, state.resolve(hd, "period", cls=float), state.resolve(hd, "value", cls=int), num)
+        state.get("main").add_to_updated(lambda tick,ts : holdEP.update(tick, ts))
+      return holdEP
+    else:
+      return None
+  scParser.add("hold", parseHold)
 
   def parseSens(cfg, state):
     class Setter:
