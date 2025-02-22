@@ -6906,29 +6906,31 @@ class FuncEditorWidget(tk.Frame):
     self.devBox_.set(values[0])
     if self.widths_["devbox"] == 0:
       self.devBox_.configure(width=max(len(value) for value in values))
-    self.select_dev_(None)
+    self.select_dev_()
 
-  def select_dev_(self, event):
+  def select_dev_(self, event=None):
     v = self.devBox_.get()
     self.currentDev_ = v
     values = self.funcs_[v].keys()
     self.axisBox_.configure(values=values)
-    self.axisBox_.set(values[0])
+    axisBoxValue = self.currentAxis_ if self.currentAxis_ in values else values[0]
+    self.axisBox_.set(axisBoxValue)
     if self.widths_["axisbox"] == 0:
       self.axisBox_.configure(width=max(len(value) for value in values))
-    self.select_axis_(None)
+    self.select_axis_()
 
-  def select_axis_(self, event):
+  def select_axis_(self, event=None):
     v = self.axisBox_.get()
     self.currentAxis_ = v
     values=self.funcs_[self.currentDev_][self.currentAxis_].keys()
     self.funcBox_.configure(values=values)
-    self.funcBox_.set(values[0])
+    funcBoxValue = self.currentFunc_ if self.currentFunc_ in values else values[0]
+    self.funcBox_.set(funcBoxValue)
     if self.widths_["funcbox"] == 0:
       self.funcBox_.configure(width=max(len(value) for value in values))
-    self.select_func_(None)
+    self.select_func_()
 
-  def select_func_(self, event):
+  def select_func_(self, event=None):
     v = self.funcBox_.get()
     self.currentFunc_ = v
 
