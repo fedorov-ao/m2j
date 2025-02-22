@@ -360,6 +360,8 @@ def get_nested(d, name, sep = "."):
   else:
     raise ValueError("{} is not str or list".format(name))
   for t in tokens:
+    if not is_dict_type(d):
+      raise ValueError("{} is not dict".format(d))
     nd = d.get(t)
     if nd is None:
       path = str(sep.join(tokens[:tokens.index(t)]))
