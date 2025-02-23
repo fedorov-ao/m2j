@@ -2992,37 +2992,6 @@ class ValueEvent(Event):
     self.name = name
 
 
-class ValuesEP:
-  def __call__(self, event):
-    if self.next_ is not None:
-      return self.next_(event)
-
-  def set_value(self, name, value):
-    self.values_[name] = value
-    self.emit_event_(name)
-
-  def get_value(self, name):
-    return self.values_[name]
-
-  def set_value_item(self, name, item, value):
-    self.values_[name][item] = value
-    self.emit_event_(name)
-
-  def get_value_item(self, name, item):
-    return self.values_[name][item]
-
-  def set_next(self, nxt):
-    self.next_ = nxt
-
-  def __init__(self, nxt=None):
-    self.values_, self.next_ = {}, nxt
-
-  def emit_event_(self, name):
-    if self.next_ is not None:
-      event = ValueEvent(name, self.values_[name])
-      self.next_(event)
-
-
 #Funcs
 class ConstantFunc:
   def __call__(self, x):
@@ -8368,14 +8337,14 @@ def make_parser():
         headEP.set_component(name, t)
       assert headEP is state.at("eps", 0)
       parseOrder = (
-        ("objects", None), ("next", set_component), ("values", set_component), ("modes", None), ("state", set_component),
+        ("objects", None), ("next", set_component), ("modes", None), ("state", set_component),
         ("sens", set_component), ("hold", set_component), ("modifiers", set_component), ("binds", set_component), ("mapping", set_component))
       for name,set_component in parseOrder:
         parse_component(name, set_component)
       #Link components
       #Linking is performed in reverse order - from "tail" to "head", with linking "tail" to "head"
       linkOrder = (
-        ("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind), ("values", set_next),
+        ("next", None), ("modes", None), ("state", set_next), ("binds", add_default_bind),
         ("sens", set_next), ("hold", set_next), ("modifiers", set_next), ("mapping", set_next))
       assert headEP is state.at("eps", 0)
       for p in linkOrder:
@@ -8529,14 +8498,6 @@ def make_parser():
       ep.set_state(stateCfg["initialState"])
     return ep
   scParser.add("state", parseState)
-
-  def parseValues(cfg, state):
-    ep = ValuesEP()
-    cfg = state.resolve(cfg, "values")
-    for name,value in cfg.items():
-      ep.set_value(name, value)
-    return ep
-  scParser.add("values", parseValues)
 
   def parseNext(cfg, state):
     parser = state.get("parser")
@@ -9155,12 +9116,11 @@ def make_parser():
   actionParser.add("logEvent", parseLogEvent)
 
   def parseSetValueItem(cfg, state):
-    value = state.resolve(cfg, "name", cls=str)
-    i = state.resolve(cfg, "item")
-    v = state.resolve(cfg, "value")
-    values = get_component("values", cfg, state)
+    valueObj = state.resolve(cfg, "target")
+    item = state.resolve(cfg, "item")
+    value = state.resolve(cfg, "value")
     def callback(e):
-      values.set_value_item(value, i, v)
+      valueObj.set_item(item, value)
       return True
     return callback
   actionParser.add("setValueItem", parseSetValueItem)
@@ -9169,16 +9129,15 @@ def make_parser():
     def copy(v):
       tv = type(v)
       if tv in (list,):
-        return v[:]
+        return [copy(vv) for vv in v]
       elif is_dict_type(tv):
         return {k:copy(vv) for k,vv in v.items()}
       else:
         return v
-    value = state.resolve(cfg, "name", cls=str)
-    v = state.resolve(cfg, "value")
-    values = get_component("values", cfg, state)
+    valueObj = state.resolve(cfg, "target")
+    value = state.resolve(cfg, "value")
     def callback(e):
-      values.set_value(value, copy(v))
+      valueObj.set(copy(value))
       return True
     return callback
   actionParser.add("setValue", parseSetValue)
@@ -9781,6 +9740,38 @@ def make_parser():
   def parseVarValue(cfg, state):
     return cfg
   mainParser.add("varValue", parseVarValue)
+
+  class Value:
+    def set(self, value):
+      self.value_ = value
+      self.emit_event_()
+
+    def get(self):
+      return self.value_
+
+    def set_item(self, item, value):
+      self.value_[item] = value
+      self.emit_event_()
+
+    def get_item(self, item):
+      return self.value_[item]
+
+    def __init__(self, value, name, ep):
+      self.value_, self.name_, self.ep_ = value, name, ep
+
+    def emit_event_(self):
+      event = ValueEvent(self.name_, self.value_)
+      self.ep_(event)
+
+  def parseValue(cfg, state):
+    ep = get_ep(cfg, state)
+    if ep is None:
+      raise ParseError(cfg, state.get_path(cfg), "target ep not found")
+    value = state.resolve(cfg, "value")
+    name = state.resolve(cfg, "name")
+    valueObj = Value(value, name, ep)
+    return valueObj
+  mainParser.add("value", parseValue)
 
   trackerParserKeyOp=lambda cfg,state : get_nested(cfg, "tracker")
   trackerParser = IntrusiveSelectParser(keyOp=trackerParserKeyOp, parser=SelectParser())
