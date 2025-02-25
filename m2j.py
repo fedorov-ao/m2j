@@ -3160,7 +3160,8 @@ class WeightedFunc:
     def f(x):
       return self.weight_*x**self.degree_ + (1.0 - self.weight_)*x
     fDB = f(self.deadband_)
-    y = (f(x) - sign(x)*fDB)/(1.0 - fDB) if abs(x) > self.deadband_ else 0.0
+    sx, ax = sign(x), abs(x)
+    y = (sx*f(ax) - sx*fDB)/(1.0 - fDB) if ax > self.deadband_ else 0.0
     y *= self.factor_
     y += self.offset_
     if self.tracker_ is not None:
@@ -7422,12 +7423,12 @@ def make_parser():
           return self.call_(x)
         else:
           return self.symm_(self.call_, x)
-      def __init__(self, f, xf, yf, xo, yo, ymin, ymax, symm):
-        self.f_ = f
-        self.xf_, self.yf_ = xf, yf
-        self.xo_, self.yo_ = xo, yo
-        self.ymin_, self.ymax_ = ymin, ymax
-        self.symm_ = symm
+      def __init__(self, **kwargs):
+        self.f_ = kwargs.get("f")
+        self.xf_, self.yf_ = kwargs.get("xf"), kwargs.get("yf")
+        self.xo_, self.yo_ = kwargs.get("xo"), kwargs.get("yo")
+        self.ymin_, self.ymax_ = kwargs.get("ymin"), kwargs.get("ymax")
+        self.symm_ = kwargs.get("symm")
       def call_(self, x):
         x = self.xo_ + self.xf_ * x
         y = self.f_(x)
@@ -7438,23 +7439,32 @@ def make_parser():
         return y
       def __getattr__(self, name):
         return getattr(self.f_, name)
-    def wrapper(cfg, state):
-      f = func(cfg, state)
-      xf = state.resolve_d(cfg, "xfactor", 1.0, cls=float)
-      yf = state.resolve_d(cfg, "yfactor", 1.0, cls=float)
-      xo = state.resolve_d(cfg, "xoffset", 0.0, cls=float)
-      yo = state.resolve_d(cfg, "yoffset", 0.0, cls=float)
-      ymin = state.resolve_d(cfg, "ymin", -float("inf"), cls=float)
-      ymax = state.resolve_d(cfg, "ymax", float("inf"), cls=float)
-      symm = state.resolve_d(cfg, "symmetric", 0)
-      if symm in (1, "x"):
-        symm = lambda f,x : f(abs(x))
-      elif symm in (2, "xy"):
-        symm = lambda f,x : copysign(f(abs(x)), x)
-      else:
+    def make_setter(wrapper, name):
+      def op(value):
+        setattr(wrapper, name, value)
+      return op
+    def make_symm_setter(wrapper):
+      def op(value):
         symm = None
-      return Wrapper(f, xf, yf, xo, yo, ymin, ymax, symm)
-    return wrapper
+        if value in (1, "x"):
+          symm = lambda f,x : f(abs(x))
+        elif value in (2, "xy"):
+          symm = lambda f,x : copysign(f(abs(x)), x)
+        wrapper.symm_ = symm
+      return op
+    def op(cfg, state):
+      wrapper = Wrapper()
+      wrapper.f_ = func(cfg, state)
+      wrapper.xf_ = state.resolve_d(cfg, "xfactor", 1.0, cls=float, setter=make_setter(wrapper, "xf_"))
+      wrapper.yf_ = state.resolve_d(cfg, "yfactor", 1.0, cls=float, setter=make_setter(wrapper, "yf_"))
+      wrapper.xo_ = state.resolve_d(cfg, "xoffset", 0.0, cls=float, setter=make_setter(wrapper, "xo_"))
+      wrapper.yo_ = state.resolve_d(cfg, "yoffset", 0.0, cls=float, setter=make_setter(wrapper, "yo_"))
+      wrapper.ymin_ = state.resolve_d(cfg, "ymin", -float("inf"), cls=float, setter=make_setter(wrapper, "ymin_"))
+      wrapper.ymax_ = state.resolve_d(cfg, "ymax", float("inf"), cls=float, setter=make_setter(wrapper, "ymax_"))
+      symmSetter = make_symm_setter(wrapper)
+      symmSetter(state.resolve_d(cfg, "symmetric", 0, setter=symmSetter))
+      return wrapper
+    return op
 
   def make_tracker(cfg, state):
     tracker = None
