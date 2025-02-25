@@ -281,11 +281,20 @@ class EvdevIDev:
   logger = get_logger(logger, "EvdevIDev")
 
   def read_one(self):
+    def should_skip(event):
+      if evdevEvent is None:
+        return False
+      elif evdevEvent.type in (0, 4):
+        return True
+      elif evdevEvent.type == codes.EV_KEY and evdevEvent.value == 2:
+        return True
+      else:
+        return False
     if not self.is_ready_():
       return None
     try:
       evdevEvent = self.dev_.read_one()
-      while (evdevEvent is not None) and (evdevEvent.type in (0, 4)):
+      while should_skip(evdevEvent):
         evdevEvent = self.dev_.read_one()
       event = translate_evdev_event(evdevEvent, self.idev_)
       if event is None:
