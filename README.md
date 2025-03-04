@@ -28,10 +28,12 @@ Because of dependencies (namely, `pywin32`). The project aims to support as low 
  * `m2j_cfg.cfg` - contains settings that are common for all configurations  
  * `m2j_1mouse.cfg` - config file for 1-mouse configuration
  * `m2j_2mice2.cfg` - config file for 2-mice configuration (the mostly useful one, see `BINDS.md` for binds)
+ * `m2j_2mice2_ht.cfg` - config file for 2-mice configuration with airmouse (like G10) used as head tracker
  * `m2j_3mice.cfg` - config file for 3-mice configuration (experimental!)
  * `m2j_linux.cfg` - mix-in config file for running under Linux
  * `m2j_1mouse_linux.cfg` - config file for running 1-mouse configuration under Linux
  * `m2j_2mice2_linux.cfg` - config file for running 2-mice configuration under Linux
+ * `m2j_2mice2_ht_linux.cfg` - config file for running 2-mice configuration with airmouse used as head tracker
  * `m2j_3mice_linux.cfg` - config file for running 3-mice configuration under Linux
  * `m2j_win.cfg` - mix-in config file for running under Windows
  * `m2j_1mouse_win.cfg` - config file for running 1-mouse configuration under Windows
@@ -42,6 +44,9 @@ Also, be sure to check companion utilities that can be used alongside with `m2j`
 
  * `joy2tir` ([Github](https://github.com/fedorov-ao/joy2tir)) - maps input from joysticks to (unencrypted) TrackIR
  * `dinput8blocker` ([Github](https://github.com/fedorov-ao/dinput8blocker)) - used to block and unblock input from DirectInput8 devices (i.e. mouse)
+ * `raw_input_blocker` ([Github](https://github.com/fedorov-ao/raw_input_blocker)) - used to block and unblock input from raw input devices (i.e. mouse)
+
+`raw_input_blocker` is preferable over `dinput8blocker`, because the former can block one selected mouse out of several mice used.
 
 ## How to install and run
 
@@ -58,14 +63,28 @@ Also, be sure to check companion utilities that can be used alongside with `m2j`
 
 (# means running command in shell as root, $ - as regular user)
 
-Install playsound module  
-`$pip install playsound`
+Compile the last version of Python 2.7 (2.7.18) if needed  
+`#apt install tk tk-dev libssl-dev`  
+`$wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz`  
+`$tar -xf Python-2.7.18.tar.xz`  
+`cd Python-2.7.18`  
+`./configure && make`  
+NB: configuring with `--enable-optimizations` and compiling subsequently causes Python's `ssl` module test fail.  
 
-Install evdev module  
+Instal pip for Python 2.7 if needed  
+`$wget https://bootstrap.pypa.io/pip/2.7/get-pip.py`  
+`$python2 get-pip.py`  
+
+Install `playsound` module  
+`$pip2 install playsound`  
+
+Install `evdev` module  
 At the time of writing (19.02.2024) the last version of evdev is 1.7.0. It is supposed to be run under Python >= 3.5 and needs to be backported to Python 2.7.  
-The patch is in `3rdparty/evdev/evdev-1.7.0-py27.patch`, updated files are in `3rdparty/evdev/evdev-1.7.0-py27`. 
+The patch is in `3rdparty/evdev/evdev-1.7.0-py27.patch`, updated files are in `3rdparty/evdev/evdev-1.7.0-py27`.  
 
 Installing evdev-1.7.0 for Python 2.7  
+
+`$pip2 install pathlib2` (to make evedev setup.py run)  
 `$wget https://github.com/gvalkov/python-evdev/archive/refs/tags/v1.7.0.tar.gz`  
 `$tar -xf evdev-1.7.0.tar.gz`  
 `$cd evdev-1.7.0`  
@@ -74,29 +93,32 @@ Installing evdev-1.7.0 for Python 2.7
 `$./setup.py install --prefix ~/.local/`  
 
 May need to  
-`#modprobe -i uinput`
+`#modprobe -i uinput`  
 
 `m2j_linux.py` uses /dev/uinput , which typically belongs to user root and group root. In order to be able to run emulator without sudo following steps are needed:
 
-add group "input" (can be any other appropriate name)  
-`#groupadd input`
+add group `uinput` (can be any other appropriate name)  
+`#groupadd uinput`  
 
-change the group of /dev/uinput to "input"  
-`#chown root:input /dev/uinput`
+change the group of /dev/uinput to `uinput`  
+`#chown root:uinput /dev/uinput`
 
-change group permissions of `"/dev/uinput"` to `"rw"`  
-`$chmod g+rw /dev/uinput`
+add `udev` rule, otherwise group will be reset to `root` on reboot  
+`#echo 'KERNEL=="uinput", GROUP="uinput"' | tee /etc/udev/rules.d/90-uinput-group.rules`
 
-add the user to the group "input"  
-`#usermod -a -G input username`
+change group permissions of `/dev/uinput` to `rw`  
+`#chmod g+rw /dev/uinput`
+
+add the user to the group `uinput`  
+`#usermod -a -G uinput username`
 
 reboot
 
 check  
 `$ls -l /dev/uinput`  
-`crw-rw---- 1 root input 10, 223 янв  6 19:51 /dev/uinput`  
+`crw-rw---- 1 root uinput 10, 223 янв  6 19:51 /dev/uinput`  
 `$groups`  
-`user ... input`  
+`user ... uinput`  
 
 #### Running
 
