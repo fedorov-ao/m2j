@@ -8718,7 +8718,7 @@ def make_parser():
     nODev, cKey = fn2dc(fnKey)
     odev = state.get("main").get("odevs").get(nODev)
     if odev is None:
-      raise ParseError(cfg, state.get_path(cfg), "odev '{}' not found".format(nOutput))
+      raise ParseError(cfg, state.get_path(cfg), "odev '{}' not found".format(nODev))
     numClicks = state.resolve_d(cfg, "numClicks", 1, cls=int)
     delay = state.resolve_d(cfg, "delay", 0.0, cls=float)
     class Clicker:
