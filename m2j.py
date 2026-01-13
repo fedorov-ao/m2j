@@ -3,6 +3,7 @@
 #Mouse to joystick emulator common functionality
 
 import sys
+sys.path.append(".")
 import math
 import time
 import socket
@@ -837,7 +838,7 @@ class ParserState:
           if prefix == "var" and mappingCfg is not None:
             mapping = make_mapping(mappingCfg)
           else:
-            refOrValueRe = re.compile("([+\-*/&|]*)([^ +\-*/&|]*)(.*?)")
+            refOrValueRe = re.compile(r"([+\-*/&|]*)([^ +\-*/&|]*)(.*?)")
             refOrValueMatch = refOrValueRe.match(suffix)
             if refOrValueMatch is not None:
               suffix = refOrValueMatch.group(2)
@@ -845,7 +846,7 @@ class ParserState:
               mapping = make_expression_mapping(g1, g3)
           break
     elif is_str_type(refOrValue):
-      refOrValueRe = re.compile("(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
+      refOrValueRe = re.compile(r"(.*?)(obj|arg|var):([^ +\-*/&|]*)(.*?)")
       refOrValueMatch = refOrValueRe.match(refOrValue)
       if refOrValueMatch is not None:
         prefix, suffix = refOrValueMatch.group(2), refOrValueMatch.group(3)
@@ -1299,11 +1300,11 @@ def parse_modifier_desc(s, state, sep="."):
   return DevCodeState(dev=t.shash, code=t.code, state=t.state)
 
 
-class ReloadException:
+class ReloadException (BaseException):
   pass
 
 
-class ExitException:
+class ExitException (BaseException):
   pass
 
 
@@ -1518,8 +1519,7 @@ class EventCompressorDevice:
       event = self.next_.read_one()
       if event is None:
         if len(self.events_) != 0:
-          k, event = self.events_.items()[0]
-          del self.events_[k]
+          k, event = self.events_.popitem()
         break
       elif event.type == codes.EV_REL:
         k = (event.idev, event.code, None if event.modifiers is None else tuple(m for m in event.modifiers))
@@ -9489,8 +9489,8 @@ def make_parser():
           actionName = o.get("action", o.get("type", None))
           if actionName in ("resetCurve", "resetCurves"):
             return 10
-        else:
-          return 0
+        #Fallback, no "else"!
+        return 0
       r = 0
       do = b.get("odev", b.get("do", None))
       if type(do) is list:

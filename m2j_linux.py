@@ -191,7 +191,8 @@ class EvdevJoystick:
 
     for tcAxis,axisData in axesDatum.items():
       self.axesDatum_[tcAxis] = TrimmedAxisData(limits=axisData.limits, nativeLimits=axisData.nativeLimits, value=axisData.value)
-      absInfo = AbsInfo(value=axisData.value, min=axisData.nativeLimits[0], max=axisData.nativeLimits[1], fuzz=axisData.fuzz, flat=axisData.flat, resolution=axisData.resolution)
+      #Values in AbsInfo must be ints or evdev.UInput will not be constructed
+      absInfo = AbsInfo(value=int(axisData.value), min=int(axisData.nativeLimits[0]), max=int(axisData.nativeLimits[1]), fuzz=axisData.fuzz, flat=axisData.flat, resolution=axisData.resolution)
       nativeAxesDatum.append((code2ecode(tcAxis.code), absInfo))
     cap[ecodes.EV_ABS] = nativeAxesDatum
 
@@ -352,11 +353,38 @@ class EvdevIDev:
       return False
 
 
+def hash_nested(v):
+    """
+    Compute a consistent hash value for a nested tuple using SHA-256.
+
+    Args:
+    nested_tuple (tuple): The nested tuple to hash.
+
+    Returns:
+    str: The hexadecimal representation of the SHA-256 hash value.
+    """
+    def recursive_hash(obj):
+        if isinstance(obj, tuple):
+            return b''.join(recursive_hash(item) for item in obj)
+        elif isinstance(obj, (int, long, float, str, bool, type(None))):
+            return str(obj).encode('utf-8')
+        else:
+            raise ValueError("Unsupported type: {}".format(type(obj)))
+
+    import hashlib
+    # Create a SHA-256 hash object
+    sha256 = hashlib.sha256()
+    # Update the hash object with the serialized nested tuple
+    sha256.update(recursive_hash(v))
+    # Return the hexadecimal representation of the hash value
+    return sha256.hexdigest()
+
+
 def calc_device_hash(device):
     caps = device.capabilities(verbose=False, absinfo=False)
     info = tuple((k, tuple(i for i in v),) for k,v in caps.items())
-    info = (device.name, info,)
-    return hash(info)
+    info = (device.name, info)
+    return hash_nested(info)
 
 
 class NativeEvdevIDevFactory:
@@ -384,11 +412,11 @@ class NativeEvdevIDevFactory:
       for device in evdev.list_devices():
         try:
           yield evdev.InputDevice(device)
-        except OSError, e:
+        except OSError as e:
           logger.warning("Failed to create evdev device that should be present: {}".format(e))
           continue
     def make_info_(device):
-      return self.Info_(device.path, device.name.strip(" "), device.phys, "{:X}".format(calc_device_hash(device)))
+      return self.Info_(device.path, device.name.strip(" "), device.phys, calc_device_hash(device))
     self.dis_ = [self.DeviceAndInfo_(device, make_info_(device)) for device in device_generator()]
 
   def __init__(self):
@@ -494,7 +522,7 @@ def get_idevs_info(**kwargs):
     r.append(
       {
         "name" : d.name, "path" : d.path, "caps" : capsInfo, "fn" : d.fn, "info" : d.info,
-        "phys" : d.phys, "uniq" : d.uniq, "hash" : "{:X}".format(calc_device_hash(d))
+        "phys" : d.phys, "uniq" : d.uniq, "hash" : calc_device_hash(d)
       }
     )
   return r
