@@ -2,7 +2,7 @@
 
 ## What is it?
 
-Cross-platform mouse-to-joystick emulator written in Python (2.7).
+Cross-platform mouse-to-joystick emulator written in Python (2.7 and 3).
 
 ## Features
 
@@ -10,18 +10,26 @@ Cross-platform mouse-to-joystick emulator written in Python (2.7).
  * Can map input from multiple input devices to multiple output devices (virtual joysticks). The configuration that uses 2 mice is quite convenient.  
  * Is extensively configurable: the actual mapping is specified not in the code, but in JSON configuration files.  
 
-## Why Python 2?
+## Python 2 and Python 3 versions available
 
-Because of dependencies (namely, `pywin32`). The project aims to support as low as 32-bit Windows XP. The last version of Python 3 that supports Windows XP is 3.4.4, but `pywin32` requires at least Python 3.5. `evdev` used under Linux requires at least Python 3.5, but can be backported to Python 2.7.  
+The project was initially developed to be run by Python 2 to support as low as 32-bit Windows XP. Windows version of `m2j` uses `pywin32` library. The last version of Python 3 that supports Windows XP is 3.4.4, but `pywin32` requires at least Python 3.5. Linux version of `m2j` uses `evdev` library, that requires at least Python 3.5, but can be backported to Python 2.7.  
 
 ## What's inside
 
 ### Code
 
+#### Python 2
+
  * `m2j.py` - platform-independent library code
  * `m2j_linux.py` - run this under Linux
  * `m2j_win.py` - run this under Windows
  
+#### Python 3
+
+ * `m2j3.py` - platform-independent library code
+ * `m2j_linux3.py` - run this under Linux
+ * `m2j_win3.py` - run this under Windows
+
 ### Configuration files
 
  * `curves.cfg` - main config file, contains config nodes that are used to initialize a configuration
@@ -63,6 +71,8 @@ Also, be sure to check companion utilities that can be used alongside with `m2j`
 
 (# means running command in shell as root, $ - as regular user)
 
+###### Python 2
+
 Compile the last version of Python 2.7 (2.7.18) if needed  
 `#apt install tk tk-dev libssl-dev`  
 `$wget https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz`  
@@ -92,10 +102,21 @@ Installing evdev-1.7.0 for Python 2.7
 `$./setup.py build`  
 `$./setup.py install --prefix ~/.local/`  
 
+###### Python 3
+
+Install Python 3
+
+Download `playsound` from ([Github](https://pypi.org/project/playsound)) and unpack `playsound.py` to directory with `m2j_linux3.py` and other script files
+
+Install `evdev`
+`$pip3 install evdev` or `#apt install python3-evdev` if `pip3` complains about externally managed environment
+
+###### uinput rights
+
 May need to  
 `#modprobe -i uinput`  
 
-`m2j_linux.py` uses /dev/uinput , which typically belongs to user root and group root. In order to be able to run emulator without sudo following steps are needed:
+`m2j_linux.py` and `m2j_linux3.py` use /dev/uinput , which typically belongs to user root and group root. In order to be able to run emulator without sudo following steps are needed:
 
 add group `uinput` (can be any other appropriate name)  
 `#groupadd uinput`  
@@ -122,14 +143,16 @@ check
 
 #### Running
 
-`$./m2j_linux.py` or `$./m2j_linux.py -h` - for get help about command-line switches  
-`$./m2j_linux.py -c configname.cfg` - to use configuration specified in `configname.cfg`. I.e. `$./m2j_linux.py -c m2j_1mouse_linux.cfg` runs 1-mouse configuration.  
+`$./m2j_linux[3].py` or `$./m2j_linux[3].py -h` - for get help about command-line switches  
+`$./m2j_linux[3].py -c configname.cfg` - to use configuration specified in `configname.cfg`. I.e. `$./m2j_linux.py -c m2j_1mouse_linux.cfg` runs Python 2-based script with 1-mouse configuration.  
 
 ### Windows 
 
 #### Installing
 
-##### Dependencies
+##### Python 2
+
+###### Dependencies
 
  * `playsound` module - for playing sounds  
  * `pywin32` module - for reading and emulating input ([Github](https://github.com/mhammond/pywin32); last build supporting Python 2.7 is [228](https://github.com/mhammond/pywin32/releases/tag/b228))  
@@ -137,9 +160,21 @@ check
     * `ppjoy` (supports up to 32-bit (?) Windows XP; [Github](https://github.com/elitak/PPJoy/releases)) or
     * `vJoy` ([Github](https://sourceforge.net/projects/vjoystick/); forks: [\[1\]](https://github.com/shauleiz/vJoy), [\[2\]](https://github.com/jshafer817/vJoy), [\[3\]](https://github.com/njz3/vJoy/). It seems that fork 3 is the most recent, [last build](https://github.com/njz3/vJoy/releases/tag/v2.2.1.1) requires at least 32-bit Windows 7.)  
 
-##### Installation procedure
+###### Installation procedure
+
+####### Python 2
+
+Install Python 2
 
 In command line: `pip install pywin32 playsound`
+
+####### Python 3
+
+Install Python 3
+
+In command line: `pip install pywin32 playsound`
+
+####### Common steps
 
 Install appropriate virtual joystick driver  
 
@@ -147,19 +182,17 @@ Create 5 joysticks (8 axes and 16 buttons each)
 
 Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL to enable and disable mouse input for the game using DirectInput API.
 
-#### Running
+##### Running
 
-`m2j_win.py` or `m2j_win.py -h` - for get help about command-line switches  
-`m2j_win.py -c configname.cfg` - to use configuration specified in `configname.cfg` I.e. `m2j_win.py -c m2j_1mouse_win.cfg` runs 1-mouse configuration.    
+`m2j_win[3].py` or `m2j_win[3].py -h` - for get help about command-line switches  
+`m2j_win[3].py -c configname.cfg` - to use configuration specified in `configname.cfg` I.e. `m2j_win.py -c m2j_1mouse_win.cfg` runs Python 2-based script with 1-mouse configuration.  
 
 ### Command-line switches
 
-```
--h | --help : help message
--d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)
--j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)
--i | --log_input : log input from input devices to console (Ctrl-C to exit)
--p presetName | --preset=presetName : use preset presetName
--c configFileName | --config=configFileName : use config file configFileName
--v log_level | --log_level=logLevel : set log level to logLevel
-```
+`-h | --help : help message`  
+`-d fileName | --devices=fileName : print input devices info to file fileName (- for stdout)`  
+`-j fileName | --devices_json=fileName : print input devices JSON config to file fileName (- for stdout)`  
+`-i | --log_input : log input from input devices to console (Ctrl-C to exit)`  
+`-p presetName | --preset=presetName : use preset presetName`  
+`-c configFileName | --config=configFileName : use config file configFileName`  
+`-v log_level | --log_level=logLevel : set log level to logLevel`  
