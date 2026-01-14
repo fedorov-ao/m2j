@@ -180,7 +180,7 @@ Install appropriate virtual joystick driver
 
 Create 5 joysticks (8 axes and 16 buttons each)
 
-Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL to enable and disable mouse input for the game using DirectInput API.
+Use [dinput8blocker](https://github.com/fedorov-ao/dinput8blocker) wrapper DLL to enable and disable mouse input for the game using DirectInput API. Alternatively, try [raw_input_blocker](https://github.com/fedorov-ao/raw_input_blocker) wrapper DLL to block/unblock raw mouse input.
 
 ##### Running
 

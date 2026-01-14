@@ -29,9 +29,11 @@ import logging
 import m2j3
 from m2j3 import *
 
-import win32con
 from ctypes import *
 from ctypes.wintypes import *
+import win32con
+import win32api
+import win32gui
 import win32file
 
 logger = get_logger(logging.getLogger(), "m2j_win")
@@ -1374,35 +1376,46 @@ class RawInputIDevManager:
   logger = get_logger(logger, "RawInputIDevManager")
 
   def __init__(self, useMessageWindow=True):
-    CreateWindowEx = windll.user32.CreateWindowExA
-    CreateWindowEx.argtypes = [c_int, c_char_p, c_char_p, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
-    CreateWindowEx.restype = ErrorIfZero
+    self.hwnd_, self.className_ = None, None
 
     # Define Window Class
-    wndclass = WNDCLASS()
+    wndclass = win32gui.WNDCLASS()
     wndclass.style = win32con.CS_HREDRAW | win32con.CS_VREDRAW
     wndclass.lpfnWndProc = WNDPROC(lambda h, m, w, l: self.wnd_proc_(h, m, w, l))
-    wndclass.cbClsExtra = wndclass.cbWndExtra = 0
-    wndclass.hInstance = windll.kernel32.GetModuleHandleA(c_int(win32con.NULL))
-    wndclass.hIcon = windll.user32.LoadIconA(c_int(win32con.NULL), c_int(win32con.IDI_APPLICATION))
-    wndclass.hCursor = windll.user32.LoadCursorA(c_int(win32con.NULL), c_int(win32con.IDC_ARROW))
-    wndclass.hbrBackground = windll.gdi32.GetStockObject(c_int(win32con.WHITE_BRUSH))
-    wndclass.lpszMenuName = None
-    wndclass.lpszClassName = str(id(self))
+    #Not found in win32gui.WNDCLASS
+    #wndclass.cbClsExtra = 0
+    wndclass.cbWndExtra = 0
+    wndclass.hInstance = win32gui.GetModuleHandle(None)
+    wndclass.hIcon = win32gui.LoadIcon(None, win32con.IDI_APPLICATION)
+    wndclass.hCursor = win32gui.LoadCursor(None, win32con.IDC_ARROW)
+    wndclass.hbrBackground = windll.gdi32.GetStockObject(win32con.WHITE_BRUSH)
+    wndclass.lpszMenuName = ""
+    wndclass.lpszClassName = "RawInputIDevManager"
     # Register Window Class
-    if not windll.user32.RegisterClassA(byref(wndclass)):
-        raise WinError()
+    if not win32gui.RegisterClass(wndclass):
+      raise WinError()
     #Need to store reference to wndclass or DestroyWindow will fail!
-    self.wndclass = wndclass
+    self.className_ = wndclass.lpszClassName
     # Create Window
-    hwnd = CreateWindowEx(
-      0, wndclass.lpszClassName, str(id(self)),
-      win32con.WS_OVERLAPPEDWINDOW, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT, win32con.CW_USEDEFAULT,
-      win32con.HWND_MESSAGE if useMessageWindow else win32con.NULL,
-      win32con.NULL, wndclass.hInstance, win32con.NULL)
+    hwnd = win32gui.CreateWindowEx(
+      0,
+      wndclass.lpszClassName,
+      "RawInputIDevManager",
+      win32con.WS_OVERLAPPEDWINDOW,
+      win32con.CW_USEDEFAULT,
+      win32con.CW_USEDEFAULT,
+      win32con.CW_USEDEFAULT,
+      win32con.CW_USEDEFAULT,
+      win32con.HWND_MESSAGE if useMessageWindow else None,
+      None,
+      wndclass.hInstance,
+      None
+    )
+    if not hwnd:
+      raise WinError()
     if not useMessageWindow:
-      windll.user32.ShowWindow(c_int(hwnd), c_int(win32con.SW_SHOWNORMAL))
-      windll.user32.UpdateWindow(c_int(hwnd))
+      win32gui.ShowWindow(hwnd, win32con.SW_SHOWNORMAL)
+      win32gui.UpdateWindow(hwnd)
     #TODO Check for error
     self.hwnd_ = hwnd
 
@@ -1418,20 +1431,18 @@ class RawInputIDevManager:
     self.logger.debug("{}: destroyed".format(log_loc(self)))
 
   def stop(self):
-    if hasattr(self, "hwnd"):
-      r = windll.user32.DestroyWindow(self.hwnd_)
+    if self.hwnd_ is not None:
+      r = win32gui.DestroyWindow(self.hwnd_)
       if r == 0:
-        e = windll.kernel32.GetLastError()
-        raise RuntimeError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd_, e))
+        raise RuntimeError("Error destroying window 0x{:x}, error 0x{:x}".format(self.hwnd_, windll.kernel32.GetLastError()))
       else:
-        del self.hwnd_
-    if hasattr(self, "wndclass"):
-      r = windll.user32.UnregisterClassA(self.wndclass.lpszClassName, 0)
+        self.hwnd_ = None
+    if self.className_ is not None:
+      r = win32gui.UnregisterClass(self.className_, 0)
       if r == 0:
-        e = windll.kernel32.GetLastError()
-        raise RuntimeError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, e))
+        raise RuntimeError("Error unregistering window class {}, error 0x{:x}".format(self.wndclass.lpszClassName, windll.kernel32.GetLastError()))
       else:
-        del self.wndclass
+        self.className_ = None
 
   def update(self):
     """
@@ -1439,40 +1450,43 @@ class RawInputIDevManager:
     Needs to be run at least once per global loop iteration.
     """
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update()".format(log_loc(self)))
-    msg = MSG()
-    PM_REMOVE = 1
-    while windll.user32.PeekMessageA(byref(msg), self.hwnd_, 0, 0, PM_REMOVE) != 0:
-      if msg.message != WM_INPUT:
-        windll.user32.DispatchMessageA(byref(msg))
-        continue
-      #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): got WM_INPUT".format(log_loc(self)))
-      dwSize = c_uint(0)
-      r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
-      if r < 0:
-        raise RuntimeError("Failed to get buffer size")
-      buf = create_string_buffer(dwSize.value)
-      r = windll.user32.GetRawInputData(msg.lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
-      #TODO What if r == 0?
-      if r < 0:
-        raise RuntimeError("Failed to fill buffer")
-      elif r > 0:
-        raw = cast(buf, POINTER(RAWINPUT)).contents
-        tdi = self.trackedDeviceInfos_.get(raw.header.hDevice)
-        if tdi is None:
+    while True:
+      msgs = win32gui.PeekMessage(0, 0, 0, win32con.PM_REMOVE)
+      if msgs[0] == 0:
+        break
+      for msg in msgs[1:]:
+        message, lParam = msg[1], msg[3]
+        if message != WM_INPUT:
+          win32gui.DispatchMessage(msg)
           continue
-        idevID = tdi.idevID
-        events = None
-        if raw.header.dwType == RIM_TYPEMOUSE:
-          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got mouse event".format(log_loc(self)))
-          events = self.process_mouse_event_(raw, idevID)
-        elif raw.header.dwType == RIM_TYPEKEYBOARD:
-          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got keyboard event".format(log_loc(self)))
-          events = self.process_kbd_event_(raw, idevID)
-        elif raw.header.dwType == RIM_TYPEHID:
-          #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got HID event".format(log_loc(self)))
-          events = self.process_hid_event_(raw, idevID)
-        if events is not None:
-          tdi.idev.add_events(events)
+        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): got WM_INPUT".format(log_loc(self)))
+        dwSize = c_uint(0)
+        r = windll.user32.GetRawInputData(lParam, RID_INPUT, 0, byref(dwSize), sizeof(RAWINPUTHEADER))
+        if r < 0:
+          raise RuntimeError("Failed to get buffer size")
+        buf = create_string_buffer(dwSize.value)
+        r = windll.user32.GetRawInputData(lParam, RID_INPUT, buf, byref(dwSize), sizeof(RAWINPUTHEADER))
+        #TODO What if r == 0?
+        if r < 0:
+          raise RuntimeError("Failed to fill buffer")
+        elif r > 0:
+          raw = cast(buf, POINTER(RAWINPUT)).contents
+          tdi = self.trackedDeviceInfos_.get(raw.header.hDevice)
+          if tdi is None:
+            continue
+          idevID = tdi.idevID
+          events = None
+          if raw.header.dwType == RIM_TYPEMOUSE:
+            #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got mouse event".format(log_loc(self)))
+            events = self.process_mouse_event_(raw, idevID)
+          elif raw.header.dwType == RIM_TYPEKEYBOARD:
+            #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got keyboard event".format(log_loc(self)))
+            events = self.process_kbd_event_(raw, idevID)
+          elif raw.header.dwType == RIM_TYPEHID:
+            #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}.update(): Got HID event".format(log_loc(self)))
+            events = self.process_hid_event_(raw, idevID)
+          if events is not None:
+            tdi.idev.add_events(events)
 
   def make_device(self, idevID, idevIDNative, **kwargs):
     """
@@ -1540,7 +1554,7 @@ class RawInputIDevManager:
         self.usage = kwargs.get("usage", 0)
         self.hash = kwargs.get("hash", None)
       def __str__(self):
-        return "{} {} {} {} {} {}".format(self.handle, self.type, self.name, self.usagePage, self.usage, self.hash)
+        return "{{handle:{}, type:{}, name:{}, usagePage:{}, usage:{}, hash:{}}}".format(self.handle, self.type, self.name, self.usagePage, self.usage, self.hash)
     infos = []
     for i in range(uiNumDevices.value):
       ridl = rawInputDeviceList[i]
@@ -1563,8 +1577,8 @@ class RawInputIDevManager:
       di = DeviceInfo()
       #Native device name contains backslashes that would have to be escaped (by doubling them) in the JSON config.
       #So backslashes are replaced with forward slashes to avoid that.
-      name = pName.value.replace("\\", "/")
-      di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, name, str(hash(name))
+      name = pName.value.replace(b"\\", b"/").decode("utf-8")
+      di.handle, di.type, di.name, di.hash = ridl.hDevice, ridl.dwType, name, hash_nested(name)
       if ridl.dwType == RIM_TYPEMOUSE:
         di.usagePage, di.usage = HID_USAGE_PAGE_GENERIC, HID_USAGE_GENERIC_MOUSE
       elif ridl.dwType == RIM_TYPEKEYBOARD:
@@ -1579,7 +1593,7 @@ class RawInputIDevManager:
   def wnd_proc_(self, hwnd, message, wParam, lParam):
     if message == win32con.WM_DESTROY:
       windll.user32.PostQuitMessage(0)
-    return windll.user32.DefWindowProcA(c_int(hwnd), c_int(message), c_int(wParam), c_int(lParam))
+    return win32gui.DefWindowProc(hwnd, message, wParam, lParam)
 
   def process_mouse_event_(self, raw, idevID):
     ts, events = time.time(), []

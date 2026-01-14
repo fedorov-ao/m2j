@@ -298,6 +298,33 @@ class CfgStack:
   DELETE = 1
 
 
+def hash_nested(v):
+    """
+    Compute a consistent hash value for a nested tuple using SHA-256.
+
+    Args:
+    nested_tuple (tuple): The nested tuple to hash.
+
+    Returns:
+    str: The hexadecimal representation of the SHA-256 hash value.
+    """
+    def recursive_hash(obj):
+        if isinstance(obj, tuple):
+            return b''.join(recursive_hash(item) for item in obj)
+        elif isinstance(obj, (int, float, str, bool, type(None))):
+            return str(obj).encode('utf-8')
+        else:
+            raise ValueError(f"Unsupported type: {type(obj)}")
+
+    import hashlib
+    # Create a SHA-256 hash object
+    sha256 = hashlib.sha256()
+    # Update the hash object with the serialized nested tuple
+    sha256.update(recursive_hash(v))
+    # Return the hexadecimal representation of the hash value
+    return sha256.hexdigest()
+
+
 def set_nested(d, name, value, sep = "."):
   def check_type(d, name):
     if not is_dict_type(d) and not is_list_type(d):
