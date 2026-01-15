@@ -19,6 +19,7 @@ import tkinter as tk
 import getopt
 import playsound
 import threading
+import operator
 
 
 def get_func_name():
@@ -9346,24 +9347,21 @@ def make_parser():
       r.append(("idev", EqPropTest(idevHash)))
     value = get_nested_d(cfg, "value")
     if value is not None:
-      gt = lambda eventValue, attrValue : cmp(eventValue, attrValue) > 0
-      lt = lambda eventValue, attrValue : cmp(eventValue, attrValue) < 0
-      eq = lambda eventValue, attrValue : cmp(eventValue, attrValue) == 0
       op = None
       if value == "+":
-        op = gt
+        op = operator.gt
         value = 0.0
       elif value == "-":
-        op = lt
+        op = operator.lt
         value = 0.0
       elif value[0] == ">":
-        op = gt
+        op = operator.gt
         value = float(value[1:])
       elif value[0] == "<":
-        op = lt
+        op = operator.lt
         value = float(value[1:])
       else:
-        op = eq
+        op = operator.eq
         value = float(value)
       r.append(("value", CmpPropTest(value, op)))
     return r
