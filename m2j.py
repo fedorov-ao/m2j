@@ -9028,7 +9028,9 @@ def make_parser():
         else:
           logger.error("Unexpected element {} of type {} in vars".format(name, type(value)))
       return r
-    fileName = state.resolve(cfg, "file", cls=str)
+    fileName = state.resolve_d(cfg, "file", cls=str)
+    if not fileName:
+      fileName = state.resolve(state.get("main").get("config"), "varsConfig", cls=str)
     groupName = state.resolve_d(cfg, "group", None, cls=str)
     def op(e):
       varsCfg = state.get("main").get("varManager").get_vars()
@@ -10517,11 +10519,14 @@ class Main:
     varsCfg = config.get("vars", {})
     varsFileName = state.resolve_d(config, "varsConfig", None)
     if varsFileName is not None:
-      with open(varsFileName, "r") as f:
-        varsFileCfg = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
-        varsFileCfg = varsFileCfg.get("vars", {})
-        should_overwrite = lambda key,destinationValue,sourceValue : is_dict_type(sourceValue) and has_value_tag(sourceValue)
-        merge_dicts(varsCfg, varsFileCfg, should_overwrite)
+      try:
+        with open(varsFileName, "r") as f:
+          varsFileCfg = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
+          varsFileCfg = varsFileCfg.get("vars", {})
+          should_overwrite = lambda key,destinationValue,sourceValue : is_dict_type(sourceValue) and has_value_tag(sourceValue)
+          merge_dicts(varsCfg, varsFileCfg, should_overwrite)
+      except FileNotFoundError:
+        logger.warning("Vars config {} not found.".format(varsFileName))
     varMappingsCfg = config.get("varMappings", {})
     varManager = self.get("varManager")
     def get_mapping_cfg(tokens, varMappingsCfg):

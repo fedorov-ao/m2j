@@ -1381,7 +1381,7 @@ class RawInputIDevManager:
     # Define Window Class
     wndclass = win32gui.WNDCLASS()
     wndclass.style = win32con.CS_HREDRAW | win32con.CS_VREDRAW
-    wndclass.lpfnWndProc = WNDPROC(lambda h, m, w, l: self.wnd_proc_(h, m, w, l))
+    wndclass.lpfnWndProc = WNDPROC(self.wnd_proc_)
     #Not found in win32gui.WNDCLASS
     #wndclass.cbClsExtra = 0
     wndclass.cbWndExtra = 0
