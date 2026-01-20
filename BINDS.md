@@ -33,16 +33,16 @@ Virtual joysticks are also referred by names. For example, `joystick1.X` is X ax
 
 This section describes which axes/buttons of which virtual joystick are controlled in a given mode, along with some comments (like possible bindings for IL-2 1946 or LockOn).
 
-**rmouse**
+#### rmouse
 
-**pri,sec,ter,qua,hat**
+##### pri,sec,ter,qua,hat
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |move|rmouse.X||move|joystick.X|roll|roll||
 |move|rmouse.Y||move|joystick.Y|pitch|pitch||
 
-**pri**
+##### pri
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -68,7 +68,7 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|lmouse.EXTRA|rmouse.SIDE|switch to/from|aux3||||
 |press/release|lmouse.EXTRA|rmouse.EXTRA|switch to/from|aux4||||
 
-**sec**
+##### sec
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -77,7 +77,7 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.MMB||press/release|joystick.4||toggle cannon||
 |move|rmouse.WHEEL||move|joystick.RX|propeller pitch|||
 
-**ter**
+##### ter
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -89,40 +89,56 @@ This section describes which axes/buttons of which virtual joystick are controll
 |hold/release|rmouse.MMB||press/release|joystick.13||retract airbrake||
 |move|rmouse.WHEEL||move|joystick.RZ|flaps|||
 
-**qua**
+##### qua
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-|press/release|rmouse.LMB||press/release|joystick.5|level stabisizer|chaff||
-|press/release|rmouse.RMB||press/release|joystick.6|bomb bay doors|flare||
-|press/release|rmouse.MMB||press/release|joystick.7||||
+|click|rmouse.LMB||click|joystick2.0||||
+|hold/release|rmouse.LMB||press/release|joystick2.3||||
+|click|rmouse.RMB||click|joystick2.1||||
+|hold/release|rmouse.RMB||press/release|joystick2.4||||
+|click|rmouse.MMB||click|joystick2.2||||
+|hold/release|rmouse.MMB||press/release|joystick2.5||||
 |move|rmouse.WHEEL||move|joystick.RY|radiator|||
 
-**pent**
+##### pent
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-|press/release|rmouse.LMB||press/release|joystick.14|extend/retract gears|||
-|press/release|rmouse.RMB||press/release|joystick.15|lock/unlock tail wheel|||
+|click|rmouse.LMB||click|joystick.5|lock/unlock tail wheel|||
+|hold/release|rmouse.LMB||press/release|joystick.14|gear up/down|||
+|click|rmouse.RMB||click|joystick.6|level stabilizer|||
+|hold/release|rmouse.RMB||press/release|joystick.15|open/close bomb bay doors|||
+|press/release|rmouse.MMB||press/release|joystick.7||||
 |move|rmouse.WHEEL||move|joystick.Z|rudder|||
 
-**reng**
+##### reng
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|rmouse.LMB||click|joystick2.6||||
+|hold/release|rmouse.LMB||press/release|joystick2.9||||
+|click|rmouse.RMB||click|joystick2.7||||
+|hold/release|rmouse.RMB||press/release|joystick2.10||||
+|click|rmouse.MMB||click|joystick2.8||||
+|hold/release|rmouse.MMB||press/release|joystick2.11||||
 |move|rmouse.WHEEL||move|joystick2.X|right engines throttle|||
 |move|rmouse.WHEEL|rmouse.SIDE|move|joystick2.Y|right engines propellers pitch|||
 |move|rmouse.WHEEL|rmouse.EXTRA|move|joystick2.Z|right engines mix|||
 
-**leng**
+##### leng
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|rmouse.LMB||click|joystick2.12||||
+|hold/release|rmouse.LMB||press/release|joystick2.14||||
+|click|rmouse.RMB||click|joystick2.13||||
+|hold/release|rmouse.RMB||press/release|joystick2.15||||
 |move|rmouse.WHEEL||move|joystick2.RX|left engines throttle|||
 |move|rmouse.WHEEL|rmouse.SIDE|move|joystick2.RY|left engines propellers pitch|||
 |move|rmouse.WHEEL|rmouse.EXTRA|move|joystick2.RZ|left engines mix|||
 
-**hat**
+##### hat
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -131,7 +147,39 @@ This section describes which axes/buttons of which virtual joystick are controll
 |press/release|rmouse.EXTRA||move up|head.Y|||depends on the current hat mode|
 |press/release|rmouse.SIDE||move down (?)|head.Y|||depends on the current hat mode|
 
-**aux3**
+##### hat in **combined** mode
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|rmouse.MMB||toggle between **rotation** and **movement** modes|||||
+
+###### rotation
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|rmouse.LMB||turn left in steps|head.RX||||
+|hold|rmouse.LMB||turn left gradually|head.RX||||
+|click|rmouse.RMB||turn right in steps|head.RX||||
+|hold|rmouse.RMB||turn right gradually|head.RX||||
+|click|rmouse.EXTRA||turn up in steps|head.RY||||
+|hold|rmouse.EXTRA||turn up gradually|head.RY||||
+|click|rmouse.SIDE||turn down in steps|head.RY||||
+|hold|rmouse.SIDE||turn down gradually|head.RY||||
+
+###### movement
+
+|action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
+|:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+|click|rmouse.LMB||move left in steps|head.X||||
+|hold|rmouse.LMB||move left gradually|head.X||||
+|click|rmouse.RMB||move right in steps|head.X||||
+|hold|rmouse.RMB||move right gradually|head.X||||
+|click|rmouse.EXTRA||move up in steps|head.Y||||
+|hold|rmouse.EXTRA||move up gradually|head.Y||||
+|click|rmouse.SIDE||move down in steps|head.Y||||
+|hold|rmouse.SIDE||move down gradually|head.Y||||
+
+##### aux3
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -145,7 +193,7 @@ This section describes which axes/buttons of which virtual joystick are controll
 |hold/release|rmouse.MIDDLE||press/release|joystick3.7||||
 |hold/release|rmouse.MIDDLE||press/release|joystick3.15||||
 
-**aux4**
+##### aux4
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -157,9 +205,9 @@ This section describes which axes/buttons of which virtual joystick are controll
 |move down|rmouse.WHEEL||click or hold|joystick3.13||||
 |click|rmouse.MIDDLE||click|joystick3.14||||
 
-**lmouse**
+#### lmouse
 
-**yaw**
+##### yaw
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -201,7 +249,7 @@ __var `2mice2.switcher` == toggle__
 |click|lmouse.LMB||switch to|head_rotation||||
 |click|lmouse.RMB|lmouse.LMB|switch to|head_movement||||
 
-**fwd**
+##### fwd
 
 When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward and down, zoom full out).
 
@@ -214,7 +262,7 @@ When entering `fwd` mode the `head` joystick is set to `fwd` pose (look forward 
 |release|rmouse.RMB|rmouse.SIDE|switch to|yaw|||look straight forward and zoom full out|
 |release|rmouse.RMB|rmouse.EXTRA|switch to|yaw|||look straight forward and zoom full in|
 
-**fwd2**, **fwd3**, **fwd4**
+##### fwd2, fwd3, fwd4
 
 When entering `fwd2`, `fwd3`, `fwd4` mode the `head` joystick is set respectively to `pose2`, `pose3`, `pose4` pose
 
@@ -225,7 +273,7 @@ When entering `fwd2`, `fwd3`, `fwd4` mode the `head` joystick is set respectivel
 |press|lmouse.LMB||update pose|saved pose||||
 |release|rmouse.RMB||switch to|yaw|||return view to previous state, lmouse.X controls joystick.Z|
 
-**head_rotation**
+##### head_rotation
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -255,7 +303,7 @@ __var `2mice2.switcher` == toggle__
 |click|lmouse.LMB||switch to|yaw||||
 |click|lmouse.RMB|lmouse.LMB|switch to|head_movement||||
 
-**head_movement**
+##### head_movement
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -269,7 +317,7 @@ __var `2mice2.switcher` == toggle__
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 |click|lmouse.RMB|lmouse.LMB|switch to|previous mode (yaw or head_rotation)||||
 
-**aux1**
+##### aux1
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
@@ -279,7 +327,7 @@ __var `2mice2.switcher` == toggle__
 |click|lmouse.MMB||center|joystick3.Z||||
 |hold|lmouse.MMB||center|joystick3.X, joystick3.Y, joystick3.Z||||
 
-**aux2**
+##### aux2
 
 |action|input|modifiers|action|argument (output/mode/etc)|1946|LockOn|note|
 |:---:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
