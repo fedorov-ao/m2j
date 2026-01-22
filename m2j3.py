@@ -6053,6 +6053,8 @@ class RelativeHeadMovementJoystick:
       for i in range(len(gp)):
         l += gp[i]*d[i]
       return l
+    elif tcAxis in self.tcAngleAxes_:
+      return self.angles_[tcAxis]
     else:
       return self.next_.get_axis_value(tcAxis)
 
@@ -6179,7 +6181,7 @@ class RelativeHeadMovementJoystick:
     for tca in self.tcPosAxes_:
       ia = self.tcPosAxes_.index(tca)
       for j in range(len(self.dirs_)):
-        gp[ia] += lp[ia]*self.dirs_[j][ia]
+        gp[ia] += lp[j]*self.dirs_[j][ia]
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
     return gp
 
