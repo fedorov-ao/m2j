@@ -84,21 +84,26 @@ def lerp(fv, fb, fe, tb, te):
   return a*fv + b
 
 
-def select_nearest(b, e, values, selectExactMatch=True):
+SELECT_NEAREST_MATCH_NONE = 0
+SELECT_NEAREST_MATCH_B = 1
+SELECT_NEAREST_MATCH_E = 2
+SELECT_NEAREST_MATCH_BOTH = 3
+
+def select_nearest(b, e, values, match=SELECT_NEAREST_MATCH_BOTH, eps=1e-6):
   """
   Selects a value from values that is nearest to b and lies in [b; e].
-  If selectExactMatch == False, value that is equal to b is not matched.
   """
   if values is None or len(values) == 0:
     return None
   selected, selectedDelta = None, float("inf")
   for v in values:
-    if v == b:
-      if selectExactMatch == True:
+    if abs(v - b) < eps:
+      if (match & SELECT_NEAREST_MATCH_B):
         return v
-      else:
-        continue
-    if clamp(v, b, e) == v:
+    elif abs(v - e) < eps:
+      if (match & SELECT_NEAREST_MATCH_E):
+        return v
+    elif clamp(v, b, e) == v:
       vDelta = abs(v - b)
       if vDelta < selectedDelta:
         selected, selectedDelta = v, vDelta
@@ -1753,10 +1758,10 @@ class MoveAxisBy:
       if self.stopAt_ is not None:
         current = self.axis_.get()
         proposed = current + value
-        selected = select_nearest(current, proposed, self.stopAt_, False)
-        if selected is not None:
-          value = selected - current
-      self.axis_.move(value, True)
+        selected = select_nearest(current, proposed, self.stopAt_, SELECT_NEAREST_MATCH_NONE)
+        final = selected if selected is not None else proposed
+      # Moving axis to absolute value to avoid rounding errors when moving by relative value
+      self.axis_.move(final, False)
     return True
 
   def set_value(self, value):
