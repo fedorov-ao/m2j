@@ -5883,79 +5883,42 @@ def make_reporting_joystick(f):
   return op
 
 
-def calc_sphere_intersection_params(p, d, r):
-  """Returns (t1, t2) such that points (position + direction*t1) and (postion + direction*t2) lie on sphere of radius r,
-     where p is position and d is direction."""
-  assert(len(p) == len(d))
-  l = len(p)
-  a, b, c = 0.0, 0.0, 0.0
-  for i in range(l):
-    a += d[i]**2.0
-    b += p[i]*d[i]
-    c += p[i]**2.0
+import transform_matrix3
+from transform_matrix3 import *
+
+
+def calc_sphere_intersection_params(point, direction, r):
+  """Returns (t1, t2) such that points (point + direction*t1) and (point + direction*t2) lie on sphere of radius r."""
+  assert(point.numrows == direction.numrows)
+  assert(point.numcols == direction.numcols)
+  a, b, c = direction.dot(direction), point.dot(direction), point.dot(point)
   b, c = 2.0*b, c - r**2.0
   D = b**2.0 - 4.0*a*c
   if D < 0.0:
      return None
   else:
     sqrtD = D**0.5
-    return (0.5*(-b + sqrtD)/a, 0.5*(-b - sqrtD)/a)
+    return (0.5*(-b + sqrtD)/a, 0.5*(-b - sqrtD)/a,)
 
 
-def calc_sphere_intersection_points(p, d, r):
-  assert(len(p) == len(d))
-  t = calc_sphere_intersection_params(p, d, r)
+def calc_sphere_intersection_points(point, direction, radius):
+  assert(point.numrows == direction.numrows)
+  assert(point.numcols == direction.numcols)
+  t = calc_sphere_intersection_params(point, direction, radius)
   if t is None:
     return None
   else:
     assert(len(t) == 2)
-    return (tuple((pc + dc*t[0] for pc,dc in zip(p,d))), tuple((pc + dc*t[1] for pc,dc in zip(p,d))))
+    return (point + direction*t[0], point + direction*t[1],)
 
 
 def clamp_to_sphere(point, radius):
-  r2 = 0.0
-  for coord in point:
-    r2 += coord**2.0
-  r2 = r2**0.5
+  r2 = (point.dot(point))**0.5
   if r2 > radius:
     m = radius / r2
-    return [m*coord for coord in point]
+    return point*m
   else:
     return point
-
-
-def vec_dot(v1, v2):
-  assert(len(v1) == len(v2))
-  r = 0.0
-  for i in range(len(v1)):
-    r += v1[i]*v2[i]
-  return r
-
-
-def vec_add(v1, v2):
-  assert(len(v1) == len(v2))
-  l = len(v1)
-  r = [0.0 for i in range(l)]
-  for i in range(l):
-    r[i] = v1[i]+v2[i]
-  return r
-
-
-def vec_sub(v1, v2):
-  assert(len(v1) == len(v2))
-  l = len(v1)
-  r = [0.0 for i in range(l)]
-  for i in range(l):
-    r[i] = v1[i]-v2[i]
-  return r
-
-
-def vec_mul(v, s):
-  return [s*vv for vv in v]
-
-
-def vec_copy(v):
-  return [vv for vv in v]
 
 
 class RelativeHeadMovementJoystick:
@@ -5978,68 +5941,66 @@ class RelativeHeadMovementJoystick:
       return 0.0 if relative else value
 
     if tcAxis in self.tcPosAxes_:
-      self.update_dirs_()
-
-      point = None
+      self.update_matrix_()
 
       #Get offset in global cs
-      offset = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
+      gCurrent = vector_from_list([self.next_.get_axis_value(tca) for tca in self.tcPosAxes_])
 
       #If relative - add to current pos in global cs
       iAxis = self.tcPosAxes_.index(tcAxis)
       if relative:
         #Convert to global cs
-        point = vec_mul(self.dirs_[iAxis], value)
-        point = vec_add(point, offset)
+        gProposed = gCurrent + self.m_.colvec(iAxis)*value
       else:
         #Convert offset to local cs, replace the value for given axis, and convert back to global cs
-        t = self.global_to_local_(offset)
-        t[iAxis] = value
-        point = self.local_to_global_(t)
+        lCurrent = self.global_to_local_(gCurrent)
+        vector_set(lCurrent, iAxis, value)
+        gProposed = self.local_to_global_(lCurrent)
 
-      #Clamp to sphere in global cs
-      clamped = clamp_to_sphere(point, self.r_)
-      if self.stick_ and point != clamped:
-        return 0.0 if relative else value
+      #Clamp to limits of next ep in global cs
+      t = 1.0
+      for iAxis_ in range(len(self.tcPosAxes_)):
+        tcAxis_ = self.tcPosAxes_[iAxis_]
+        limits = self.next_.get_limits(tcAxis_)
+        c = vector_get(gProposed, iAxis_)
+        cc = clamp(c, *limits)
+        if abs(c) > 1e-6:
+          t = min(t, cc / c)
+      assert(t >= 0.0)
+      assert(t <= 1.0)
+      gClamped = gProposed*t
 
-      #Clamp to limits of next ep and move, both in global cs
-      for ia in range(len(self.tcPosAxes_)):
-        tca = self.tcPosAxes_[ia]
-        limits = self.next_.get_limits(tca)
-        c, o = clamped[ia], offset[ia]
-        c = clamp(c, *limits)
-        if relative:
-          self.next_.move_axis(tca, c-o, relative=True)
-        else:
-          self.next_.move_axis(tca, c, relative=False)
+      #Move in global cs
+      gActual = vector_from_list([0.0, 0.0, 0.0])
+      for iAxis_ in range(len(self.tcPosAxes_)):
+        tcAxis_ = self.tcPosAxes_[iAxis_]
+        o = vector_get(gCurrent, iAxis_)
+        c = vector_get(gClamped, iAxis_)
+        v = c - o if relative else c
+        vector_set(gActual, iAxis_, self.next_.move_axis(tcAxis_, v, relative))
 
       self.limitsDirty_ = True
-      return value
+      return (gActual.dot(gActual))**0.5 if relative else vector_get(gActual, iAxis)
     elif tcAxis in self.tcAngleAxes_:
-      self.dirsDirty_ = True
-      ov = self.angles_[tcAxis]
-      v = value + ov if relative else value
-      if v == ov:
-        return 0.0 if relative else v
+      iAxis = self.tcAngleAxes_.index(tcAxis)
+      current = self.angles_[iAxis]
+      proposed = value + current if relative else value
+      if proposed == current:
+        return 0.0 if relative else proposed
       #FIXME Not exactly correct, because yaw and pitch limits do change if roll != 0.0.
       #Essentially, yaw-pitch limits "box" is rotated by -roll angle.
-      v = clamp(v, *self.get_limits(tcAxis))
-      self.angles_[tcAxis] = v
-      tcYaw, tcPitch, tcRoll = self.tcAngleAxes_
-      dRoll = self.angles_[tcRoll]
-      if dRoll != 0.0 and tcAxis in (tcYaw, tcPitch):
-        rRoll = math.radians(dRoll)
-        sinRoll, cosRoll = math.sin(rRoll), math.cos(rRoll)
-        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("dRoll:{:+0.3f} sinRoll:{:+0.3f} cosRoll:{:+0.3f}".format(dRoll, sinRoll, cosRoll))
-        dThisYaw, dThisPitch = self.angles_[tcYaw], self.angles_[tcPitch]
-        #Assuming that yaw increases when moving right, pitch increases when moving down, roll increases when tilting head to the right
-        dYaw = dThisYaw * cosRoll - dThisPitch * sinRoll
-        dPitch = dThisYaw * sinRoll + dThisPitch * cosRoll
-        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("dYaw:{:+0.3f} dPitch:{:+0.3f}".format(dYaw, dPitch))
-        self.next_.move_axis(tcYaw, dYaw, relative=False)
-        self.next_.move_axis(tcPitch, dPitch, relative=False)
-        return v - ov if relative else v
-    return self.next_.move_axis(tcAxis, value, relative)
+      self.angles_[iAxis] = clamp(proposed, *self.get_limits(tcAxis))
+      #assuming that angles_ is (yaw, pitch, roll,)
+      mRYP = matrix_from_angles(*self.angles_, ro=ROTATION_ORDER_RYP)
+      #assuming that angles_from_matrix() returns (yaw, pitch, roll,) and tcAngleAxes_ is (ABS_RX, ABS_RY, ABS_RZ,)
+      anglesYPR = angles_from_matrix(mRYP, ro=ROTATION_ORDER_YPR)
+      for i in range(len(self.tcAngleAxes_)):
+        self.next_.move_axis(self.tcAngleAxes_[i], anglesYPR[i], relative=False)
+      self.matrixDirty_ = True
+      actual = self.angles_[iAxis]
+      return actual - current if relative else actual
+    else:
+      return self.next_.move_axis(tcAxis, value, relative)
 
 
   def get_axis_value(self, tcAxis):
@@ -6047,15 +6008,13 @@ class RelativeHeadMovementJoystick:
     if self.next_ is None:
       return 0.0
     elif tcAxis in self.tcPosAxes_:
-      self.update_dirs_()
-      gp = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
-      l = 0.0
-      d = self.dirs_[self.tcPosAxes_.index(tcAxis)]
-      for i in range(len(gp)):
-        l += gp[i]*d[i]
+      self.update_matrix_()
+      gp = vector_from_list([self.next_.get_axis_value(tca) for tca in self.tcPosAxes_])
+      ia = self.tcPosAxes_.index(tcAxis)
+      l = gp.dot(self.m_.colvec(ia))
       return l
     elif tcAxis in self.tcAngleAxes_:
-      return self.angles_[tcAxis]
+      return self.angles_[self.tcAngleAxes_.index(tcAxis)]
     else:
       return self.next_.get_axis_value(tcAxis)
 
@@ -6064,10 +6023,10 @@ class RelativeHeadMovementJoystick:
     """Returns relative, local limits for position axes, calls next ep for other."""
     self.update_limits_()
     if self.next_ is None:
-      return (0.0, 0.0)
+      return (0.0, 0.0,)
     elif tcAxis in self.tcPosAxes_:
-      ia = self.tcPosAxes_.index(tcAxis)
-      return self.limits_[ia]
+      iAxis = self.tcPosAxes_.index(tcAxis)
+      return self.limits_[iAxis]
     else:
       return self.next_.get_limits(tcAxis)
 
@@ -6086,104 +6045,65 @@ class RelativeHeadMovementJoystick:
 
   def set_next(self, next):
     self.next_ = next
-    self.update_dirs_()
+    self.update_matrix_()
     self.update_limits_()
     return next
 
-  def __init__(self, next=None, r=float("inf"), stick=True):
-    self.next_, self.r_, self.stick_ = next, r, stick
-    self.dirs_, self.limits_ = [0.0, 0.0, 0.0], [(), (), ()]
-    self.angles_ = { self.tcAngleAxes_[i] : 0.0 for i in range(len(self.tcAngleAxes_)) }
-    self.dirsDirty_, self.limitsDirty_ = True, True
+  def __init__(self, next=None):
+    self.next_ = next
+    self.limits_ = [[-float("inf"), float("inf")], [-float("inf"), float("inf")], [-float("inf"), float("inf")]]
+    self.m_, self.mi_ = Matrix.identity(3), Matrix.identity(3)
+    self.angles_ = [0.0 for i in range(len(self.tcAngleAxes_))]
+    self.matrixDirty_, self.limitsDirty_ = True, True
 
-  def update_dirs_(self):
-    if self.dirsDirty_ == True and self.next_ is not None:
-      dYaw, dPitch, dRoll = (tca for tca in (self.next_.get_axis_value(tcAxis) for tcAxis in self.tcAngleAxes_))
-      rYaw, rPitch, rRoll = (math.radians(a) for a in (dYaw, dPitch, dRoll))
-      sinYaw, sinPitch, sinRoll = (math.sin(a) for a in (rYaw, rPitch, rRoll))
-      cosYaw, cosPitch, cosRoll = (math.cos(a) for a in (rYaw, rPitch, rRoll))
-
-      #x - 0, y - 1, z - 2
-      #caclulated by negating sines as if dPitch and dRoll are negated (dYaw is not)
-      self.dirs_[0] = (cosRoll*cosYaw - sinRoll*sinPitch*sinYaw, sinRoll*cosYaw + cosRoll*sinPitch*sinYaw, -cosPitch*sinYaw)
-      self.dirs_[1] = (-sinRoll*cosPitch, cosRoll*cosPitch, sinPitch)
-      self.dirs_[2] = (cosRoll*sinYaw + sinRoll*sinPitch*cosYaw, sinRoll*sinYaw - cosRoll*sinPitch*cosYaw, cosPitch*cosYaw)
-
-      self.dirsDirty_ = False
-      self.limitsDirty_ = True
+  def update_matrix_(self, force=False):
+    if self.matrixDirty_ or force:
+      tcYaw, tcPitch, tcRoll = self.tcAngleAxes_
+      dYaw, dPitch, dRoll = self.angles_
+      #Matrices are column-based, so rotations are applied in right-to-left order
+      #roll, then yaw-pitch as combined matrix. Works?
+      #self.m_ = matrix_from_angles(dYaw, dPitch, 0.0)*matrix_from_angles(0.0, 0.0, dRoll)
+      #calling matrix_from_angles() with rotation order specified
+      self.m_ = matrix_from_angles(dYaw, dPitch, dRoll, ro=ROTATION_ORDER_RYP)
+      self.mi_ = self.m_.inv()
+      self.matrixDirty_, self.limitsDirty_ = False, True
 
 
   def update_limits_(self):
     if self.limitsDirty_ == True and self.next_ is not None:
-      self.update_dirs_()
+      self.update_matrix_()
 
-      #Finding points where orts intersect clamping sphere in global cs
-      gp = [self.next_.get_axis_value(tca) for tca in self.tcPosAxes_]
-      intersections = [None for i in range(len(self.tcPosAxes_))]
-      for ort in self.tcPosAxes_:
-        iort = self.tcPosAxes_.index(ort)
-        intersections[iort] = calc_sphere_intersection_points(gp, self.dirs_[iort], self.r_)
-
-      #Finding limits in global cs
-      limits = []
-      #TODO for icoord in len(self.tcPosAxes_) ?
-      for coord in self.tcPosAxes_:
-        icoord = self.tcPosAxes_.index(coord)
-        mn, mx = 0.0, 0.0
-        for ip in intersections:
-          if ip is None:
-            continue
-          assert(len(ip) == 2)
-          for i in ip:
-            assert(len(i) == len(self.tcPosAxes_))
-            v = i[icoord]
-            mn, mx = min(mn, v), max(mx, v)
-        limits.append((mn, mx))
+      inf = float("inf")
+      limits = [[-inf, inf], [-inf, inf], [-inf, inf]]
 
       #Clamping to limits of next in global cs
-      #TODO for ia in len(self.tcPosAxes_) ?
       if self.next_ is not None:
-        for tca in self.tcPosAxes_:
-          ia = self.tcPosAxes_.index(tca)
-          nextLimits = self.next_.get_limits(tca)
+        for iAxis in range(len(self.tcPosAxes_)):
+          tcAxis = self.tcPosAxes_[iAxis]
+          nextLimits = self.next_.get_limits(tcAxis)
           assert(len(nextLimits) == 2)
           assert(nextLimits[0] <= nextLimits[1])
-          limits[ia] = [clamp(l, *nextLimits) for l in limits[ia]]
+          for i in range(len(limits[0])):
+            limits[iAxis][i] = clamp(limits[iAxis][i], *nextLimits)
 
       #Converting limits to local cs
-      gpmin, gpmax = [l[0] for l in limits], [l[1] for l in limits]
-      assert(len(gpmin) == len(self.tcPosAxes_))
-      assert(len(gpmax) == len(self.tcPosAxes_))
+      gpmin, gpmax = vector_from_list([l[0] for l in limits]), vector_from_list([l[1] for l in limits])
       lpmin, lpmax = self.global_to_local_(gpmin), self.global_to_local_(gpmax)
-      #TODO for icoord in len(self.tcPosAxes_) ?
-      for coord in self.tcPosAxes_:
-        icoord = self.tcPosAxes_.index(coord)
-        n, x = lpmin[icoord], lpmax[icoord]
-        n, x = min(n, x), max(n, x)
-        self.limits_[icoord] = (n, x)
+      for iAxis in range(len(self.tcPosAxes_)):
+        min_, max_ = vector_get(lpmin, iAxis), vector_get(lpmax, iAxis)
+        min_, max_ = min(min_, max_), max(min_, max_)
+        self.limits_[iAxis][0], self.limits_[iAxis][1] = min_, max_
 
       self.limitsDirty_ = False
 
 
   def global_to_local_(self, gp):
-    lp = [0.0 for i in range(len(gp))]
-    #TODO for ia in len(self.tcPosAxes_) ?
-    for tca in self.tcPosAxes_:
-      ia = self.tcPosAxes_.index(tca)
-      for j in range(len(self.dirs_)):
-        lp[j] += gp[ia]*self.dirs_[j][ia]
-    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("global_to_local(): dirs{}; gp:{}; lp:{}".format(self.dirs_, gp, lp))
+    lp = self.mi_*gp
     return lp
 
 
   def local_to_global_(self, lp):
-    gp = [0.0 for i in range(len(lp))]
-    #TODO for ia in len(self.tcPosAxes_) ?
-    for tca in self.tcPosAxes_:
-      ia = self.tcPosAxes_.index(tca)
-      for j in range(len(self.dirs_)):
-        gp[ia] += lp[j]*self.dirs_[j][ia]
-    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("local_to_global(): dirs{}; lp:{}; gp:{}".format(self.dirs_, lp, gp))
+    gp = self.m_*lp
     return gp
 
 
@@ -9710,11 +9630,7 @@ def make_parser():
   @make_reporting_joystick
   def parseRelativeODev(cfg, state):
     next = state.get("parser")("odev", state.resolve(cfg, "next"), state)
-    j = RelativeHeadMovementJoystick(
-      next=next,
-      r=state.resolve_d(cfg, "clampRadius", float("inf"), cls=float),
-      stick=state.resolve_d(cfg, "stick", True, cls=bool)
-    )
+    j = RelativeHeadMovementJoystick(next=next)
     return j
   odevParser.add("relative", parseRelativeODev)
 
