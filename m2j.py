@@ -4254,6 +4254,7 @@ class TransformAbsChainCurve:
     self.update_()
     outputValue = self.outputOp_.calc(x, timestamp)
     actualOutputValue = self.next_.move(outputValue, timestamp)
+    assert(actualOutputValue is not None)
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: x:{:+.3f}, ov:{:+.3f}, aov:{:+.3f}".format(log_loc(self), x, outputValue, actualOutputValue))
     if actualOutputValue != outputValue and self.allowOffLimits_ == False:
       #TODO If outputOp_.calc() changes state of outputOp_, and this state corellates with outputValue,
@@ -10508,6 +10509,7 @@ class Main:
     odevParser = lambda cfg,state : parser("odev", cfg, state)
     def exception_handler(key, value, e):
       logger.error("Cannot create output '{}' ({})".format(key, e))
+      state.get("main").print_trace()
       return True
     orderOp = lambda i : state.resolve_d(i[1], "seq", 100000, cls=int)
     cfg = state.resolve(self.get("config"), "odevs")
