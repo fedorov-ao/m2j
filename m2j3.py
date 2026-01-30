@@ -261,7 +261,7 @@ def str2(v, length=0):
     rep = "..."
     ls = len(s)
     if ls > length:
-      ls = (length - len(rep))/2
+      ls = int(0.5*(length - len(rep)))
       s = s[:ls] + rep + s[-ls:]
   return s
 
@@ -8499,6 +8499,8 @@ def make_parser():
     key = get_nested_d(cfg, "action", None)
     if key is None:
       key = get_nested_d(cfg, "type", None)
+    if key is None:
+      raise ParseError(cfg, state.get_path(cfg), f"Key 'action' or 'type' not found")
     return key
   actionParser = IntrusiveSelectParser(keyOp=actionParserKeyOp, parser=SelectParser())
   mainParser.add("action", actionParser)
@@ -10455,7 +10457,7 @@ class Main:
       state.get("main").print_trace()
       return True
     orderOp = lambda i : state.resolve_d(i[1], "seq", 100000, cls=int)
-    cfg = state.resolve(self.get("config"), "odevs")
+    cfg = state.resolve_d(self.get("config"), "odevs", {})
     state = ParserState(self)
     parse_dict_live_ordered(self.get("odevs"), cfg, state=state, kp=nameParser, vp=odevParser, op=orderOp, update=False, exceptionHandler=exception_handler)
 
