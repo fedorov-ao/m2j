@@ -8520,6 +8520,18 @@ def make_parser():
   actionParser = IntrusiveSelectParser(keyOp=actionParserKeyOp, parser=SelectParser())
   mainParser.add("action", actionParser)
 
+  def parseTrue(cfg, state):
+    def op(event):
+      return True
+    return op
+  actionParser.add("true", parseTrue)
+
+  def parseFalse(cfg, state):
+    def op(event):
+      return False
+    return op
+  actionParser.add("false", parseFalse)
+
   actionParser.add("saveMode", lambda cfg, state : get_component("msmm", cfg, state).make_save())
   actionParser.add("restoreMode", lambda cfg, state : get_component("msmm", cfg, state).make_restore(state.resolve_d(cfg, "report", True, cls=bool)))
   actionParser.add("addMode", lambda cfg, state : get_component("msmm", cfg, state).make_add(state.resolve(cfg, "mode"), state.resolve_d(cfg, "current"), state.resolve_d(cfg, "report", True, cls=bool)))
