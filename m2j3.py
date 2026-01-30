@@ -1002,6 +1002,8 @@ class ParserState:
 class DevRegister:
   def register_dev(self, name):
     """Input event dev __init__() should call this with the name of dev."""
+    if name in self.hashes_:
+      raise RuntimeError(f"Dev with name {name} was already registered")
     hsh = self.hash_
     self.hash_ += 1
     self.devs_[hsh] = name
@@ -1016,32 +1018,41 @@ class DevRegister:
       raise RuntimeError("Dev with hash {} not registered".format(hsh))
     return r
 
+  def has_name(self, name):
+    return name in self.hashes_
+
   def get_hash(self, name):
     if name is None:
       return None
     r = self.hashes_.get(name, None)
     if r is None:
-      if self.addMissing_:
-        r = self.register_dev(name)
-      else:
-        raise RuntimeError("Dev with name {} not registered".format(name))
+      raise RuntimeError("Dev with name {} not registered".format(name))
     return r
 
-  def __init__(self, addMissing=True):
-    self.devs_, self.hashes_, self.addMissing_ = dict(), dict(), addMissing
+  def has_hash(self, name):
+    return self.hashes_.get(name, None) is None
+
+  def __init__(self):
+    self.devs_, self.hashes_ = dict(), dict()
     self.hash_ = 0
 
-g_sr = DevRegister(addMissing=True)
+g_sr = DevRegister()
 
-def register_dev(dev):
+def register_dev(name):
   """Input event dev __init__() should call this with the name of dev."""
-  return g_sr.register_dev(dev)
+  return g_sr.register_dev(name)
 
 def get_dev_name(hsh):
   return g_sr.get_name(hsh)
 
+def has_dev_name(name):
+  return g_sr.has_name(name)
+
 def get_dev_hash(name):
   return g_sr.get_hash(name)
+
+def has_dev_hash(name):
+  return g_sr.has_hash(name)
 
 class Derivatives:
   def update(self, f, x):
@@ -8468,7 +8479,7 @@ def make_parser():
   def parseNext(cfg, state):
     parser = state.get("parser")
     cfgOrRef = state.resolve(cfg, "next")
-    if type(cfgOrRef) in (dict, collections.OrderedDict):
+    if is_dict_type(cfgOrRef):
       r = parser("ep", cfgOrRef, state)
       if r is None:
         if logger.isEnabledFor(logging.DEBUG): logger.debug("EP parser could not parse '{}', so trying action parser".format(cfg))
@@ -9481,7 +9492,6 @@ def make_parser():
 
   def parseFreePIEHeadTrackerIDEV(cfg, state):
     idevName = state.resolve(cfg, "idev", cls=str)
-    idevHash = register_dev(idevName)
     address = state.resolve(cfg, "address")
     i = address.find(":")
     if i == -1:
@@ -10565,6 +10575,8 @@ class Main:
           idevCfg = { "type" : "default", "identifier" : idevCfg }
         idevCfg["idev"] = idevName
         idevs[idevName] = parser("idev", idevCfg, state)
+        if not has_dev_name(idevName):
+          register_dev(idevName)
       except RuntimeError as e:
         logger.error(e)
     source = EventSource(idevs, None)
