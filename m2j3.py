@@ -9062,16 +9062,38 @@ def make_parser():
   actionParser.add("setObjectState", parseSetObjectState)
 
   def parseEmitCustomEvent(cfg, state):
-    etype = state.resolve_d(cfg, "etype", None, cls=str)
-    etype = codes.EV_CUSTOM if etype is None else name2code(etype)
-    code, value = state.resolve_d(cfg, "code", 0, cls=int), state.resolve(cfg, "value")
+    code = state.resolve_d(cfg, "code", 0)
+    hDev, etype, modifiers = None, None, None
+    if is_str_type(code):
+      hDev, etype, code = fn2htc(code)
+      def make_modifier(m):
+        idev, code = fn2hc(m)
+        return Modifier(idev=idev, code=code)
+      modifiers = [make_modifier(m) for m in state.resolve_d(cfg, "modifiers", [])]
+    else:
+      if not type(code) is int:
+        raise ParseError(cfg, state.get_path(cfg), "'code' must be string or int")
+      etype = state.resolve_d(cfg, "etype", None, cls=str)
+      if etype is None:
+        etype = codes.EV_CUSTOM
+      elif is_str_type(etype):
+        etype = name2code(etype)
+    value = state.resolve(cfg, "value")
     ep = get_ep(cfg, state)
     if ep is None:
       raise ParseError(cfg, state.get_path(cfg), "target ep not found")
-    def callback(e):
-      event = Event(etype, code, value)
-      return ep(event)
-    return callback
+    r = None
+    if hDev is None:
+      def callback(e):
+        event = Event(etype, code, value)
+        return ep(event)
+      r = callback
+    else:
+      def callback(e):
+        event = InputEvent(etype, code, value, e.timestamp, hDev, modifiers)
+        return ep(event)
+      r = callback
+    return r
   actionParser.add("emit", parseEmitCustomEvent)
 
   def parseForwardEvent(cfg, state):
