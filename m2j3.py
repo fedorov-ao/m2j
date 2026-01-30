@@ -8467,10 +8467,14 @@ def make_parser():
 
   def parseNext(cfg, state):
     parser = state.get("parser")
-    r = parser("ep", state.resolve(cfg, "next"), state)
-    if r is None:
-      if logger.isEnabledFor(logging.DEBUG): logger.debug("EP parser could not parse '{}', so trying action parser".format(cfg))
-      r = parser("action", state.resolve(cfg, "next"), state)
+    cfgOrRef = state.resolve(cfg, "next")
+    if type(cfgOrRef) in (dict, collections.OrderedDict):
+      r = parser("ep", cfgOrRef, state)
+      if r is None:
+        if logger.isEnabledFor(logging.DEBUG): logger.debug("EP parser could not parse '{}', so trying action parser".format(cfg))
+        r = parser("action", cfgOrRef, state)
+    else:
+      r = cfgOrRef
     return r
   scParser.add("next", parseNext)
 
