@@ -932,22 +932,32 @@ class ParserState:
     except Exception as e:
       raise ParseError(cfg, self.get_path(cfg), e)
 
-  def parse_def(self, cfg):
+  def parse_def(self, cfg, classes=None):
     assert is_dict_type(cfg)
     parser = self.get("parser")
     obj = None
     className = cfg.get("class", None)
-    if className is None:
-      raise ParseError(cfg, self.get_path(cfg), KeyErrorEx("class", list(cfg.keys())))
-    obj = parser(className, cfg, self)
-    if obj is None:
-      raise ParseError(cfg, self.get_path(cfg))
+    if className is not None:
+      obj = parser(className, cfg, self)
+      if obj is None:
+        raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
+    elif classes is not None:
+      if not is_list_type(classes):
+        raise ValueError("'classes' must be list-like")
+      for className in classes:
+        obj = parser(className, cfg, self)
+        if obj is not None:
+          break
+      if obj is None:
+        raise ParseError(cfg, self.get_path(cfg), f"cannot parse as {', '.join(f'\'{c}\'' for c in classes)}")
+    else:
+      raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
     return obj
 
-  def resolve_def(self, cfg):
+  def resolve_def(self, cfg, classes=None):
     r = self.deref(cfg, asValue=False)
     if is_dict_type(r) and not has_value_tag(r):
-      r = self.parse_def(r)
+      r = self.parse_def(r, classes)
     return r
 
   def get_path(self, v):
@@ -8404,7 +8414,7 @@ def make_parser():
       scaleEP = ScaleEP2(sens={}, name=name)
       sens2 = {}
       for fnAxis,value in sens.items():
-        key = fn2htc(fnAxis)
+        key = fn2htc(state.deref(fnAxis))
         setter = Setter(scaleEP, key)
         value = state.deref(value, setter=setter)
         scaleEP.set_sens(key, value)
@@ -8440,7 +8450,7 @@ def make_parser():
       for modeName,modeCfg in state.resolve(cfg, "modes").items():
         try:
           if logger.isEnabledFor(logging.DEBUG): logger.debug("{}: parsing mode:".format(name, modeName))
-          child = state.get("parser")("ep", modeCfg, state)
+          child = state.resolve_def(modeCfg, classes=["ep"])
           modeEP.add(modeName, child)
         except Exception as e:
           if allowMissingModes:
@@ -8479,14 +8489,7 @@ def make_parser():
   def parseNext(cfg, state):
     parser = state.get("parser")
     cfgOrRef = state.resolve(cfg, "next")
-    if is_dict_type(cfgOrRef):
-      r = parser("ep", cfgOrRef, state)
-      if r is None:
-        if logger.isEnabledFor(logging.DEBUG): logger.debug("EP parser could not parse '{}', so trying action parser".format(cfg))
-        r = parser("action", cfgOrRef, state)
-    else:
-      r = cfgOrRef
-    return r
+    return state.resolve_def(cfgOrRef, classes=["ep", "action"])
   scParser.add("next", parseNext)
 
   #Actions
