@@ -4110,6 +4110,7 @@ class FullDeltaRelChainCurve:
       inputValue = self.inputValueOp_.calc(outputValue)
       inputDelta = inputValue - self.inputValue_
       assert deltaFactor != 0.0
+      #TODO Compute x more precisely using binary search
       x = inputDelta / deltaFactor
       #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug( "{} recalculated x:{: 0.3f}; id:{: 0.3f}; iv:{: 0.3f}; ov:{: 0.3f}" .format(log_loc(self), x, inputDelta, inputValue, outputValue))
     self.inputValue_, self.outputValue_ = inputValue, outputValue
@@ -7670,16 +7671,17 @@ def make_parser():
     main = state.get("main")
     class Setter:
       def __call__(self, cfg, keys=None):
-        if keys is None or self.nextSetter_ is None or self.nextSetter_(cfg, keys) == False:
-          parser = self.main_.get("parser")
-          state = ParserState(self.main_)
+        if keys is None or self.setter_ is None or self.setter_(cfg, keys) == False:
+          main = self.main_()
+          parser = main.get("parser")
+          state = ParserState(main)
           next_ = parser("func", cfg, state)
           self.func_.set_next(next_)
-          nextSetter = parser("funcSetter", cfg, state)
-          nextSetter.set_func(next_)
-          self.nextSetter_ = nextSetter
+          setter = parser.get("setter")(cfg, state)
+          setter.set_obj(next_)
+          self.setter_ = setter
       def __init__(self, main, func):
-        self.main_, self.func_, self.nextSetter_ = main, func, None
+        self.main_, self.func_, self.setter_ = weakref.ref(main), func, None
     setter = Setter(main, func)
     nextCfg = state.resolve(cfg, "next", setter=setter)
     #should init func
@@ -7688,10 +7690,14 @@ def make_parser():
   funcParser.add("proxy", proxyFunc)
 
 
-  #func setters
+  #setters parser
+  setterParserKeyOp = lambda cfg,state : get_nested_ex(cfg, "class", state)
+  setterParser = IntrusiveSelectParser(keyOp=setterParserKeyOp, parser=SelectParser())
+  mainParser.add("setter", setterParser)
+  #func setters parser
   funcSetterParserKeyOp = lambda cfg,state : get_nested_ex(cfg, "func", state)
   funcSetterParser = IntrusiveSelectParser(keyOp=funcSetterParserKeyOp, parser=SelectParser())
-  mainParser.add("funcSetter", funcSetterParser)
+  setterParser.add("func", funcSetterParser)
 
   def hermiteSetter(cfg, state):
     class Setter:
@@ -7711,7 +7717,7 @@ def make_parser():
           return True
         else:
           raise RuntimeError("unknown keys: '{}'".format(keys))
-      def set_func(self, func):
+      def set_obj(self, func):
         self.func_ = func
     return Setter()
   funcSetterParser.add("hermite", hermiteSetter)
