@@ -7626,7 +7626,7 @@ def make_parser():
     main = state.get("main")
     class Setter:
       def __call__(self, cfg, keys=None):
-        if keys is None or self.nextSetter_(cfg, keys) == False:
+        if keys is None or self.nextSetter_ is None or self.nextSetter_(cfg, keys) == False:
           parser = self.main_.get("parser")
           state = ParserState(self.main_)
           next_ = parser("func", cfg, state)
