@@ -8761,7 +8761,9 @@ def make_parser():
       ep = state.at("eps", 0)
       for objectName in state.resolve(cfg, "objects", cls=list):
         #TODO Use state.deref() here and specify object name as "obj:..." for unification
-        curve = state.get_obj(objectName)
+        curve = state.deref(objectName)
+        if is_str_type(curve):
+          curve = state.get_obj(objectName)
         if curve is None:
           raise ParseError(objectName, state.get_path(objectName), "curve '{}' not found".format(str2(objectName)))
         curvesToReset.append(curve)
