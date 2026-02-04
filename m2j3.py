@@ -8642,7 +8642,7 @@ def make_parser():
         def __init__(self, func, axis):
           self.func_, self.axis_ = func, axis
       valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
-      func = state.get("parser")("func", state.resolve(valueFuncCfg, "func"), state)
+      func = state.resolve_def(state.resolve(valueFuncCfg, "func"))
       valueFunc = ValueFunc(func, valueFuncAxis)
     r = MoveAxisBy(axis, value, stopAt, valueFunc)
     valueSetter.set_move_axis(r)
