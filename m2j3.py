@@ -1851,6 +1851,38 @@ def MoveAxisByEvent(axis):
   return op
 
 
+class MoveAxisContBy:
+  active_ = {}
+  class P:
+    def __init__(self, value, valueFunc):
+      self.value, self.valueFunc = value, valueFunc
+  @classmethod
+  def update(cls, tick, ts):
+    for axis,p in cls.active_.items():
+      value = p.value
+      if p.valueFunc is not None:
+        value = p.valueFunc(value)
+      value *= tick
+      axis.move(value, True)
+  @classmethod
+  def clear(cls):
+    cls.active_ = {}
+
+  def __call__(self, event):
+    self.update_active_()
+  def set_value(self, value):
+    self.value_ = value
+    self.update_active_()
+  def __init__(self, axis, value, valueFunc):
+    self.axis_, self.value_, self.valueFunc_ = axis, value, valueFunc
+  def update_active_(self):
+    if (self.value_ == 0.0):
+      if self.axis_ in self.active_:
+        del self.active_[self.axis_]
+    else:
+      self.active_[self.axis_] = self.P(self.value_, self.valueFunc_)
+
+
 def SetButtonState(odev, button, state):
   def op(event):
     odev.set_button_state(button, state)
@@ -8636,18 +8668,38 @@ def make_parser():
     valueFunc = None
     valueFuncCfg = state.resolve_d(cfg, "valueFunc", None)
     if valueFuncCfg is not None:
-      class ValueFunc:
+      class AxisValueFunc:
         def __call__(self, value):
           return value*self.func_(self.axis_.get())
         def __init__(self, func, axis):
           self.func_, self.axis_ = func, axis
       valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
       func = state.resolve_def(state.resolve(valueFuncCfg, "func"))
-      valueFunc = ValueFunc(func, valueFuncAxis)
+      valueFunc = AxisValueFunc(func, valueFuncAxis)
     r = MoveAxisBy(axis, value, stopAt, valueFunc)
     valueSetter.set_move_axis(r)
     return r
   actionParser.add("moveAxisBy", parseMoveAxisBy)
+
+  def parseMoveAxisContBy(cfg, state):
+    axis = state.get_axis_by_full_name(state.resolve(cfg, "axis", cls=str))
+    valueSetter = MoveAxisValueSetter()
+    value = state.resolve(cfg, "value", setter=valueSetter, cls=float)
+    valueFunc = None
+    valueFuncCfg = state.resolve_d(cfg, "valueFunc", None)
+    if valueFuncCfg is not None:
+      class AxisValueFunc:
+        def __call__(self, value):
+          return value*self.func_(self.axis_.get())
+        def __init__(self, func, axis):
+          self.func_, self.axis_ = func, axis
+      valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
+      func = state.resolve_def(state.resolve(valueFuncCfg, "func"))
+      valueFunc = AxisValueFunc(func, valueFuncAxis)
+    r = MoveAxisContBy(axis, value, valueFunc)
+    valueSetter.set_move_axis(r)
+    return r
+  actionParser.add("moveAxisContBy", parseMoveAxisContBy)
 
   def parseMoveAxisByEvent(cfg, state):
     axis = state.get_axis_by_full_name(state.resolve(cfg, "axis", cls=str))
@@ -10635,6 +10687,7 @@ class Main:
   def init_worker_ep(self, state):
     #remove listeners from axes in case of reinitialization
     self.remove_axes_listeners()
+    self.add_to_updated(lambda tick, ts : MoveAxisContBy.update(tick, ts))
     ep = init_preset_config(state)
     self.get("mainEP").set_next(ep)
     state.push("eps", ep)
