@@ -6049,7 +6049,7 @@ class RelativeHeadMovementJoystick:
         vector_set(gActual, iAxis_, self.next_.move_axis(tcAxis_, v, relative))
 
       self.limitsDirty_ = True
-      return (gActual.dot(gActual))**0.5 if relative else vector_get(gActual, iAxis)
+      return sign(value)*(gActual.dot(gActual))**0.5 if relative else vector_get(gActual, iAxis)
     elif tcAxis in self.tcAngleAxes_:
       iAxis = self.tcAngleAxes_.index(tcAxis)
       current = self.angles_[iAxis]
@@ -10173,7 +10173,7 @@ def make_parser():
         asValue = True if k == "func" else False
         r[k] = preparse(state.deref(v, asValue=asValue), state)
     elif is_list_type(cfg):
-      r = cfg.__class__()
+      r = []
       for v in cfg:
         r.append(preparse(state.deref(v), state))
     else:
