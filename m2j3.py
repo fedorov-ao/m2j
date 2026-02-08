@@ -985,12 +985,9 @@ class ParserState:
 
   def get_var_or_value_(self, varOrValue, **kwargs):
     r = varOrValue
-    varManager = self.get("main").get("varManager")
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(r, BaseVar)
     asValue = kwargs.get("asValue", True)
-    if asValue:
-      r = clear_value_tag(r)
     if isBaseVar == True:
       setter = kwargs.get("setter")
       if setter is not None:
@@ -1006,11 +1003,16 @@ class ParserState:
       if asValue == True:
         if isinstance(r, ObjectVar):
           r = r.get_obj()
+          #it is impossible to clear value tag from object
         else:
           r = r.get()
+          if asValue:
+            r = clear_value_tag(r)
           if mapping is not None:
             r = mapping(r)
     else:
+      if asValue:
+        r = clear_value_tag(r)
       if mapping is not None:
         r = mapping(r)
     return r
