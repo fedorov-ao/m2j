@@ -520,6 +520,10 @@ def clear_value_tag(d):
   return remove_value_tag(d) if has_value_tag(d) else d
 
 
+def has_class_tag(d):
+  return is_dict_type(d) and "class" in d
+
+
 import pymatrix27
 
 def fill_ols_matrix(matrix, samples, degree, scratch=None, get_sample=None):
@@ -1000,9 +1004,12 @@ class ParserState:
         varOrValue.add_callback(actualSetter)
         self.get("main").get("callbackManager").add_callback(lambda : varOrValue.remove_callback(actualSetter))
       if asValue == True:
-        r = r.get()
-        if mapping is not None:
-          r = mapping(r)
+        if isinstance(r, ObjectVar):
+          r = r.get_obj()
+        else:
+          r = r.get()
+          if mapping is not None:
+            r = mapping(r)
     else:
       if mapping is not None:
         r = mapping(r)
@@ -6614,6 +6621,9 @@ class CurveEditorWidget(tk.Canvas):
     self.func_ = func
     self.update_curve_()
 
+  def get_func(self):
+    return self.func_
+
   def set_points_source(self, ps):
     self.pointsSource_ = ps
     self.update_curve_()
@@ -8674,7 +8684,7 @@ def make_parser():
         def __init__(self, func, axis):
           self.func_, self.axis_ = func, axis
       valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
-      func = state.resolve_def(state.resolve(valueFuncCfg, "func"))
+      func = state.resolve_def(state.resolve(valueFuncCfg, "func"), classes=["func"])
       valueFunc = AxisValueFunc(func, valueFuncAxis)
     r = MoveAxisBy(axis, value, stopAt, valueFunc)
     valueSetter.set_move_axis(r)
@@ -8694,7 +8704,7 @@ def make_parser():
         def __init__(self, func, axis):
           self.func_, self.axis_ = func, axis
       valueFuncAxis = state.get_axis_by_full_name(state.resolve(valueFuncCfg, "axis"))
-      func = state.resolve_def(state.resolve(valueFuncCfg, "func"))
+      func = state.resolve_def(state.resolve(valueFuncCfg, "func"), classes=["func"])
       valueFunc = AxisValueFunc(func, valueFuncAxis)
     r = MoveAxisContBy(axis, value, valueFunc)
     valueSetter.set_move_axis(r)
@@ -10126,10 +10136,6 @@ def make_parser():
     }
     main = state.get("main")
     func = state.resolve(cfg, "func")
-    if is_str_type(func):
-      func = get_nested(main.get("config"), func)
-    if is_dict_type(func):
-      func = main.get("parser")("func", func, state)
     var = state.resolve(cfg, "var_", asValue=False)
     keys = state.resolve_d(cfg, "keys", None)
     pointsSource = VarPointsSource(var, keys)
@@ -10150,7 +10156,8 @@ def make_parser():
     if is_dict_type(cfg):
       r = cfg.__class__()
       for k,v in cfg.items():
-        r[k] = preparse(state.deref(v, asValue=False), state)
+        asValue = True if k == "func" else False
+        r[k] = preparse(state.deref(v, asValue=asValue), state)
     elif is_list_type(cfg):
       r = cfg.__class__()
       for v in cfg:
@@ -10164,6 +10171,10 @@ def make_parser():
   def parseCurveEditorFrameWidget(cfg, state):
     curveEditorKwargs = parse_curve_editor_props(cfg, state)
     ce = CurveEditorWidget(master=cfg["master"], **curveEditorKwargs)
+    def func_setter(func):
+      if func != ce.get_func():
+        ce.set_func(func)
+    state.resolve(cfg, "func", setter=func_setter)
     return ce
   widgetParser.add("curveEditorFrame", parseCurveEditorFrameWidget)
 
@@ -10176,6 +10187,10 @@ def make_parser():
       info.add_top_level_widget(tlw)
       ce = CurveEditorWidget(master=tlw, **curveEditorKwargs)
       ce.pack(expand=True, fill="both")
+      def func_setter(func):
+        if func != ce.get_func():
+          ce.set_func(func)
+      state.resolve(cfg, "func", setter=func_setter)
     kwargs = mapProps(cfg, ("master", "text"), state)
     kwargs["command"] = create_curve_editor
     widget = tk.Button(**kwargs)
@@ -10420,6 +10435,44 @@ class Var(BaseVar):
     self.callbacks_ = []
 
 
+class ObjectVar(BaseVar):
+  def get(self, keys=None):
+    return self.value_ if keys is None else get_nested_d(self.value_, keys, None)
+
+  def set(self, value, keys=None):
+    if keys is not None:
+      self.value_ = set_nested(self.value_, keys, value)
+    else:
+      self.value_ = value
+    #update or create object and setter
+    if keys is None or self.setter_ is None or self.setter_(self.value_, keys) == False:
+      main = self.main_()
+      parser = main.get("parser")
+      state = ParserState(main)
+      self.obj_ = state.resolve_def(self.value_)
+      self.setter_ = parser.get("setter")(self.value_, state)
+      self.setter_.set_obj(self.obj_)
+    for cb in self.callbacks_:
+      cb(self.obj_)
+
+  def add_callback(self, callback):
+    self.callbacks_.append(callback)
+
+  def remove_callback(self, callback):
+    try:
+      self.callbacks_.remove(callback)
+    except ValueError:
+      logger.warning("Callback was not registered.")
+
+  def get_obj(self):
+    return self.obj_
+
+  def __init__(self, value, main):
+    self.value_, self.main_ = value, weakref.ref(main)
+    self.obj_, self.setter_, self.callbacks_ = None, None, []
+    self.set(value)
+
+
 class VarManager:
   def get_var(self, varName):
     var = get_nested_d(self.vars_, varName, None)
@@ -10582,7 +10635,7 @@ class Main:
         with open(varsFileName, "r") as f:
           varsFileCfg = json.load(f, object_pairs_hook = lambda l : collections.OrderedDict(l))
           varsFileCfg = varsFileCfg.get("vars", {})
-          should_overwrite = lambda key,destinationValue,sourceValue : is_dict_type(sourceValue) and has_value_tag(sourceValue)
+          should_overwrite = lambda key,destinationValue,sourceValue : is_dict_type(sourceValue) and (has_value_tag(sourceValue) or has_class_tag(sourceValue))
           merge_dicts(varsCfg, varsFileCfg, should_overwrite)
       except FileNotFoundError:
         logger.warning(f"Vars config {varsFileName} not found.")
@@ -10605,9 +10658,9 @@ class Main:
         isValueDict = True if isDict and has_value_tag(cfg2) else False
         if isValueDict:
           cfg2 = remove_value_tag(cfg2)
+        path = sep.join(tokens)
         if not isDict or isValueDict:
           varValue = parser("varValue", cfg2, state)
-          path = sep.join(tokens)
           if update == True:
             var = varManager.get_var_d(path, None)
             if var is None:
@@ -10620,6 +10673,9 @@ class Main:
           if mappingCfg is not None:
             mapping = state.make_mapping(mappingCfg)
             var.set_mapping(mapping)
+        elif has_class_tag(cfg2):
+          var = ObjectVar(cfg2, state.get("main"))
+          varManager.add_var(path, var)
         else:
           add_nested_vars(cfg2, tokens)
         tokens.pop()
