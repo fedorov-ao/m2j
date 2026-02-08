@@ -1071,7 +1071,7 @@ class Keyboard:
 
 
 def parseKeyboardOutput(cfg, state):
-  mode = state.resolve_d(cfg, "mode", "SCANCODE", cls=str)
+  mode = state.deref_member_d(cfg, "mode", "SCANCODE", cls=str)
   if mode == "SCANCODE":
     mode = Keyboard.MODE_SCANCODE
   elif mode == "VK":
@@ -1811,7 +1811,7 @@ def parseRawInputIDev(cfg, state):
       self.actions_ = {}
   #init swallower if needed
   swallower = None
-  swallowerCfg = state.resolve_d(cfg, "swallower", None)
+  swallowerCfg = state.deref_member_d(cfg, "swallower", None)
   if swallowerCfg is not None:
     swallower = ActionSwallower()
     for command, actionCfg in swallowerCfg.items():
@@ -1827,9 +1827,9 @@ def parseRawInputIDev(cfg, state):
   #make and return device
   idev = None
   try:
-    idevName = state.resolve(cfg, "idev", cls=str)
+    idevName = state.deref_member(cfg, "idev", cls=str)
     idevHash = register_dev(idevName)
-    idevIDNative = state.resolve(cfg, "identifier", cls=str)
+    idevIDNative = state.deref_member(cfg, "identifier", cls=str)
     idev = rawInputIDevManager.make_device(idevHash, idevIDNative, idevName=idevName, swallower=swallower)
   except RuntimeError as e:
     logger.warning(e)
