@@ -9087,8 +9087,9 @@ def make_parser():
           r[name] = replace_var_with_value(value)
         elif isinstance(value, BaseVar):
           v = value.get()
-          if is_dict_type(v):
-            v = add_value_tag(v)
+          if not isinstance(value, ObjectVar):
+            if is_dict_type(v):
+              v = add_value_tag(v)
           r[name] = v
         else:
           logger.error("Unexpected element {} of type {} in vars".format(name, type(value)))
