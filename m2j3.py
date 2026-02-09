@@ -9001,10 +9001,14 @@ def make_parser():
   actionParser.add("playSound", parsePlaySound)
 
   def parsePrintVar(cfg, state):
-    varName = state.deref_member(cfg, "varName", cls=str)
+    var = state.deref_member_d(cfg, "var_", None, asValue=False)
+    if var is None:
+      varName = state.deref_member(cfg, "varName", cls=str)
+      var = state.get("main").get("varManager").get_var(varName)
+      if var is None:
+        raise ParseError(varName, state.get_path(varName), "cannot get var '{}'".format(varName))
     level = name2loglevel(state.deref_member_d(cfg, "level", "INFO", cls=str))
     key = state.deref_member_d(cfg, "key", None)
-    var = state.get("main").get("varManager").get_var(varName)
     def op(e):
       value = var.get()
       if key is not None:
@@ -10091,14 +10095,14 @@ def make_parser():
         self.var_, self.boxVar_ = var, boxVar
         self.busy_ = False
 
-    varName = state.deref_member_d(cfg, "varName", None, cls=str)
-    if varName is None:
-      return
-    manager = None
-    varManager = state.get("main").get("varManager")
-    var = varManager.get_var(varName)
+    var = state.deref_member_d(cfg, "var_", None, asValue=False)
     if var is None:
-      raise ParseError(varName, state.get_path(varName), "cannot get var '{}'".format(varName))
+      varName = state.deref_member_d(cfg, "varName", None, cls=str)
+      if varName is None:
+        return
+      var = state.get("main").get("varManager").get_var(varName)
+      if var is None:
+        raise ParseError(varName, state.get_path(varName), "cannot get var '{}'".format(varName))
     value = var.get()
     key = state.deref_member_d(cfg, "key", None)
     read, write = None, None
