@@ -110,6 +110,33 @@ def select_nearest(b, e, values, match=SELECT_NEAREST_MATCH_BOTH, eps=1e-6):
   return selected
 
 
+def bcalc(y, x0, x1, func, cmp=lambda a,b : a < b, eps=1e-6, numSteps=100):
+  assert(func is not None)
+  y0, y1 = func(x0), func(x1)
+  if y != clamp(y, y0, y1):
+    #y out of bounds
+    return None
+  #Determine how y0 compares to y1
+  #If relation is True, then output function is "increasing", otherwise it is "decreasing"
+  relation = cmp(y0, y1)
+  i, delta = 0, 0.0
+  while i <= numSteps:
+    i += 1
+    x = 0.5*x0 + 0.5*x1
+    yy = func(x)
+    delta = abs(y - yy)
+    if delta < eps:
+      break
+    elif relation ^ cmp(y, yy):
+      #If given outputValue compares to middle y differently,
+      #than beginning y compares to end y,
+      #look in the second half, else in first
+      x0 = x
+    else:
+      x1 = x
+  return x
+
+
 def is_inside_bbox(x, y, bbox):
   x0, y0, x1, y1 = bbox
   return x >= x0 and x <= x1 and y >= y0 and y <= y1
@@ -4095,8 +4122,6 @@ class FullDeltaRelChainCurve:
     inputDelta = self.inputDeltaDDOp_.calc(self.inputValue_, x, timestamp)
     if inputDelta is None or inputDelta == 0.0:
       return 0.0
-    #assumes that inputDelta == 0.0 for x == 0.0, might not always be the case
-    deltaFactor = inputDelta / x
     #add input delta to stored input value
     inputValue = self.inputValue_ + inputDelta
     #compute new output value
@@ -4115,9 +4140,11 @@ class FullDeltaRelChainCurve:
       outputValue = self.outputValue_ + actualOutputDelta
       inputValue = self.inputValueOp_.calc(outputValue)
       inputDelta = inputValue - self.inputValue_
-      assert deltaFactor != 0.0
-      #TODO Compute x more precisely using binary search
-      x = inputDelta / deltaFactor
+      xx = bcalc(inputDelta, -x, x, lambda xx : self.inputDeltaDDOp_.calc(inputValue, xx, timestamp))
+      if xx is None:
+        raise RuntimeError("Cannot compute x from inputDelta")
+      else:
+        x = xx
       #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug( "{} recalculated x:{: 0.3f}; id:{: 0.3f}; iv:{: 0.3f}; ov:{: 0.3f}" .format(log_loc(self), x, inputDelta, inputValue, outputValue))
     self.inputValue_, self.outputValue_ = inputValue, outputValue
     #return x, adjusted or not
