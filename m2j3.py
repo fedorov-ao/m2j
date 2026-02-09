@@ -7815,20 +7815,17 @@ def make_parser():
     return v
 
   def get_deprecated_func(cfg, state, **kwargs):
-    cfg2 = get_nested_ex(cfg, "func", state)
-    funcOrCfg = state.deref(cfg2, **kwargs)
-    if cfg2 != funcOrCfg:
-      if is_dict_type(funcOrCfg):
-        cfg2 = funcOrCfg
-      else:
-        return funcOrCfg
-    if is_str_type(cfg2):
-      logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
-    elif is_dict_type(cfg2):
-      cfg = cfg2
-    else:
-      raise ParseError(cfg2, state.get_path(cfg2), "invalid func")
-    return state.get("parser")("func", cfg, state)
+    possibleFuncCfg = get_nested_ex(cfg, "func", state)
+    func = state.deref_or_make(possibleFuncCfg, classes=["func"], asValue=True)
+    if func is possibleFuncCfg:
+      if is_str_type(possibleFuncCfg):
+        logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
+        possibleFuncCfg = cfg
+      elif not is_dict_type(possibleFuncCfg):
+        raise ParseError(possibleFuncCfg, state.get_path(possibleFuncCfg), "invalid func")
+      #Can possibleFuncCfg be a dict-type here?
+      func = state.make(possibleFuncCfg, classes=["func"])
+    return func
 
   def makeSensModOp(cfg, state, sensOp, combine=lambda a,b: a*b):
     #cfg is curve cfg
