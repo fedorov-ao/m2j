@@ -926,7 +926,10 @@ class ParserState:
             assert False
         except NotFoundError as e:
           if dfault is not None:
-            r = clear_value_tag(dfault)
+            if has_value_tag(dfault):
+              r = clear_value_tag(dfault)
+            else:
+              r = self.deref(dfault, **kwargs)
           else:
             raise
       elif prefix == "var":
