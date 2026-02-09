@@ -801,7 +801,7 @@ class ParserState:
       keys.append(k)
       try:
         o = self.deref(v)
-        if o is v:
+        if o is v: #So 'v' was not a reference. This check is required for correct parsing.
           if is_dict_type(v):
             if has_class_tag(v):
               o = self.make(v)
@@ -831,14 +831,14 @@ class ParserState:
     for n,v in args.items():
       try:
         o = self.deref(v)
-        if o is v:
+        if o is v: #So 'v' was not a reference. This check is required for correct args parsing.
           if is_dict_type(v):
             if has_class_tag(v):
               o = self.make(v)
             elif not has_value_tag(v):
               o = self.make_args(v)
         r[n] = o
-        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(v), r[n]))
+        #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"make_args(): '{n}': '{str2(v)}' -> '{str2(o)}'")
       except NotFoundError as e:
         self.logger.warning(e)
         continue
@@ -7302,10 +7302,12 @@ class SelectParser:
         r = parser(cfg, state)
         return r
       except Exception as e:
-        #logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
+        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
+        #state.get("main").print_trace()
         raise
       except:
-        #logger.error("Unknown exception when parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
+        logger.error("Unknown exception when parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
+        #state.get("main").print_trace()
         raise
 
   def add(self, key, parser):
@@ -9569,15 +9571,12 @@ def make_parser():
         return r
 
       def parseActionOrEP(cfg, state):
+        key = get_nested_d(cfg, "action", None)
+        if key is None:
+          key = get_nested_d(cfg, "type", None)
+        key = "ep" if key is None else "action"
         mainParser = state.get("parser")
-        try:
-          return mainParser("action", cfg, state)
-        except ParseError as e:
-          if logger.isEnabledFor(logging.DEBUG): logger.debug("Action parser could not parse '{}', so trying ep parser".format(str2(cfg, 100)))
-          r = mainParser("ep", cfg, state)
-          if r is None:
-            raise e
-          return r
+        return mainParser(key, cfg, state)
 
       mainParser = state.get("parser")
       ons = parseGroup("on", lambda cfg,state: mainParser("et", cfg, state), cfg, state)
