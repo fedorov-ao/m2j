@@ -800,16 +800,13 @@ class ParserState:
     for k,v in cfg.items():
       keys.append(k)
       try:
-        o = None
-        if is_dict_type(v):
-          if has_value_tag(v):
-            o = v
-          elif has_class_tag(v):
-            o = self.deref_or_make(v)
-          else:
-            self.make_objs(v, cb, keys)
-        else:
-          o = self.deref_or_make(v)
+        o = self.deref(v)
+        if o is v:
+          if is_dict_type(v):
+            if has_class_tag(v):
+              o = self.make(v)
+            elif not has_value_tag(v):
+              self.make_objs(v, cb, keys)
         if o is not None:
           cb(keys, o)
       except RuntimeError as e:
@@ -833,16 +830,13 @@ class ParserState:
     r = collections.OrderedDict()
     for n,v in args.items():
       try:
-        o = None
-        if is_dict_type(v):
-          if has_value_tag(v):
-            o = v
-          elif has_class_tag(v):
-            o = self.deref_or_make(v)
-          else:
-            o = self.make_args(v)
-        else:
-          o = self.deref_or_make(v)
+        o = self.deref(v)
+        if o is v:
+          if is_dict_type(v):
+            if has_class_tag(v):
+              o = self.make(v)
+            elif not has_value_tag(v):
+              o = self.make_args(v)
         r[n] = o
         #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("arg '{}': '{}' -> '{}'".format(n, str2(v), r[n]))
       except NotFoundError as e:
@@ -985,8 +979,8 @@ class ParserState:
       raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
     return obj
 
-  def deref_or_make(self, cfg, classes=None):
-    r = self.deref(cfg, asValue=False)
+  def deref_or_make(self, cfg, classes=None, asValue=False):
+    r = self.deref(cfg, asValue=asValue)
     if is_dict_type(r) and not has_value_tag(r):
       r = self.make(r, classes)
     return r
