@@ -10585,7 +10585,7 @@ class Main:
 
   def preinit_log(self):
     root = logging.getLogger()
-    level = logging.INFO
+    level = logging.NOTSET
     root.setLevel(level)
     handler = logging.StreamHandler(sys.stdout)
     fmt = "%(levelname)s:%(asctime)s:%(message)s"
@@ -10594,7 +10594,7 @@ class Main:
 
   def init_log(self, state):
     config = self.get("config")
-    logLevelName = state.deref_member_d(config, "logLevel", "NOTSET", cls=str).upper()
+    logLevelName = get_nested_d(config, "logLevel", "NOTSET").upper()
     logLevel = name2loglevel(logLevelName)
     set_loggers_level(logLevel)
     print("Setting default log level to {}".format(logLevelName))
@@ -10828,7 +10828,7 @@ class Main:
     numTraceLines = self.props_["numTraceLines"]
     if numTraceLines > 0:
       logger.error("===Traceback begin===")
-      for l in traceback.format_exc().splitlines()[-numTraceLines:]:
+      for l in traceback.format_exc(numTraceLines).splitlines():
         logger.error(l)
       logger.error("===Traceback end===")
 
@@ -10949,7 +10949,7 @@ class Main:
       if o in ("-p", "--preset"):
         self.options_["preset"] = a
       elif o in ("-v", "--log_level"):
-        self.options_["log_level"] = a
+        self.options_["logLevel"] = a
       elif o in ("-c", "--config"):
         cns = self.options_.setdefault("configNames", [])
         cns.append(a)
