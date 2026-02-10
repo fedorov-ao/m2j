@@ -20,6 +20,7 @@ import getopt
 import playsound
 import threading
 import operator
+import pdb
 
 
 def get_func_name():
@@ -877,6 +878,7 @@ class ParserState:
       return op
     prefix, suffix, mapping, dfault = None, None, None, None
     cls = kwargs.get("cls")
+    asValue = kwargs.get("asValue", True)
     if cls is not None:
       del kwargs["cls"]
     r = refOrValue
@@ -910,7 +912,6 @@ class ParserState:
     if prefix is not None:
       suffix = self.deref(suffix, **kwargs)
       setter = kwargs.get("setter")
-      asValue = kwargs.get("asValue", True)
       if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): trying to deref '{suffix}' as '{prefix}'")
       if prefix in ("arg", "obj"):
         try:
@@ -923,10 +924,9 @@ class ParserState:
         except NotFoundError as e:
           if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): could not deref '{suffix}' as '{prefix}'")
           if dfault is not None:
-            if has_value_tag(dfault):
-              r = clear_value_tag(dfault)
-            else:
-              r = self.deref(dfault, **kwargs)
+            r = dfault
+            if not has_value_tag(dfault):
+              r = self.deref(r, **kwargs)
             if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): using default '{r}' for '{suffix}'")
           else:
             raise
@@ -934,6 +934,9 @@ class ParserState:
         r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
       else:
         raise RuntimeError("Unknown prefix: '{}'".format(prefix))
+    if asValue and has_value_tag(r):
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"Clearing value tag from {str2(r)}")
+      r = remove_value_tag(r)
     if cls is not None and r.__class__ is not cls:
       r = cls(r)
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Dereferenced '{}' to '{}'".format(str2(refOrValue), str2(r)))
@@ -986,8 +989,8 @@ class ParserState:
       r = self.make(r, classes)
     return r
 
-  def deref_member_or_make(self, d, name, classes=None):
-    v = self.deref_member(d, name)
+  def deref_member_or_make(self, d, name, classes=None, asValue=False):
+    v = self.deref_member(d, name, asValue=asValue)
     if is_dict_type(v) and not has_value_tag(v):
       v = self.make(v, classes)
     return v
@@ -1029,20 +1032,9 @@ class ParserState:
         varOrValue.add_callback(actualSetter)
         self.get("main").get("callbackManager").add_callback(lambda : varOrValue.remove_callback(actualSetter))
       if asValue == True:
-        if isinstance(r, ObjectVar):
-          r = r.get_obj()
-          #it is impossible to clear value tag from object
-        else:
-          r = r.get()
-          if asValue:
-            r = clear_value_tag(r)
-          if mapping is not None:
-            r = mapping(r)
-    else:
-      if asValue:
-        r = clear_value_tag(r)
-      if mapping is not None:
-        r = mapping(r)
+        r = r.get_obj() if isinstance(r, ObjectVar) else r.get()
+    if mapping is not None:
+      r = mapping(r)
     return r
 
 
@@ -7296,7 +7288,7 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update, exceptionHandler=
 class SelectParser:
   def __call__(self, key, cfg, state):
     def make_error_str(key, cfg):
-      return "key '{}', cfg '{}' at '{}'".format(key, str2(cfg), ".".join(state.get("main").get_path(cfg)))
+      return "key '{}', cfg '{}'".format(key, str2(cfg))
     if key not in self.parsers_:
       raise ParseError(key, state.get_path(cfg), KeyErrorEx(key, list(self.parsers_.keys())))
     else:
