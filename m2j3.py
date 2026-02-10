@@ -870,6 +870,9 @@ class ParserState:
     return op
 
   def deref(self, refOrValue, **kwargs):
+    """
+    Dereferences 'refOrValue' or returns it if it was not a reference.
+    """
     def make_expression_mapping(p, s):
       expr = "{}v{}".format(p, s)
       compiledExpr = compile(expr, "", "eval")
@@ -946,26 +949,38 @@ class ParserState:
     #This return statement must be at deref() scope, not in nested blocks!
     return r
 
-  def deref_member_d(self, d, name, dfault=None, **kwargs):
-    cfg = get_nested_d(d, name, dfault)
-    if cfg == dfault:
+  def deref_member_d(self, cfg, name, dfault=None, **kwargs):
+    cfg2 = get_nested_d(cfg, name, dfault)
+    if cfg2 == dfault:
       return dfault
     try:
-      return self.deref(cfg, **kwargs)
+      return self.deref(cfg2, **kwargs)
     except NotFoundError as e:
       return dfault
     except Exception as e:
-      raise ParseError(cfg, self.get_path(cfg), e)
+      raise ParseError(cfg2, self.get_path(cfg2), e) from e
 
-  def deref_member(self, d, name, **kwargs):
-    cfg = get_nested_ex(d, name, self)
+  def deref_member(self, cfg, name, **kwargs):
+    cfg2 = get_nested_ex(cfg, name, self)
     try:
-      return self.deref(cfg, **kwargs)
+      return self.deref(cfg2, **kwargs)
     except Exception as e:
-      raise ParseError(cfg, self.get_path(cfg), e)
+      raise ParseError(cfg2, self.get_path(cfg2), e) from e
 
   def make(self, cfg, classes=None):
-    assert is_dict_type(cfg)
+    """
+    Makes an object.
+    Parameters:
+      cfg - dict-like node with object init data.
+      classes - list-like with possible object classes. May be None.
+    Returned value:
+      object or exception raised
+    First tries to determine the class of object by value of 'class' member of 'cfg'.
+    If 'class' is not in 'cfg', takes possible object classes from 'classes'.
+    Ignores '_value' tag in 'cfg'.
+    """
+    if not is_dict_type(cfg):
+      raise ArgumentError("cfg must be dict-like")
     parser = self.get("parser")
     obj = None
     className = cfg.get("class", None)
@@ -975,7 +990,7 @@ class ParserState:
         raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
     elif classes is not None:
       if not is_list_type(classes):
-        raise ValueError("'classes' must be list-like")
+        raise ArgumentError("'classes' must be list-like")
       for className in classes:
         obj = parser(className, cfg, self)
         if obj is not None:
@@ -986,15 +1001,32 @@ class ParserState:
       raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
     return obj
 
-  def deref_or_make(self, cfg, classes=None, getVarValue=True, clearValueTag=True):
-    r = self.deref(cfg, getVarValue=getVarValue, clearValueTag=clearValueTag)
-    if is_dict_type(r) and not has_value_tag(r):
+  def deref_or_make(self, cfg, classes=None, **kwargs):
+    """
+    Retrieves previously created object or makes it.
+    Parameters:
+      cfg - string-like or dict-like reference to object or dict-like node with object init data
+      classes - list-like with possible object classes. May be None.
+    Returned value:
+      object or exception raised
+    """
+    r = self.deref(cfg, **kwargs)
+    if is_dict_type(r):
       r = self.make(r, classes)
     return r
 
-  def deref_member_or_make(self, d, name, classes=None, getVarValue=True, clearValueTag=True):
-    v = self.deref_member(d, name, getVarValue=getVarValue, clearValueTag=clearValueTag)
-    if is_dict_type(v) and not has_value_tag(v):
+  def deref_member_or_make(self, cfg, name, classes=None, **kwargs):
+    """
+    Retrieves previously created object or makes it (dict-like member variant).
+    Parameters:
+      cfg - dict-like containing member with string-like or dict-like reference to object or dict-like node with object init data
+      name - member name
+      classes - list-like with possible object classes. May be None.
+    Returned value:
+      object or exception raised
+    """
+    v = self.deref_member(cfg, name, **kwargs)
+    if is_dict_type(v):
       v = self.make(v, classes)
     return v
 
@@ -7816,7 +7848,7 @@ def make_parser():
 
   def get_deprecated_func(cfg, state, **kwargs):
     possibleFuncCfg = get_nested_ex(cfg, "func", state)
-    func = state.deref_or_make(possibleFuncCfg, classes=["func"], getVarValue=True)
+    func = state.deref_or_make(possibleFuncCfg, classes=["func"])
     if func is possibleFuncCfg:
       if is_str_type(possibleFuncCfg):
         logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
