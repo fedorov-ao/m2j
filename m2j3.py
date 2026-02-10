@@ -828,9 +828,11 @@ class ParserState:
         o = self.deref(v, getVarValue=False, clearValueTag=False)
         if o is v: #So 'v' was not a reference. This check is required for correct args parsing.
           if is_dict_type(v):
-            if has_class_tag(v):
+            if has_value_tag(v):
+              pass
+            elif has_class_tag(v):
               o = self.make(v)
-            elif not has_value_tag(v):
+            else:
               o = self.make_args(v)
         r[n] = o
         #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"make_args(): '{n}': '{str2(v)}' -> '{str2(o)}'")
