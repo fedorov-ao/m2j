@@ -795,7 +795,7 @@ class ParserState:
     for k,v in cfg.items():
       keys.append(k)
       try:
-        o = self.deref(v)
+        o = self.deref(v, getVarValue=False, clearValueTag=False)
         if o is v: #So 'v' was not a reference. This check is required for correct parsing.
           if is_dict_type(v):
             if has_class_tag(v):
@@ -825,7 +825,7 @@ class ParserState:
     r = collections.OrderedDict()
     for n,v in args.items():
       try:
-        o = self.deref(v)
+        o = self.deref(v, getVarValue=False, clearValueTag=False)
         if o is v: #So 'v' was not a reference. This check is required for correct args parsing.
           if is_dict_type(v):
             if has_class_tag(v):
@@ -878,7 +878,8 @@ class ParserState:
       return op
     prefix, suffix, mapping, dfault = None, None, None, None
     cls = kwargs.get("cls")
-    asValue = kwargs.get("asValue", True)
+    clearValueTag = kwargs.get("clearValueTag", True)
+    getVarValue = kwargs.get("getVarValue", True)
     if cls is not None:
       del kwargs["cls"]
     r = refOrValue
@@ -916,9 +917,9 @@ class ParserState:
       if prefix in ("arg", "obj"):
         try:
           if prefix == "obj":
-            r = self.get_obj(suffix, setter=setter, mapping=mapping, asValue=asValue)
+            r = self.get_obj(suffix, setter=setter, mapping=mapping, getVarValue=getVarValue)
           elif prefix == "arg":
-            r = self.get_arg(suffix, setter=setter, mapping=mapping, asValue=asValue)
+            r = self.get_arg(suffix, setter=setter, mapping=mapping, getVarValue=getVarValue)
           else:
             assert False
         except NotFoundError as e:
@@ -931,10 +932,10 @@ class ParserState:
           else:
             raise
       elif prefix == "var":
-        r = self.get_var(suffix, setter=setter, mapping=mapping, asValue=asValue)
+        r = self.get_var(suffix, setter=setter, mapping=mapping, getVarValue=getVarValue)
       else:
         raise RuntimeError("Unknown prefix: '{}'".format(prefix))
-    if asValue and has_value_tag(r):
+    if clearValueTag and has_value_tag(r):
       if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"Clearing value tag from {str2(r)}")
       r = remove_value_tag(r)
     if cls is not None and r.__class__ is not cls:
@@ -983,14 +984,14 @@ class ParserState:
       raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
     return obj
 
-  def deref_or_make(self, cfg, classes=None, asValue=False):
-    r = self.deref(cfg, asValue=asValue)
+  def deref_or_make(self, cfg, classes=None, getVarValue=True, clearValueTag=True):
+    r = self.deref(cfg, getVarValue=getVarValue, clearValueTag=clearValueTag)
     if is_dict_type(r) and not has_value_tag(r):
       r = self.make(r, classes)
     return r
 
-  def deref_member_or_make(self, d, name, classes=None, asValue=False):
-    v = self.deref_member(d, name, asValue=asValue)
+  def deref_member_or_make(self, d, name, classes=None, getVarValue=True, clearValueTag=True):
+    v = self.deref_member(d, name, getVarValue=getVarValue, clearValueTag=clearValueTag)
     if is_dict_type(v) and not has_value_tag(v):
       v = self.make(v, classes)
     return v
@@ -1018,7 +1019,7 @@ class ParserState:
     r = varOrValue
     mapping = kwargs.get("mapping")
     isBaseVar = isinstance(r, BaseVar)
-    asValue = kwargs.get("asValue", True)
+    getVarValue = kwargs.get("getVarValue", True)
     if isBaseVar == True:
       setter = kwargs.get("setter")
       if setter is not None:
@@ -1031,7 +1032,7 @@ class ParserState:
         #r can be assigned to different value further down the execution path, so using varOrValue here
         varOrValue.add_callback(actualSetter)
         self.get("main").get("callbackManager").add_callback(lambda : varOrValue.remove_callback(actualSetter))
-      if asValue == True:
+      if getVarValue == True:
         r = r.get_obj() if isinstance(r, ObjectVar) else r.get()
     if mapping is not None:
       r = mapping(r)
@@ -7813,7 +7814,7 @@ def make_parser():
 
   def get_deprecated_func(cfg, state, **kwargs):
     possibleFuncCfg = get_nested_ex(cfg, "func", state)
-    func = state.deref_or_make(possibleFuncCfg, classes=["func"], asValue=True)
+    func = state.deref_or_make(possibleFuncCfg, classes=["func"], getVarValue=True)
     if func is possibleFuncCfg:
       if is_str_type(possibleFuncCfg):
         logger.warning("'func' should be separate config node ({})".format(str2(cfg, 200)))
@@ -8989,7 +8990,7 @@ def make_parser():
   actionParser.add("playSound", parsePlaySound)
 
   def parsePrintVar(cfg, state):
-    var = state.deref_member_d(cfg, "var_", None, asValue=False)
+    var = state.deref_member_d(cfg, "var_", None, getVarValue=False)
     if var is None:
       varName = state.deref_member(cfg, "varName", cls=str)
       var = state.get("main").get("varManager").get_var(varName)
@@ -9844,7 +9845,7 @@ def make_parser():
   mainParser.add("pose", parsePose)
 
   def parseVar(cfg, state):
-    return state.deref(cfg, asValue=False)
+    return state.deref(cfg, getVarValue=False)
   mainParser.add("var", parseVar)
 
   #placeholder for more sophisticated var value parsing
@@ -10080,7 +10081,7 @@ def make_parser():
         self.var_, self.boxVar_ = var, boxVar
         self.busy_ = False
 
-    var = state.deref_member_d(cfg, "var_", None, asValue=False)
+    var = state.deref_member_d(cfg, "var_", None, getVarValue=False)
     if var is None:
       varName = state.deref_member_d(cfg, "varName", None, cls=str)
       if varName is None:
@@ -10167,7 +10168,7 @@ def make_parser():
     }
     main = state.get("main")
     func = state.deref_member(cfg, "func")
-    var = state.deref_member(cfg, "var_", asValue=False)
+    var = state.deref_member(cfg, "var_", getVarValue=False)
     keys = state.deref_member_d(cfg, "keys", None)
     pointsSource = VarPointsSource(var, keys)
     screenSize = state.deref_member_d(cfg, "screenSize", [200, 200])
@@ -10187,8 +10188,8 @@ def make_parser():
     if is_dict_type(cfg):
       r = cfg.__class__()
       for k,v in cfg.items():
-        asValue = True if k == "func" else False
-        r[k] = preparse(state.deref(v, asValue=asValue), state)
+        getVarValue = True if k == "func" else False
+        r[k] = preparse(state.deref(v, getVarValue=getVarValue), state)
     elif is_list_type(cfg):
       r = []
       for v in cfg:
