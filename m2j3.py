@@ -297,12 +297,6 @@ def truncate(cfg, l=30, ellipsis=True):
   return str2(cfg)[:l] + "..." if ellipsis else ""
 
 
-  levelName = main.get("config").get("logLevel", "NOTSET").upper()
-  nameToLevel = {
-    logging.getLevelName(l).upper():l for l in (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, logging.NOTSET)
-  }
-
-
 class CfgStack:
   def push(self, k, v):
     p = None
@@ -912,10 +906,12 @@ class ParserState:
         if len(g1) or len(g4):
           mapping = make_expression_mapping(g1, g4)
           #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("Created mapping {} with expression '{}' from '{}'".format(mapping, expr, refOrValue))
+    if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): refOrValue:'{refOrValue}'; prefix:'{prefix}'; suffix:'{suffix}'")
     if prefix is not None:
       suffix = self.deref(suffix, **kwargs)
       setter = kwargs.get("setter")
       asValue = kwargs.get("asValue", True)
+      if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): trying to deref '{suffix}' as '{prefix}'")
       if prefix in ("arg", "obj"):
         try:
           if prefix == "obj":
@@ -925,11 +921,13 @@ class ParserState:
           else:
             assert False
         except NotFoundError as e:
+          if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): could not deref '{suffix}' as '{prefix}'")
           if dfault is not None:
             if has_value_tag(dfault):
               r = clear_value_tag(dfault)
             else:
               r = self.deref(dfault, **kwargs)
+            if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"deref(): using default '{r}' for '{suffix}'")
           else:
             raise
       elif prefix == "var":
@@ -7297,6 +7295,8 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update, exceptionHandler=
 
 class SelectParser:
   def __call__(self, key, cfg, state):
+    def make_error_str(key, cfg):
+      return "key '{}', cfg '{}' at '{}'".format(key, str2(cfg), ".".join(state.get("main").get_path(cfg)))
     if key not in self.parsers_:
       raise ParseError(key, state.get_path(cfg), KeyErrorEx(key, list(self.parsers_.keys())))
     else:
@@ -7305,11 +7305,11 @@ class SelectParser:
         r = parser(cfg, state)
         return r
       except Exception as e:
-        logger.error("Got exception: '{}', so cannot parse key '{}', cfg '{}".format(e, key, truncate(cfg, l=50)))
+        logger.error("Got exception '{}' when parsing {}".format(e, make_error_str(key, cfg)))
         #state.get("main").print_trace()
         raise
       except:
-        logger.error("Unknown exception when parsing key '{}', cfg '{}'".format(key, truncate(cfg, l=50)))
+        logger.error("Unknown exception when parsing {}".format(make_error_str(key, cfg)))
         #state.get("main").print_trace()
         raise
 
@@ -8671,7 +8671,7 @@ def make_parser():
         self.mc_.set_factor(factor)
       def __init__(self, mc):
         self.mc_ = mc
-    curve = state.get("parser")("curve", cfg, state)
+    curve = state.deref_or_make(cfg, classes=["curve"])
     mc = MoveCurve(curve)
     factor = state.deref_member_d(cfg, "factor", 1.0, setter=FactorSetter(mc), cls=float)
     mc.set_factor(factor)
