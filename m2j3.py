@@ -8445,13 +8445,8 @@ def make_parser():
       assert headEP is state.at("eps", 0)
       for p in linkOrder:
         link_component(p[0], p[1])
-      #Check result
-      if ep[0] is None:
-        if logger.isEnabledFor(logging.DEBUG): logger.debug("Could not make ep out of '{}'".format(cfg))
-        return None
-      else:
-        headEP.set_next(ep[0])
-        return headEP
+      headEP.set_next(ep[0])
+      return headEP
     finally:
       state.pop("eps")
       state.pop_args()
