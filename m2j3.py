@@ -798,10 +798,13 @@ class ParserState:
         o = self.deref(v, getVarValue=False, clearValueTag=False)
         if o is v: #So 'v' was not a reference. This check is required for correct parsing.
           if is_dict_type(v):
-            if has_class_tag(v):
+            if has_value_tag(v):
+              pass
+            elif has_class_tag(v):
               o = self.make(v)
-            elif not has_value_tag(v):
+            else:
               self.make_objs(v, cb, keys)
+              continue
         if o is not None:
           cb(keys, o)
       except RuntimeError as e:
@@ -8478,7 +8481,10 @@ def make_parser():
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parseObjects(): parsing objects from '{}'".format(str2(objectsCfg)))
       objectsComponent = ObjectsComponent()
       state.at("eps", 0).set("objects", objectsComponent)
-      state.make_objs(objectsCfg, lambda k,o : objectsComponent.set(k, o))
+      def set_object(keys, o):
+        if logger.isEnabledFor(logging.DEBUG): logger.debug(f"set_object(): {keys} {o}")
+        objectsComponent.set(keys, o)
+      state.make_objs(objectsCfg, set_object)
       return objectsComponent
     else:
       return None
