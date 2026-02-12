@@ -1939,7 +1939,6 @@ class MoveAxisContBy:
     self.update_active_()
   def set_value(self, value):
     self.value_ = value
-    self.update_active_()
   def __init__(self, axis, value, valueFunc):
     self.axis_, self.value_, self.valueFunc_ = axis, value, valueFunc
   def update_active_(self):
