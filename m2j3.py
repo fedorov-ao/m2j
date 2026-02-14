@@ -970,7 +970,7 @@ class ParserState:
     except Exception as e:
       raise ParseError(cfg2, self.get_path(cfg2), e) from e
 
-  def make(self, cfg, classes=None):
+  def make(self, cfg, classes=None, ignoreCfgClass=False):
     """
     Makes an object.
     Parameters:
@@ -978,33 +978,43 @@ class ParserState:
       classes - list-like with possible object classes. May be None.
     Returned value:
       object or exception raised
-    First tries to determine the class of object by value of 'class' member of 'cfg'.
-    If 'class' is not in 'cfg', takes possible object classes from 'classes'.
     Ignores '_value' tag in 'cfg'.
     """
+    def make_from_nested_cname(parser, cname, sep="."):
+      cnames = cname
+      if is_str_type(cname):
+        cnames = cname.split(sep)
+      for cn in cnames:
+        parser = parser.get(cn)
+        if parser is None:
+          raise ParseError(cfg, self.get_path(cfg), f"no parser for {cname}")
+      obj = parser(cfg, self)
+      return obj
     if not is_dict_type(cfg):
       raise ArgumentError("cfg must be dict-like")
     parser = self.get("parser")
     obj = None
     className = cfg.get("class", None)
-    if className is not None:
-      obj = parser(className, cfg, self)
+    if className is not None and not ignoreCfgClass:
+      obj = make_from_nested_cname(parser, className)
       if obj is None:
         raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
-    elif classes is not None:
+    elif classes:
       if not is_list_type(classes):
         raise ArgumentError("'classes' must be list-like")
       for className in classes:
-        obj = parser(className, cfg, self)
+        obj = make_from_nested_cname(parser, className)
         if obj is not None:
           break
-      if obj is None:
+      else:
         raise ParseError(cfg, self.get_path(cfg), f"cannot parse as {', '.join(f'\'{c}\'' for c in classes)}")
     else:
       raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
+    if obj is None:
+      raise ParseError(cfg, self.get_path(cfg), f"could not make object")
     return obj
 
-  def deref_or_make(self, cfg, classes=None, **kwargs):
+  def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False):
     """
     Retrieves previously created object or makes it.
     Parameters:
@@ -1013,12 +1023,12 @@ class ParserState:
     Returned value:
       object or exception raised
     """
-    r = self.deref(cfg, **kwargs)
+    r = self.deref(cfg)
     if is_dict_type(r):
-      r = self.make(r, classes)
+      r = self.make(r, classes, ignoreCfgClass)
     return r
 
-  def deref_member_or_make(self, cfg, name, classes=None, **kwargs):
+  def deref_member_or_make(self, cfg, name, classes=None, ignoreCfgClass=False):
     """
     Retrieves previously created object or makes it (dict-like member variant).
     Parameters:
@@ -1028,9 +1038,9 @@ class ParserState:
     Returned value:
       object or exception raised
     """
-    v = self.deref_member(cfg, name, **kwargs)
+    v = self.deref_member(cfg, name)
     if is_dict_type(v):
-      v = self.make(v, classes)
+      v = self.make(v, classes, ignoreCfgClass)
     return v
 
   def get_path(self, v):
@@ -6990,7 +7000,7 @@ class FuncEditorWidget(tk.Frame):
     funcCfg = self.funcs_[self.currentDev_][self.currentAxis_][self.currentFunc_]
     funcCfg["master"] = tlw
     state = ParserState(self.main_)
-    ce = self.main_.get("parser")("widget", funcCfg, state)
+    ce = state.deref_or_make(funcCfg, classes=["widget"])
     ce.pack(expand=True, fill="both")
     #Needed to ensure that tlw.winfo_width() and tlw.winfo_height() will return correct dimensions
     tlw.update_idletasks()
@@ -7803,9 +7813,7 @@ def make_parser():
 
   #Curves
   curveParserKeyOp=lambda cfg,state : get_nested(cfg, "curve")
-  #because curve cfg nodes are fuzed with action (i.e. move) cfg nodes,
-  #this needs to be inner deref parser to process '"curve" : "obj:..."'
-  curveParser = make_inner_deref_parser(keyOp=curveParserKeyOp)
+  curveParser = IntrusiveSelectParser(keyOp=curveParserKeyOp, parser=SelectParser())
   mainParser.add("curve", curveParser)
 
   def parseAxisLinker(cfg, state):
@@ -8292,7 +8300,7 @@ def make_parser():
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parsePresetCurve(): args: '{}'".format(str2(get_nested_d(cfg, "args"))))
       state.push_args(cfg)
       try:
-        return state.get("parser")("curve", presetCfg, state)
+        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True)
       finally:
         state.pop_args()
     else:
@@ -8301,8 +8309,7 @@ def make_parser():
         for n in ("axis", "controlling", "leader", "follower"):
           if n in cfg:
             presetCfgStack.push(n, cfg[n])
-        curve = state.get("parser")("curve", presetCfg, state)
-        return curve
+        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True)
       finally:
         presetCfgStack.pop_all()
   curveParser.add("preset", parsePresetCurve)
@@ -8698,7 +8705,9 @@ def make_parser():
         self.mc_.set_factor(factor)
       def __init__(self, mc):
         self.mc_ = mc
-    curve = state.deref_or_make(cfg, classes=["curve"])
+    curve = state.deref_member_or_make(cfg, "curve", classes=["curve"])
+    if curve is cfg.get("curve"):
+      curve = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True)
     mc = MoveCurve(curve)
     factor = state.deref_member_d(cfg, "factor", 1.0, setter=FactorSetter(mc), cls=float)
     mc.set_factor(factor)
@@ -8709,8 +8718,9 @@ def make_parser():
     axesData = state.deref_member(cfg, "axes")
     curves = {}
     for fnInputAxis,curveCfg in axesData.items():
-      curve = state.get("parser")("curve", curveCfg, state)
-      curves[fn2hc(state.deref(fnInputAxis))] = curve
+      curve = state.deref_or_make(curveCfg, classes=["curve"], ignoreCfgClass=True)
+    mc = MoveCurve(curve)
+    curves[fn2hc(state.deref(fnInputAxis))] = curve
     op = state.deref_member(cfg, "op", cls=str)
     if op == "min":
       op = MCSCmpOp(cmp = lambda new,old : new < old)
@@ -9166,7 +9176,7 @@ def make_parser():
   actionParser.add("writeVars", parseWriteVars)
 
   def parseSetStateOnInit(cfg, state):
-    linker = state.get("parser")("curve", cfg, state)
+    linker = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True)
     return SetAxisLinkerState(linker)
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
@@ -9601,12 +9611,13 @@ def make_parser():
         return r
 
       def parseActionOrEP(cfg, state):
-        key = get_nested_d(cfg, "action", None)
+        key = get_nested_d(cfg, "class", None)
         if key is None:
-          key = get_nested_d(cfg, "type", None)
-        key = "ep" if key is None else "action"
-        mainParser = state.get("parser")
-        return mainParser(key, cfg, state)
+          key = get_nested_d(cfg, "action", None)
+          if key is None:
+            key = get_nested_d(cfg, "type", None)
+          key = "ep" if key is None else "action"
+        return state.deref_or_make(cfg, classes=[key])
 
       mainParser = state.get("parser")
       ons = parseGroup("on", lambda cfg,state: mainParser("et", cfg, state), cfg, state)
@@ -9795,11 +9806,11 @@ def make_parser():
         for opCfg in rateOrCfg:
           t = state.deref_member(opCfg, "type", cls=str)
           if t == "time":
-            func = state.get("parser")("func", state.deref_member(opCfg, "func"), state)
+            func = state.deref_member_or_make(opCfg, "func", classes=["func"])
             rateOp = TimeRateOp(rateOp, func)
           elif t == "axis":
             axis = state.get_axis_by_full_name(state.deref_member(opCfg, "axis", cls=str))
-            func = state.get("parser")("func", state.deref_member(opCfg, "func"), state)
+            func = state.deref_member_or_make(opCfg, "func", classes=["func"])
             rateOp = AxisRateOp(rateOp, axis, func)
           else:
             raise ParseError(t, state.get_path(t), "unknown op type")
@@ -9812,15 +9823,14 @@ def make_parser():
 
   @make_reporting_joystick
   def parseRelativeODev(cfg, state):
-    next = state.get("parser")("odev", state.deref_member(cfg, "next"), state)
+    next = state.deref_member_or_make(cfg, "next", classes=["odev"])
     j = RelativeHeadMovementJoystick(next=next)
     return j
   odevParser.add("relative", parseRelativeODev)
 
   @make_reporting_joystick
   def parseCompositeODev(cfg, state):
-    parser = state.get("parser")
-    children = parse_list(state.deref_member(cfg, "children"), state, lambda cfg,state : parser("odev", cfg, state))
+    children = parse_list(state.deref_member(cfg, "children"), state, lambda cfg,state : state.deref_or_make(cfg, classes=["odev"]))
     checkChild = state.deref_member(cfg, "checkChild", cls=bool)
     union = state.deref_member(cfg, "union")
     j = CompositeJoystick(children=children, checkChild=checkChild, union=union)
@@ -10010,7 +10020,7 @@ def make_parser():
     childCfg = state.deref_member_d(cfg, "child", {})
     childCfg["master"] = widget
     try:
-      child = state.get("main").get("parser")("widget", childCfg, state)
+      child = state.deref_or_make(childCfg, classes=["widget"])
       child.pack(fill="both", expand=True)
     finally:
       if "master" in childCfg:
@@ -10181,7 +10191,7 @@ def make_parser():
     kwargs = mapProps(cfg, ("master", "text", "state", "width"), state)
     actionCfg = get_nested_d(cfg, "command", None)
     if actionCfg is not None:
-      action = state.get("parser")("action", actionCfg, state)
+      action = state.deref_or_make(actionCfg, classes=["action"])
       def command():
         event = Event(0, 0, 0)
         action(event)
@@ -10283,13 +10293,12 @@ def make_parser():
   @namedWidgetDecorator
   @labelFrameDecorator
   def parseGridWidget(cfg, state):
-    parser = state.get("parser")
     kwargs = mapWidgetProps(cfg, state)
     widget = GridWidget(**kwargs)
     for childCfg in state.deref_member_d(cfg, "children", {}):
       childCfg["master"] = widget
       try:
-        child = parser("widget", childCfg, state)
+        child = state.deref_or_make(childCfg, classes=["widget"])
       finally:
         if "master" in childCfg:
           del childCfg["master"]
@@ -10308,13 +10317,12 @@ def make_parser():
   @namedWidgetDecorator
   @labelFrameDecorator
   def parseEntriesWidget(cfg, state):
-    parser = state.get("parser")
     kwargs = mapEntriesWidgetProps(cfg, state)
     widget = EntriesWidget(**kwargs)
     for childCfg in state.deref_member_d(cfg, "children", {}):
       childCfg["master"] = widget
       try:
-        child = parser("widget", childCfg, state)
+        child = state.deref_or_make(childCfg, classes=["widget"])
       finally:
         if "master" in childCfg:
           del childCfg["master"]
@@ -10332,7 +10340,6 @@ def make_parser():
   @parseBasesDecorator
   def parseInfoWidget(cfg, state):
     try:
-      parser = state.get("parser")
       f = state.deref_member_d(cfg, "format", 1, cls=int)
       title = state.deref_member_d(cfg, "title", "", cls=str)
       info = InfoWidget(master=state.get("main").get("tk"), title=title)
@@ -10343,7 +10350,7 @@ def make_parser():
         for widgetCfg in widgetsCfg:
           widgetCfg["master"] = info.w_
           try:
-            widget = parser("widget", widgetCfg, state)
+            widget = state.deref_or_make(widgetCfg, classes=["widget"])
           finally:
             if "master" in widgetCfg:
               del widgetCfg["master"]
@@ -10361,7 +10368,7 @@ def make_parser():
           for widgetCfg in row:
             widgetCfg["master"] = info.w_
             try:
-              widget = parser("widget", widgetCfg, state)
+              widget = state.deref_or_make(widgetCfg, classes=["widget"])
             finally:
               if "master" in widgetCfg:
                 del widgetCfg["master"]
@@ -10402,7 +10409,7 @@ def make_parser():
     if master is not None:
       presetCfg["master"] = master
     try:
-      return state.get("parser")("widget", presetCfg, state)
+      return state.deref_or_make(presetCfg, classes=["widget"])
     finally:
       state.pop_args()
       if master in presetCfg:
@@ -10513,10 +10520,9 @@ class ObjectVar(BaseVar):
     #update or create object and setter
     if keys is None or self.setter_ is None or self.setter_(self.value_, keys) == False:
       main = self.main_()
-      parser = main.get("parser")
       state = ParserState(main)
       self.obj_ = state.deref_or_make(self.value_)
-      self.setter_ = parser.get("setter")(self.value_, state)
+      self.setter_ = state.deref_or_make(self.value_, classes=["setter"], ignoreCfgClass=True)
       self.setter_.set_obj(self.obj_)
     for cb in self.callbacks_:
       cb(self.obj_)
@@ -10674,8 +10680,7 @@ class Main:
 
   def init_odevs(self, state):
     nameParser = lambda key,state : key
-    parser = self.get("parser")
-    odevParser = lambda cfg,state : parser("odev", cfg, state)
+    odevParser = lambda cfg,state : state.deref_or_make(cfg, classes=["odev"])
     def exception_handler(key, value, e):
       logger.error("Cannot create output '{}' ({})".format(key, e))
       state.get("main").print_trace()
@@ -10692,7 +10697,6 @@ class Main:
       sounds[soundName] = state.deref(soundFileName)
 
   def init_vars(self, state, update=False):
-    parser = state.get("main").get("parser")
     config = self.get("config")
     varsCfg = config.get("vars", {})
     varsFileName = state.deref_member_d(config, "varsConfig", None)
@@ -10726,7 +10730,7 @@ class Main:
           cfg2 = remove_value_tag(cfg2)
         path = sep.join(tokens)
         if not isDict or isValueDict:
-          varValue = parser("varValue", cfg2, state)
+          varValue = state.deref_or_make(cfg2, classes=["varValue"])
           if update == True:
             var = varManager.get_var_d(path, None)
             if var is None:
@@ -10750,12 +10754,11 @@ class Main:
 
   def init_poses(self, state):
     poseManager = self.get("poseManager")
-    poseParser = lambda cfg,state: self.get("parser")("pose", cfg, state)
     posesCfg = self.get("config").get("poses")
     if posesCfg is not None:
       for poseName,poseCfg in posesCfg.items():
         try:
-          pose = poseParser(poseCfg, state)
+          pose = state.deref_or_make(poseCfg, classes=["pose"])
           poseManager.set_pose(poseName, pose)
         except Exception as e:
           logger.error("Cannot create pose '{}' ({})".format(poseName, e))
@@ -10775,7 +10778,6 @@ class Main:
     set_logger_level(root, config, state)
 
   def init_source(self, state):
-    parser = self.get("parser")
     idevsCfg = self.get("config").get("idevs", {})
     idevs = {}
     for idevName,idevCfg in idevsCfg.items():
@@ -10787,7 +10789,7 @@ class Main:
           #Implementation-dependend runner must register 'default' parser in 'idevs' parser
           idevCfg = { "type" : "default", "identifier" : idevCfg }
         idevCfg["idev"] = idevName
-        idevs[idevName] = parser("idev", idevCfg, state)
+        idevs[idevName] = state.deref_or_make(idevCfg, classes=["idev"])
         if not has_dev_name(idevName):
           register_dev(idevName)
       except RuntimeError as e:
@@ -10820,7 +10822,7 @@ class Main:
       info.destroy()
       self.set("info", None)
     cfg = state.deref_member_d(self.get("config"), "info", { "type" : "info" })
-    info = state.get("parser")("widget", cfg, state)
+    info = state.deref_or_make(cfg, classes=["widget"])
     self.add_to_updated(lambda tick,ts : info.update())
     self.set("info", info)
 
