@@ -970,17 +970,22 @@ class ParserState:
     except Exception as e:
       raise ParseError(cfg2, self.get_path(cfg2), e) from e
 
-  def make(self, cfg, classes=None, ignoreCfgClass=False):
+  def make(self, cfg, classes=None, ignoreCfgClass=False, cls=None):
     """
     Makes an object.
     Parameters:
-      cfg - dict-like node with object init data.
-      classes - list-like with possible object classes. May be None.
+      cfg - string-like or dict-like reference to object or dict-like cfg node with object init data
+      classes - list-like with possible class tags; may be None.
+        When making object, 'class' tag in 'cfg' (or dict-like cfg node the 'cfg' was dereferenced to) will be tried first.
+        If it is absent, values from 'classes' will be tried one by one.
+      ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
+      cls - expected Python class of returned object (exception raised if different); may be None
     Returned value:
-      object or exception raised
+      object or None or exception raised
     Ignores '_value' tag in 'cfg'.
     """
     def make_from_nested_cname(parser, cname, sep="."):
+      """Helper"""
       cnames = cname
       if is_str_type(cname):
         cnames = cname.split(sep)
@@ -990,6 +995,7 @@ class ParserState:
           raise ParseError(cfg, self.get_path(cfg), f"no parser for {cname}")
       obj = parser(cfg, self)
       return obj
+
     if not is_dict_type(cfg):
       raise ArgumentError("cfg must be dict-like")
     parser = self.get("parser")
@@ -1010,38 +1016,47 @@ class ParserState:
         raise ParseError(cfg, self.get_path(cfg), f"cannot parse as {', '.join(f'\'{c}\'' for c in classes)}")
     else:
       raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
-    if obj is None:
-      raise ParseError(cfg, self.get_path(cfg), f"could not make object")
+    self.check_cls_(obj, cls)
     return obj
 
-  def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False):
+  def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False, cls=None):
     """
     Retrieves previously created object or makes it.
     Parameters:
-      cfg - string-like or dict-like reference to object or dict-like node with object init data
-      classes - list-like with possible object classes. May be None.
+      cfg - string-like or dict-like reference to object or dict-like cfg node with object init data
+      classes - list-like with possible class tags; may be None.
+        When making object, 'class' tag in 'cfg' (or dict-like cfg node the 'cfg' was dereferenced to) will be tried first.
+        If it is absent, values from 'classes' will be tried one by one.
+      ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
+      cls - expected Python class of returned object (exception raised if different); may be None
     Returned value:
       object or exception raised
     """
     r = self.deref(cfg)
     if is_dict_type(r):
       r = self.make(r, classes, ignoreCfgClass)
+    self.check_cls_(r, cls)
     return r
 
-  def deref_member_or_make(self, cfg, name, classes=None, ignoreCfgClass=False):
+  def deref_member_or_make(self, cfg, name, classes=None, ignoreCfgClass=False, cls=None):
     """
     Retrieves previously created object or makes it (dict-like member variant).
     Parameters:
       cfg - dict-like containing member with string-like or dict-like reference to object or dict-like node with object init data
       name - member name
-      classes - list-like with possible object classes. May be None.
+      classes - list-like with possible class tags; may be None.
+        When making object, 'class' tag in 'cfg' (or dict-like cfg node the 'cfg' was dereferenced to) will be tried first.
+        If it is absent, values from 'classes' will be tried one by one.
+      ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
+      cls - expected Python class of returned object (exception raised if different); may be None
     Returned value:
       object or exception raised
     """
-    v = self.deref_member(cfg, name)
-    if is_dict_type(v):
-      v = self.make(v, classes, ignoreCfgClass)
-    return v
+    r = self.deref_member(cfg, name)
+    if is_dict_type(r):
+      r = self.make(r, classes, ignoreCfgClass)
+    self.check_cls_(r, cls)
+    return r
 
   def get_path(self, v):
     return self.get("main").get_path(v)
@@ -1084,6 +1099,12 @@ class ParserState:
     if mapping is not None:
       r = mapping(r)
     return r
+
+  def check_cls_(self, r, cls):
+    if cls is not None:
+      if not isinstance(r, cls):
+        tr = type(r)
+        raise ParseError(cfg, self.get_path(cfg), f"expected {cls}, got {tr}")
 
 
 class DevRegister:
@@ -3563,7 +3584,10 @@ class FilterOp:
 
 
 #Curves
-class NoopCurve:
+class Curve:
+  pass
+
+class NoopCurve(Curve):
   def move_by(self, x, timestamp):
     return self.value_
 
@@ -4021,7 +4045,8 @@ class DistanceDeltaFromDeltaOp:
 
 
 #Chain curves
-class AccumulateRelChainCurve:
+
+class AccumulateRelChainCurve(Curve):
   logger = get_logger(logger, "AccumulateRelChainCurve")
 
   """
@@ -4075,7 +4100,7 @@ class AccumulateRelChainCurve:
       self.dirty_ = False
 
 
-class DeltaRelChainCurve:
+class DeltaRelChainCurve(Curve):
   logger = get_logger(logger, "DeltaRelChainCurve")
 
   def move_by(self, x, timestamp):
@@ -4137,7 +4162,7 @@ class DeltaRelChainCurve:
       self.dirty_ = False
 
 
-class FullDeltaRelChainCurve:
+class FullDeltaRelChainCurve(Curve):
   logger = get_logger(logger, "FullDeltaRelChainCurve")
 
   def move_by(self, x, timestamp):
@@ -4235,7 +4260,7 @@ class FullDeltaRelChainCurve:
       self.dirty = False
 
 
-class RelToAbsChainCurve:
+class RelToAbsChainCurve(Curve):
   """
   Gets value from next (absolute) curve, adds delta and passes new value to next curve.
   Is stateless.
@@ -4290,7 +4315,7 @@ class RelToAbsChainCurve:
     self.next_ = next
 
 
-class AbsToRelChainCurve:
+class AbsToRelChainCurve(Curve):
   """
   Converts absolute movement along an axis to relative.
   """
@@ -4403,7 +4428,7 @@ class AbsToRelChainCurve:
     self.limits_ = limits
 
 
-class TransformAbsChainCurve:
+class TransformAbsChainCurve(Curve):
   logger = get_logger(logger, "TransformAbsChainCurve")
 
   def move(self, x, timestamp):
@@ -4486,7 +4511,7 @@ class TransformAbsChainCurve:
       self.dirty_ = False
 
 
-class UnlinkableAbsChainCurve:
+class UnlinkableAbsChainCurve(Curve):
   logger = get_logger(logger, "UnlinkableAbsChainCurve")
 
   def move(self, x, timestamp):
@@ -4545,7 +4570,7 @@ class UnlinkableAbsChainCurve:
     self.allowOffLimits_ = allowOffLimits
 
 
-class UpdatedChainCurve:
+class UpdatedChainCurve(Curve):
   logger = get_logger(logger, "UpdatedChainCurve")
 
   """Moves next curve to desired value during periodic updates."""
@@ -4804,7 +4829,7 @@ class SensModUpdatedChainCurveOp:
     self.next_, self.func_, self.axis_ = next, func, axis
 
 
-class AxisChainCurve:
+class AxisChainCurve(Curve):
   """Moves axis. Is meant to be at the bottom of chain."""
 
   logger = get_logger(logger, "AxisChainCurve")
@@ -4848,7 +4873,7 @@ class AxisChainCurve:
     self.axis_ = axis
 
 
-class AxisTrackerChainCurve:
+class AxisTrackerChainCurve(Curve):
   """
   Prevents endless recursion on moving axis.
   Is meant to be at the top of chain.
@@ -4931,7 +4956,7 @@ class AxisTrackerChainCurve:
     self.objects_ = {}
 
 
-class OffsetAbsChainCurve:
+class OffsetAbsChainCurve(Curve):
   logger = get_logger(logger, "OffsetAbsChainCurve")
 
   def move(self, x, timestamp):
@@ -4992,7 +5017,7 @@ class OffsetAbsChainCurve:
     self.next_ = next
 
 
-class PrintRelChainCurve:
+class PrintRelChainCurve(Curve):
   def move_by(self, x, timestamp):
     """x is relative."""
     r = self.next_.move_by(x, timestamp)
@@ -5027,7 +5052,7 @@ class PrintRelChainCurve:
 
 
 #linking curves
-class AxisLinker:
+class AxisLinker(Curve):
   """
   Directly links positions of 2 axes using func and offset.
   If controlled axis is moved externally by delta, adds this delta to offset.
@@ -7874,7 +7899,7 @@ def make_parser():
     sensModCfg = get_deprecated_prop(cfg, "sensMod", "dynamic", None, state)
     if sensModCfg is not None:
       axis = state.get_axis_by_full_name(state.deref_member(sensModCfg, "axis", cls=str))
-      func = state.get("parser")("func", get_nested(sensModCfg, "func"), state)
+      func = state.deref_member_or_make(sensModCfg, "func", classes=["func"])
       class SensModOp:
         def calc(self, x, timestamp):
           n, f = self.next_.calc(x, timestamp), self.func_(self.axis_.get())
@@ -8300,7 +8325,7 @@ def make_parser():
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parsePresetCurve(): args: '{}'".format(str2(get_nested_d(cfg, "args"))))
       state.push_args(cfg)
       try:
-        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True)
+        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True, cls=Curve)
       finally:
         state.pop_args()
     else:
@@ -8309,7 +8334,7 @@ def make_parser():
         for n in ("axis", "controlling", "leader", "follower"):
           if n in cfg:
             presetCfgStack.push(n, cfg[n])
-        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True)
+        return state.deref_or_make(presetCfg, classes=["curve"], ignoreCfgClass=True, cls=Curve)
       finally:
         presetCfgStack.pop_all()
   curveParser.add("preset", parsePresetCurve)
@@ -8706,8 +8731,11 @@ def make_parser():
       def __init__(self, mc):
         self.mc_ = mc
     curve = state.deref_member_or_make(cfg, "curve", classes=["curve"])
-    if curve is cfg.get("curve"):
-      curve = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True)
+    curveCfg = cfg.get("curve")
+    if curve is curveCfg:
+      curve = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True, cls=Curve)
+    elif not isinstance(curve, Curve):
+      raise ParseError(curveCfg, state.get_path(curveCfg), "expected {Curve}, got {type(curve)}")
     mc = MoveCurve(curve)
     factor = state.deref_member_d(cfg, "factor", 1.0, setter=FactorSetter(mc), cls=float)
     mc.set_factor(factor)
@@ -8718,7 +8746,7 @@ def make_parser():
     axesData = state.deref_member(cfg, "axes")
     curves = {}
     for fnInputAxis,curveCfg in axesData.items():
-      curve = state.deref_or_make(curveCfg, classes=["curve"], ignoreCfgClass=True)
+      curve = state.deref_or_make(curveCfg, classes=["curve"], ignoreCfgClass=True, cls=Curve)
     mc = MoveCurve(curve)
     curves[fn2hc(state.deref(fnInputAxis))] = curve
     op = state.deref_member(cfg, "op", cls=str)
@@ -9176,7 +9204,7 @@ def make_parser():
   actionParser.add("writeVars", parseWriteVars)
 
   def parseSetStateOnInit(cfg, state):
-    linker = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True)
+    linker = state.deref_or_make(cfg, classes=["curve"], ignoreCfgClass=True, cls=AxisLinker)
     return SetAxisLinkerState(linker)
   actionParser.add("setStateOnInit", parseSetStateOnInit)
 
