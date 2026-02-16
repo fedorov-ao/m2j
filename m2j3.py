@@ -970,7 +970,7 @@ class ParserState:
     except Exception as e:
       raise ParseError(cfg2, self.get_path(cfg2), e) from e
 
-  def make(self, cfg, classes=None, ignoreCfgClass=False, cls=None):
+  def make(self, cfg, classes=None, ignoreCfgClass=False, cls=None, parserPath=None):
     """
     Makes an object.
     Parameters:
@@ -980,6 +980,7 @@ class ParserState:
         If it is absent, values from 'classes' will be tried one by one.
       ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
       cls - expected Python class of returned object (exception raised if different); may be None
+      parserPath - path to new root parser; may be None
     Returned value:
       object or None or exception raised
     Ignores '_value' tag in 'cfg'.
@@ -996,20 +997,24 @@ class ParserState:
       obj = parser(cfg, self)
       return obj
 
+    sep = "."
     if not is_dict_type(cfg):
       raise ArgumentError("cfg must be dict-like")
     parser = self.get("parser")
+    if parserPath is not None:
+      for pp in parserPath.split(sep):
+        parser = parser.get(pp)
     obj = None
     className = cfg.get("class", None)
     if className is not None and not ignoreCfgClass:
-      obj = make_from_nested_cname(parser, className)
+      obj = make_from_nested_cname(parser, className, sep)
       if obj is None:
         raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
     elif classes:
       if not is_list_type(classes):
         raise ArgumentError("'classes' must be list-like")
       for className in classes:
-        obj = make_from_nested_cname(parser, className)
+        obj = make_from_nested_cname(parser, className, sep)
         if obj is not None:
           break
       else:
@@ -1019,7 +1024,7 @@ class ParserState:
     self.check_cls_(obj, cls)
     return obj
 
-  def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False, cls=None):
+  def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False, cls=None, parserPath=None):
     """
     Retrieves previously created object or makes it.
     Parameters:
@@ -1029,16 +1034,17 @@ class ParserState:
         If it is absent, values from 'classes' will be tried one by one.
       ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
       cls - expected Python class of returned object (exception raised if different); may be None
+      parserPath - path to new root parser; may be None
     Returned value:
       object or exception raised
     """
     r = self.deref(cfg)
     if is_dict_type(r):
-      r = self.make(r, classes, ignoreCfgClass)
+      r = self.make(r, classes, ignoreCfgClass, None, parserPath)
     self.check_cls_(r, cls)
     return r
 
-  def deref_member_or_make(self, cfg, name, classes=None, ignoreCfgClass=False, cls=None):
+  def deref_member_or_make(self, cfg, name, classes=None, ignoreCfgClass=False, cls=None, parserPath=None):
     """
     Retrieves previously created object or makes it (dict-like member variant).
     Parameters:
@@ -1049,12 +1055,13 @@ class ParserState:
         If it is absent, values from 'classes' will be tried one by one.
       ignoreCfgClass - ignore 'class' tag in 'cfg', use values in 'classes' right away; False by default
       cls - expected Python class of returned object (exception raised if different); may be None
+      parserPath - path to new root parser; may be None
     Returned value:
       object or exception raised
     """
     r = self.deref_member(cfg, name)
     if is_dict_type(r):
-      r = self.make(r, classes, ignoreCfgClass)
+      r = self.make(r, classes, ignoreCfgClass, None, parserPath)
     self.check_cls_(r, cls)
     return r
 
@@ -7773,7 +7780,7 @@ def make_parser():
           state = ParserState(main)
           next_ = parser("func", cfg, state)
           self.func_.set_next(next_)
-          setter = parser.get("setter")(cfg, state)
+          setter = state.deref_or_make(cfg, parserPath="setter")
           setter.set_obj(next_)
           self.setter_ = setter
       def __init__(self, main, func):
@@ -10550,7 +10557,7 @@ class ObjectVar(BaseVar):
       main = self.main_()
       state = ParserState(main)
       self.obj_ = state.deref_or_make(self.value_)
-      self.setter_ = state.deref_or_make(self.value_, classes=["setter"], ignoreCfgClass=True)
+      self.setter_ = state.deref_or_make(self.value_, parserPath="setter")
       self.setter_.set_obj(self.obj_)
     for cb in self.callbacks_:
       cb(self.obj_)
