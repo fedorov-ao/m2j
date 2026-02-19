@@ -7703,22 +7703,22 @@ def make_parser():
 
   def make_func_wrapper(func):
     class Wrapper:
-      def __call__(self, x):
-        if self.symm_ is None:
-          return self.call_(x)
-        else:
-          return self.symm_(self.call_, x)
       def __init__(self, **kwargs):
         self.f_ = kwargs.get("f")
         self.xf_, self.yf_ = kwargs.get("xf"), kwargs.get("yf")
         self.xo_, self.yo_ = kwargs.get("xo"), kwargs.get("yo")
         self.ymin_, self.ymax_ = kwargs.get("ymin"), kwargs.get("ymax")
         self.symm_ = kwargs.get("symm")
-      def call_(self, x):
-        x = self.xo_ + self.xf_ * x
+      def __call__(self, x):
+        x = -self.xo_ + self.xf_ * x
+        sx = sign(x)
+        if self.symm_ in (1, "x", 2, "xy"):
+          x = abs(x)
         y = self.f_(x)
         if y is None:
           return None
+        if self.symm_ in (2, "xy"):
+          y = sx*abs(y)
         y = self.yo_ + self.yf_ * y
         y = min(max(y, self.ymin_), self.ymax_)
         return y
@@ -7727,15 +7727,6 @@ def make_parser():
     def make_setter(wrapper, name):
       def op(value):
         setattr(wrapper, name, value)
-      return op
-    def make_symm_setter(wrapper):
-      def op(value):
-        symm = None
-        if value in (1, "x"):
-          symm = lambda f,x : f(abs(x))
-        elif value in (2, "xy"):
-          symm = lambda f,x : copysign(f(abs(x)), x)
-        wrapper.symm_ = symm
       return op
     def op(cfg, state):
       wrapper = Wrapper()
@@ -7746,8 +7737,7 @@ def make_parser():
       wrapper.yo_ = state.deref_member_d(cfg, "yoffset", 0.0, cls=float, setter=make_setter(wrapper, "yo_"))
       wrapper.ymin_ = state.deref_member_d(cfg, "ymin", -float("inf"), cls=float, setter=make_setter(wrapper, "ymin_"))
       wrapper.ymax_ = state.deref_member_d(cfg, "ymax", float("inf"), cls=float, setter=make_setter(wrapper, "ymax_"))
-      symmSetter = make_symm_setter(wrapper)
-      symmSetter(state.deref_member_d(cfg, "symmetric", 0, setter=symmSetter))
+      wrapper.symm_ = state.deref_member_d(cfg, "symmetric", 0, setter=make_setter(wrapper, "symm_"))
       return wrapper
     return op
 
