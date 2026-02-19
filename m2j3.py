@@ -3352,14 +3352,21 @@ class WeightedFunc:
     fDB = f(self.deadband_)
     sx, ax = sign(x), abs(x)
     y = (sx*f(ax) - sx*fDB)/(1.0 - fDB) if ax > self.deadband_ else 0.0
-    y *= self.factor_
-    y += self.offset_
     if self.tracker_ is not None:
       self.tracker_({ "caller" : self, "x" : x, "y" : y })
     return y
 
-  def __init__(self, degree, weight, deadband, factor, offset, tracker):
-    self.degree_, self.weight_, self.deadband_, self.offset_, self.factor_, self.tracker_ = degree, weight, deadband, offset, factor, tracker
+  def set_degree(self, degree):
+    self.degree_ = degree
+
+  def set_weight(self, weight):
+    self.weight_ = weight
+
+  def set_deadband(self, deadband):
+    self.deadband_ = deadband
+
+  def __init__(self, degree, weight, deadband, tracker):
+    self.degree_, self.weight_, self.deadband_, self.tracker_ = degree, weight, deadband, tracker
 
 
 class GainTracker:
@@ -6718,6 +6725,157 @@ class VarPointsSource:
     self.var_, self.keys_ = var, keys
 
 
+class CurveWidget(tk.Canvas):
+  def set_func(self, func):
+    self.func_ = func
+    self.update_curve_()
+
+  def get_func(self):
+    return self.func_
+
+  def __init__(self, **kwargs):
+    master = kwargs.get("master")
+    style = kwargs.get("style")
+    self.style_ = style
+    self.screenSize_ = kwargs.get("screenSize", [200, 200])
+    tk.Canvas.__init__(
+      self,
+      width=self.screenSize_[0],
+      height=self.screenSize_[1],
+      bg=get_nested_d(style, "bg", "white"),
+      **exclude_from_dict(kwargs, "style", "screenSize", "func", "worldBBox", "worldPos", "worldSize")
+    )
+    self.pack(expand=True, fill="both")
+    self.bind("<Motion>", self.motion_)
+    self.bind("<Configure>", self.configure_)
+    self.func_ = kwargs.get("func")
+    worldPos, worldSize = None, None
+    worldBBox = kwargs.get("worldBBox", None)
+    if worldBBox is not None:
+      worldPos = [worldBBox[0], worldBBox[1]]
+      worldSize = [worldBBox[2] - worldBBox[0], worldBBox[3] - worldBBox[1]]
+    else:
+      worldPos = kwargs.get("worldPos", [0.0, 0.0])
+      worldSize = kwargs.get("worldSize", [1.0, 1.0])
+    self.worldPos_, self.worldSize_ = worldPos, worldSize
+    color = get_nested_d(self.style_, "vline.color", "black")
+    width = get_nested_d(self.style_, "vline.width", 1)
+    dash = get_nested_d(self.style_, "vline.dash", None)
+    self.vline_ = self.create_line(0, 0, 0, self.screenSize_[1], fill=color, width=width, dash=dash, state="hidden")
+    self.intersectionText_ = self.create_text(0, 0, anchor="nw", text="", fill=color, state="hidden")
+    self.update_grid_()
+    self.curve_ = None
+    self.update_curve_()
+    self.set_vline_state_(True)
+    self.alive_ = True
+
+  def to_screen_(self, p):
+    return (
+      None if p[0] is None else lerp(float(p[0]), self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0], 0.0, self.screenSize_[0]),
+      None if p[1] is None else lerp(float(p[1]), self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1], self.screenSize_[1], 0.0)
+    )
+
+  def from_screen_(self, p):
+    return (
+      None if p[0] is None else lerp(float(p[0]), 0.0, self.screenSize_[0], self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0]),
+      None if p[1] is None else lerp(float(p[1]), self.screenSize_[1], 1.1, self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1])
+    )
+
+  def set_vline_state_(self, s):
+    state = "normal" if s == True else "hidden"
+    self.itemconfigure(self.vline_, state=state)
+    self.itemconfigure(self.intersectionText_, state=state)
+
+  def update_curve_(self, recreate=True):
+    if self.func_ is None:
+      return
+    points = []
+    step = get_nested_d(self.style_, "curve.line.step", None)
+    if step is None:
+      step = self.worldSize_[0] / self.screenSize_[0]
+    x = self.worldPos_[0]
+    xTo = self.worldPos_[0] + self.worldSize_[0]
+    while True:
+      y = self.func_(x)
+      if y is not None:
+        points.append(self.to_screen_((x, y)))
+      remaining = xTo - x
+      if remaining == 0.0:
+        break
+      elif remaining > step:
+        x += step
+      else:
+        x = xTo
+    color = get_nested_d(self.style_, "curve.line.color", "black")
+    width = get_nested_d(self.style_, "curve.line.width", 1)
+    dash = get_nested_d(self.style_, "curve.line.dash", None)
+    if self.curve_ is not None and recreate == True:
+      self.delete(self.curve_)
+      self.curve_ = None
+    if self.curve_ is None:
+      self.curve_ = self.create_line(points, fill=color, width=width, dash=dash)
+    else:
+      import itertools
+      self.coords(self.curve_, *itertools.chain.from_iterable(points))
+
+  def update_grid_(self):
+    def create_vline(self, x, **kwargs):
+      x, _ = self.to_screen_((x, None))
+      self.create_line(x, 0, x, self.screenSize_[1], **kwargs)
+    def create_hline(self, y, **kwargs):
+      _, y = self.to_screen_((None, y))
+      self.create_line(0, y, self.screenSize_[0], y, **kwargs)
+    tag = "grid"
+    self.delete(tag)
+    fmt = "{{: 0.{}f}}".format(get_nested_d(self.style_, "grid.text.precision", 2))
+    color = get_nested_d(self.style_, "grid.axis.color", "black")
+    width = get_nested_d(self.style_, "grid.axis.width", 2)
+    create_hline(self, 0.0, fill=color, width=width, tag=tag)
+    create_vline(self, 0.0, fill=color, width=width, tag=tag)
+    self.create_text(self.to_screen_((0.0, 0.0)), anchor="nw", text=fmt.format(0.0), tag=tag)
+    color = get_nested_d(self.style_, "grid.line.color", "black")
+    width = get_nested_d(self.style_, "grid.line.width", 1)
+    dash = get_nested_d(self.style_, "grid.line.dash", None)
+    xStep = get_nested_d(self.style_, "grid.step.x", 0.10)
+    x = int(self.worldPos_[0] / xStep) * xStep
+    xTo = self.worldPos_[0] + self.worldSize_[0]
+    while x <= xTo:
+      if abs(x) > 1e-6:
+        create_vline(self, x, fill=color, width=width, dash=dash, tag=tag)
+        self.create_text(self.to_screen_((x, 0.0)), anchor="nw", text=fmt.format(x), tag=tag)
+      x += xStep
+    yStep = get_nested_d(self.style_, "grid.step.y", 0.10)
+    y = int(self.worldPos_[1] / yStep) * yStep
+    yTo = self.worldPos_[1] + self.worldSize_[1]
+    while y <= yTo:
+      if abs(y) > 1e-6:
+        create_hline(self, y, fill=color, width=width, dash=dash, tag=tag)
+        self.create_text(self.to_screen_((0.0, y)), anchor="nw", text=fmt.format(y), tag=tag)
+      y += yStep
+
+  def configure_(self, event):
+    if self.screenSize_[0] == event.width and self.screenSize_[1] == event.height:
+      return
+    self.screenSize_[0], self.screenSize_[1] = event.width, event.height
+    self.update_curve_()
+    self.update_grid_()
+
+  def motion_(self, event):
+    self.coords(self.vline_, event.x, 0, event.x, self.screenSize_[1])
+    nx, _ = self.from_screen_((event.x, None))
+    if self.func_ is None:
+      return
+    ny = self.func_(nx)
+    if ny is not None:
+      precision = get_nested_d(self.style_, "vline.precision", 3)
+      fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+      self.coords(self.intersectionText_, *self.to_screen_((nx, ny)))
+      self.itemconfigure(self.intersectionText_, text=fmt.format(nx, ny))
+      self.itemconfigure(self.intersectionText_, state="normal")
+    else:
+      self.itemconfigure(self.intersectionText_, state="hidden")
+
+
 class CurveEditorWidget(tk.Canvas):
   def set_func(self, func):
     self.func_ = func
@@ -7057,7 +7215,9 @@ class InfoWidget:
       self.w_.deiconify()
     elif s == False:
       for tlw in self.tlws_:
-        tlw.destroy()
+        tlw = tlw()
+        if tlw:
+          tlw.destroy()
       self.tlws_ = []
       self.w_.withdraw()
 
@@ -7069,7 +7229,7 @@ class InfoWidget:
       self.w_.update()
 
   def add_top_level_widget(self, tlw):
-    self.tlws_.append(tlw)
+    self.tlws_.append(weakref.ref(tlw))
 
   def destroy(self):
     self.w_.destroy()
@@ -7704,9 +7864,10 @@ def make_parser():
     o = state.deref_member(cfg, "degree", cls=float)
     w = state.deref_member(cfg, "weight", cls=float)
     db = state.deref_member_d(cfg, "deadband", 0.0, cls=float)
-    offset = state.deref_member_d(cfg, "offset", 0.0, cls=float)
-    factor = state.deref_member_d(cfg, "factor", 1.0, cls=float)
-    func = WeightedFunc(o, w, db, factor, offset, make_tracker(cfg, state))
+    func = WeightedFunc(o, w, db, make_tracker(cfg, state))
+    state.deref_member(cfg, "degree", setter=lambda x : func.set_degree(x))
+    state.deref_member(cfg, "weight", setter=lambda x : func.set_weight(x))
+    state.deref_member_d(cfg, "deadband", 0.0, setter=lambda x : func.set_deadband(x))
     return func
   funcParser.add("weighted", weighted)
 
@@ -7802,16 +7963,44 @@ def make_parser():
   funcSetterParser = IntrusiveSelectParser(keyOp=funcSetterParserKeyOp, parser=SelectParser())
   setterParser.add("func", funcSetterParser)
 
+  def wrapper_setter(func, cfg, keys):
+    assert func is not None
+    if keys is None or keys[0] == "symmetric":
+      return False
+    k2m = { "xfactor" : "xf_", "yfactor" : "yf_", "xoffset" : "xo_", "yoffset" : "yo_", "ymin" : "ymin_", "ymax" : "ymax_" }
+    k = keys[0]
+    m = k2m.get(k)
+    if m is None:
+      return False
+    setattr(func, m, float(cfg[k]))
+    return True
+
+  def weightedSetter(cfg, state):
+    class Setter:
+      def __call__(self, cfg, keys):
+        """Returns True if property was set, False otherwise (in this case caller should recreate func and setter)."""
+        if wrapper_setter(self.func_, cfg, keys):
+          return True
+        elif keys[0] == "degree":
+          self.func_.set_degree(float(degree))
+          return True
+        elif keys[0] == "weigth":
+          self.func_.set_weigth(float(weigth))
+          return True
+        else:
+          raise RuntimeError("unknown keys: '{}'".format(keys))
+      def set_obj(self, func):
+        self.func_ = func
+    return Setter()
+  funcSetterParser.add("weighted", weightedSetter)
+
   def hermiteSetter(cfg, state):
     class Setter:
       def __call__(self, cfg, keys):
         """Returns True if property was set, False otherwise (in this case caller should recreate func and setter)."""
-        if keys is None:
-          return False
-        elif keys[0] == "symmetric":
-          return False
+        if wrapper_setter(self.func_, cfg, keys):
+          return True
         elif keys[0] == "points":
-          assert self.func_ is not None
           points = cfg["points"]
           if is_dict_type(points):
             points = [[float(k), float(v)] for k,v in points.items()]
@@ -10236,6 +10425,43 @@ def make_parser():
   widgetParser.add("button", parseButtonWidget)
 
   @parseBasesDecorator
+  def parse_curve_widget_props(cfg, state):
+    defaultStyle = {
+      "grid" : { "precision" : 1 },
+      "curve" : {
+        "marker" : { "fill" : None, "outline" : "black" },
+        "text" : { "precision" : 2 },
+        "line" : { "color" : "black", "widht" : 1 }
+      }
+    }
+    main = state.get("main")
+    func = state.deref_member(cfg, "func")
+    screenSize = state.deref_member_d(cfg, "screenSize", [200, 200])
+    style = {}
+    merge_dicts(style, defaultStyle)
+    merge_dicts(style, state.deref_member_d(cfg, "style", {}))
+    r = { "func" : func, "screenSize" : screenSize, "style" : style }
+    worldBBox = state.deref_member_d(cfg, "worldBBox", None)
+    if worldBBox is not None:
+      r["worldBBox"] = worldBBox
+    else:
+      r["worldPos"] = state.deref_member_d(cfg, "worldPos", [0.0, 0.0])
+      r["worldSize"] = state.deref_member_d(cfg, "worldSize", [1.0, 1.0])
+    return r
+
+  @parseBasesDecorator
+  @labelFrameDecorator
+  def parseCurveFrameWidget(cfg, state):
+    curveWidgetKwargs = parse_curve_widget_props(cfg, state)
+    widget = CurveWidget(master=cfg["master"], **curveWidgetKwargs)
+    def func_setter(func):
+      if func != widget.get_func():
+        return widget.set_func(func)
+    state.deref_member(cfg, "func", setter=func_setter)
+    return widget
+  widgetParser.add("curveFrame", parseCurveFrameWidget)
+
+  @parseBasesDecorator
   def parse_curve_editor_props(cfg, state):
     defaultStyle = {
       "grid" : { "precision" : 1 },
@@ -10263,20 +10489,6 @@ def make_parser():
       r["worldSize"] = state.deref_member_d(cfg, "worldSize", [1.0, 1.0])
     return r
 
-  def preparse(cfg, state):
-    if is_dict_type(cfg):
-      r = cfg.__class__()
-      for k,v in cfg.items():
-        getVarValue = True if k == "func" else False
-        r[k] = preparse(state.deref(v, getVarValue=getVarValue), state)
-    elif is_list_type(cfg):
-      r = []
-      for v in cfg:
-        r.append(preparse(state.deref(v), state))
-    else:
-      r = cfg
-    return r
-
   @parseBasesDecorator
   @labelFrameDecorator
   def parseCurveEditorFrameWidget(cfg, state):
@@ -10293,8 +10505,14 @@ def make_parser():
   def parseCurveEditorWidget(cfg, state):
     curveEditorKwargs = parse_curve_editor_props(cfg, state)
     info = state.get("main").get("info")
+    callbackManager = state.get("main").get("callbackManager")
     def create_curve_editor():
+      cbframe = callbackManager.push_callbacks()
       tlw = tk.Toplevel()
+      def pop_callbacks(event):
+        if tlw is event.widget:
+          callbackManager.pop_callbacks(cbframe)
+      tlw.bind("<Destroy>", pop_callbacks)
       info.add_top_level_widget(tlw)
       ce = CurveEditorWidget(master=tlw, **curveEditorKwargs)
       ce.pack(expand=True, fill="both")
@@ -10302,11 +10520,27 @@ def make_parser():
         if func != ce.get_func():
           ce.set_func(func)
       state.deref_member(cfg, "func", setter=func_setter)
+      #When binding setter to var, a callback that removes var callback is added to current callback manager frame,
+      #so no need to add this removal callback here
     kwargs = mapProps(cfg, ("master", "text"), state)
     kwargs["command"] = create_curve_editor
     widget = tk.Button(**kwargs)
     return widget
   widgetParser.add("curveEditor", parseCurveEditorWidget)
+
+  def preparse(cfg, state):
+    if is_dict_type(cfg):
+      r = cfg.__class__()
+      for k,v in cfg.items():
+        getVarValue = True if k == "func" else False
+        r[k] = preparse(state.deref(v, getVarValue=getVarValue), state)
+    elif is_list_type(cfg):
+      r = []
+      for v in cfg:
+        r.append(preparse(state.deref(v), state))
+    else:
+      r = cfg
+    return r
 
   @parseBasesDecorator
   @namedWidgetDecorator
@@ -10324,6 +10558,18 @@ def make_parser():
     return widget
   widgetParser.add("funcEditor", parseFuncEditorWidget)
 
+  def configure_grid_weights(widget, cfg, state):
+    weightsCfg = state.deref_member_d(cfg, "weights", {})
+    rowsCfg = state.deref_member_d(weightsCfg, "rows", {})
+    rdef = rowsCfg.get("*", 0)
+    colsCfg = state.deref_member_d(weightsCfg, "columns", {})
+    cdef = colsCfg.get("*", 0)
+    cols, rows = widget.grid_size()
+    for row in range(rows):
+      widget.grid_rowconfigure(row, weight=rowsCfg.get(str(row), rdef))
+    for col in range(cols):
+      widget.grid_columnconfigure(col, weight=colsCfg.get(str(col), cdef))
+
   @parseBasesDecorator
   @namedWidgetDecorator
   @labelFrameDecorator
@@ -10340,11 +10586,7 @@ def make_parser():
       addKwargs = mapProps(childCfg, ("sticky", "row", "column", "rowspan", "columnspan", "padx", "pady", "ipadx", "ipady"), state)
       addKwargs["child"] = child
       widget.add(**addKwargs)
-    weightsCfg = state.deref_member_d(cfg, "weights", {})
-    for row,weight in state.deref_member_d(weightsCfg, "rows", {}).items():
-      widget.grid_rowconfigure(int(row), weight=weight)
-    for column,weight in state.deref_member_d(weightsCfg, "columns", {}).items():
-      widget.grid_columnconfigure(int(column), weight=weight)
+    configure_grid_weights(widget, cfg, state)
     return widget
   widgetParser.add("grid", parseGridWidget)
 
@@ -10364,11 +10606,7 @@ def make_parser():
       addKwargs = mapProps(childCfg, ("sticky", "padx", "pady", "ipadx", "ipady"), state)
       addKwargs["child"] = child
       widget.add(**addKwargs)
-    weightsCfg = state.deref_member_d(cfg, "weights", {})
-    for row,weight in state.deref_member_d(weightsCfg, "rows", {}).items():
-      widget.grid_rowconfigure(int(row), weight=weight)
-    for column,weight in state.deref_member_d(weightsCfg, "columns", {}).items():
-      widget.grid_columnconfigure(int(column), weight=weight)
+    configure_grid_weights(widget, cfg, state)
     return widget
   widgetParser.add("entries", parseEntriesWidget)
 
@@ -10450,6 +10688,28 @@ def make_parser():
       if master in presetCfg:
         del presetCfg["master"]
   widgetParser.add("preset", parsePresetWidget)
+
+  @parseBasesDecorator
+  def parseCreateWindowButtonWidget(cfg, state):
+    info = state.get("main").get("info")
+    callbackManager = state.get("main").get("callbackManager")
+    childCfg = get_nested(cfg, "child")
+    def create_window():
+      cbframe = callbackManager.push_callbacks()
+      tlw = tk.Toplevel()
+      def pop_callbacks(event):
+        if tlw is event.widget:
+          callbackManager.pop_callbacks(cbframe)
+      tlw.bind("<Destroy>", pop_callbacks)
+      info.add_top_level_widget(tlw)
+      childCfg["master"] = tlw
+      child = state.deref_or_make(childCfg, classes=["widget"])
+      child.pack(expand=True, fill="both")
+    kwargs = mapProps(cfg, ("master", "text"), state)
+    kwargs["command"] = create_window
+    widget = tk.Button(**kwargs)
+    return widget
+  widgetParser.add("createWindowButton", parseCreateWindowButtonWidget)
 
   return mainParser
 
@@ -10611,10 +10871,13 @@ class CallbackManager:
     self.callbacks_[-1].append(callback)
 
   def push_callbacks(self):
-    self.callbacks_.append([])
+    cbframe = []
+    self.callbacks_.append(cbframe)
+    return cbframe
 
-  def pop_callbacks(self):
-    cs = self.callbacks_.pop()
+  def pop_callbacks(self, cbframe=None):
+    cs = self.callbacks_[-1] if cbframe is None else cbframe
+    self.callbacks_.remove(cs)
     for callback in cs:
       callback()
 
