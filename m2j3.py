@@ -6748,6 +6748,8 @@ class CurveWidget(tk.Canvas):
     self.pack(expand=True, fill="both")
     self.bind("<Motion>", self.motion_)
     self.bind("<Configure>", self.configure_)
+    self.bind("<Key>", self.key_)
+    self.bind("<Button-1>", lambda event : self.focus_set())
     self.func_ = kwargs.get("func")
     worldPos, worldSize = None, None
     worldBBox = kwargs.get("worldBBox", None)
@@ -6874,6 +6876,31 @@ class CurveWidget(tk.Canvas):
       self.itemconfigure(self.intersectionText_, state="normal")
     else:
       self.itemconfigure(self.intersectionText_, state="hidden")
+
+  def key_(self, event):
+    xStep = get_nested_d(self.style_, "grid.step.x", 0.10)
+    yStep = get_nested_d(self.style_, "grid.step.y", 0.10)
+    keysym = event.keysym
+    if keysym == "Right":
+      self.worldPos_[0] += xStep
+    elif keysym == "Left":
+      self.worldPos_[0] -= xStep
+    elif keysym == "Up":
+      self.worldPos_[1] -= yStep
+    elif keysym == "Down":
+      self.worldPos_[1] += yStep
+    elif keysym in ("plus", "equal"):
+      self.worldPos_[0] += xStep
+      self.worldPos_[1] += yStep
+      self.worldSize_[0] -= 2*xStep
+      self.worldSize_[1] -= 2*yStep
+    elif keysym == "minus":
+      self.worldPos_[0] -= xStep
+      self.worldPos_[1] -= yStep
+      self.worldSize_[0] += 2*xStep
+      self.worldSize_[1] += 2*yStep
+    self.update_curve_()
+    self.update_grid_()
 
 
 class CurveEditorWidget(tk.Canvas):
