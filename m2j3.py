@@ -6746,10 +6746,10 @@ class CurveWidget(tk.Canvas):
       **exclude_from_dict(kwargs, "style", "screenSize", "func", "worldBBox", "worldPos", "worldSize")
     )
     self.pack(expand=True, fill="both")
-    self.bind("<Motion>", self.motion_)
-    self.bind("<Configure>", self.configure_)
-    self.bind("<Key>", self.key_)
-    self.bind("<Button-1>", lambda event : self.focus_set())
+    self.bind("<Motion>", self.on_motion_)
+    self.bind("<Configure>", self.on_configure_)
+    self.bind("<Key>", self.on_key_)
+    self.bind("<Button-1>", self.on_button1_)
     self.func_ = kwargs.get("func")
     worldPos, worldSize = None, None
     worldBBox = kwargs.get("worldBBox", None)
@@ -6769,7 +6769,6 @@ class CurveWidget(tk.Canvas):
     self.curve_ = None
     self.update_curve_()
     self.set_vline_state_(True)
-    self.alive_ = True
 
   def to_screen_(self, p):
     return (
@@ -6855,14 +6854,15 @@ class CurveWidget(tk.Canvas):
         self.create_text(self.to_screen_((0.0, y)), anchor="nw", text=fmt.format(y), tag=tag)
       y += yStep
 
-  def configure_(self, event):
+  def on_configure_(self, event):
     if self.screenSize_[0] == event.width and self.screenSize_[1] == event.height:
-      return
+      return False
     self.screenSize_[0], self.screenSize_[1] = event.width, event.height
     self.update_curve_()
     self.update_grid_()
+    return True
 
-  def motion_(self, event):
+  def on_motion_(self, event):
     self.coords(self.vline_, event.x, 0, event.x, self.screenSize_[1])
     nx, _ = self.from_screen_((event.x, None))
     if self.func_ is None:
@@ -6877,7 +6877,7 @@ class CurveWidget(tk.Canvas):
     else:
       self.itemconfigure(self.intersectionText_, state="hidden")
 
-  def key_(self, event):
+  def on_key_(self, event):
     xStep = get_nested_d(self.style_, "grid.step.x", 0.10)
     yStep = get_nested_d(self.style_, "grid.step.y", 0.10)
     keysym = event.keysym
@@ -6902,91 +6902,38 @@ class CurveWidget(tk.Canvas):
     self.update_curve_()
     self.update_grid_()
 
+  def on_button1_(self, event):
+    self.focus_set()
 
-class CurveEditorWidget(tk.Canvas):
-  def set_func(self, func):
-    self.func_ = func
-    self.update_curve_()
 
-  def get_func(self):
-    return self.func_
-
+class CurveEditorWidget(CurveWidget):
   def set_points_source(self, ps):
     self.pointsSource_ = ps
     self.update_curve_()
 
   def __init__(self, **kwargs):
-    master = kwargs.get("master")
-    style = kwargs.get("style")
-    self.style_ = style
-    self.screenSize_ = kwargs.get("screenSize", [200, 200])
-    tk.Canvas.__init__(
-      self,
-      width=self.screenSize_[0],
-      height=self.screenSize_[1],
-      bg=get_nested_d(style, "bg", "white"),
-      **exclude_from_dict(kwargs, "style", "screenSize", "func", "pointsSource", "worldBBox", "worldPos", "worldSize")
-    )
-    self.pack(expand=True, fill="both")
-    self.bind("<Button-1>", self.add_or_select_node_)
-    self.bind("<ButtonRelease-1>", self.deselect_node_)
-    self.bind("<Motion>", self.motion_)
-    self.bind("<B1-Motion>", self.drag_node_)
-    self.bind("<Button-3>", self.remove_node_)
-    self.bind("<Configure>", self.configure_)
     self.nodes_ = []
-    self.func_ = kwargs.get("func")
-    self.pointsSource_ = kwargs.get("pointsSource")
-    worldPos, worldSize = None, None
-    worldBBox = kwargs.get("worldBBox", None)
-    if worldBBox is not None:
-      worldPos = [worldBBox[0], worldBBox[1]]
-      worldSize = [worldBBox[2] - worldBBox[0], worldBBox[3] - worldBBox[1]]
-    else:
-      worldPos = kwargs.get("worldPos", [0.0, 0.0])
-      worldSize = kwargs.get("worldSize", [1.0, 1.0])
-    self.worldPos_, self.worldSize_ = worldPos, worldSize
     self.selected_ = None
-    color = get_nested_d(self.style_, "vline.color", "black")
-    width = get_nested_d(self.style_, "vline.width", 1)
-    dash = get_nested_d(self.style_, "vline.dash", None)
-    self.vline_ = self.create_line(0, 0, 0, self.screenSize_[1], fill=color, width=width, dash=dash, state="hidden")
-    self.intersectionText_ = self.create_text(0, 0, anchor="nw", text="", fill=color, state="hidden")
-    self.update_grid_()
-    self.curve_ = None
-    if self.func_ is not None:
-      for center in self.pointsSource_.get_points():
-        self.add_node_(center)
-      self.update_curve_()
-    self.set_vline_state_(True)
+    self.pointsSource_ = kwargs.get("pointsSource")
+    kwargs = exclude_from_dict(kwargs, "pointsSource")
+    CurveWidget.__init__(self, **kwargs)
+    self.bind("<ButtonRelease-1>", self.on_button1_release)
+    self.bind("<B1-Motion>", self.on_button1_motion)
+    self.bind("<Button-3>", self.on_button3_)
+    for center in self.pointsSource_.get_points():
+      self.add_node_(center)
 
   class Node:
     def __init__(self, shapes, center):
       self.shapes, self.center = shapes, center
 
-  def to_screen_(self, p):
-    return (
-      None if p[0] is None else lerp(float(p[0]), self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0], 0.0, self.screenSize_[0]),
-      None if p[1] is None else lerp(float(p[1]), self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1], self.screenSize_[1], 0.0)
-    )
-
-  def from_screen_(self, p):
-    return (
-      None if p[0] is None else lerp(float(p[0]), 0.0, self.screenSize_[0], self.worldPos_[0], self.worldPos_[0] + self.worldSize_[0]),
-      None if p[1] is None else lerp(float(p[1]), self.screenSize_[1], 1.1, self.worldPos_[1], self.worldPos_[1] + self.worldSize_[1])
-    )
-
-  def set_vline_state_(self, s):
-    state = "normal" if s == True and len(self.nodes_) >= 2 else "hidden"
-    self.itemconfigure(self.vline_, state=state)
-    self.itemconfigure(self.intersectionText_, state=state)
-
   def add_or_select_node_(self, event):
+    if self.focus_get() is not self: return
     x, y = event.x, event.y
     for node in self.nodes_:
       if is_inside_bbox(x, y, self.bbox(node.shapes["marker"])):
         self.selected_ = node
-        #TODO Save offset between event x and y, and node center, to use this offset in drag_node_()
+        #TODO Save offset between event x and y, and node center, to use this offset in on_button1_motion()
         self.set_vline_state_(False)
         return
     center = self.from_screen_((x, y))
@@ -7008,11 +6955,15 @@ class CurveEditorWidget(tk.Canvas):
     }
     self.nodes_.append(self.Node(shapes, center))
 
-  def deselect_node_(self, event):
+  def on_button1_release(self, event):
+    #deselect node
+    if self.focus_get() is not self: return
     self.selected_ = None
     self.set_vline_state_(True)
 
-  def remove_node_(self, event):
+  def on_button3_(self, event):
+    #remove node
+    if self.focus_get() is not self: return
     x, y = event.x, event.y
     for node in self.nodes_:
       if is_inside_bbox(x, y, self.bbox(node.shapes["marker"])):
@@ -7024,22 +6975,25 @@ class CurveEditorWidget(tk.Canvas):
     self.update_curve_()
     self.set_vline_state_(True)
 
-  def drag_node_(self, event):
+  def on_button1_motion(self, event):
+    #drag node
+    if self.focus_get() is not self: return
     node = self.selected_
-    if node is not None:
-      x, y = event.x, event.y
-      node.center = self.from_screen_((x, y))
-      self.update_node_(node)
-      text = node.shapes["text"]
-      precision = get_nested_d(self.style_, "curve.line.precision", 3)
-      fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
-      self.itemconfigure(text, text=fmt.format(node.center[0], node.center[1]))
-      textBBox = self.bbox(text)
-      textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
-      textX = clamp(x, 0.0, self.screenSize_[0] - textW)
-      textY = clamp(y, 0.0, self.screenSize_[1] - textH)
-      self.coords(text, textX, textY)
-      self.update_curve_(False)
+    if node is None:
+      return
+    x, y = event.x, event.y
+    node.center = self.from_screen_((x, y))
+    self.update_node_(node)
+    text = node.shapes["text"]
+    precision = get_nested_d(self.style_, "curve.line.precision", 3)
+    fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+    self.itemconfigure(text, text=fmt.format(node.center[0], node.center[1]))
+    textBBox = self.bbox(text)
+    textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
+    textX = clamp(x, 0.0, self.screenSize_[0] - textW)
+    textY = clamp(y, 0.0, self.screenSize_[1] - textH)
+    self.coords(text, textX, textY)
+    self.update_curve_(False)
 
   def update_node_(self, node=None):
     def update_node(node):
@@ -7068,92 +7022,25 @@ class CurveEditorWidget(tk.Canvas):
     centers = [node.center for node in self.nodes_]
     centers.sort(key=lambda c : c[0])
     self.pointsSource_.set_points(centers)
-    points = []
-    step = get_nested_d(self.style_, "curve.line.step", None)
-    if step is None:
-      step = self.worldSize_[0] / self.screenSize_[0]
-    x = self.worldPos_[0]
-    xTo = self.worldPos_[0] + self.worldSize_[0]
-    while True:
-      y = self.func_(x)
-      if y is not None:
-        points.append(self.to_screen_((x, y)))
-      remaining = xTo - x
-      if remaining == 0.0:
-        break
-      elif remaining > step:
-        x += step
-      else:
-        x = xTo
-    color = get_nested_d(self.style_, "curve.line.color", "black")
-    width = get_nested_d(self.style_, "curve.line.width", 1)
-    dash = get_nested_d(self.style_, "curve.line.dash", None)
-    if self.curve_ is not None and recreate == True:
-      self.delete(self.curve_)
-      self.curve_ = None
-    if self.curve_ is None:
-      self.curve_ = self.create_line(points, fill=color, width=width, dash=dash)
-    else:
-      import itertools
-      self.coords(self.curve_, *itertools.chain.from_iterable(points))
+    CurveWidget.update_curve_(self, recreate)
 
-  def update_grid_(self):
-    def create_vline(self, x, **kwargs):
-      x, _ = self.to_screen_((x, None))
-      self.create_line(x, 0, x, self.screenSize_[1], **kwargs)
-    def create_hline(self, y, **kwargs):
-      _, y = self.to_screen_((None, y))
-      self.create_line(0, y, self.screenSize_[0], y, **kwargs)
-    tag = "grid"
-    self.delete(tag)
-    fmt = "{{: 0.{}f}}".format(get_nested_d(self.style_, "grid.text.precision", 2))
-    color = get_nested_d(self.style_, "grid.axis.color", "black")
-    width = get_nested_d(self.style_, "grid.axis.width", 2)
-    create_hline(self, 0.0, fill=color, width=width, tag=tag)
-    create_vline(self, 0.0, fill=color, width=width, tag=tag)
-    self.create_text(self.to_screen_((0.0, 0.0)), anchor="nw", text=fmt.format(0.0), tag=tag)
-    color = get_nested_d(self.style_, "grid.line.color", "black")
-    width = get_nested_d(self.style_, "grid.line.width", 1)
-    dash = get_nested_d(self.style_, "grid.line.dash", None)
-    xStep = get_nested_d(self.style_, "grid.step.x", 0.10)
-    x = int(self.worldPos_[0] / xStep) * xStep
-    xTo = self.worldPos_[0] + self.worldSize_[0]
-    while x <= xTo:
-      if abs(x) > 1e-6:
-        create_vline(self, x, fill=color, width=width, dash=dash, tag=tag)
-        self.create_text(self.to_screen_((x, 0.0)), anchor="nw", text=fmt.format(x), tag=tag)
-      x += xStep
-    yStep = get_nested_d(self.style_, "grid.step.y", 0.10)
-    y = int(self.worldPos_[1] / yStep) * yStep
-    yTo = self.worldPos_[1] + self.worldSize_[1]
-    while y <= yTo:
-      if abs(y) > 1e-6:
-        create_hline(self, y, fill=color, width=width, dash=dash, tag=tag)
-        self.create_text(self.to_screen_((0.0, y)), anchor="nw", text=fmt.format(y), tag=tag)
-      y += yStep
+  def on_configure_(self, event):
+    if CurveWidget.on_configure_(self, event):
+      self.update_node_()
 
-  def configure_(self, event):
-    if self.screenSize_[0] == event.width and self.screenSize_[1] == event.height:
-      return
-    self.screenSize_[0], self.screenSize_[1] = event.width, event.height
-    self.update_curve_()
-    self.update_grid_()
+  def on_on_motion_(self, event):
+    if len(self.nodes_) >= 2:
+      CurveWidget.on_motion_(self, event)
+
+  def on_key_(self, event):
+    CurveWidget.on_key_(self, event)
     self.update_node_()
 
-  def motion_(self, event):
-    if len(self.nodes_) < 2:
-      return
-    self.coords(self.vline_, event.x, 0, event.x, self.screenSize_[1])
-    nx, _ = self.from_screen_((event.x, None))
-    ny = self.func_(nx)
-    if ny is not None:
-      precision = get_nested_d(self.style_, "vline.precision", 3)
-      fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
-      self.coords(self.intersectionText_, *self.to_screen_((nx, ny)))
-      self.itemconfigure(self.intersectionText_, text=fmt.format(nx, ny))
-      self.itemconfigure(self.intersectionText_, state="normal")
+  def on_button1_(self, event):
+    if self.focus_get() is not self:
+      CurveWidget.on_button1_(self, event)
     else:
-      self.itemconfigure(self.intersectionText_, state="hidden")
+      self.add_or_select_node_(event)
 
 
 class FuncEditorWidget(tk.Frame):
