@@ -6924,8 +6924,57 @@ class CurveEditorWidget(CurveWidget):
       self.add_node_(center)
 
   class Node:
-    def __init__(self, shapes, center):
-      self.shapes, self.center = shapes, center
+    def __init__(self, master, center):
+      self.master, self.center = master, center
+      x, y = self.master.to_screen_(center)
+      w, h = get_nested_d(self.master.style_, "curve.marker.size", (10, 10))
+      fill = get_nested_d(self.master.style_, "curve.marker.fill", None)
+      outline = get_nested_d(self.master.style_, "curve.marker.outline", "black")
+      hw, hh = 0.5 * w, 0.5 * h
+      precision = get_nested_d(self.master.style_, "curve.text.precision", 3)
+      self.fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
+      self.shapes = {
+        "marker" : self.master.create_rectangle(x - hw, y - hh, x + hw, y + hh, fill=fill, outline=outline),
+        "text" : self.master.create_text(x, y, anchor="nw", text=self.fmt.format(center[0], center[1]))
+      }
+      self.update_text_()
+
+    def set_screen_pos(self, x, y):
+      self.center = self.master.from_screen_((x, y))
+      self.update()
+
+    def is_inside_screen_bbox(self, x, y):
+      return is_inside_bbox(x, y, self.master.bbox(self.shapes["marker"]))
+
+    def delete(self):
+      for shape in self.shapes.values():
+        self.master.delete(shape)
+
+    def update(self):
+      c = self.master.to_screen_(self.center)
+      cx, cy = c[0], c[1]
+      for shape in self.shapes.values():
+        coords = self.master.coords(shape)
+        lc = len(coords)
+        if lc == 2:
+          self.master.coords(shape, cx, cy)
+        elif lc == 4:
+          w, h = coords[3] - coords[1], coords[2] - coords[0]
+          hw, hh = 0.5 * w, 0.5 * h
+          self.master.coords(shape, cx - hw, cy - hh, cx + hw, cy + hh)
+        else:
+          assert False
+      self.update_text_()
+
+    def update_text_(self):
+      text = self.shapes["text"]
+      self.master.itemconfigure(text, text=self.fmt.format(self.center[0], self.center[1]))
+      textBBox = self.master.bbox(text)
+      textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
+      textX = clamp(textBBox[0], 0.0, self.master.screenSize_[0] - textW)
+      textY = clamp(textBBox[1], 0.0, self.master.screenSize_[1] - textH)
+      self.master.coords(text, textX, textY)
+
 
   def add_or_select_node_(self, event):
     if self.focus_get() is not self: return
@@ -6942,18 +6991,7 @@ class CurveEditorWidget(CurveWidget):
     self.set_vline_state_(True)
 
   def add_node_(self, center):
-    x, y = self.to_screen_(center)
-    w, h = get_nested_d(self.style_, "curve.marker.size", (10, 10))
-    fill = get_nested_d(self.style_, "curve.marker.fill", None)
-    outline = get_nested_d(self.style_, "curve.marker.outline", "black")
-    hw, hh = 0.5 * w, 0.5 * h
-    precision = get_nested_d(self.style_, "curve.text.precision", 3)
-    fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
-    shapes = {
-      "marker" : self.create_rectangle(x - hw, y - hh, x + hw, y + hh, fill=fill, outline=outline),
-      "text" : self.create_text(x, y, anchor="nw", text=fmt.format(center[0], center[1]))
-    }
-    self.nodes_.append(self.Node(shapes, center))
+    self.nodes_.append(self.Node(self, center))
 
   def on_button1_release(self, event):
     #deselect node
@@ -6966,9 +7004,8 @@ class CurveEditorWidget(CurveWidget):
     if self.focus_get() is not self: return
     x, y = event.x, event.y
     for node in self.nodes_:
-      if is_inside_bbox(x, y, self.bbox(node.shapes["marker"])):
-        for shape in node.shapes.values():
-          self.delete(shape)
+      if node.is_inside_screen_bbox(x, y):
+        node.delete()
         self.nodes_.remove(node)
         if self.selected_ == node:
           self.selected_ = None
@@ -6977,44 +7014,16 @@ class CurveEditorWidget(CurveWidget):
 
   def on_button1_motion(self, event):
     #drag node
-    if self.focus_get() is not self: return
-    node = self.selected_
-    if node is None:
-      return
-    x, y = event.x, event.y
-    node.center = self.from_screen_((x, y))
-    self.update_node_(node)
-    text = node.shapes["text"]
-    precision = get_nested_d(self.style_, "curve.line.precision", 3)
-    fmt = "{{: 0.{}f}}\n{{: 0.{}f}}".format(precision, precision)
-    self.itemconfigure(text, text=fmt.format(node.center[0], node.center[1]))
-    textBBox = self.bbox(text)
-    textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
-    textX = clamp(x, 0.0, self.screenSize_[0] - textW)
-    textY = clamp(y, 0.0, self.screenSize_[1] - textH)
-    self.coords(text, textX, textY)
+    if self.focus_get() is not self or self.selected_ is None: return
+    self.selected_.set_screen_pos(event.x, event.y)
     self.update_curve_(False)
 
   def update_node_(self, node=None):
-    def update_node(node):
-      c = self.to_screen_(node.center)
-      cx, cy = c[0], c[1]
-      for shape in node.shapes.values():
-        coords = self.coords(shape)
-        lc = len(coords)
-        if lc == 2:
-          self.coords(shape, cx, cy)
-        elif lc == 4:
-          w, h = coords[3] - coords[1], coords[2] - coords[0]
-          hw, hh = 0.5 * w, 0.5 * h
-          self.coords(shape, cx - hw, cy - hh, cx + hw, cy + hh)
-        else:
-          assert False
     if node is not None:
-      update_node(node)
+      node.update()
     else:
       for node in self.nodes_:
-        update_node(node)
+        node.update()
 
   def update_curve_(self, recreate=True):
     if self.func_ is None or len(self.nodes_) < 2:
