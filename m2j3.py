@@ -6901,6 +6901,7 @@ class CurveWidget(tk.Canvas):
       self.worldSize_[1] += 2*yStep
     self.update_curve_()
     self.update_grid_()
+    self.on_motion_(event)
 
   def on_button1_(self, event):
     self.focus_set()
