@@ -7075,7 +7075,7 @@ class FuncEditorWidget(tk.Frame):
     self.devBox_.bind("<<ComboboxSelected>>", self.select_dev_)
     self.axisBox_.bind("<<ComboboxSelected>>", self.select_axis_)
     self.funcBox_.bind("<<ComboboxSelected>>", self.select_func_)
-    values = values=list(self.funcs_.keys())
+    values = list(self.funcs_.keys())
     self.devBox_.configure(values=values)
     self.devBox_.set(values[0])
     if self.widths_["devbox"] == 0:
