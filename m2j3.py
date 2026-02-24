@@ -943,6 +943,9 @@ class ParserState:
         r = self.get_var(suffix, setter=setter, mapping=mapping, getVarValue=getVarValue)
       else:
         raise RuntimeError("Unknown prefix: '{}'".format(prefix))
+    else:
+      if getVarValue == True and isinstance(r, BaseVar):
+        r = r.get_obj() if isinstance(r, ObjectVar) else r.get()
     if clearValueTag and has_value_tag(r):
       if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug(f"Clearing value tag from {str2(r)}")
       r = remove_value_tag(r)
