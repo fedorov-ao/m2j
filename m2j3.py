@@ -763,19 +763,20 @@ class ParserState:
     nameSep = kwargs.get("nameSep", ":")
     memberSep = kwargs.get("memberSep", ".") 
     objectName = name.split(nameSep)
-    obj, i = None, 0
-    if objectName[0] == "self":
-      obj = self.at("eps", 0)
-    if objectName[0] == "root":
-      obj = self.at("eps", -1)
+    objectName0 = objectName[0]
+    obj = None
+    i = { "self" : 0, "parent" : 1, "root" : -1 }.get(objectName0, None)
+    if i is not None:
+      obj = self.at("eps", i)
     else:
+      i = 0
       while True:
         ep = self.at("eps", i)
         if ep is None:
           break
         objects = ep.get("objects", None)
         if objects is not None:
-          obj = objects.get(objectName[0])
+          obj = objects.get(objectName0)
           if obj is not None:
             break
         i += 1
