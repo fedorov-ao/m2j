@@ -1086,6 +1086,11 @@ class ParserState:
     axisCurves = self.at("curves", 0).setdefault(fnAxis, [])
     axisCurves.append(curve)
 
+  def clone(self):
+    state = ParserState(self.get("main"))
+    state.stacks_ = merge_dicts({}, self.stacks_)
+    return state
+
   def __init__(self, main):
     self.values_ = {}
     self.values_["main"] = main
@@ -7064,9 +7069,10 @@ class CurveEditorWidget(CurveWidget):
 class FuncEditorWidget(tk.Frame):
   def __init__(self, **kwargs):
     import tkinter.ttk
-    tk.Frame.__init__(self, **exclude_from_dict(kwargs, "funcs", "main", "style"))
+    tk.Frame.__init__(self, **exclude_from_dict(kwargs, "funcs", "main", "style", "state"))
     self.funcs_ = kwargs["funcs"]
     self.main_ = kwargs.get("main", None)
+    self.state_ = kwargs["state"]
     self.currentDev_, self.currentAxis_, self.currentFunc_ = None, None, None
     #First create widgets and add them to master, then set commands,
     #then set values to dev combobox, which should invoke commands of other boxes and fill self.current... members
@@ -7121,8 +7127,7 @@ class FuncEditorWidget(tk.Frame):
     tlw = tk.Toplevel(master=self)
     funcCfg = self.funcs_[self.currentDev_][self.currentAxis_][self.currentFunc_]
     funcCfg["master"] = tlw
-    state = ParserState(self.main_)
-    ce = state.deref_or_make(funcCfg, classes=["widget"])
+    ce = self.state_.make(funcCfg, classes=["widget"])
     ce.pack(expand=True, fill="both")
     #Needed to ensure that tlw.winfo_width() and tlw.winfo_height() will return correct dimensions
     tlw.update_idletasks()
@@ -10453,32 +10458,29 @@ def make_parser():
     return widget
   widgetParser.add("curveEditor", parseCurveEditorWidget)
 
-  def preparse(cfg, state):
-    if is_dict_type(cfg):
-      r = cfg.__class__()
-      for k,v in cfg.items():
-        getVarValue = True if k == "func" else False
-        r[k] = preparse(state.deref(v, getVarValue=getVarValue), state)
-    elif is_list_type(cfg):
-      r = []
-      for v in cfg:
-        r.append(preparse(state.deref(v), state))
-    else:
-      r = cfg
-    return r
+  @parseBasesDecorator
+  @labelFrameDecorator
+  def parseMultiFuncFrameWidget(cfg, state):
+    kwargs = {}
+    kwargs["data"] = state.deref_member(cfg, "data")
+    kwargs["var_"] = state.deref_member(cfg, "var_", getVarValue=False)
+    kwargs["main"] = state.get("main")
+    kwargs["state"] = state.clone()
+    widget = MultiFuncFrameWidget(master=cfg["master"], **kwargs)
+    return widget
+  widgetParser.add("multiFuncFrame", parseMultiFuncFrameWidget)
 
   @parseBasesDecorator
   @namedWidgetDecorator
   @labelFrameDecorator
   def parseFuncEditorWidget(cfg, state):
     kwargs = mapProps(cfg, ("master", ), state)
-    funcsCfg = state.deref_member(cfg, "funcs")
-    funcs = preparse(funcsCfg, state)
-    kwargs["funcs"] = funcs
+    kwargs["funcs"] = state.deref_member(cfg, "funcs")
     style = state.deref_member_d(cfg, "style", None)
     if style is not None:
       kwargs["style"] = style
     kwargs["main"] = state.get("main")
+    kwargs["state"] = state.clone()
     widget = FuncEditorWidget(**kwargs)
     return widget
   widgetParser.add("funcEditor", parseFuncEditorWidget)
@@ -10616,9 +10618,11 @@ def make_parser():
 
   @parseBasesDecorator
   def parseCreateWindowButtonWidget(cfg, state):
-    info = state.get("main").get("info")
+    main = state.get("main")
+    info = main.get("info")
     callbackManager = state.get("main").get("callbackManager")
     childCfg = get_nested(cfg, "child")
+    childState = state.clone()
     def create_window():
       cbframe = callbackManager.push_callbacks()
       tlw = tk.Toplevel()
@@ -10628,7 +10632,7 @@ def make_parser():
       tlw.bind("<Destroy>", pop_callbacks)
       info.add_top_level_widget(tlw)
       childCfg["master"] = tlw
-      child = state.deref_or_make(childCfg, classes=["widget"])
+      child = childState.make(childCfg, classes=["widget"])
       child.pack(expand=True, fill="both")
     kwargs = mapProps(cfg, ("master", "text"), state)
     kwargs["command"] = create_window
