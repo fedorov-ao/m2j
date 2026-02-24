@@ -11109,7 +11109,7 @@ class Main:
 
   def reinit_and_run(self):
     callbackManager = self.get("callbackManager")
-    callbackManager.push_callbacks()
+    cbframe = callbackManager.push_callbacks()
     try:
       if logger.isEnabledFor(logging.DEBUG): logger.debug("len(updated) before reinit_or_fallback: {}".format(len(self.get("updated"))))
       self.reinit_or_fallback()
@@ -11119,7 +11119,7 @@ class Main:
       self.set("state", self.STATE_RUNNING)
       self.loop_.run()
     finally:
-      callbackManager.pop_callbacks()
+      callbackManager.pop_callbacks(cbframe)
 
   def ask_for_config(self):
     if self.options_.get("configNames") is not None:
