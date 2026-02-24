@@ -7139,6 +7139,69 @@ class FuncEditorWidget(tk.Frame):
     self.main_.get("info").add_top_level_widget(tlw)
 
 
+class MultiFuncFrameWidget(tk.Frame):
+  def __init__(self, **kwargs):
+    import tkinter.ttk
+    tk.Frame.__init__(self, **exclude_from_dict(kwargs, "data", "var_", "main", "state"))
+    self.main_ = kwargs.get("main", None)
+    #data = { "segment" : { "func" : { "class" : "func.segment", ... }, "widgegt" : { "class" : "widget.preset", "name" : "...", ... } }, "weighted" : {...} }
+    self.state_ = kwargs["state"]
+    self.data_ = kwargs["data"]
+    self.funcBox_ = tkinter.ttk.Combobox(master=self)
+    self.funcBox_.pack(side="top")
+    values = list(self.data_.keys())
+    self.funcBox_.configure(values=values, width=max(len(value) for value in values))
+    self.funcBox_.bind("<<ComboboxSelected>>", self.select_func_)
+    self.var_ = kwargs["var_"]
+    funcCfg = self.var_.get()
+    funcName = get_nested_d(funcCfg, "mfwFunc", get_nested_d(funcCfg, "func"))
+    if funcName is None:
+      className, funcName = funcCfg["class"].split(".")
+      assert(className == "func")
+    self.funcBox_.set(funcName)
+    self.funcName_ = funcName
+    self.saved_ = {}
+    self.child_ = None
+    self.cbframe_ = None
+    #creating initial child widget
+    self.create_child_widget_()
+    self.bind("<Destroy>", self.on_destroy_)
+
+  def select_func_(self, event=None):
+    funcName = self.funcBox_.get()
+    callbackManager = self.main_.get("callbackManager")
+    if self.child_ is not None:
+      self.child_.destroy()
+      self.child_ = None
+    if self.cbframe_ is not None:
+      callbackManager.pop_callbacks(self.cbframe_)
+      self.cbframe_ = None
+    self.saved_[self.funcName_] = merge_dicts({}, self.var_.get())
+    varValue = self.saved_.get(funcName, None)
+    if varValue is None:
+      varValue = merge_dicts({}, self.data_[funcName]["func"])
+    varValue["mfwFunc"] = funcName
+    self.var_.set(varValue)
+    self.funcName_ = funcName
+    self.create_child_widget_()
+
+  def create_child_widget_(self):
+    assert(self.cbframe_ is None)
+    assert(self.child_ is None)
+    callbackManager = self.main_.get("callbackManager")
+    self.cbframe_ = callbackManager.push_callbacks()
+    funcName = self.funcBox_.get()
+    childCfg = self.data_[funcName]["widget"]
+    childCfg["master"] = self
+    self.child_ = self.state_.make(childCfg, classes=["widget"])
+    self.child_.pack(expand=True, fill="both")
+
+  def on_destroy_(self, event):
+    if self is event.widget and self.cbframe_ is not None:
+      self.main_.get("callbackManager").pop_callbacks(self.cbframe_)
+
+
+
 class InfoWidget:
   def add(self, child):
     self.widgets_.append(child)
