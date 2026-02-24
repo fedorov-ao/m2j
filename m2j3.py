@@ -10783,21 +10783,26 @@ class VarManager:
 
 class CallbackManager:
   def add_callback(self, callback):
-    self.callbacks_[-1].append(callback)
+    self.callbacks_[-1][1].append(callback)
 
   def push_callbacks(self):
     cbframe = []
-    self.callbacks_.append(cbframe)
-    return cbframe
+    cbframeId = id(cbframe)
+    self.callbacks_.append([cbframeId, cbframe])
+    return cbframeId
 
   def pop_callbacks(self, cbframe=None):
-    cs = self.callbacks_[-1] if cbframe is None else cbframe
-    self.callbacks_.remove(cs)
+    i = -1
+    if cbframe is not None:
+      for i in range(len(self.callbacks_)):
+        if cbframe == self.callbacks_[i][0]:
+          break
+    cs = self.callbacks_.pop(i)[1]
     for callback in cs:
       callback()
 
   def __init__(self):
-    self.callbacks_ = [[]]
+    self.callbacks_ = []
 
 
 class Main:
