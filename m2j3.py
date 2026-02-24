@@ -8024,6 +8024,7 @@ def make_parser():
         self.func_ = func
     return Setter()
   funcSetterParser.add("hermite", hermiteSetter)
+  funcSetterParser.add("segment", hermiteSetter)
 
 
   #Filters
