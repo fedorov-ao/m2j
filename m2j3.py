@@ -7167,6 +7167,7 @@ class InfoWidget:
     self.w_.propagate(True)
     self.w_.grid_propagate(True)
     self.w_.withdraw()
+    self.w_.protocol("WM_DELETE_WINDOW", lambda : self.set_state(False))
 
 
 class NextEP:
