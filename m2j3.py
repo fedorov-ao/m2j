@@ -988,7 +988,7 @@ class ParserState:
       object or None or exception raised
     Ignores '_value' tag in 'cfg'.
     """
-    def make_from_nested_cname(parser, cname, sep="."):
+    def make_from_nested_cname(cfg, parser, cname, sep="."):
       """Helper"""
       cnames = cname
       if is_str_type(cname):
@@ -1008,24 +1008,29 @@ class ParserState:
       for pp in parserPath.split(sep):
         parser = parser.get(pp)
     obj = None
-    className = cfg.get("class", None)
-    if className is not None and not ignoreCfgClass:
-      obj = make_from_nested_cname(parser, className, sep)
-      if obj is None:
-        raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
-    elif classes:
-      if not is_list_type(classes):
-        raise ArgumentError("'classes' must be list-like")
-      for className in classes:
-        obj = make_from_nested_cname(parser, className, sep)
-        if obj is not None:
-          break
+    cfg = parse_bases(cfg, self)
+    self.push_args(cfg)
+    try:
+      className = cfg.get("class", None)
+      if className is not None and not ignoreCfgClass:
+        obj = make_from_nested_cname(cfg, parser, className, sep)
+        if obj is None:
+          raise ParseError(cfg, self.get_path(cfg), f"cannot parse as '{className}'")
+      elif classes:
+        if not is_list_type(classes):
+          raise ArgumentError("'classes' must be list-like")
+        for className in classes:
+          obj = make_from_nested_cname(cfg, parser, className, sep)
+          if obj is not None:
+            break
+        else:
+          raise ParseError(cfg, self.get_path(cfg), f"cannot parse as {', '.join(f'\'{c}\'' for c in classes)}")
       else:
-        raise ParseError(cfg, self.get_path(cfg), f"cannot parse as {', '.join(f'\'{c}\'' for c in classes)}")
-    else:
-      raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
-    self.check_cls_(obj, cls)
-    return obj
+        raise ParseError(cfg, self.get_path(cfg), "no 'class' in cfg and no default classes specified")
+      self.check_cls_(obj, cls)
+      return obj
+    finally:
+      self.pop_args()
 
   def deref_or_make(self, cfg, classes=None, ignoreCfgClass=False, cls=None, parserPath=None):
     """
@@ -7598,6 +7603,26 @@ class ObjectsComponent:
     self.objects_ = {}
 
 
+def parse_bases(cfg, state):
+  """Merges all base config definitions if they are specified."""
+  bases = state.deref_member_d(cfg, "bases", None, cls=list)
+  if bases is None:
+    return cfg
+  else:
+    sectNames = ("presets",)
+    config = state.get("main").get("config")
+    full = {}
+    for baseName in bases:
+      if logger.isEnabledFor(logging.DEBUG): logger.debug("Parsing base : {}".format(baseName))
+      base = get_nested_from_sections_d(config, sectNames, baseName, None)
+      if base is None:
+        raise ParseError(cfg, state.get_path(cfg), "preset '{}' was not found".format(str2(baseName)))
+      merge_dicts(full, parse_bases(base, state))
+    merge_dicts(full, cfg)
+    del full["bases"]
+    return full
+
+
 def make_parser():
   global logger
   logger = get_logger(logger, "make_parser()")
@@ -8464,28 +8489,10 @@ def make_parser():
 
   #EP
   def parseBasesDecorator(wrapped):
-    def worker(cfg, state):
-      """Merges all base config definitions if they are specified."""
-      bases = state.deref_member_d(cfg, "bases", None, cls=list)
-      if bases is None:
-        return cfg
-      else:
-        sectNames = ("presets",)
-        config = state.get("main").get("config")
-        full = {}
-        for baseName in bases:
-          if logger.isEnabledFor(logging.DEBUG): logger.debug("Parsing base : {}".format(baseName))
-          base = get_nested_from_sections_d(config, sectNames, baseName, None)
-          if base is None:
-            raise ParseError(cfg, state.get_path(cfg), "preset '{}' was not found".format(str2(baseName)))
-          merge_dicts(full, worker(base, state))
-        merge_dicts(full, cfg)
-        del full["bases"]
-        return full
-    def parseBasesOp(cfg, state):
-      expandedCfg = worker(cfg, state)
+    def parseBasesOp(cfg, state, *args, **kwargs):
+      expandedCfg = parse_bases(cfg, state)
       if logger.isEnabledFor(logging.DEBUG): logger.debug("parseBasesOp():\n{}\n->\n{}".format(str2(cfg), str2(expandedCfg)))
-      return wrapped(expandedCfg, state)
+      return wrapped(expandedCfg, state, *args, **kwargs)
     return parseBasesOp
 
   def parseExternal(propName, groupNames):
