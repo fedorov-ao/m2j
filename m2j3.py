@@ -113,10 +113,16 @@ def select_nearest(b, e, values, match=SELECT_NEAREST_MATCH_BOTH, eps=1e-6):
 
 def bcalc(y, x0, x1, func, cmp=lambda a,b : a < b, eps=1e-6, numSteps=100):
   assert(func is not None)
-  y0, y1 = func(x0), func(x1)
-  if y != clamp(y, y0, y1):
+  i = 0
+  while i <= numSteps:
+    y0, y1 = func(x0), func(x1)
+    if y == clamp(y, y0, y1):
+      break
+    dx = 0.5*(x1 - x0)
+    x0, x1 = x0 - dx, x1 + dx
+  else:
     #y out of bounds
-    return None
+    raise RuntimeError("y out of bounds")
   #Determine how y0 compares to y1
   #If relation is True, then output function is "increasing", otherwise it is "decreasing"
   relation = cmp(y0, y1)
@@ -135,6 +141,8 @@ def bcalc(y, x0, x1, func, cmp=lambda a,b : a < b, eps=1e-6, numSteps=100):
       x0 = x
     else:
       x1 = x
+  else:
+    raise RuntimeError("num steps reached")
   return x
 
 
@@ -4227,11 +4235,7 @@ class FullDeltaRelChainCurve(Curve):
       outputValue = self.outputValue_ + actualOutputDelta
       inputValue = self.inputValueOp_.calc(outputValue)
       inputDelta = inputValue - self.inputValue_
-      xx = bcalc(inputDelta, -x, x, lambda xx : self.inputDeltaDDOp_.calc(inputValue, xx, timestamp))
-      if xx is None:
-        raise RuntimeError("Cannot compute x from inputDelta")
-      else:
-        x = xx
+      x = bcalc(inputDelta, -x, x, lambda xx : self.inputDeltaDDOp_.calc(inputValue, xx, timestamp))
       #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug( "{} recalculated x:{: 0.3f}; id:{: 0.3f}; iv:{: 0.3f}; ov:{: 0.3f}" .format(log_loc(self), x, inputDelta, inputValue, outputValue))
     self.inputValue_, self.outputValue_ = inputValue, outputValue
     #return x, adjusted or not
