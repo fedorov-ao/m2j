@@ -7539,7 +7539,7 @@ def parse_dict_live_ordered(d, cfg, state, kp, vp, op, update, exceptionHandler=
 class SelectParser:
   def __call__(self, key, cfg, state):
     def make_error_str(key, cfg):
-      return "key '{}', cfg '{}'".format(key, str2(cfg))
+      return "key '{}', cfg '{}'".format(key, str2(cfg, 200))
     if key not in self.parsers_:
       raise ParseError(key, state.get_path(cfg), KeyErrorEx(key, list(self.parsers_.keys())))
     else:
@@ -10121,11 +10121,6 @@ def make_parser():
     return state.deref(cfg, getVarValue=False)
   mainParser.add("var", parseVar)
 
-  #placeholder for more sophisticated var value parsing
-  def parseVarValue(cfg, state):
-    return cfg
-  mainParser.add("varValue", parseVarValue)
-
   class Value:
     def set(self, value):
       self.value_ = value
@@ -11037,7 +11032,7 @@ class Main:
           cfg2 = remove_value_tag(cfg2)
         path = sep.join(tokens)
         if not isDict or isValueDict:
-          varValue = state.deref_or_make(cfg2, classes=["varValue"])
+          varValue = cfg2
           if update == True:
             var = varManager.get_var_d(path, None)
             if var is None:
