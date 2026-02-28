@@ -6908,10 +6908,12 @@ class CurveWidget(tk.Canvas):
     elif keysym == "Down":
       self.worldPos_[1] += yStep
     elif keysym in ("plus", "equal"):
-      self.worldPos_[0] += xStep
-      self.worldPos_[1] += yStep
-      self.worldSize_[0] -= 2*xStep
-      self.worldSize_[1] -= 2*yStep
+      xStep2, yStep2 = 2.0*xStep, 2.0*yStep
+      if self.worldSize_[0] > xStep2 and self.worldSize_[1] > yStep2:
+        self.worldPos_[0] += xStep
+        self.worldPos_[1] += yStep
+        self.worldSize_[0] -= xStep2
+        self.worldSize_[1] -= yStep2
     elif keysym == "minus":
       self.worldPos_[0] -= xStep
       self.worldPos_[1] -= yStep
@@ -6989,10 +6991,14 @@ class CurveEditorWidget(CurveWidget):
       text = self.shapes["text"]
       self.master.itemconfigure(text, text=self.fmt.format(self.center[0], self.center[1]))
       textBBox = self.master.bbox(text)
-      textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
-      textX = clamp(textBBox[0], 0.0, self.master.screenSize_[0] - textW)
-      textY = clamp(textBBox[1], 0.0, self.master.screenSize_[1] - textH)
-      self.master.coords(text, textX, textY)
+      if textBBox is None:
+        self.master.itemconfigure(text, state="hidden")
+      else:
+        textW, textH = textBBox[2] - textBBox[0], textBBox[3] - textBBox[1]
+        textX = clamp(textBBox[0], 0.0, self.master.screenSize_[0] - textW)
+        textY = clamp(textBBox[1], 0.0, self.master.screenSize_[1] - textH)
+        self.master.coords(text, textX, textY)
+        self.master.itemconfigure(text, state="normal")
 
 
   def add_or_select_node_(self, event):
