@@ -6836,6 +6836,7 @@ class CurveWidget(tk.Canvas):
     else:
       import itertools
       self.coords(self.curve_, *itertools.chain.from_iterable(points))
+    self.itemconfigure(self.curve_, state="normal")
 
   def update_grid_(self):
     def create_vline(self, x, **kwargs):
@@ -6943,6 +6944,7 @@ class CurveEditorWidget(CurveWidget):
     self.bind("<Button-3>", self.on_button3_)
     for center in self.pointsSource_.get_points():
       self.add_node_(center)
+    self.update_curve_()
 
   class Node:
     def __init__(self, master, center):
@@ -7012,7 +7014,7 @@ class CurveEditorWidget(CurveWidget):
         return
     center = self.from_screen_((x, y))
     self.add_node_(center)
-    self.update_curve_()
+    self.update_ps_()
     self.set_vline_state_(True)
 
   def add_node_(self, center):
@@ -7034,14 +7036,14 @@ class CurveEditorWidget(CurveWidget):
         self.nodes_.remove(node)
         if self.selected_ == node:
           self.selected_ = None
-    self.update_curve_()
+    self.update_ps_()
     self.set_vline_state_(True)
 
   def on_button1_motion(self, event):
     #drag node
     if self.focus_get() is not self or self.selected_ is None: return
     self.selected_.set_screen_pos(event.x, event.y)
-    self.update_curve_(False)
+    self.update_ps_(False)
 
   def update_node_(self, node=None):
     if node is not None:
@@ -7050,7 +7052,7 @@ class CurveEditorWidget(CurveWidget):
       for node in self.nodes_:
         node.update()
 
-  def update_curve_(self, recreate=True):
+  def update_ps_(self, recreate=True):
     if self.func_ is None or len(self.nodes_) < 2:
       return
     centers = [node.center for node in self.nodes_]
