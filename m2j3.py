@@ -5397,6 +5397,42 @@ class FreePIEHeadTrackerIDEV:
       return orient
 
 
+class AbsToRelIDev:
+  def read_one(self):
+    class P:
+      def __init__(self, value, timestamp):
+        self.value, self.timestamp = value, timestamp
+    assert(self.next_)
+    while True:
+      event = self.next_.read_one()
+      if event is None:
+        break
+      elif event.type == codes.EV_ABS:
+        prev = self.data_.get(event.code, None)
+        if prev is None:
+          self.data_[event.code] = P(event.value, event.timestamp)
+        elif event.timestamp - prev.timestamp > self.timeout_:
+          prev.value, prev.timestamp = event.value, event.timestamp
+        else:
+          eventValue = event.value
+          event.type, event.value = codes.EV_REL, eventValue - prev.value
+          prev.value, prev.timestamp = eventValue, event.timestamp
+          break
+      elif event.type == codes.EV_KEY and event.code == codes.BTN_TOUCH and event.value == 1:
+        self.data_ = {}
+      else:
+        break
+    return event
+
+  def swallow(self, s):
+    assert(self.next_)
+    self.next_.swallow(s)
+
+  def __init__(self, next_, timeout):
+    self.next_, self.timeout_ = next_, timeout
+    self.data_ = {}
+
+
 class Opentrack:
   """Opentrack head movement emulator. Don't forget to call send()!"""
 
@@ -9928,6 +9964,15 @@ def make_parser():
     state.get("main").add_to_updated(lambda tick,ts : idev.update(tick, ts))
     return idev
   idevParser.add("freepie", parseFreePIEHeadTrackerIDEV)
+
+
+  def parseAbsToRelIDev(cfg, state):
+    next_ = state.deref_member_or_make(cfg, "next", classes=["idev"])
+    timeout = state.deref_member_d(cfg, "timeout", 0.5)
+    idev = AbsToRelIDev(next_, timeout)
+    return idev
+  idevParser.add("absToRel", parseAbsToRelIDev)
+
 
   def odevParserKeyOp(cfg, state):
     key = get_nested_d(cfg, "odev", None)
