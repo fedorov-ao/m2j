@@ -281,7 +281,7 @@ class EvdevIDev:
   logger = get_logger(logger, "EvdevIDev")
 
   def read_one(self):
-    def should_skip(event):
+    def should_skip(evdevEvent):
       if evdevEvent is None:
         return False
       elif evdevEvent.type in (0, 4):

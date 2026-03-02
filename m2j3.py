@@ -9901,6 +9901,7 @@ def make_parser():
 
   def parseFreePIEHeadTrackerIDEV(cfg, state):
     idevName = state.deref_member(cfg, "idev", cls=str)
+    idevHash = register_dev(idevName)
     address = state.deref_member(cfg, "address")
     i = address.find(":")
     if i == -1:
