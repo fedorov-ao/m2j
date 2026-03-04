@@ -11464,8 +11464,8 @@ class Main:
     source = self.get("source")
     def ep(event):
       if isinstance(event, InputEvent):
-        fmt = "{fn} {value}"
-        msg = fmt.format(fn=htc2fn(event.idev, event.type, event.code), value=event.value)
+        fmt = "{event}"
+        msg = fmt.format(event=event)
         logger.info(msg)
     source.set_ep(ep)
     updated = self.get("updated")
