@@ -9792,9 +9792,11 @@ def make_parser():
 
   @make_et
   def parseEvent(cfg, state):
+    r = []
     propValue = state.deref_member_d(cfg, "etype", None, cls=str)
-    propValue = codes.EV_CUSTOM if propValue is None else name2code(propValue)
-    r = [("type", EqPropTest(propValue))]
+    if propValue != "any":
+      propValue = codes.EV_CUSTOM if propValue in (None, "custom") else name2code(propValue)
+      r.append(("type", EqPropTest(propValue)))
     def eq(ev, pv):
       return ev == pv
     def eq_dict(ev, pv):
