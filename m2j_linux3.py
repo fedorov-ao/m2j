@@ -273,10 +273,6 @@ class EvdevJoystick:
       self.dirty_ = False
 
 
-def translate_evdev_event(evdevEvent, idev):
-  return None if evdevEvent is None else InputEvent(ecode2code(evdevEvent.type), ecode2code(evdevEvent.code), evdevEvent.value, evdevEvent.timestamp(), idev)
-
-
 class EvdevIDev:
   logger = get_logger(logger, "EvdevIDev")
 
@@ -296,7 +292,7 @@ class EvdevIDev:
       evdevEvent = self.dev_.read_one()
       while should_skip(evdevEvent):
         evdevEvent = self.dev_.read_one()
-      event = translate_evdev_event(evdevEvent, self.idev_)
+      event = self.translate_evdev_event_(evdevEvent)
       if event is None:
         if self.numEvents_ != 0:
           #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: got {} events".format(log_loc(self), self.numEvents_))
@@ -350,6 +346,13 @@ class EvdevIDev:
       return True
     else:
       return False
+
+  def translate_evdev_event_(self, evdevEvent):
+    if evdevEvent is None:
+      return None
+    else:
+      return InputEvent(ecode2code(evdevEvent.type), ecode2code(evdevEvent.code), evdevEvent.value, evdevEvent.timestamp(), self.idev_)
+
 
 
 def calc_device_hash(device):
