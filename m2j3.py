@@ -2993,9 +2993,11 @@ class ModeEPModeManager:
       return False
 
   def swap(self, f, t, current, report=True):
-    if current is None or self.ep_.get_mode() in current:
+    f = f if is_list_type(f) else [f]
+    mode = self.ep_.get_mode()
+    if (current is not None and mode in current) or mode in f:
       for i in range(len(self.mode_)-1, -1, -1):
-        if self.mode_[i] == f:
+        if self.mode_[i] in f:
           self.mode_[i] = t
           break;
       self.set_top_mode_(report)
