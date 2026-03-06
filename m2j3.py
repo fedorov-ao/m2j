@@ -2951,11 +2951,13 @@ class MSMMSavePolicy:
    SAVE = 1
    CLEAR = 2
    CLEAR_AND_SAVE = 3
+   REPLACE = 4
 
 
 def nameToMSMMSavePolicy(name):
   d = {
     "noop" : MSMMSavePolicy.NOOP,
+    "replace" : MSMMSavePolicy.REPLACE,
     "save" : MSMMSavePolicy.SAVE,
     "clear" : MSMMSavePolicy.CLEAR,
     "clearAndSave" : MSMMSavePolicy.CLEAR_AND_SAVE
@@ -3019,14 +3021,19 @@ class ModeEPModeManager:
 
   def set(self, mode, save, current, report=True):
     if current is None or self.ep_.get_mode() in current:
-      self.save_(save)
+      if save == MSMMSavePolicy.REPLACE:
+        if len(self.mode_):
+          self.mode_[-1] = mode
+      else:
+        self.save_(save)
       self.ep_.set_mode(mode, report)
       return True
     else:
       return False
 
   def cycle(self, modes, step, loop, save, report=True):
-    self.save_(save)
+    if save != MSMMSavePolicy.REPLACE:
+      self.save_(save)
     m = self.ep_.get_mode()
     assert(len(modes))
     if m in modes:
@@ -3040,6 +3047,9 @@ class ModeEPModeManager:
       m = modes[i]
     else:
       m = modes[0]
+    if save == MSMMSavePolicy.REPLACE:
+      if len(self.mode_):
+        self.mode_[-1] = m
     self.ep_.set_mode(m, report)
     return True
 
