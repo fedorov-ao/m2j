@@ -168,50 +168,90 @@ class EvdevJoystick2(ExternalEvdevJoystick):
     self.logger.debug("{} destroyed".format(log_loc(self)))
 
 
-class EvdevJoystick:
-  logger = get_logger(logger, "EvdevJoystick")
+class EvdevODev:
+  logger = get_logger(logger, "EvdevODev")
 
   class AxisData:
-    def __init__(self, limits, nativeLimits=(-32767, 32767), value=0.0, fuzz=0, flat=0, resolution=0):
-      self.limits, self.nativeLimits, self.value, self.fuzz, self.flat, self.resolution = limits, nativeLimits, value, fuzz, flat, resolution
+    def __init__(self, limits, value=0.0, resolution=0):
+      self.limits, self.value, self.resolution = limits, value, resolution
 
-  def __init__(self, axesDatum, buttons=None, name=None, phys=None, immediateSyn=True):
-    self.immediateSyn_ = immediateSyn
-    self.dirty_ = False
-    self.js_ = None
+  class AbsAxisData(AxisData):
+    def __init__(self, limits, value=0.0, resolution=0, nativeLimits=(-32767, 32767), fuzz=0, flat=0):
+      EvdevODev.AxisData.__init__(self, limits, value, resolution)
+      self.nativeLimits, self.fuzz, self.flat = nativeLimits, fuzz, flat
 
+  def __init__(self, resources, name=None, phys=None, immediateSyn=True):
     class TrimmedAxisData:
-      def __init__(self, limits, nativeLimits, value):
-        self.limits, self.nativeLimits, self.value = limits, nativeLimits, value
+      def __init__(self, limits, value):
+        self.limits, self.value = limits, value
 
-    self.axesDatum_ = {}
+    class TrimmedAbsAxisData(TrimmedAxisData):
+      def __init__(self, limits, value, nativeLimits):
+        TrimmedAxisData.__init__(self, limits, value)
+        self.nativeLimits = nativeLimits
+
+    class TrimmedRelAxisData(TrimmedAxisData):
+      def __init__(self, limits, value, resolution):
+        TrimmedAxisData.__init__(self, limits, value)
+        self.resolution = resolution
+        self.nvalue = int(value * resolution)
+
     cap = {}
-    nativeAxesDatum = []
 
-    for tcAxis,axisData in axesDatum.items():
-      self.axesDatum_[tcAxis] = TrimmedAxisData(limits=axisData.limits, nativeLimits=axisData.nativeLimits, value=axisData.value)
-      #Values in AbsInfo must be ints or evdev.UInput will not be constructed
-      absInfo = AbsInfo(value=int(axisData.value), min=int(axisData.nativeLimits[0]), max=int(axisData.nativeLimits[1]), fuzz=axisData.fuzz, flat=axisData.flat, resolution=axisData.resolution)
-      nativeAxesDatum.append((code2ecode(tcAxis.code), absInfo))
-    cap[ecodes.EV_ABS] = nativeAxesDatum
+    self.axes_ = {}
+    for tcAxis,axisData in resources.get("axes", {}).items():
+      limits = [float(l) for l in axisData.limits]
+      value = float(axisData.value)
+      if tcAxis.type == codes.EV_ABS:
+        nativeLimits = [float(l) for l in axisData.nativeLimits]
+        self.axes_[tcAxis] = TrimmedAbsAxisData(limits=limits, value=value, nativeLimits=nativeLimits)
+        #Values in AbsInfo must be ints or evdev.UInput will not be constructed
+        value=int(axisData.value)
+        min=int(axisData.nativeLimits[0])
+        max=int(axisData.nativeLimits[1])
+        absInfo = AbsInfo(value=value, min=min, max=max, fuzz=axisData.fuzz, flat=axisData.flat, resolution=axisData.resolution)
+        cap.setdefault(ecodes.EV_ABS, []).append((code2ecode(tcAxis.code), absInfo,))
+      elif tcAxis.type == codes.EV_REL:
+        self.axes_[tcAxis] = TrimmedRelAxisData(limits=limits, value=value, resolution=float(axisData.resolution))
+        cap.setdefault(ecodes.EV_REL, []).append(code2ecode(tcAxis.code))
 
+    buttons = resources.get("buttons", None)
     if buttons is not None:
       cap[ecodes.EV_KEY] = [code2ecode(b) for b in buttons]
     self.buttons_ = { b:False for b in buttons } if buttons is not None else {}
 
     if name is None:
       name='virtual-joystick'
-    self.js_ = UInput(cap, name=name, version=0x3, phys=phys)
+
+    self.dev_ = UInput(cap, name=name, version=0x3, phys=phys)
+
+    self.immediateSyn_ = immediateSyn
+    self.dirty_ = False
 
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} created".format(log_loc(self)))
 
   def __del__(self):
-    if self.js_ is not None:
-      self.js_.close()
+    if hasattr(self, "dev_") and self.dev_ is not None:
+      self.dev_.close()
     #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{} destroyed".format(log_loc(self)))
 
+  def reset_axis(self, tcAxis=None, v=0.0):
+    def set(axisData, v):
+      axisData.value = v
+      axisData.nvalue = int(v * axisData.resolution)
+    if tcAxis is None:
+      for axisData in self.axes_.values():
+        set(axisData, v)
+    else:
+      axisData = self.axes_.get(tcAxis, None)
+      if axisData is None:
+        raise RuntimeError("Axis not supported: {}".format(tcAxis))
+      set(axisData, v)
+
   def move_axis(self, tcAxis, v, relative):
-    if relative:
+    if relative == 2:
+      self.reset_axis(tcAxis, v)
+    elif relative:
       return self.move_axis_by(tcAxis, v)
     else:
       return self.move_axis_to(tcAxis, v)
@@ -222,42 +262,47 @@ class EvdevJoystick:
     return v - (desired - actual)
 
   def move_axis_to(self, tcAxis, v):
-    axisData = self.axesDatum_.get(tcAxis, None)
+    axisData = self.axes_.get(tcAxis, None)
     if axisData is None:
       raise RuntimeError("Axis not supported: {}".format(tcAxis))
-    limits, nativeLimits = axisData.limits, axisData.nativeLimits
+    limits = axisData.limits
     v = clamp(v, *limits)
+    code = code2ecode(tcAxis.code)
+    nv = None
+    if tcAxis.type == codes.EV_ABS:
+      nativeLimits = axisData.nativeLimits
+      nv = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
+      nv = int(nv)
+      #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), tc2ns(*tcAxis), v, nv))
+      self.dev_.write(codes.EV_ABS, code, nv)
+      self.syn_()
+    elif tcAxis.type == codes.EV_REL:
+      nv = int(v * axisData.resolution)
+      ndv = nv - axisData.nvalue
+      if abs(ndv) > 0:
+        axisData.nvalue = nv
+        self.dev_.write(codes.EV_REL, code, ndv)
+        self.syn_()
     axisData.value = v
-    nativeValue = lerp(v, limits[0], limits[1], nativeLimits[0], nativeLimits[1])
-    nativeValue = int(nativeValue)
-    #if self.logger.isEnabledFor(logging.DEBUG): self.logger.debug("{}: Moving axis {} to {}, native {}".format(log_loc(self), tc2ns(*tcAxis), v, nativeValue))
-    self.js_.write(ecodes.EV_ABS, code2ecode(tcAxis.code), nativeValue)
-    if self.immediateSyn_ == True:
-      self.js_.syn()
-    else:
-      self.dirty_ = True
     return v
 
   def get_axis_value(self, tcAxis):
-    axisData = self.axesDatum_.get(tcAxis, None)
+    axisData = self.axes_.get(tcAxis, None)
     return 0.0 if axisData is None else axisData.value
 
   def get_limits(self, tcAxis):
-    axisData = self.axesDatum_.get(tcAxis, None)
+    axisData = self.axes_.get(tcAxis, None)
     return [0.0, 0.0] if axisData is None else axisData.limits
 
   def get_supported_axes(self):
-    return list(self.axesDatum_.keys())
+    return list(self.axes_.keys())
 
   def set_button_state(self, button, state):
     if button not in self.buttons_:
       raise RuntimeError("Button not supported: {}".format(button))
     self.buttons_[button] = state
-    self.js_.write(ecodes.EV_KEY, code2ecode(button), state)
-    if self.immediateSyn_ == True:
-      self.js_.syn()
-    else:
-      self.dirty_ = True
+    self.dev_.write(ecodes.EV_KEY, code2ecode(button), state)
+    self.syn_()
 
   def get_button_state(self, button):
     if button not in self.buttons_:
@@ -269,8 +314,14 @@ class EvdevJoystick:
 
   def update(self, tick, ts):
     if self.immediateSyn_ == False and self.dirty_ == True:
-      self.js_.syn()
+      self.dev_.syn()
       self.dirty_ = False
+
+  def syn_(self):
+    if self.immediateSyn_ == True:
+      self.dev_.syn()
+    else:
+      self.dirty_ = True
 
 
 class EvdevIDev:
@@ -403,38 +454,46 @@ class NativeEvdevIDevFactory:
 
 
 @make_reporting_joystick
-def parseEvdevJoystickOutput(cfg, state):
+def parseEvdevODev(cfg, state):
   buttons = None
-  numButtons = cfg.get("numButtons", None)
+  numButtons = state.deref_member_d(cfg, "numButtons", None)
   if numButtons is not None:
     buttons = [codes.BTN_0+i for i in range(numButtons)]
   else:
-    buttonNames = cfg.get("buttons", None)
+    buttonNames = state.deref_member_d(cfg, "buttons", None)
     if buttonNames is not None:
       buttons = [name2code(buttonName) for buttonName in buttonNames]
     else:
       raise RuntimeError("Either 'buttons' or 'numButtons' must be specified")
   assert buttons is not None
-  axesDatum = {}
-  immediateSyn=cfg.get("immediateSyn", True)
-  nativeLimit=cfg.get("nativeLimit", 32767)
-  axesDatumCfg = cfg.get("axesDatum", None)
-  if axesDatumCfg is not None:
-    for axisName,axisDataCfg in axesDatumCfg.items():
+
+  immediateSyn = state.deref_member_d(cfg, "immediateSyn", True)
+  name = state.deref_member_d(cfg, "name", None)
+  phys = state.deref_member_d(cfg, "phys", "")
+  nativeLimit = state.deref_member_d(cfg, "nativeLimit", 32767)
+
+  axes = {}
+  axesCfg = state.deref_member_d(cfg, "axes", state.deref_member_d(cfg, "axesDatum", None))
+  if axesCfg is not None:
+    for axisName,axisCfg in axesCfg.items():
       tcAxis = fn2tc(axisName)
-      value = axisDataCfg.get("value", 0.0)
-      limits = axisDataCfg.get("limits", (-1.0, 1.0))
-      nativeLimits = axisDataCfg.get("nativeLimits", (-nativeLimit, nativeLimit))
-      fuzz = axisDataCfg.get("fuzz", 0)
-      flat = axisDataCfg.get("flat", 0)
-      resolution = axisDataCfg.get("resolution", 0)
-      axesDatum[tcAxis] = EvdevJoystick.AxisData(limits=limits, nativeLimits=nativeLimits, value=value, fuzz=fuzz, flat=flat, resolution=resolution)
+      value = state.deref_member_d(axisCfg, "value", 0.0)
+      limits = state.deref_member_d(axisCfg, "limits", (-1.0, 1.0))
+      resolution = state.deref_member_d(axisCfg, "resolution", 0)
+      if tcAxis.type == codes.EV_ABS:
+        nativeLimits = state.deref_member_d(axisCfg, "nativeLimits", (-nativeLimit, nativeLimit))
+        fuzz = state.deref_member_d(axisCfg, "fuzz", 0)
+        flat = state.deref_member_d(axisCfg, "flat", 0)
+        axes[tcAxis] = EvdevODev.AbsAxisData(limits=limits, nativeLimits=nativeLimits, value=value, fuzz=fuzz, flat=flat, resolution=resolution)
+      elif tcAxis.type == codes.EV_REL:
+        axes[tcAxis] = EvdevODev.AxisData(limits=limits, value=value, resolution=resolution)
   else:
-    limits = {fn2tc(a):l for a,l in cfg.get("limits", {}).items()}
-    #j = EvdevJoystick2(limits=limits, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
+    limits = {fn2tc(a):l for a,l in state.deref_member_d(cfg, "limits", {}).items()}
+    #j = EvdevODev2(limits=limits, buttons=buttons, name=state.deref_member_d(cfg, "name", ""), phys=state.deref_member_d(cfg, "phys", ""), immediateSyn=immediateSyn, nativeLimit=nativeLimit)
     for tcAxis,limit in limits.items():
-      axesDatum[tcAxis] = EvdevJoystick.AxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
-  j = EvdevJoystick(axesDatum=axesDatum, buttons=buttons, name=cfg.get("name", ""), phys=cfg.get("phys", ""), immediateSyn=immediateSyn)
+      axesDatum[tcAxis] = EvdevODev.AbsAxisData(limits=limit, nativeLimits=(-nativeLimit, nativeLimit))
+  resources = { "axes" : axes, "buttons" : buttons }
+  j = EvdevODev(resources=resources, name=name, phys=phys, immediateSyn=immediateSyn)
   if immediateSyn == False:
     state.get("main").add_to_updated(lambda tick,ts : j.update(tick, ts))
   return j
@@ -525,7 +584,7 @@ if __name__ == "__main__":
   try:
     main = Main(get_idevs_info=get_idevs_info)
     parser = main.get("parser")
-    parser.get("odev").add("evdev", parseEvdevJoystickOutput)
+    parser.get("odev").add("evdev", parseEvdevODev)
     evdevIDevParser = EvdevIDevParser()
     parser.get("idev").add("evdev", evdevIDevParser)
     parser.get("idev").add("default", evdevIDevParser)
