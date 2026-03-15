@@ -1911,17 +1911,17 @@ def ResetCurves(curves):
   return op
 
 
-class MoveAxisTo:
+class MoveAxis:
   def __call__(self, event):
     if self.axis_ is not None:
-      self.axis_.move(self.value_, False)
+      self.axis_.move(self.value_, self.relative_)
     return True
 
   def set_value(self, value):
     self.value_ = value
 
-  def __init__(self, axis, value):
-    self.axis_, self.value_ = axis, value
+  def __init__(self, axis, value, relative):
+    self.axis_, self.value_, self.relative_ = axis, value, relative
 
 
 class MoveAxisBy:
@@ -9018,10 +9018,12 @@ def make_parser():
     axis = state.get_axis_by_full_name(state.deref_member(cfg, "axis", cls=str))
     valueSetter = MoveAxisValueSetter()
     value = state.deref_member(cfg, "value", setter=valueSetter, cls=float)
-    r = MoveAxisTo(axis, value)
+    relative = state.deref_member_d(cfg, "relative", 0, cls=int)
+    r = MoveAxis(axis, value, relative)
     valueSetter.set_move_axis(r)
     return r
   actionParser.add("setAxis", parseSetAxis)
+  actionParser.add("moveAxis", parseSetAxis)
 
   def parseMoveAxisBy(cfg, state):
     axis = state.get_axis_by_full_name(state.deref_member(cfg, "axis", cls=str))
@@ -9072,7 +9074,7 @@ def make_parser():
 
   def parseSetAxes(cfg, state):
     axesAndValues = state.deref_member(cfg, "axesAndValues")
-    allRelative = state.deref_member_d(cfg, "relative", False, cls=bool)
+    allRelative = state.deref_member_d(cfg, "relative", 0, cls=int)
     if logger.isEnabledFor(logging.DEBUG): logger.debug("parseSetAxes(): {}".format(axesAndValues))
     assert is_dict_type(axesAndValues)
     axesAndValues = list(axesAndValues.items())
@@ -9094,6 +9096,7 @@ def make_parser():
     r = MoveAxes(av)
     return r
   actionParser.add("setAxes", parseSetAxes)
+  actionParser.add("moveAxes", parseSetAxes)
 
   def parseSetKeyState_(cfg, state, s):
     fnKey = state.deref_member(cfg, "key", cls=str)
